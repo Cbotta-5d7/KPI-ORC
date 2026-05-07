@@ -79,6 +79,32 @@ ALL_EVENT_TYPES = (
 )
 
 
+def _toast(root, msg, bg="#27ae60", duration=3000):
+    """Notification flottante qui disparait automatiquement."""
+    t = tk.Toplevel(root)
+    t.overrideredirect(True)
+    t.attributes("-topmost", True)
+    t.configure(bg=bg)
+    root.update_idletasks()
+    sw = root.winfo_screenwidth()
+    sh = root.winfo_screenheight()
+    w, h = 420, 64
+    t.geometry(f"{w}x{h}+{(sw-w)//2}+{sh-120}")
+    tk.Label(t, text=msg, bg=bg, fg="white",
+             font=("Arial", 14, "bold"), padx=24, pady=16).pack(fill="both", expand=True)
+    # Fondu progressif puis destruction
+    def _fade(alpha=1.0):
+        if alpha <= 0:
+            t.destroy()
+            return
+        try:
+            t.attributes("-alpha", alpha)
+            t.after(50, _fade, alpha - 0.05)
+        except Exception:
+            pass
+    t.after(duration, _fade)
+
+
 def fmt(seconds):
     h, r = divmod(int(max(0, seconds)), 3600)
     m, s = divmod(r, 60)
@@ -191,13 +217,6 @@ class Timeline(tk.Canvas):
                                  font=("Arial", 7), fill=GRAY, anchor="center")
 
         self.create_line(w - 1, BY - 8, w - 1, BY + BH + 8, fill=ORANGE, width=2)
-        legend = [("Prod.", GREEN), ("Rattrapage", C_RATT), ("PB Tech.", C_RED)]
-        lx = 8
-        for lbl, col in legend:
-            self.create_rectangle(lx, BY + 9, lx + 12, BY + BH - 9, fill=col, outline="")
-            self.create_text(lx + 15, BY + BH // 2, text=lbl, anchor="w",
-                             font=("Arial", 8, "bold"), fill=GRAY)
-            lx += 90
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -262,10 +281,24 @@ class EventCell(tk.Canvas):
         if self.app._t_running(self.key):
             self.app._t_stop(self.key)
             self.app._tl_close(self.key)
+            self._draw()
         else:
             self.app._t_start(self.key)
             self.app._tl_open(self.key, "ratt" if self.accent == C_RATT else "pb")
-        self._draw()
+            self._flash(4)  # 4 flashs au démarrage
+
+    def _flash(self, n):
+        if n <= 0:
+            self._draw()
+            return
+        self.delete("all")
+        w, h = self.winfo_width(), self.winfo_height()
+        col = "#ff6060" if n % 2 == 0 else C_RED
+        _rrect(self, 0, 0, w-5, h-5, 10, fill=col)
+        self.create_text(w//2-2, h//2-2, text=self.label,
+                         fill=WHITE, font=("Arial", 12, "bold"),
+                         justify="center", width=w-12)
+        self.after(120, self._flash, n - 1)
 
     def refresh(self):
         self._draw()
@@ -544,9 +577,64 @@ class App:
         zone = tk.Frame(parent, bg=WHITE)
         zone.pack(fill="x")
         tl = Timeline(zone, self, bg=WHITE)
-        tl.pack(fill="x", padx=6, pady=6)
+        tl.pack(fill="x", padx=6, pady=(6, 2))
+        # Légende sous le chronogramme
+        leg = tk.Frame(zone, bg=WHITE)
+        leg.pack(anchor="w", padx=10, pady=(0, 5))
+        for lbl, col in [("Production", GREEN), ("Rattrapage", C_RATT), ("PB Technique", C_RED), ("Changement OF", ORANGE)]:
+            tk.Frame(leg, bg=col, width=14, height=14).pack(side="left", padx=(0, 4))
+            tk.Label(leg, text=lbl, bg=WHITE, fg=GRAY,
+                     font=("Arial", 8, "bold")).pack(side="left", padx=(0, 16))
         self._tl_widget = tl
         return tl
+
+    def _make_tabs(self, parent, active):
+        bar = tk.Frame(parent, bg=NAVY_L)
+        bar.pack(fill="x")
+
+        def _tab(label, mode, action, enabled):
+            is_active = (mode == active)
+            bg  = WHITE   if is_active else NAVY_L
+            fg  = NAVY    if is_active else (WHITE if enabled else "#4a5578")
+            top_col = (GREEN if mode == "main" else C_RED) if is_active else NAVY_L
+            f = tk.Frame(bar, bg=bg)
+            f.pack(side="left")
+            tk.Frame(f, bg=top_col, height=4).pack(fill="x")
+            row = tk.Frame(f, bg=bg)
+            row.pack(padx=26, pady=11)
+            lbl = tk.Label(row, text=label, bg=bg, fg=fg,
+                           font=("Arial", 11, "bold"))
+            lbl.pack(side="left")
+            if enabled and not is_active:
+                for w in [f, row, lbl]:
+                    w.bind("<Button-1>", lambda e, a=action: a())
+                    w.config(cursor="hand2")
+            return row
+
+        _tab("📊  Tableau de bord", "main", self._show_main, True)
+
+        # Onglet Production
+        is_prod_tab = (active == "production")
+        prod_bg = WHITE if is_prod_tab else NAVY_L
+        prod_fg = NAVY  if is_prod_tab else (WHITE if self._prod_active else "#4a5578")
+        prod_f = tk.Frame(bar, bg=prod_bg)
+        prod_f.pack(side="left")
+        tk.Frame(prod_f, bg=C_RED if is_prod_tab else NAVY_L, height=4).pack(fill="x")
+        prod_row = tk.Frame(prod_f, bg=prod_bg)
+        prod_row.pack(padx=26, pady=11)
+        if self._prod_active and not is_prod_tab:
+            self._blink_dot = tk.Label(prod_row, text="● ", bg=prod_bg,
+                                       fg=C_RED, font=("Arial", 11, "bold"))
+            self._blink_dot.pack(side="left")
+        tk.Label(prod_row,
+                 text="⚡  Production en cours" if self._prod_active else "⚡  Production",
+                 bg=prod_bg, fg=prod_fg,
+                 font=("Arial", 11, "bold")).pack(side="left")
+        if self._prod_active and not is_prod_tab:
+            for w in [prod_f, prod_row]:
+                w.bind("<Button-1>", lambda e: self._nav_to_production())
+                w.config(cursor="hand2")
+        return bar
 
     # ── Tick unifie (main + production) ──────────────────────────────────────
     def _tick(self):
@@ -569,12 +657,12 @@ class App:
                 except Exception:
                     pass
 
-        # Clignotement du point rouge sur l'ecran principal
+        # Clignotement du point rouge sur l'onglet Production
         if self._mode == "main" and self._prod_active:
             self._blink_state = not self._blink_state
             try:
                 self._blink_dot.config(
-                    fg=C_RED if self._blink_state else NAVY)
+                    fg=C_RED if self._blink_state else NAVY_L)
             except Exception:
                 pass
 
@@ -641,80 +729,84 @@ class App:
         outer.pack(fill="both", expand=True)
 
         self._make_header(outer, "KPI-ORC", "Ligne ORC1")
+        self._make_tabs(outer, "main")
         self._make_timeline(outer)
-        tk.Frame(outer, bg=LGRAY, height=1).pack(fill="x")
-
 
         body = tk.Frame(outer, bg=BG)
-        body.pack(fill="both", expand=True, padx=20, pady=14)
+        body.pack(fill="both", expand=True, padx=20, pady=12)
 
         top = tk.Frame(body, bg=BG)
-        top.pack(fill="x", pady=(0, 14))
+        top.pack(fill="x", pady=(0, 12))
 
-        # Panneau droit : production en cours (pack en premier pour reserve l'espace)
-        if self._prod_active:
-            prod_wrap, prod_inner = shadow_frame(top, bg=NAVY)
-            prod_wrap.pack(side="right", fill="y", padx=(16, 0))
-
-            dot_row = tk.Frame(prod_inner, bg=NAVY)
-            dot_row.pack(fill="x", padx=14, pady=(12, 2))
-            self._blink_dot = tk.Label(dot_row, text="●", bg=NAVY,
-                                       fg=C_RED, font=("Arial", 16))
-            self._blink_dot.pack(side="left")
-            tk.Label(dot_row, text="  PRODUCTION EN COURS",
-                     bg=NAVY, fg=WHITE,
-                     font=("Arial", 11, "bold")).pack(side="left")
-
-            tk.Label(prod_inner,
-                     text=f"Debut : {self._of_start.strftime('%H:%M:%S')}",
-                     bg=NAVY, fg="#7a99c0",
-                     font=("Arial", 10)).pack(anchor="w", padx=14, pady=(0, 4))
-
-            tk.Label(prod_inner,
-                     text="Arrets actifs : " + str(
-                         sum(1 for k in self._timers if self._t_running(k))),
-                     bg=NAVY, fg=C_RATT,
-                     font=("Arial", 10)).pack(anchor="w", padx=14, pady=(0, 8))
-
-            tk.Button(prod_inner,
-                      text="↩  RETOUR EN PRODUCTION",
-                      command=self._nav_to_production,
-                      bg=ORANGE, fg=WHITE,
-                      font=("Arial", 12, "bold"),
-                      relief="flat", padx=14, pady=10,
-                      cursor="hand2").pack(fill="x", padx=14, pady=(0, 14))
-
-        # TRS gauge
+        # TRS gauge (gauche, taille fixe)
         trs_wrap, trs_inner = shadow_frame(top, bg=WHITE)
-        trs_wrap.pack(side="left", padx=(0, 16))
+        trs_wrap.pack(side="left", fill="y", padx=(0, 14))
         tk.Label(trs_inner, text="TRS", bg=WHITE, fg=GRAY,
                  font=("Arial", 10, "bold")).pack(pady=(10, 0), padx=16)
         tk.Label(trs_inner, text="Taux de Rendement Synthetique",
                  bg=WHITE, fg=LGRAY, font=("Arial", 8)).pack()
         self._main_gauge = Gauge(trs_inner, bg=WHITE,
-                                  width=310, height=130, highlightthickness=0)
+                                  width=290, height=130, highlightthickness=0)
         self._main_gauge.pack(padx=16, pady=(0, 10))
         self._refresh_main_kpi()
 
-        # Bouton Demarrer (plus petit, centré)
-        if not self._prod_active:
-            btn_wrap   = tk.Frame(top, bg=BG)
-            btn_wrap.pack(side="left", fill="both", expand=True)
-            btn_canvas = tk.Canvas(btn_wrap, bg=BG, highlightthickness=0,
-                                   height=70)
-            btn_canvas.pack(fill="x", pady=30)
+        # Zone droite — remplit tout l'espace restant
+        right_zone = tk.Frame(top, bg=BG)
+        right_zone.pack(side="left", fill="both", expand=True)
+
+        if self._prod_active:
+            # Grand panneau "Production en cours"
+            prod_wrap, prod_inner = shadow_frame(right_zone, bg=NAVY)
+            prod_wrap.pack(fill="both", expand=True)
+
+            # Ligne titre avec point clignotant
+            dot_row = tk.Frame(prod_inner, bg=NAVY)
+            dot_row.pack(fill="x", padx=20, pady=(16, 4))
+            self._blink_dot = tk.Label(dot_row, text="●", bg=NAVY,
+                                       fg=C_RED, font=("Arial", 20))
+            self._blink_dot.pack(side="left", padx=(0, 8))
+            tk.Label(dot_row, text="PRODUCTION EN COURS",
+                     bg=NAVY, fg=WHITE,
+                     font=("Arial", 16, "bold")).pack(side="left")
+
+            # Infos
+            info_row = tk.Frame(prod_inner, bg=NAVY)
+            info_row.pack(fill="x", padx=20, pady=(0, 8))
+            tk.Label(info_row,
+                     text=f"Debut : {self._of_start.strftime('%H:%M:%S')}",
+                     bg=NAVY, fg="#7a99c0",
+                     font=("Arial", 12)).pack(side="left", padx=(0, 30))
+            n_actifs = sum(1 for k in self._timers if self._t_running(k))
+            col_arr = C_RATT if n_actifs > 0 else "#7a99c0"
+            tk.Label(info_row,
+                     text=f"Arrets actifs : {n_actifs}",
+                     bg=NAVY, fg=col_arr,
+                     font=("Arial", 12)).pack(side="left")
+
+            # Gros bouton retour
+            tk.Button(prod_inner,
+                      text="↩   RETOUR EN PRODUCTION",
+                      command=self._nav_to_production,
+                      bg=ORANGE, fg=WHITE,
+                      font=("Arial", 16, "bold"),
+                      relief="flat", pady=14,
+                      cursor="hand2").pack(fill="x", padx=20, pady=(4, 18))
+        else:
+            # Gros bouton vert "Démarrer"
+            btn_canvas = tk.Canvas(right_zone, bg=BG, highlightthickness=0)
+            btn_canvas.pack(fill="both", expand=True, padx=4, pady=8)
 
             def _draw_btn(e=None):
                 btn_canvas.delete("all")
                 bw, bh = btn_canvas.winfo_width(), btn_canvas.winfo_height()
                 if bw < 10 or bh < 10:
                     return
-                _rrect(btn_canvas, 5, 5, bw-1, bh, 14, fill=_off(ORANGE, -40))
-                _rrect(btn_canvas, 0, 0, bw-6, bh-5, 14, fill=ORANGE)
-                _rrect(btn_canvas, 2, 2, bw-8, bh//3, 14, fill=_off(ORANGE, +40))
-                btn_canvas.create_text(bw//2-2, bh//2-2,
+                _rrect(btn_canvas, 5, 7, bw-1, bh, 16, fill=_off(GREEN, -40))
+                _rrect(btn_canvas, 0, 0, bw-6, bh-7, 16, fill=GREEN)
+                _rrect(btn_canvas, 2, 2, bw-8, bh//3, 16, fill=_off(GREEN, +40))
+                btn_canvas.create_text(bw//2-3, bh//2-3,
                                        text="▶   DEMARRER UNE PRODUCTION",
-                                       fill=WHITE, font=("Arial", 14, "bold"))
+                                       fill=WHITE, font=("Arial", 18, "bold"))
 
             btn_canvas.bind("<Configure>", _draw_btn)
             btn_canvas.bind("<Button-1>",  lambda e: self._start_production())
@@ -1187,17 +1279,10 @@ class App:
                                     font=("Arial", 13, "bold"))
         self._cumul_lbl.pack(side="left", padx=18)
 
-        # Bouton tableau recap
-        tk.Button(hdr, text="📋  TABLEAU RECAP",
-                  command=self._show_main,
-                  bg=ORANGE, fg=WHITE,
-                  font=("Arial", 13, "bold"),
-                  relief="flat", padx=20, pady=8,
-                  cursor="hand2").pack(side="right", padx=10, pady=8)
         self._db_widget(hdr, NAVY).pack(side="right", padx=10)
 
+        self._make_tabs(outer, "production")
         self._make_timeline(outer)
-        tk.Frame(outer, bg=LGRAY, height=1).pack(fill="x")
 
         # Bouton FIN (3D Canvas, grand et visible)
         end_bar = tk.Frame(outer, bg=BG, height=82)
@@ -1463,13 +1548,13 @@ class App:
         ]
 
         ok = self._write_excel(row, v)
+        self._show_main()
         if ok:
-            messagebox.showinfo("Succes", "Production declaree !")
+            _toast(self.root, "✔  Production declaree avec succes !", bg=GREEN)
         else:
             messagebox.showerror("Erreur",
                                  "Impossible d'ecrire dans Excel.\n"
                                  "Verifiez que le fichier n'est pas ouvert.")
-        self._show_main()
 
     def _calc_equiv(self, qte, taille, type_prod):
         for item in self._get_list("Equivalence"):
