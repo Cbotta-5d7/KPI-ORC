@@ -580,6 +580,11 @@ class App:
         self._elapsed_lbl  = None
         self._stops_lbl    = None
         self._of_bar_widget = None
+        self._cell_blink  = False
+        self._hdr_frame   = None
+        self._hdr_widgets = []
+        self._kpi_canvas  = None
+        self._prod_state  = "prod"
 
         self._load_lists()
         self._load_history_from_excel()
@@ -780,6 +785,9 @@ class App:
         self._elapsed_lbl    = None
         self._stops_lbl      = None
         self._of_bar_widget  = None
+        self._hdr_frame   = None
+        self._hdr_widgets = []
+        self._kpi_canvas  = None
 
     def _make_header(self, parent, title, subtitle=""):
         hdr = tk.Frame(parent, bg=NAVY, height=62)
@@ -874,43 +882,65 @@ class App:
     def _tick(self):
         self._tick_count += 1
         now = datetime.datetime.now()
+        self._cell_blink = not self._cell_blink
 
-        # ── Alarme : contour rouge clignotant quand un arret est actif ────────
+        # ── Etat arret / production ───────────────────────────────────────────
         any_running = any(self._t_running(k) for k in self._timers)
-        if any_running and self._outer_frame:
-            self._alarm_blink = not self._alarm_blink
-            col = C_RED if self._alarm_blink else "#7a0000"
-            try:
-                self._outer_frame.config(
-                    highlightthickness=8, highlightbackground=col,
-                    highlightcolor=col)
-            except Exception:
-                pass
-        elif self._outer_frame:
-            try:
-                self._outer_frame.config(highlightthickness=0)
-            except Exception:
-                pass
+        new_state = "stop" if any_running else "prod"
 
         if self._mode == "production" and self._prod_active:
-            of_s = (now - self._of_start).total_seconds()
+            of_s   = (now - self._of_start).total_seconds()
+            stop_s = self._t_total_stops()
+
+            # Couleur header selon etat
+            if new_state == "stop":
+                hdr_col = C_RED if self._cell_blink else "#8b0000"
+            else:
+                hdr_col = GREEN
+            self._set_header_color(hdr_col)
+
+            # Chrono OF
             try:
-                self._of_clk.config(text=fmt(of_s))
+                size_of = 18 if new_state == "stop" else 30
+                self._of_clk.config(text=fmt(of_s),
+                                    font=("Arial", size_of, "bold"),
+                                    fg=WHITE if new_state == "stop" else "#4ade80")
             except Exception:
                 pass
+
+            # Cumul arrets — plus grand pendant un arret
             try:
-                if self._cumul_lbl:
-                    self._cumul_lbl.config(
-                        text=f"⏸  Arrets: {fmt(self._t_total_stops())}")
+                size_c = 34 if new_state == "stop" else 15
+                fg_c   = "#ffff00" if new_state == "stop" else "#f59e0b"
+                self._cumul_lbl.config(
+                    text=f"⏸ ARRETS: {fmt(stop_s)}",
+                    font=("Arial", size_c, "bold"), fg=fg_c)
             except Exception:
                 pass
+
+            # KPI % prod / arret
+            try:
+                if self._kpi_canvas and of_s > 0:
+                    self._draw_kpi(of_s, stop_s)
+            except Exception:
+                pass
+
+            # Indicateur arret flagrant dans le titre
+            try:
+                title = "🔴  EN ARRET  🔴" if new_state == "stop" else "ORC1  —  PRODUCTION EN COURS"
+                self._hdr_title.config(text=title,
+                    fg=WHITE if new_state == "stop" else WHITE,
+                    font=("Arial", 14 if new_state == "stop" else 13, "bold"))
+            except Exception:
+                pass
+
             for cell in self._cells:
                 try:
                     cell.refresh()
                 except Exception:
                     pass
 
-        # Mise a jour des labels stats sur la vue principale
+        # Mise a jour labels vue principale
         if self._mode == "main" and self._prod_active:
             of_s = (now - self._of_start).total_seconds()
             try:
@@ -935,7 +965,7 @@ class App:
             self._transition(self._nav_to_production)
             return
 
-        # Clignotement du point rouge sur l'onglet Production
+        # Clignotement du point rouge sur l'onglet Production (vue principale)
         if self._mode == "main" and self._prod_active:
             self._blink_state = not self._blink_state
             try:
@@ -956,6 +986,45 @@ class App:
             pass
 
         self._after_id = self.root.after(1000, self._tick)
+
+    def _set_header_color(self, col):
+        """Met a jour la couleur de fond du header et de la tab bar."""
+        try:
+            if self._hdr_frame:
+                self._hdr_frame.config(bg=col)
+        except Exception:
+            pass
+        for w in self._hdr_widgets:
+            try:
+                w.config(bg=col)
+            except Exception:
+                pass
+
+    def _draw_kpi(self, of_s, stop_s):
+        """Redessine la barre KPI prod/arret dans le header."""
+        cv = self._kpi_canvas
+        cv.delete("all")
+        w, h = cv.winfo_width(), cv.winfo_height()
+        if w < 10 or h < 4:
+            return
+        prod_s = max(0, of_s - stop_s)
+        ratio  = prod_s / of_s if of_s > 0 else 1.0
+        xp = int(w * ratio)
+        # Fond arret
+        cv.create_rectangle(0, 0, w, h, fill="#8b0000", outline="")
+        # Zone prod
+        cv.create_rectangle(0, 0, xp, h, fill="#1a8c4e", outline="")
+        # Labels
+        pct_p = int(ratio * 100)
+        pct_a = 100 - pct_p
+        if xp > 60:
+            cv.create_text(xp // 2, h // 2,
+                           text=f"PROD {pct_p}%",
+                           font=("Arial", 8, "bold"), fill=WHITE, anchor="center")
+        if w - xp > 60:
+            cv.create_text(xp + (w - xp) // 2, h // 2,
+                           text=f"ARRET {pct_a}%",
+                           font=("Arial", 8, "bold"), fill=WHITE, anchor="center")
 
     def _reset_activity(self, event=None):
         self._last_activity = datetime.datetime.now()
@@ -1557,32 +1626,70 @@ class App:
         self._clear()
         self._db_labels.clear()
         self._mode = "production"
+        self._prod_state = "prod"
 
         outer = tk.Frame(self.root, bg=BG)
         outer.pack(fill="both", expand=True)
         self._outer_frame = outer
 
-        # En-tete
-        hdr = tk.Frame(outer, bg=NAVY, height=66)
+        # ── En-tete vert (devient rouge pendant un arret) ────────────────────
+        hdr = tk.Frame(outer, bg=GREEN)
         hdr.pack(fill="x")
-        hdr.pack_propagate(False)
-        tk.Label(hdr, text="ORC1  —  PRODUCTION EN COURS",
-                 bg=NAVY, fg=WHITE,
-                 font=("Arial", 14, "bold")).pack(side="left", padx=20)
-        tk.Label(hdr,
-                 text=f"Debut : {self._of_start.strftime('%H:%M:%S')}",
-                 bg=NAVY, fg="#7a99c0",
-                 font=("Arial", 11)).pack(side="left", padx=10)
-        self._of_clk = tk.Label(hdr, text="00:00:00",
-                                 bg=NAVY, fg="#4ade80",
-                                 font=("Arial", 26, "bold"))
-        self._of_clk.pack(side="left", padx=8)
-        self._cumul_lbl = tk.Label(hdr, text="Arrets: 00:00:00",
-                                    bg=NAVY, fg=C_RATT,
-                                    font=("Arial", 13, "bold"))
-        self._cumul_lbl.pack(side="left", padx=18)
+        self._hdr_frame = hdr
+        self._hdr_widgets = []
 
-        self._db_widget(hdr, NAVY).pack(side="right", padx=10)
+        # Ligne 1 : titre + debut + DB
+        line1 = tk.Frame(hdr, bg=GREEN)
+        line1.pack(fill="x", padx=10, pady=(6, 0))
+        self._hdr_widgets.append(line1)
+
+        self._hdr_title = tk.Label(line1, text="ORC1  —  PRODUCTION EN COURS",
+                                    bg=GREEN, fg=WHITE, font=("Arial", 13, "bold"))
+        self._hdr_title.pack(side="left")
+        self._hdr_widgets.append(self._hdr_title)
+
+        debut_lbl = tk.Label(line1,
+                              text=f"  |  Debut : {self._of_start.strftime('%H:%M:%S')}",
+                              bg=GREEN, fg="#d4f5d4", font=("Arial", 11))
+        debut_lbl.pack(side="left")
+        self._hdr_widgets.append(debut_lbl)
+
+        db_w = self._db_widget(hdr, GREEN)
+        db_w.pack(side="right", padx=10, pady=(6, 0))
+        self._hdr_widgets.append(db_w)
+        for w in db_w.winfo_children():
+            self._hdr_widgets.append(w)
+
+        # Ligne 2 : chronos
+        line2 = tk.Frame(hdr, bg=GREEN)
+        line2.pack(fill="x", padx=10, pady=(2, 4))
+        self._hdr_widgets.append(line2)
+
+        of_lbl = tk.Label(line2, text="⏱ OF :", bg=GREEN, fg="#d4f5d4",
+                          font=("Arial", 11))
+        of_lbl.pack(side="left")
+        self._hdr_widgets.append(of_lbl)
+
+        self._of_clk = tk.Label(line2, text="00:00:00",
+                                 bg=GREEN, fg="#4ade80", font=("Arial", 30, "bold"))
+        self._of_clk.pack(side="left", padx=(2, 20))
+        self._hdr_widgets.append(self._of_clk)
+
+        stop_lbl = tk.Label(line2, text="⏸ :", bg=GREEN, fg="#d4f5d4",
+                             font=("Arial", 11))
+        stop_lbl.pack(side="left")
+        self._hdr_widgets.append(stop_lbl)
+
+        self._cumul_lbl = tk.Label(line2, text="⏸ ARRETS: 00:00:00",
+                                    bg=GREEN, fg="#f59e0b", font=("Arial", 15, "bold"))
+        self._cumul_lbl.pack(side="left", padx=(2, 16))
+        self._hdr_widgets.append(self._cumul_lbl)
+
+        # Barre KPI
+        self._kpi_canvas = tk.Canvas(line2, bg=GREEN, height=22, width=220,
+                                      highlightthickness=1, highlightbackground="#ffffff44")
+        self._kpi_canvas.pack(side="left", padx=8)
+        self._hdr_widgets.append(self._kpi_canvas)
 
         self._make_tabs(outer, "production")
         self._make_timeline(outer)
@@ -1599,11 +1706,11 @@ class App:
 
         right = tk.Frame(body, bg=BG)
         right.pack(side="left", fill="both", expand=True)
-        self._build_events(right)
 
-        # Bouton FIN (vert, en bas de la zone droite)
-        end_cv = tk.Canvas(right, bg=BG, highlightthickness=0, height=64)
-        end_cv.pack(fill="x", padx=10, pady=(4, 8))
+        # Bouton FIN (vert, en bas de la zone droite) — packed FIRST with
+        # side="bottom" so it always stays visible even when pb_wrap expands.
+        end_cv = tk.Canvas(right, bg=BG, highlightthickness=0, height=68)
+        end_cv.pack(side="bottom", fill="x", padx=10, pady=(4, 8))
 
         def _draw_end(e=None):
             end_cv.delete("all")
@@ -1621,6 +1728,8 @@ class App:
         end_cv.bind("<Button-1>",  lambda e: self._end_production())
         end_cv.config(cursor="hand2")
 
+        self._build_events(right)
+
         self._after_id = self.root.after(1000, self._tick)
 
     # ── Formulaire SANS SCROLL ────────────────────────────────────────────────
@@ -1637,10 +1746,11 @@ class App:
         ri = [0]
 
         def sec(txt):
-            tk.Label(c, text=txt, bg=FORM_BG, fg=NAVY_L,
-                     font=("Arial", 8, "bold")).grid(
-                row=ri[0], column=0, columnspan=2,
-                sticky="w", padx=4, pady=(5, 0))
+            f = tk.Frame(c, bg=NAVY_L)
+            f.grid(row=ri[0], column=0, columnspan=2,
+                   sticky="ew", padx=0, pady=(8, 2))
+            tk.Label(f, text=txt, bg=NAVY_L, fg=WHITE,
+                     font=("Arial", 9, "bold"), padx=8, pady=3).pack(anchor="w")
             ri[0] += 1
 
         def fld(lbl_txt, key, ftype, lh=None, col=0, adv=True):
@@ -1652,8 +1762,8 @@ class App:
             var = tk.StringVar()
             self.fv[key] = var
             if ftype == "entry":
-                e = tk.Entry(cell, textvariable=var, bg=WHITE, fg=DARK,
-                             font=("Arial", 9), relief="solid", bd=1,
+                e = tk.Entry(cell, textvariable=var, bg="#f0f4fb", fg=DARK,
+                             font=("Arial", 10), relief="groove", bd=1,
                              insertbackground=DARK)
                 e.grid(row=1, column=0, sticky="ew", ipady=2)
             else:
@@ -1928,6 +2038,8 @@ class App:
         of_start = self._of_start
         for ev in self._tl_events:
             if ev.get("cat") not in ("ratt", "pb"):
+                continue
+            if not ev.get("key") or ev["key"].startswith("_"):
                 continue
             if ev["start"] < of_start:
                 continue
