@@ -3,6 +3,7 @@ name: Compiler KPI-ORC.exe
 on:
   push:
     branches:
+      - claude/python-api-compiler-8H0AR
       - claude/python-exe-files-EF09j
 
 jobs:
