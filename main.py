@@ -69,7 +69,7 @@ DATA_HEADERS = [
 EVT_HEADERS = [
     "Evenement", "OF", "Date", "Poste", "Pilote", "Co-Pilote",
     "Nb Personnes", "Taille", "Type Produit", "Code Produit",
-    "Heure Debut", "Heure Fin", "Duree",
+    "Heure Debut", "Heure Fin", "Duree", "Commentaire",
 ]
 
 ALL_EVENT_TYPES = (
@@ -168,7 +168,103 @@ class Timeline(tk.Canvas):
         kw.setdefault("highlightthickness", 0)
         super().__init__(parent, **kw)
         self.app = app
+        self._tooltip_win = None
         self.bind("<Configure>", lambda e: self.redraw())
+        self.bind("<Button-1>",  self._on_click)
+
+    def _on_click(self, event):
+        w = self.winfo_width()
+        if w < 20:
+            return
+        now   = datetime.datetime.now()
+        win_s = TIMELINE_WINDOW * 60
+        t0    = now - datetime.timedelta(seconds=win_s)
+        click_t = t0 + datetime.timedelta(seconds=event.x / w * win_s)
+
+        # Chercher l'evenement le plus proche du clic
+        found = None
+        for ev in self.app._tl_events:
+            if ev.get("cat") not in ("ratt", "pb"):
+                continue
+            start = ev["start"]
+            end   = ev.get("end") or now
+            if start <= click_t <= end:
+                found = ev
+                break
+        if not found:
+            for p in self.app._of_periods:
+                if p["start"] <= click_t <= (p.get("end") or now):
+                    found = {"cat": "prod", "start": p["start"],
+                             "end": p.get("end"), "key": "prod",
+                             "of_num": p.get("of_num", "")}
+                    break
+        if not found:
+            return
+        self._show_tooltip(event.x, found)
+
+    def _show_tooltip(self, x, ev):
+        try:
+            if self._tooltip_win:
+                self._tooltip_win.destroy()
+        except Exception:
+            pass
+
+        cat = ev.get("cat", "")
+        if cat == "prod":
+            title = f"Production  OF: {ev.get('of_num','?') or 'en cours'}"
+            col = GREEN
+        elif cat == "ratt":
+            label = next((e[0] for e in EVENTS if e[1] == ev["key"]), ev["key"])
+            title = f"Rattrapage : {label}"
+            col = C_RATT
+        else:
+            label = next((e[0] for e in EVENTS if e[1] == ev["key"]), ev["key"])
+            title = f"PB Technique : {label}"
+            col = C_RED
+
+        now   = datetime.datetime.now()
+        start = ev["start"]
+        end   = ev.get("end") or now
+        dur   = (end - start).total_seconds()
+        body  = (f"Debut : {start.strftime('%H:%M:%S')}\n"
+                 f"Fin   : {end.strftime('%H:%M:%S')}\n"
+                 f"Duree : {fmt(dur)}")
+        if ev.get("comment"):
+            body += f"\n\n💬 {ev['comment']}"
+
+        top = tk.Toplevel(self.winfo_toplevel())
+        top.overrideredirect(True)
+        top.attributes("-topmost", True)
+        top.configure(bg=col)
+        self._tooltip_win = top
+
+        tk.Label(top, text=title, bg=col, fg=WHITE,
+                 font=("Arial", 13, "bold"), padx=14, pady=6).pack(fill="x")
+        tk.Label(top, text=body, bg=_off(col, -30), fg=WHITE,
+                 font=("Arial", 11), padx=14, pady=8,
+                 justify="left").pack(fill="x")
+
+        top.update_idletasks()
+        rw, rh = top.winfo_width(), top.winfo_height()
+        cx = self.winfo_rootx() + x - rw // 2
+        cy = self.winfo_rooty() - rh - 6
+        top.geometry(f"+{max(0, cx)}+{max(0, cy)}")
+
+        def _fade(alpha=1.0, step=0):
+            if step < 30:
+                top.after(100, _fade, alpha, step + 1)
+            elif alpha > 0:
+                try:
+                    top.attributes("-alpha", alpha)
+                    top.after(60, _fade, alpha - 0.07, step)
+                except Exception:
+                    pass
+            else:
+                try:
+                    top.destroy()
+                except Exception:
+                    pass
+        top.after(2800, _fade)
 
     def redraw(self):
         self.delete("all")
@@ -217,6 +313,57 @@ class Timeline(tk.Canvas):
                                  font=("Arial", 7), fill=GRAY, anchor="center")
 
         self.create_line(w - 1, BY - 8, w - 1, BY + BH + 8, fill=ORANGE, width=2)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Barre OF (sous le chronogramme)
+# ─────────────────────────────────────────────────────────────────────────────
+class OFBar(tk.Canvas):
+    """Mini chronogramme affichant les numeros d'OF."""
+    BAR_Y = 6
+    BAR_H = 22
+
+    def __init__(self, parent, app, **kw):
+        kw.setdefault("height", 38)
+        kw.setdefault("bg", WHITE)
+        kw.setdefault("highlightthickness", 0)
+        super().__init__(parent, **kw)
+        self.app = app
+        self.bind("<Configure>", lambda e: self.redraw())
+
+    def redraw(self):
+        self.delete("all")
+        w, h = self.winfo_width(), self.winfo_height()
+        if w < 20:
+            return
+        now   = datetime.datetime.now()
+        win_s = TIMELINE_WINDOW * 60
+        t0    = now - datetime.timedelta(seconds=win_s)
+
+        def px(dt):
+            return max(0.0, min(float(w), (dt - t0).total_seconds() / win_s * w))
+
+        BY, BH = self.BAR_Y, self.BAR_H
+        # Fond
+        self.create_rectangle(0, BY, w, BY + BH, fill="#e8eef8", outline="")
+        # Etiquette gauche
+        self.create_text(4, BY + BH // 2, text="N° OF",
+                         font=("Arial", 7, "bold"), fill=GRAY, anchor="w")
+
+        for p in self.app._of_periods:
+            x1 = px(p["start"])
+            x2 = px(p.get("end") or now)
+            if x2 - x1 < 2:
+                continue
+            of_num = p.get("of_num", "")
+            fill = NAVY_L if of_num else LGRAY
+            self.create_rectangle(x1, BY, x2, BY + BH, fill=fill, outline=WHITE, width=1)
+            label = of_num if of_num else "En cours"
+            if x2 - x1 > 40:
+                self.create_text((x1 + x2) / 2, BY + BH // 2,
+                                 text=label, fill=WHITE,
+                                 font=("Arial", 8, "bold"),
+                                 anchor="center")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -279,26 +426,85 @@ class EventCell(tk.Canvas):
 
     def _toggle(self):
         if self.app._t_running(self.key):
-            self.app._t_stop(self.key)
-            self.app._tl_close(self.key)
-            self._draw()
+            self._ask_stop_description()
         else:
             self.app._t_start(self.key)
             self.app._tl_open(self.key, "ratt" if self.accent == C_RATT else "pb")
-            self._flash(4)  # 4 flashs au démarrage
+            self._flash(14, 14)
 
-    def _flash(self, n):
+    def _ask_stop_description(self):
+        """Popup plein ecran pour saisir la description de l'arret."""
+        top = tk.Toplevel(self.app.root)
+        top.overrideredirect(True)
+        top.attributes("-topmost", True)
+        top.configure(bg=NAVY)
+        sw = self.app.root.winfo_screenwidth()
+        sh = self.app.root.winfo_screenheight()
+        pw, ph = min(700, sw - 60), 360
+        top.geometry(f"{pw}x{ph}+{(sw-pw)//2}+{(sh-ph)//2}")
+
+        tk.Label(top, text=f"⚠  FIN D'ARRET  —  {self.label}",
+                 bg=NAVY, fg=WHITE, font=("Arial", 18, "bold")).pack(pady=(28, 4))
+        tk.Label(top, text="Décrivez la cause de l'arret (optionnel) :",
+                 bg=NAVY, fg="#7a99c0", font=("Arial", 12)).pack()
+
+        txt = tk.Text(top, height=5, font=("Arial", 13), bg="#1e2560", fg=WHITE,
+                      insertbackground=WHITE, relief="flat", padx=12, pady=8,
+                      wrap="word")
+        txt.pack(fill="x", padx=28, pady=12)
+        txt.focus()
+
+        def _valider():
+            desc = txt.get("1.0", "end").strip()
+            self.app._t_stop(self.key)
+            self.app._tl_close(self.key, comment=desc)
+            top.destroy()
+            self._draw()
+
+        tk.Button(top, text="✔   VALIDER", command=_valider,
+                  bg=GREEN, fg=WHITE, font=("Arial", 16, "bold"),
+                  relief="flat", pady=12, cursor="hand2").pack(
+                  fill="x", padx=28, pady=(0, 20))
+        top.bind("<Return>", lambda e: _valider())
+
+    def _flash(self, n, max_n=14):
         if n <= 0:
             self._draw()
             return
         self.delete("all")
         w, h = self.winfo_width(), self.winfo_height()
-        col = "#ff6060" if n % 2 == 0 else C_RED
-        _rrect(self, 0, 0, w-5, h-5, 10, fill=col)
-        self.create_text(w//2-2, h//2-2, text=self.label,
-                         fill=WHITE, font=("Arial", 12, "bold"),
+        progress = (max_n - n) / max_n  # 0→1
+
+        # Croissance: margin diminue de 12 a 0
+        margin = max(0, int(12 * (1 - progress)))
+        bright = n % 2 == 0
+        fill_col = "#ff2020" if bright else "#aa0000"
+        halo_col = "#ff6060" if bright else "#cc2020"
+
+        # Halos exterieurs
+        for ring in range(3, 0, -1):
+            rm = margin + ring * 5
+            self.create_rectangle(
+                max(0, rm), max(0, rm), max(0, w - rm), max(0, h - rm),
+                fill=halo_col, outline="")
+
+        # Corps
+        _rrect(self, margin+3, margin+4, w-margin-1, h-margin,
+               10, fill=_off(fill_col, -50))
+        _rrect(self, margin, margin, w-margin-4, h-margin-4,
+               10, fill=fill_col)
+        _rrect(self, margin+2, margin+2, w-margin-6, max(margin+22, h//3),
+               10, fill=_off(fill_col, +60))
+
+        # Point clignotant (girofare)
+        dot_col = "#ffff00" if bright else "#ff8800"
+        self.create_oval(w-margin-20, margin+4, w-margin-8, margin+16,
+                         fill=dot_col, outline=WHITE, width=1)
+
+        self.create_text(w//2, h//2, text=self.label, fill=WHITE,
+                         font=("Arial", 12, "bold"),
                          justify="center", width=w-12)
-        self.after(120, self._flash, n - 1)
+        self.after(100, self._flash, n - 1, max_n)
 
     def refresh(self):
         self._draw()
@@ -368,6 +574,12 @@ class App:
         self._of_changes  = []
         self._blink_dot   = None
         self._blink_state = False
+        self._outer_frame  = None
+        self._alarm_blink  = False
+        self._last_activity = datetime.datetime.now()
+        self._elapsed_lbl  = None
+        self._stops_lbl    = None
+        self._of_bar_widget = None
 
         self._load_lists()
         self._load_history_from_excel()
@@ -406,7 +618,10 @@ class App:
                     start_dt = _pdt(date_val, r[17])
                     end_dt   = _pdt(date_val, r[18])
                     if start_dt:
-                        self._of_periods.append({"start": start_dt, "end": end_dt})
+                        self._of_periods.append({
+                            "start": start_dt, "end": end_dt,
+                            "of_num": str(r[0] or "").strip()
+                        })
                 # Separateurs d'OF (a partir du 2e OF de la journee)
                 for p in self._of_periods[1:]:
                     self._of_changes.append(p["start"])
@@ -536,10 +751,11 @@ class App:
             "start": datetime.datetime.now(), "end": None
         })
 
-    def _tl_close(self, key):
+    def _tl_close(self, key, comment=""):
         for ev in reversed(self._tl_events):
             if ev["key"] == key and ev["end"] is None:
                 ev["end"] = datetime.datetime.now()
+                ev["comment"] = comment
                 break
 
     def _tl_close_all(self):
@@ -560,6 +776,10 @@ class App:
         self._prod_indicator = None
         self._main_tree      = None
         self._blink_dot      = None
+        self._outer_frame    = None
+        self._elapsed_lbl    = None
+        self._stops_lbl      = None
+        self._of_bar_widget  = None
 
     def _make_header(self, parent, title, subtitle=""):
         hdr = tk.Frame(parent, bg=NAVY, height=62)
@@ -578,10 +798,17 @@ class App:
         zone.pack(fill="x")
         tl = Timeline(zone, self, bg=WHITE)
         tl.pack(fill="x", padx=6, pady=(6, 2))
+
+        # Barre OF
+        of_bar = OFBar(zone, self, bg=WHITE)
+        of_bar.pack(fill="x", padx=6, pady=(0, 2))
+        self._of_bar_widget = of_bar
+
         # Légende sous le chronogramme
         leg = tk.Frame(zone, bg=WHITE)
         leg.pack(anchor="w", padx=10, pady=(0, 5))
-        for lbl, col in [("Production", GREEN), ("Rattrapage", C_RATT), ("PB Technique", C_RED), ("Changement OF", ORANGE)]:
+        for lbl, col in [("Production", GREEN), ("Rattrapage", C_RATT),
+                         ("PB Technique", C_RED), ("Changement OF", ORANGE)]:
             tk.Frame(leg, bg=col, width=14, height=14).pack(side="left", padx=(0, 4))
             tk.Label(leg, text=lbl, bg=WHITE, fg=GRAY,
                      font=("Arial", 8, "bold")).pack(side="left", padx=(0, 16))
@@ -591,6 +818,15 @@ class App:
     def _make_tabs(self, parent, active):
         bar = tk.Frame(parent, bg=NAVY_L)
         bar.pack(fill="x")
+
+        def _bind_recursive(widget, event, cb):
+            widget.bind(event, cb)
+            try:
+                widget.config(cursor="hand2")
+            except Exception:
+                pass
+            for child in widget.winfo_children():
+                _bind_recursive(child, event, cb)
 
         def _tab(label, mode, action, enabled):
             is_active = (mode == active)
@@ -606,9 +842,8 @@ class App:
                            font=("Arial", 11, "bold"))
             lbl.pack(side="left")
             if enabled and not is_active:
-                for w in [f, row, lbl]:
-                    w.bind("<Button-1>", lambda e, a=action: a())
-                    w.config(cursor="hand2")
+                _bind_recursive(f, "<Button-1>",
+                                lambda e, a=action: self._transition(a))
             return row
 
         _tab("📊  Tableau de bord", "main", self._show_main, True)
@@ -631,16 +866,34 @@ class App:
                  bg=prod_bg, fg=prod_fg,
                  font=("Arial", 11, "bold")).pack(side="left")
         if self._prod_active and not is_prod_tab:
-            for w in [prod_f, prod_row]:
-                w.bind("<Button-1>", lambda e: self._nav_to_production())
-                w.config(cursor="hand2")
+            _bind_recursive(prod_f, "<Button-1>",
+                            lambda e: self._transition(self._nav_to_production))
         return bar
 
     # ── Tick unifie (main + production) ──────────────────────────────────────
     def _tick(self):
         self._tick_count += 1
+        now = datetime.datetime.now()
+
+        # ── Alarme : contour rouge clignotant quand un arret est actif ────────
+        any_running = any(self._t_running(k) for k in self._timers)
+        if any_running and self._outer_frame:
+            self._alarm_blink = not self._alarm_blink
+            col = C_RED if self._alarm_blink else "#7a0000"
+            try:
+                self._outer_frame.config(
+                    highlightthickness=8, highlightbackground=col,
+                    highlightcolor=col)
+            except Exception:
+                pass
+        elif self._outer_frame:
+            try:
+                self._outer_frame.config(highlightthickness=0)
+            except Exception:
+                pass
+
         if self._mode == "production" and self._prod_active:
-            of_s = (datetime.datetime.now() - self._of_start).total_seconds()
+            of_s = (now - self._of_start).total_seconds()
             try:
                 self._of_clk.config(text=fmt(of_s))
             except Exception:
@@ -648,7 +901,7 @@ class App:
             try:
                 if self._cumul_lbl:
                     self._cumul_lbl.config(
-                        text=f"Arrets: {fmt(self._t_total_stops())}")
+                        text=f"⏸  Arrets: {fmt(self._t_total_stops())}")
             except Exception:
                 pass
             for cell in self._cells:
@@ -656,6 +909,31 @@ class App:
                     cell.refresh()
                 except Exception:
                     pass
+
+        # Mise a jour des labels stats sur la vue principale
+        if self._mode == "main" and self._prod_active:
+            of_s = (now - self._of_start).total_seconds()
+            try:
+                if self._elapsed_lbl:
+                    self._elapsed_lbl.config(text=f"⏱  {fmt(of_s)}")
+            except Exception:
+                pass
+            try:
+                if self._stops_lbl:
+                    n_a = sum(1 for k in self._timers if self._t_running(k))
+                    col = C_RED if n_a > 0 else "#7a99c0"
+                    self._stops_lbl.config(
+                        text=f"⚠  Arrets actifs: {n_a}  |  Cumul: {fmt(self._t_total_stops())}",
+                        fg=col)
+            except Exception:
+                pass
+
+        # Auto-retour en production apres 30s d'inactivite
+        if (self._mode == "main" and self._prod_active
+                and (now - self._last_activity).total_seconds() > 30):
+            self._last_activity = now
+            self._transition(self._nav_to_production)
+            return
 
         # Clignotement du point rouge sur l'onglet Production
         if self._mode == "main" and self._prod_active:
@@ -666,14 +944,34 @@ class App:
             except Exception:
                 pass
 
-
         if self._tl_widget:
             try:
                 self._tl_widget.redraw()
             except Exception:
                 pass
+        try:
+            if self._of_bar_widget:
+                self._of_bar_widget.redraw()
+        except Exception:
+            pass
 
         self._after_id = self.root.after(1000, self._tick)
+
+    def _reset_activity(self, event=None):
+        self._last_activity = datetime.datetime.now()
+
+    def _transition(self, fn):
+        """Bref flash de transition avant d'appeler fn."""
+        overlay = tk.Frame(self.root, bg=NAVY_L)
+        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.root.update_idletasks()
+        def _go():
+            try:
+                overlay.destroy()
+            except Exception:
+                pass
+            fn()
+        self.root.after(120, _go)
 
     # ── Mot de passe ─────────────────────────────────────────────────────────
     def _check_password(self, action=""):
@@ -724,9 +1022,14 @@ class App:
         self._clear()
         self._db_labels.clear()
         self._mode = "main"
+        self._last_activity = datetime.datetime.now()
 
         outer = tk.Frame(self.root, bg=BG)
         outer.pack(fill="both", expand=True)
+        self._outer_frame = outer
+        # Suivi d'activite pour l'auto-retour
+        outer.bind("<Motion>",  self._reset_activity)
+        outer.bind("<Button-1>", self._reset_activity)
 
         self._make_header(outer, "KPI-ORC", "Ligne ORC1")
         self._make_tabs(outer, "main")
@@ -769,28 +1072,27 @@ class App:
                      bg=NAVY, fg=WHITE,
                      font=("Arial", 16, "bold")).pack(side="left")
 
-            # Infos
-            info_row = tk.Frame(prod_inner, bg=NAVY)
-            info_row.pack(fill="x", padx=20, pady=(0, 8))
-            tk.Label(info_row,
+            # Heure de debut
+            tk.Label(prod_inner,
                      text=f"Debut : {self._of_start.strftime('%H:%M:%S')}",
                      bg=NAVY, fg="#7a99c0",
-                     font=("Arial", 12)).pack(side="left", padx=(0, 30))
-            n_actifs = sum(1 for k in self._timers if self._t_running(k))
-            col_arr = C_RATT if n_actifs > 0 else "#7a99c0"
-            tk.Label(info_row,
-                     text=f"Arrets actifs : {n_actifs}",
-                     bg=NAVY, fg=col_arr,
-                     font=("Arial", 12)).pack(side="left")
+                     font=("Arial", 12)).pack(anchor="w", padx=20, pady=(0, 4))
 
-            # Gros bouton retour
-            tk.Button(prod_inner,
-                      text="↩   RETOUR EN PRODUCTION",
-                      command=self._nav_to_production,
-                      bg=ORANGE, fg=WHITE,
-                      font=("Arial", 16, "bold"),
-                      relief="flat", pady=14,
-                      cursor="hand2").pack(fill="x", padx=20, pady=(4, 18))
+            # Chrono elapsed (mis a jour par _tick)
+            of_s_now = (datetime.datetime.now() - self._of_start).total_seconds()
+            self._elapsed_lbl = tk.Label(prod_inner,
+                                          text=f"⏱  {fmt(of_s_now)}",
+                                          bg=NAVY, fg="#4ade80",
+                                          font=("Arial", 30, "bold"))
+            self._elapsed_lbl.pack(anchor="center", pady=(8, 6))
+
+            # Arrets actifs + cumul
+            n_actifs = sum(1 for k in self._timers if self._t_running(k))
+            col_arr = C_RED if n_actifs > 0 else "#7a99c0"
+            self._stops_lbl = tk.Label(prod_inner,
+                text=f"⚠  Arrets actifs: {n_actifs}  |  Cumul: {fmt(self._t_total_stops())}",
+                bg=NAVY, fg=col_arr, font=("Arial", 12, "bold"))
+            self._stops_lbl.pack(anchor="center", padx=20, pady=(0, 14))
         else:
             # Gros bouton vert "Démarrer"
             btn_canvas = tk.Canvas(right_zone, bg=BG, highlightthickness=0)
@@ -1248,7 +1550,7 @@ class App:
         self._cells       = []
         if self._of_periods:
             self._of_changes.append(now)
-        self._of_periods.append({"start": now, "end": None})
+        self._of_periods.append({"start": now, "end": None, "of_num": ""})
         self._show_production()
 
     def _show_production(self):
@@ -1258,6 +1560,7 @@ class App:
 
         outer = tk.Frame(self.root, bg=BG)
         outer.pack(fill="both", expand=True)
+        self._outer_frame = outer
 
         # En-tete
         hdr = tk.Frame(outer, bg=NAVY, height=66)
@@ -1284,37 +1587,11 @@ class App:
         self._make_tabs(outer, "production")
         self._make_timeline(outer)
 
-        # Bouton FIN (3D Canvas, grand et visible)
-        end_bar = tk.Frame(outer, bg=BG, height=82)
-        end_bar.pack(fill="x", side="bottom")
-        end_bar.pack_propagate(False)
-
-        end_cv = tk.Canvas(end_bar, bg=BG, highlightthickness=0)
-        end_cv.pack(fill="both", expand=True, padx=8, pady=6)
-        self._end_canvas  = end_cv
-        self._end_pulse   = False
-
-        def _draw_end(e=None):
-            end_cv.delete("all")
-            bw, bh = end_cv.winfo_width(), end_cv.winfo_height()
-            if bw < 10 or bh < 10:
-                return
-            _rrect(end_cv, 5, 7, bw-1, bh, 14, fill=_off(C_RED, -50))
-            _rrect(end_cv, 0, 0, bw-6, bh-7, 14, fill=C_RED)
-            _rrect(end_cv, 2, 2, bw-8, bh//3, 14, fill=_off(C_RED, +40))
-            end_cv.create_text(bw//2-3, bh//2-4,
-                               text="⏹   DECLARER LA FIN DE PRODUCTION",
-                               fill=WHITE, font=("Arial", 18, "bold"))
-
-        end_cv.bind("<Configure>", _draw_end)
-        end_cv.bind("<Button-1>",  lambda e: self._end_production())
-        end_cv.config(cursor="hand2")
-
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True)
 
         left = tk.Frame(body, bg=FORM_BG, width=480)
-        left.pack(side="left", fill="y")
+        left.pack(side="left", fill="both")
         left.pack_propagate(False)
         self._build_form(left)
 
@@ -1323,6 +1600,26 @@ class App:
         right = tk.Frame(body, bg=BG)
         right.pack(side="left", fill="both", expand=True)
         self._build_events(right)
+
+        # Bouton FIN (vert, en bas de la zone droite)
+        end_cv = tk.Canvas(right, bg=BG, highlightthickness=0, height=64)
+        end_cv.pack(fill="x", padx=10, pady=(4, 8))
+
+        def _draw_end(e=None):
+            end_cv.delete("all")
+            bw, bh = end_cv.winfo_width(), end_cv.winfo_height()
+            if bw < 10 or bh < 10:
+                return
+            _rrect(end_cv, 5, 7, bw-1, bh, 14, fill=_off(GREEN, -50))
+            _rrect(end_cv, 0, 0, bw-6, bh-7, 14, fill=GREEN)
+            _rrect(end_cv, 2, 2, bw-8, bh//3, 14, fill=_off(GREEN, +40))
+            end_cv.create_text(bw//2-3, bh//2-4,
+                               text="⏹   DECLARER LA FIN DE PRODUCTION",
+                               fill=WHITE, font=("Arial", 16, "bold"))
+
+        end_cv.bind("<Configure>", _draw_end)
+        end_cv.bind("<Button-1>",  lambda e: self._end_production())
+        end_cv.config(cursor="hand2")
 
         self._after_id = self.root.after(1000, self._tick)
 
@@ -1413,8 +1710,8 @@ class App:
         txt_cell = tk.Frame(c, bg=FORM_BG)
         txt_cell.grid(row=ri[0], column=0, columnspan=2,
                       sticky="ew", padx=3, pady=1)
-        self._comment_txt = tk.Text(txt_cell, height=3, bg=WHITE, fg=DARK,
-                                     font=("Arial", 9), relief="solid", bd=1,
+        self._comment_txt = tk.Text(txt_cell, height=6, bg=WHITE, fg=DARK,
+                                     font=("Arial", 10), relief="solid", bd=1,
                                      wrap="word", insertbackground=DARK)
         self._comment_txt.pack(fill="x")
 
@@ -1443,7 +1740,7 @@ class App:
 
         tk.Frame(parent, bg=SHAD, height=3).pack(fill="x", padx=10, pady=(4, 2))
 
-        sec_header("⚠  PROBLEMES TECHNIQUES", C_PB)
+        sec_header("⚠  PROBLEMES TECHNIQUES", C_RED)
         pb_wrap = tk.Frame(parent, bg=BG)
         pb_wrap.pack(fill="both", expand=True, padx=10, pady=(0, 8))
         pb_grid = tk.Frame(pb_wrap, bg=BG)
@@ -1475,12 +1772,14 @@ class App:
         self._tl_close_all()
         self._prod_active = False
         self._last_of_end = end_dt
-        if self._of_periods:
-            self._of_periods[-1]["end"] = end_dt
 
         of_s = (end_dt - self._of_start).total_seconds()
         v    = {k: var.get().strip() for k, var in self.fv.items()}
         v["comment"] = self._comment_txt.get("1.0", "end").strip()
+
+        if self._of_periods:
+            self._of_periods[-1]["end"] = end_dt
+            self._of_periods[-1]["of_num"] = v.get("of_num", "")
 
         if not v.get("of_num"):
             if not messagebox.askyesno(
@@ -1648,6 +1947,7 @@ class App:
                 start.strftime("%H:%M:%S"),
                 end.strftime("%H:%M:%S"),
                 fmt(dur),
+                ev.get("comment", ""),
             ])
 
     def _write_changement_of_excel(self, start_dt, end_dt):
