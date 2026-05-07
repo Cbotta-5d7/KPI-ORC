@@ -333,9 +333,80 @@ class App:
         self._of_periods  = []
         self._tl_events   = []
         self._of_changes  = []
+        self._end_canvas  = None
+        self._end_draw_fn = None
+        self._end_pulse   = False
 
         self._load_lists()
+        self._load_history_from_excel()
         self._show_main()
+
+    # ── Historique depuis Excel (reconstruit la timeline au demarrage) ────────
+    def _load_history_from_excel(self):
+        path = self.cfg.get("db_path", "")
+        if not path or not os.path.exists(path):
+            return
+
+        def _pdt(date_s, time_s):
+            try:
+                return datetime.datetime.strptime(
+                    f"{str(date_s).strip()[:10]} {str(time_s).strip()}",
+                    "%d/%m/%Y %H:%M:%S")
+            except Exception:
+                return None
+
+        today = datetime.date.today().strftime("%d/%m/%Y")
+        try:
+            wb = load_workbook(path, read_only=True, data_only=True)
+            # Periodes OF d'aujourd'hui
+            if "Data" in wb.sheetnames:
+                ws = wb["Data"]
+                min_r = 2
+                if str(ws.cell(1, 1).value or "").strip() == DATA_HEADERS[0]:
+                    min_r = 2
+                for row in ws.iter_rows(min_row=min_r, values_only=True):
+                    if not any(row):
+                        continue
+                    r = list(row) + [None] * 55
+                    date_val = str(r[1] or "").strip()[:10]
+                    if date_val != today:
+                        continue
+                    start_dt = _pdt(date_val, r[17])
+                    end_dt   = _pdt(date_val, r[18])
+                    if start_dt:
+                        self._of_periods.append({"start": start_dt, "end": end_dt})
+                # Separateurs d'OF (a partir du 2e OF de la journee)
+                for p in self._of_periods[1:]:
+                    self._of_changes.append(p["start"])
+            # Evenements d'aujourd'hui
+            if "Evenements" in wb.sheetnames:
+                ws_e = wb["Evenements"]
+                for row in ws_e.iter_rows(min_row=2, values_only=True):
+                    if not row or not row[0]:
+                        continue
+                    evt_type = str(row[0] or "").lower()
+                    date_val = str(row[2] or "").strip()[:10]
+                    if date_val != today:
+                        continue
+                    start_dt = _pdt(date_val, str(row[10] or ""))
+                    end_dt   = _pdt(date_val, str(row[11] or ""))
+                    if start_dt is None:
+                        continue
+                    if "rattrapage" in evt_type:
+                        cat = "ratt"
+                    elif "pb" in evt_type or "technique" in evt_type:
+                        cat = "pb"
+                    else:
+                        continue
+                    self._tl_events.append({
+                        "key": f"_hist_{len(self._tl_events)}",
+                        "cat": cat,
+                        "start": start_dt,
+                        "end": end_dt or start_dt,
+                    })
+            wb.close()
+        except Exception:
+            pass
 
     # ── Config ────────────────────────────────────────────────────────────────
     def _load_lists(self):
@@ -367,6 +438,7 @@ class App:
             save_cfg(self.cfg)
             self._load_lists()
             self._ensure_excel_headers(p)
+            self._load_history_from_excel()
             name = os.path.basename(p)
             for lbl in self._db_labels:
                 try:
@@ -455,6 +527,8 @@ class App:
         self._cumul_lbl      = None
         self._prod_indicator = None
         self._main_tree      = None
+        self._end_canvas     = None
+        self._end_draw_fn    = None
 
     def _make_header(self, parent, title, subtitle=""):
         hdr = tk.Frame(parent, bg=NAVY, height=62)
@@ -496,6 +570,14 @@ class App:
                     cell.refresh()
                 except Exception:
                     pass
+
+        # Pulse bouton fin de production
+        if self._mode == "production" and self._end_draw_fn:
+            self._end_pulse = not self._end_pulse
+            try:
+                self._end_draw_fn(pulse=self._end_pulse)
+            except Exception:
+                pass
 
         elif self._mode == "main" and self._prod_active:
             of_s = (datetime.datetime.now() - self._of_start).total_seconds()
@@ -1128,17 +1210,33 @@ class App:
         self._make_timeline(outer)
         tk.Frame(outer, bg=LGRAY, height=1).pack(fill="x")
 
-        # Bouton FIN
-        end_bar = tk.Frame(outer, bg="#6b1c1c", height=50)
+        # Bouton FIN (3D Canvas, grand et visible)
+        end_bar = tk.Frame(outer, bg=BG, height=82)
         end_bar.pack(fill="x", side="bottom")
         end_bar.pack_propagate(False)
-        tk.Button(end_bar,
-                  text="⏹   DECLARER LA FIN DE PRODUCTION",
-                  command=self._end_production,
-                  bg="#6b1c1c", fg=WHITE,
-                  font=("Arial", 14, "bold"),
-                  relief="flat", cursor="hand2",
-                  activebackground="#7f1d1d").pack(fill="both", expand=True)
+
+        end_cv = tk.Canvas(end_bar, bg=BG, highlightthickness=0)
+        end_cv.pack(fill="both", expand=True, padx=8, pady=6)
+        self._end_canvas  = end_cv
+        self._end_pulse   = False
+
+        def _draw_end(e=None, pulse=False):
+            end_cv.delete("all")
+            bw, bh = end_cv.winfo_width(), end_cv.winfo_height()
+            if bw < 10 or bh < 10:
+                return
+            base = "#e84040" if pulse else C_RED
+            _rrect(end_cv, 5, 7, bw-1, bh, 14, fill=_off(base, -50))
+            _rrect(end_cv, 0, 0, bw-6, bh-7, 14, fill=base)
+            _rrect(end_cv, 2, 2, bw-8, bh//3, 14, fill=_off(base, +40))
+            end_cv.create_text(bw//2-3, bh//2-4,
+                               text="⏹   DECLARER LA FIN DE PRODUCTION",
+                               fill=WHITE, font=("Arial", 18, "bold"))
+
+        end_cv.bind("<Configure>", _draw_end)
+        end_cv.bind("<Button-1>",  lambda e: self._end_production())
+        end_cv.config(cursor="hand2")
+        self._end_draw_fn = _draw_end
 
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True)
