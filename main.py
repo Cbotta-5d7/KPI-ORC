@@ -1,4 +1,4 @@
-"""KPI-ORC v5.0 - Switch vues, edition/suppression declarations"""
+"""KPI-ORC v5.2 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json, os, datetime, math
@@ -7,17 +7,17 @@ from openpyxl import load_workbook
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
 PASSWORD    = "0000"
 
-NAVY    = "#1e2d4a"
-NAVY_L  = "#26395e"
-ORANGE  = "#f5a623"
+NAVY    = "#1a1f5e"   # Dodo bleu marine
+NAVY_L  = "#2d3490"   # Dodo bleu marine clair
+ORANGE  = "#e31e24"   # Dodo rouge vif
 WHITE   = "#ffffff"
-BG      = "#eef2f7"
-FORM_BG = "#e8f0f8"
-SHAD    = "#b8c4d4"
-GREEN   = "#27ae60"
-C_RED   = "#c0392b"
-C_RATT  = "#e67e22"
-C_PB    = "#2980b9"
+BG      = "#f0f4fb"   # Fond general bleu tres clair
+FORM_BG = "#e8eef8"   # Fond formulaire bleu Dodo
+SHAD    = "#c2cce0"
+GREEN   = "#1a8c4e"   # Vert production
+C_RED   = "#e31e24"   # Rouge Dodo (pannes)
+C_RATT  = "#d97706"   # Ambre rattrapages
+C_PB    = "#1a1f5e"   # Bleu Dodo PB techniques
 GRAY    = "#64748b"
 LGRAY   = "#dde4ef"
 DARK    = "#0f172a"
