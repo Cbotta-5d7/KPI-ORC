@@ -827,7 +827,7 @@ class App:
         self._kpi_canvas  = None
 
     def _make_header(self, parent, title, subtitle=""):
-        hdr = tk.Frame(parent, bg=NAVY, height=62)
+        hdr = tk.Frame(parent, bg=NAVY, height=68)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         tk.Label(hdr, text=title, bg=NAVY, fg=WHITE,
@@ -835,7 +835,18 @@ class App:
         if subtitle:
             tk.Label(hdr, text=subtitle, bg=NAVY, fg="#7a99c0",
                      font=("Arial", 11)).pack(side="left", padx=4)
-        self._db_widget(hdr, NAVY).pack(side="right", padx=16)
+        # Zone droite : logo + DB
+        right_bar = tk.Frame(hdr, bg=NAVY)
+        right_bar.pack(side="right", padx=12)
+        self._db_widget(right_bar, NAVY).pack(side="right", padx=4)
+        if self._logo_img:
+            tk.Label(right_bar, image=self._logo_img, bg=NAVY).pack(
+                side="right", padx=(0, 12))
+        else:
+            lf = tk.Frame(right_bar, bg=ORANGE, padx=6, pady=3)
+            lf.pack(side="right", padx=(0, 12))
+            tk.Label(lf, text="dodo", bg=ORANGE, fg=WHITE,
+                     font=("Arial", 16, "bold")).pack()
         return hdr
 
     def _make_timeline(self, parent):
