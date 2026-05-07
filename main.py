@@ -445,11 +445,11 @@ class EventCell(tk.Canvas):
 
         tk.Label(top, text=f"⚠  FIN D'ARRET  —  {self.label}",
                  bg=NAVY, fg=WHITE, font=("Arial", 18, "bold")).pack(pady=(28, 4))
-        tk.Label(top, text="Décrivez la cause de l'arret (optionnel) :",
+        tk.Label(top, text="Décrivez la cause de l'arret :",
                  bg=NAVY, fg="#7a99c0", font=("Arial", 12)).pack()
 
-        txt = tk.Text(top, height=5, font=("Arial", 13), bg="#1e2560", fg=WHITE,
-                      insertbackground=WHITE, relief="flat", padx=12, pady=8,
+        txt = tk.Text(top, height=5, font=("Arial", 13), bg=WHITE, fg=DARK,
+                      insertbackground=DARK, relief="flat", padx=12, pady=8,
                       wrap="word")
         txt.pack(fill="x", padx=28, pady=12)
         txt.focus()
@@ -518,14 +518,20 @@ class EventCell(tk.Canvas):
         elapsed = self.app._t_get(self.key)
         r = 10
         if running:
-            _rrect(self, 4, 5, w-1, h,     r, fill=_off(C_RED, -40))
-            _rrect(self, 0, 0, w-5, h-5,   r, fill=C_RED)
-            _rrect(self, 2, 2, w-7, max(r*2+2, h//3), r, fill=_off(C_RED, +30))
+            blink = getattr(self.app, "_cell_blink", False)
+            face  = "#ff2020" if blink else "#cc0000"
+            shad  = _off(face, -50)
+            hi    = _off(face, +60)
+            _rrect(self, 4, 5, w-1, h,     r, fill=shad)
+            _rrect(self, 0, 0, w-5, h-5,   r, fill=face)
+            _rrect(self, 2, 2, w-7, max(r*2+2, h//3), r, fill=hi)
             self.create_text(w//2-2, h*2//5, text=self.label, fill=WHITE,
                              font=("Arial", 11, "bold"), justify="center", width=w-12)
             self.create_text(w//2-2, h*3//4, text=fmt(elapsed), fill=WHITE,
                              font=("Arial", 15, "bold"))
-            self.create_oval(w-17, 7, w-9, 15, fill="#ff8080", outline=WHITE, width=1)
+            # Dot clignotant
+            dot_col = "#ffff00" if blink else "#ff8080"
+            self.create_oval(w-17, 7, w-9, 15, fill=dot_col, outline=WHITE, width=1)
         else:
             _rrect(self, 4, 5, w-1, h,     r, fill=SHAD)
             _rrect(self, 0, 0, w-5, h-5,   r, fill=WHITE)
@@ -1732,44 +1738,56 @@ class App:
 
         self._after_id = self.root.after(1000, self._tick)
 
-    # ── Formulaire SANS SCROLL ────────────────────────────────────────────────
+    # ── Formulaire avec scroll ────────────────────────────────────────────────
     def _build_form(self, parent):
         self.fv = {}
         tk.Label(parent, text="DONNEES DE L'OF",
                  bg=FORM_BG, fg=NAVY,
                  font=("Arial", 11, "bold")).pack(anchor="w", padx=12, pady=(8, 2))
 
-        c = tk.Frame(parent, bg=FORM_BG)
-        c.pack(fill="both", expand=True, padx=6, pady=2)
+        # Canvas scrollable
+        canv = tk.Canvas(parent, bg=FORM_BG, highlightthickness=0)
+        sb   = ttk.Scrollbar(parent, orient="vertical", command=canv.yview)
+        canv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canv.pack(fill="both", expand=True)
+        c = tk.Frame(canv, bg=FORM_BG)
+        win_id = canv.create_window((0, 0), window=c, anchor="nw")
+        c.bind("<Configure>",
+               lambda e: canv.configure(scrollregion=canv.bbox("all")))
+        canv.bind("<Configure>",
+                  lambda e: canv.itemconfig(win_id, width=e.width))
+        canv.bind_all("<MouseWheel>",
+                      lambda e: canv.yview_scroll(-1*(e.delta//120), "units"))
+
         c.columnconfigure(0, weight=1)
         c.columnconfigure(1, weight=1)
         ri = [0]
 
         def sec(txt):
-            f = tk.Frame(c, bg=NAVY_L)
-            f.grid(row=ri[0], column=0, columnspan=2,
-                   sticky="ew", padx=0, pady=(8, 2))
-            tk.Label(f, text=txt, bg=NAVY_L, fg=WHITE,
-                     font=("Arial", 9, "bold"), padx=8, pady=3).pack(anchor="w")
+            tk.Label(c, text=txt, bg=FORM_BG, fg=NAVY_L,
+                     font=("Arial", 8, "bold")).grid(
+                row=ri[0], column=0, columnspan=2,
+                sticky="w", padx=4, pady=(6, 0))
             ri[0] += 1
 
         def fld(lbl_txt, key, ftype, lh=None, col=0, adv=True):
             cell = tk.Frame(c, bg=FORM_BG)
-            cell.grid(row=ri[0], column=col, sticky="ew", padx=3, pady=1)
+            cell.grid(row=ri[0], column=col, sticky="ew", padx=3, pady=2)
             cell.columnconfigure(0, weight=1)
             tk.Label(cell, text=lbl_txt, bg=FORM_BG, fg=GRAY,
-                     font=("Arial", 8), anchor="w").grid(row=0, column=0, sticky="w")
+                     font=("Arial", 9), anchor="w").grid(row=0, column=0, sticky="w")
             var = tk.StringVar()
             self.fv[key] = var
             if ftype == "entry":
-                e = tk.Entry(cell, textvariable=var, bg="#f0f4fb", fg=DARK,
-                             font=("Arial", 10), relief="groove", bd=1,
+                e = tk.Entry(cell, textvariable=var, bg=WHITE, fg=DARK,
+                             font=("Arial", 10), relief="solid", bd=1,
                              insertbackground=DARK)
-                e.grid(row=1, column=0, sticky="ew", ipady=2)
+                e.grid(row=1, column=0, sticky="ew", ipady=3)
             else:
                 cb = ttk.Combobox(cell, textvariable=var,
                                   values=self._get_list(lh) if lh else [],
-                                  font=("Arial", 9), state="readonly")
+                                  font=("Arial", 10), state="readonly")
                 cb.grid(row=1, column=0, sticky="ew")
             if adv:
                 ri[0] += 1
@@ -1786,6 +1804,27 @@ class App:
         fld("Nb personnes",    "nb_pers",   "combo", "Nombre operateur", col=0)
 
         sec("── Produit")
+        # Bouton KIT en haut de la section Produit
+        self._v_kit = tk.BooleanVar()
+        kit_cell = tk.Frame(c, bg=FORM_BG)
+        kit_cell.grid(row=ri[0], column=0, columnspan=2,
+                      sticky="w", padx=4, pady=(4, 2))
+        ri[0] += 1
+
+        def _toggle_kit():
+            self._v_kit.set(not self._v_kit.get())
+            kit_btn.config(
+                bg="#1a5e8c" if self._v_kit.get() else LGRAY,
+                fg=WHITE if self._v_kit.get() else DARK,
+                relief="sunken" if self._v_kit.get() else "flat",
+                text="✔  KIT 2 pieces (ACTIF)" if self._v_kit.get() else "KIT 2 pieces")
+
+        kit_btn = tk.Button(kit_cell, text="KIT 2 pieces",
+                            command=_toggle_kit, bg=LGRAY, fg=DARK,
+                            font=("Arial", 10, "bold"), relief="flat",
+                            padx=14, pady=5, cursor="hand2")
+        kit_btn.pack(side="left")
+
         row2("Taille produit", "taille",    "combo", "Taille produit",
              "Type produit",   "type_prod", "combo", "Type produit")
         row2("Code produit *", "code_prod", "entry", None,
@@ -1806,21 +1845,12 @@ class App:
         row2("Mq. housse",     "mq_housse", "entry", None,
              "Mq. encart",     "mq_encart", "entry", None)
 
-        kit_row = tk.Frame(c, bg=FORM_BG)
-        kit_row.grid(row=ri[0], column=0, columnspan=2,
-                     sticky="w", padx=4, pady=(4, 0))
-        ri[0] += 1
-        self._v_kit = tk.BooleanVar()
-        tk.Checkbutton(kit_row, text="KIT de 2 pieces",
-                       variable=self._v_kit, bg=FORM_BG, fg=DARK,
-                       selectcolor=WHITE, activebackground=FORM_BG,
-                       font=("Arial", 9, "bold"), cursor="hand2").pack(side="left")
-
         sec("── Commentaire")
         txt_cell = tk.Frame(c, bg=FORM_BG)
         txt_cell.grid(row=ri[0], column=0, columnspan=2,
-                      sticky="ew", padx=3, pady=1)
-        self._comment_txt = tk.Text(txt_cell, height=6, bg=WHITE, fg=DARK,
+                      sticky="ew", padx=3, pady=2)
+        ri[0] += 1
+        self._comment_txt = tk.Text(txt_cell, height=5, bg=WHITE, fg=DARK,
                                      font=("Arial", 10), relief="solid", bd=1,
                                      wrap="word", insertbackground=DARK)
         self._comment_txt.pack(fill="x")
