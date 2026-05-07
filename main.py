@@ -553,23 +553,38 @@ def _app_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
-def _load_logo_image(size=(120, 48)):
-    """Charge logo.gif / logo.png depuis le dossier de l'app.
+def _load_logo_image(target_h=52):
+    """Charge logo.jpg/jpeg/png/gif depuis le dossier de l'app.
+    Utilise Pillow si disponible (JPEG), sinon PhotoImage natif (PNG/GIF).
     Retourne un tk.PhotoImage ou None."""
     folder = _app_dir()
-    for name in ("logo.gif", "logo.png"):
+    candidates = ["logo.jpg", "logo.jpeg", "logo.png", "logo.gif"]
+    for name in candidates:
         path = os.path.join(folder, name)
-        if os.path.exists(path):
+        if not os.path.exists(path):
+            continue
+        # Essai avec Pillow (supporte JPEG + tous formats)
+        try:
+            from PIL import Image, ImageTk
+            im = Image.open(path)
+            # Redimensionner en conservant le ratio pour une hauteur cible
+            iw, ih = im.size
+            if ih > 0:
+                new_w = int(iw * target_h / ih)
+                im = im.resize((new_w, target_h), Image.LANCZOS)
+            return ImageTk.PhotoImage(im)
+        except ImportError:
+            pass
+        except Exception:
+            continue
+        # Fallback natif Tkinter (PNG/GIF uniquement)
+        if name.endswith((".png", ".gif")):
             try:
                 img = tk.PhotoImage(file=path)
-                # Redimensionner si besoin (subsample pour reduire)
                 iw, ih = img.width(), img.height()
-                if iw > 0 and ih > 0:
-                    sx = max(1, iw // size[0])
-                    sy = max(1, ih // size[1])
-                    s  = max(sx, sy)
-                    if s > 1:
-                        img = img.subsample(s, s)
+                if ih > 0 and ih > target_h:
+                    s = max(1, ih // target_h)
+                    img = img.subsample(s, s)
                 return img
             except Exception:
                 pass
@@ -835,18 +850,18 @@ class App:
         if subtitle:
             tk.Label(hdr, text=subtitle, bg=NAVY, fg="#7a99c0",
                      font=("Arial", 11)).pack(side="left", padx=4)
-        # Zone droite : logo + DB
+        # Zone droite : logo sur fond blanc + DB
         right_bar = tk.Frame(hdr, bg=NAVY)
         right_bar.pack(side="right", padx=12)
         self._db_widget(right_bar, NAVY).pack(side="right", padx=4)
+        # Logo dans un cadre blanc arrondi
+        logo_frame = tk.Frame(right_bar, bg=WHITE, padx=8, pady=6)
+        logo_frame.pack(side="right", padx=(0, 10))
         if self._logo_img:
-            tk.Label(right_bar, image=self._logo_img, bg=NAVY).pack(
-                side="right", padx=(0, 12))
+            tk.Label(logo_frame, image=self._logo_img, bg=WHITE).pack()
         else:
-            lf = tk.Frame(right_bar, bg=ORANGE, padx=6, pady=3)
-            lf.pack(side="right", padx=(0, 12))
-            tk.Label(lf, text="dodo", bg=ORANGE, fg=WHITE,
-                     font=("Arial", 16, "bold")).pack()
+            tk.Label(logo_frame, text="DODO", bg=WHITE, fg=NAVY,
+                     font=("Arial", 15, "bold")).pack()
         return hdr
 
     def _make_timeline(self, parent):

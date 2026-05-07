@@ -20,7 +20,7 @@ jobs:
           python-version: "3.11"
 
       - name: Installer les dependances
-        run: pip install pyinstaller openpyxl
+        run: pip install pyinstaller openpyxl pillow
 
       - name: Compiler le .exe
         run: pyinstaller --onefile --windowed --name "KPI-ORC" main.py
