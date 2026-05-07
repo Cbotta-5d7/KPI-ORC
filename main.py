@@ -1750,7 +1750,7 @@ class App:
 
         # Barre KPI
         self._kpi_canvas = tk.Canvas(line2, bg=GREEN, height=22, width=220,
-                                      highlightthickness=1, highlightbackground="#ffffff44")
+                                      highlightthickness=1, highlightbackground="#4ade80")
         self._kpi_canvas.pack(side="left", padx=8)
         self._hdr_widgets.append(self._kpi_canvas)
 
@@ -1814,8 +1814,10 @@ class App:
                lambda e: canv.configure(scrollregion=canv.bbox("all")))
         canv.bind("<Configure>",
                   lambda e: canv.itemconfig(win_id, width=e.width))
-        canv.bind_all("<MouseWheel>",
-                      lambda e: canv.yview_scroll(-1*(e.delta//120), "units"))
+        canv.bind("<MouseWheel>",
+                  lambda e: canv.yview_scroll(-1*(e.delta//120), "units"))
+        c.bind("<MouseWheel>",
+               lambda e: canv.yview_scroll(-1*(e.delta//120), "units"))
 
         c.columnconfigure(0, weight=1)
         c.columnconfigure(1, weight=1)
