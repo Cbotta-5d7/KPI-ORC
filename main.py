@@ -333,9 +333,8 @@ class App:
         self._of_periods  = []
         self._tl_events   = []
         self._of_changes  = []
-        self._end_canvas  = None
-        self._end_draw_fn = None
-        self._end_pulse   = False
+        self._blink_dot   = None
+        self._blink_state = False
 
         self._load_lists()
         self._load_history_from_excel()
@@ -527,8 +526,7 @@ class App:
         self._cumul_lbl      = None
         self._prod_indicator = None
         self._main_tree      = None
-        self._end_canvas     = None
-        self._end_draw_fn    = None
+        self._blink_dot      = None
 
     def _make_header(self, parent, title, subtitle=""):
         hdr = tk.Frame(parent, bg=NAVY, height=62)
@@ -571,33 +569,15 @@ class App:
                 except Exception:
                     pass
 
-        # Pulse bouton fin de production
-        if self._mode == "production" and self._end_draw_fn:
-            self._end_pulse = not self._end_pulse
+        # Clignotement du point rouge sur l'ecran principal
+        if self._mode == "main" and self._prod_active:
+            self._blink_state = not self._blink_state
             try:
-                self._end_draw_fn(pulse=self._end_pulse)
+                self._blink_dot.config(
+                    fg=C_RED if self._blink_state else NAVY)
             except Exception:
                 pass
 
-        elif self._mode == "main" and self._prod_active:
-            of_s = (datetime.datetime.now() - self._of_start).total_seconds()
-            # Determiner l'arret actif
-            active_evts = [k for k in self._timers if self._t_running(k)]
-            if active_evts:
-                label = next(
-                    (e[0] for e in EVENTS if e[1] == active_evts[0]), "arret")
-                status = f"  ⚠  ARRET EN COURS: {label}"
-                ind_col = C_RATT
-            else:
-                status = ""
-                ind_col = "#1a6b3c"
-            try:
-                self._prod_indicator.config(
-                    text=f"⚡  PRODUCTION EN COURS  —  {fmt(of_s)}{status}",
-                    bg=ind_col)
-                self._prod_indicator.master.config(bg=ind_col)
-            except Exception:
-                pass
 
         if self._tl_widget:
             try:
@@ -664,30 +644,45 @@ class App:
         self._make_timeline(outer)
         tk.Frame(outer, bg=LGRAY, height=1).pack(fill="x")
 
-        # Bandeau production en cours
-        if self._prod_active:
-            ind_frame = tk.Frame(outer, bg="#1a6b3c", height=36)
-            ind_frame.pack(fill="x")
-            ind_frame.pack_propagate(False)
-            self._prod_indicator = tk.Label(
-                ind_frame,
-                text="⚡  PRODUCTION EN COURS",
-                bg="#1a6b3c", fg=WHITE,
-                font=("Arial", 11, "bold"))
-            self._prod_indicator.pack(side="left", padx=16)
-            tk.Button(ind_frame,
-                      text="↩  Retour Production",
-                      command=self._nav_to_production,
-                      bg=ORANGE, fg=WHITE,
-                      font=("Arial", 10, "bold"),
-                      relief="flat", padx=14, cursor="hand2"
-                      ).pack(side="right", padx=10, pady=4)
 
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=20, pady=14)
 
         top = tk.Frame(body, bg=BG)
         top.pack(fill="x", pady=(0, 14))
+
+        # Panneau droit : production en cours (pack en premier pour reserve l'espace)
+        if self._prod_active:
+            prod_wrap, prod_inner = shadow_frame(top, bg=NAVY)
+            prod_wrap.pack(side="right", fill="y", padx=(16, 0))
+
+            dot_row = tk.Frame(prod_inner, bg=NAVY)
+            dot_row.pack(fill="x", padx=14, pady=(12, 2))
+            self._blink_dot = tk.Label(dot_row, text="●", bg=NAVY,
+                                       fg=C_RED, font=("Arial", 16))
+            self._blink_dot.pack(side="left")
+            tk.Label(dot_row, text="  PRODUCTION EN COURS",
+                     bg=NAVY, fg=WHITE,
+                     font=("Arial", 11, "bold")).pack(side="left")
+
+            tk.Label(prod_inner,
+                     text=f"Debut : {self._of_start.strftime('%H:%M:%S')}",
+                     bg=NAVY, fg="#7a99c0",
+                     font=("Arial", 10)).pack(anchor="w", padx=14, pady=(0, 4))
+
+            tk.Label(prod_inner,
+                     text="Arrets actifs : " + str(
+                         sum(1 for k in self._timers if self._t_running(k))),
+                     bg=NAVY, fg=C_RATT,
+                     font=("Arial", 10)).pack(anchor="w", padx=14, pady=(0, 8))
+
+            tk.Button(prod_inner,
+                      text="↩  RETOUR EN PRODUCTION",
+                      command=self._nav_to_production,
+                      bg=ORANGE, fg=WHITE,
+                      font=("Arial", 12, "bold"),
+                      relief="flat", padx=14, pady=10,
+                      cursor="hand2").pack(fill="x", padx=14, pady=(0, 14))
 
         # TRS gauge
         trs_wrap, trs_inner = shadow_frame(top, bg=WHITE)
@@ -701,35 +696,29 @@ class App:
         self._main_gauge.pack(padx=16, pady=(0, 10))
         self._refresh_main_kpi()
 
-        # Bouton demarrer (ou retour si prod active)
-        btn_wrap   = tk.Frame(top, bg=BG)
-        btn_wrap.pack(side="left", fill="both", expand=True)
-        btn_canvas = tk.Canvas(btn_wrap, bg=BG, highlightthickness=0)
-        btn_canvas.pack(fill="both", expand=True)
+        # Bouton Demarrer (plus petit, centré)
+        if not self._prod_active:
+            btn_wrap   = tk.Frame(top, bg=BG)
+            btn_wrap.pack(side="left", fill="both", expand=True)
+            btn_canvas = tk.Canvas(btn_wrap, bg=BG, highlightthickness=0,
+                                   height=70)
+            btn_canvas.pack(fill="x", pady=30)
 
-        if self._prod_active:
-            btn_text   = "↩  RETOUR EN PRODUCTION"
-            btn_color  = ORANGE
-            btn_action = self._nav_to_production
-        else:
-            btn_text   = "▶  DEMARRER UNE PRODUCTION"
-            btn_color  = ORANGE
-            btn_action = self._start_production
+            def _draw_btn(e=None):
+                btn_canvas.delete("all")
+                bw, bh = btn_canvas.winfo_width(), btn_canvas.winfo_height()
+                if bw < 10 or bh < 10:
+                    return
+                _rrect(btn_canvas, 5, 5, bw-1, bh, 14, fill=_off(ORANGE, -40))
+                _rrect(btn_canvas, 0, 0, bw-6, bh-5, 14, fill=ORANGE)
+                _rrect(btn_canvas, 2, 2, bw-8, bh//3, 14, fill=_off(ORANGE, +40))
+                btn_canvas.create_text(bw//2-2, bh//2-2,
+                                       text="▶   DEMARRER UNE PRODUCTION",
+                                       fill=WHITE, font=("Arial", 14, "bold"))
 
-        def _draw_btn(e=None):
-            btn_canvas.delete("all")
-            bw, bh = btn_canvas.winfo_width(), btn_canvas.winfo_height()
-            if bw < 10 or bh < 10:
-                return
-            _rrect(btn_canvas, 5, 7, bw-1, bh, 16, fill=_off(btn_color, -40))
-            _rrect(btn_canvas, 0, 0, bw-6, bh-7, 16, fill=btn_color)
-            _rrect(btn_canvas, 3, 3, bw-9, bh//3, 16, fill=_off(btn_color, +40))
-            btn_canvas.create_text(bw//2-3, bh//2-3, text=btn_text,
-                                   fill=WHITE, font=("Arial", 17, "bold"))
-
-        btn_canvas.bind("<Configure>", _draw_btn)
-        btn_canvas.bind("<Button-1>",  lambda e: btn_action())
-        btn_canvas.config(cursor="hand2")
+            btn_canvas.bind("<Configure>", _draw_btn)
+            btn_canvas.bind("<Button-1>",  lambda e: self._start_production())
+            btn_canvas.config(cursor="hand2")
 
         # Tableau recap
         lbl_frame = tk.Frame(body, bg=BG)
@@ -1199,12 +1188,12 @@ class App:
         self._cumul_lbl.pack(side="left", padx=18)
 
         # Bouton tableau recap
-        tk.Button(hdr, text="📋  Tableau Recap",
+        tk.Button(hdr, text="📋  TABLEAU RECAP",
                   command=self._show_main,
-                  bg=NAVY_L, fg=WHITE,
-                  font=("Arial", 10, "bold"),
-                  relief="flat", padx=12, cursor="hand2"
-                  ).pack(side="right", padx=6)
+                  bg=ORANGE, fg=WHITE,
+                  font=("Arial", 13, "bold"),
+                  relief="flat", padx=20, pady=8,
+                  cursor="hand2").pack(side="right", padx=10, pady=8)
         self._db_widget(hdr, NAVY).pack(side="right", padx=10)
 
         self._make_timeline(outer)
@@ -1220,15 +1209,14 @@ class App:
         self._end_canvas  = end_cv
         self._end_pulse   = False
 
-        def _draw_end(e=None, pulse=False):
+        def _draw_end(e=None):
             end_cv.delete("all")
             bw, bh = end_cv.winfo_width(), end_cv.winfo_height()
             if bw < 10 or bh < 10:
                 return
-            base = "#e84040" if pulse else C_RED
-            _rrect(end_cv, 5, 7, bw-1, bh, 14, fill=_off(base, -50))
-            _rrect(end_cv, 0, 0, bw-6, bh-7, 14, fill=base)
-            _rrect(end_cv, 2, 2, bw-8, bh//3, 14, fill=_off(base, +40))
+            _rrect(end_cv, 5, 7, bw-1, bh, 14, fill=_off(C_RED, -50))
+            _rrect(end_cv, 0, 0, bw-6, bh-7, 14, fill=C_RED)
+            _rrect(end_cv, 2, 2, bw-8, bh//3, 14, fill=_off(C_RED, +40))
             end_cv.create_text(bw//2-3, bh//2-4,
                                text="⏹   DECLARER LA FIN DE PRODUCTION",
                                fill=WHITE, font=("Arial", 18, "bold"))
@@ -1236,7 +1224,6 @@ class App:
         end_cv.bind("<Configure>", _draw_end)
         end_cv.bind("<Button-1>",  lambda e: self._end_production())
         end_cv.config(cursor="hand2")
-        self._end_draw_fn = _draw_end
 
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True)
