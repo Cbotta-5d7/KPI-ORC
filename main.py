@@ -1,7 +1,7 @@
-"""KPI-ORC v5.2 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
+"""KPI-ORC v5.7 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import json, os, datetime, math
+import json, os, sys, datetime, math
 from openpyxl import load_workbook
 
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
@@ -546,6 +546,36 @@ class EventCell(tk.Canvas):
                                  fill=LGRAY, font=("Arial", 10))
 
 
+def _app_dir():
+    """Dossier de l'executable (ou du script en dev)."""
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _load_logo_image(size=(120, 48)):
+    """Charge logo.gif / logo.png depuis le dossier de l'app.
+    Retourne un tk.PhotoImage ou None."""
+    folder = _app_dir()
+    for name in ("logo.gif", "logo.png"):
+        path = os.path.join(folder, name)
+        if os.path.exists(path):
+            try:
+                img = tk.PhotoImage(file=path)
+                # Redimensionner si besoin (subsample pour reduire)
+                iw, ih = img.width(), img.height()
+                if iw > 0 and ih > 0:
+                    sx = max(1, iw // size[0])
+                    sy = max(1, ih // size[1])
+                    s  = max(sx, sy)
+                    if s > 1:
+                        img = img.subsample(s, s)
+                return img
+            except Exception:
+                pass
+    return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Application
 # ─────────────────────────────────────────────────────────────────────────────
@@ -559,6 +589,7 @@ class App:
         except Exception:
             self.root.attributes("-fullscreen", True)
 
+        self._logo_img    = _load_logo_image()
         self.cfg          = load_cfg()
         self.lists        = {}
         self._timers      = {}
@@ -1713,10 +1744,12 @@ class App:
         right = tk.Frame(body, bg=BG)
         right.pack(side="left", fill="both", expand=True)
 
-        # Bouton FIN (vert, en bas de la zone droite) — packed FIRST with
-        # side="bottom" so it always stays visible even when pb_wrap expands.
+        self._build_events(right)
+
+        # Bouton FIN (vert, en bas de la zone droite) — packed AFTER
+        # _build_events so it appears at the bottom of the events panel.
         end_cv = tk.Canvas(right, bg=BG, highlightthickness=0, height=68)
-        end_cv.pack(side="bottom", fill="x", padx=10, pady=(4, 8))
+        end_cv.pack(fill="x", padx=10, pady=(4, 8))
 
         def _draw_end(e=None):
             end_cv.delete("all")
@@ -1733,8 +1766,6 @@ class App:
         end_cv.bind("<Configure>", _draw_end)
         end_cv.bind("<Button-1>",  lambda e: self._end_production())
         end_cv.config(cursor="hand2")
-
-        self._build_events(right)
 
         self._after_id = self.root.after(1000, self._tick)
 
@@ -1765,10 +1796,11 @@ class App:
         ri = [0]
 
         def sec(txt):
-            tk.Label(c, text=txt, bg=FORM_BG, fg=NAVY_L,
-                     font=("Arial", 8, "bold")).grid(
-                row=ri[0], column=0, columnspan=2,
-                sticky="w", padx=4, pady=(6, 0))
+            f = tk.Frame(c, bg=NAVY_L)
+            f.grid(row=ri[0], column=0, columnspan=2,
+                   sticky="ew", padx=0, pady=(8, 2))
+            tk.Label(f, text=txt, bg=NAVY_L, fg=WHITE,
+                     font=("Arial", 9, "bold"), padx=8, pady=3).pack(anchor="w")
             ri[0] += 1
 
         def fld(lbl_txt, key, ftype, lh=None, col=0, adv=True):
@@ -1780,8 +1812,8 @@ class App:
             var = tk.StringVar()
             self.fv[key] = var
             if ftype == "entry":
-                e = tk.Entry(cell, textvariable=var, bg=WHITE, fg=DARK,
-                             font=("Arial", 10), relief="solid", bd=1,
+                e = tk.Entry(cell, textvariable=var, bg="#f0f4fb", fg=DARK,
+                             font=("Arial", 10), relief="groove", bd=1,
                              insertbackground=DARK)
                 e.grid(row=1, column=0, sticky="ew", ipady=3)
             else:
