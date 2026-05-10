@@ -1,8 +1,9 @@
-"""KPI-ORC v5.21 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
+"""KPI-ORC v5.22 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json, os, sys, datetime, math
 from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Border, Side, PatternFill
 
 CONFIG_FILE  = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
 SESSION_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_session.json")
@@ -663,8 +664,10 @@ class App:
         self._active_stops_container = None
         self._main_prod_panel = None
         self._recap_panel     = None
-        self._saved_form_data = {}   # Mémoire formulaire entre onglets
-        self._prod_ref_cached = 0.0
+        self._saved_form_data  = {}   # Mémoire formulaire entre onglets
+        self._reset_form_next  = False  # True = ne pas restaurer au prochain _show_production
+        self._prod_ref_cached  = 0.0
+        self._pilot_kpi_data   = {}
 
         self._load_lists()
         self._load_history_from_excel()
@@ -1263,9 +1266,9 @@ class App:
         return tl
 
     def _make_tabs(self, parent, active):
-        bar = tk.Frame(parent, bg=WHITE, bd=0)
+        bar = tk.Frame(parent, bg="#d0d8e8", bd=0)
         bar.pack(fill="x")
-        tk.Frame(bar, bg=LGRAY, height=1).pack(fill="x", side="bottom")
+        tk.Frame(bar, bg=NAVY, height=2).pack(fill="x", side="bottom")
 
         def _bind_recursive(widget, event, cb):
             widget.bind(event, cb)
@@ -1278,15 +1281,16 @@ class App:
 
         def _tab(label, mode, action, enabled):
             is_active = (mode == active)
-            bg      = WHITE
-            fg      = NAVY if is_active else (GRAY if enabled else LGRAY)
-            accent  = (GREEN if mode == "main" else C_RED) if is_active else WHITE
-            f = tk.Frame(bar, bg=bg)
-            f.pack(side="left")
-            tk.Frame(f, bg=accent, height=3).pack(fill="x")
-            row = tk.Frame(f, bg=bg)
-            row.pack(padx=22, pady=10)
-            lbl = tk.Label(row, text=label, bg=bg, fg=fg,
+            tab_bg  = WHITE if is_active else "#dce4f0"
+            tab_fg  = NAVY  if is_active else (GRAY if enabled else LGRAY)
+            relief  = "raised" if is_active else "groove"
+            accent  = (GREEN if mode == "main" else C_RED) if is_active else tab_bg
+            f = tk.Frame(bar, bg=tab_bg, relief=relief, bd=1)
+            f.pack(side="left", padx=(0, 2), pady=(3, 0))
+            tk.Frame(f, bg=accent, height=4).pack(fill="x")
+            row = tk.Frame(f, bg=tab_bg)
+            row.pack(padx=20, pady=8)
+            lbl = tk.Label(row, text=label, bg=tab_bg, fg=tab_fg,
                            font=("Arial", 11, "bold" if is_active else "normal"))
             lbl.pack(side="left")
             if enabled and not is_active:
@@ -1298,20 +1302,22 @@ class App:
 
         # Onglet Production
         is_prod_tab = (active == "production")
-        fg_prod = NAVY if is_prod_tab else (GRAY if self._prod_active else LGRAY)
-        accent_prod = C_RED if is_prod_tab else WHITE
-        prod_f = tk.Frame(bar, bg=WHITE)
-        prod_f.pack(side="left")
-        tk.Frame(prod_f, bg=accent_prod, height=3).pack(fill="x")
-        prod_row = tk.Frame(prod_f, bg=WHITE)
-        prod_row.pack(padx=22, pady=10)
+        fg_prod  = NAVY if is_prod_tab else (GRAY if self._prod_active else LGRAY)
+        tab_bg_p = WHITE if is_prod_tab else "#dce4f0"
+        accent_p = C_RED if is_prod_tab else tab_bg_p
+        prod_f = tk.Frame(bar, bg=tab_bg_p,
+                          relief="raised" if is_prod_tab else "groove", bd=1)
+        prod_f.pack(side="left", padx=(0, 2), pady=(3, 0))
+        tk.Frame(prod_f, bg=accent_p, height=4).pack(fill="x")
+        prod_row = tk.Frame(prod_f, bg=tab_bg_p)
+        prod_row.pack(padx=20, pady=8)
         if self._prod_active and not is_prod_tab:
-            self._blink_dot = tk.Label(prod_row, text="● ", bg=WHITE,
+            self._blink_dot = tk.Label(prod_row, text="● ", bg=tab_bg_p,
                                        fg=C_RED, font=("Arial", 11, "bold"))
             self._blink_dot.pack(side="left")
         tk.Label(prod_row,
                  text="⚡  Production en cours" if self._prod_active else "⚡  Production",
-                 bg=WHITE, fg=fg_prod,
+                 bg=tab_bg_p, fg=fg_prod,
                  font=("Arial", 11, "bold" if is_prod_tab else "normal")).pack(side="left")
         if self._prod_active and not is_prod_tab:
             _bind_recursive(prod_f, "<Button-1>",
@@ -1562,7 +1568,9 @@ class App:
     #  ECRAN PRINCIPAL
     # =========================================================================
     def _show_main(self):
-        self._save_form_data()
+        if not self._reset_form_next:
+            self._save_form_data()
+        self._reset_form_next = False
         self._cells = []
         self._clear()
         self._db_labels.clear()
@@ -1586,8 +1594,9 @@ class App:
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=20, pady=12)
 
-        top = tk.Frame(body, bg=BG)
-        top.pack(fill="x", pady=(0, 12))
+        top = tk.Frame(body, bg=BG, height=200)
+        top.pack(fill="x", pady=(0, 8))
+        top.pack_propagate(False)
 
         # TRS gauge (gauche, taille fixe)
         trs_wrap, trs_inner = shadow_frame(top, bg=WHITE)
@@ -1598,10 +1607,15 @@ class App:
                  bg=WHITE, fg=LGRAY, font=("Arial", 8)).pack()
         self._main_gauge = Gauge(trs_inner, bg=WHITE,
                                   width=290, height=130, highlightthickness=0)
-        self._main_gauge.pack(padx=16, pady=(0, 4))
+        self._main_gauge.pack(padx=16, pady=(0, 2))
+        self._pilot_name_lbl = tk.Label(trs_inner, text="",
+                                         bg=WHITE, fg=NAVY,
+                                         font=("Arial", 10, "bold"))
+        self._pilot_name_lbl.pack(pady=(0, 2))
         self._trs_calc_lbl = tk.Label(trs_inner, text="TRS non calculé",
                                        bg=WHITE, fg=GRAY, font=("Arial", 9))
-        self._trs_calc_lbl.pack(pady=(0, 10))
+        self._trs_calc_lbl.pack(pady=(0, 8))
+        self._pilot_kpi_data = {}
         self._refresh_main_kpi()
 
         # Zone droite — remplit tout l'espace restant
@@ -1689,7 +1703,7 @@ class App:
         style = ttk.Style()
         style.configure("KPI.Treeview",
                         background=WHITE, foreground=DARK,
-                        fieldbackground=WHITE, rowheight=28,
+                        fieldbackground=WHITE, rowheight=32,
                         font=("Arial", 10))
         style.configure("KPI.Treeview.Heading",
                         background=LGRAY, foreground=DARK,
@@ -1703,7 +1717,7 @@ class App:
         widths = {"Date": 85, "OF": 90, "Pilote": 130, "Poste": 80,
                   "Qte Fab": 60, "Qte Emb": 60, "Equiv": 60,
                   "TRS %": 65, "Duree OF": 75, "Arrêts": 75,
-                  "✏": 36, "🗑": 36}
+                  "✏": 52, "🗑": 52}
         for c in cols:
             tree.heading(c, text=c)
             tree.column(c, width=widths.get(c, 70), anchor="center",
@@ -1820,120 +1834,80 @@ class App:
         return self._prod_ref_cached   # fallback cache I2
 
     def _build_stops_kpi_panel(self, parent):
-        """Panneau KPI arrêts — aujourd'hui / 8h / 24h."""
+        """Panneau KPI arrêts — Poste en cours / Poste précédent."""
         wrap, inner = shadow_frame(parent, bg=WHITE)
         wrap.pack(fill="both", expand=True)
 
-        hdr = tk.Frame(inner, bg=NAVY, height=38)
-        hdr.pack(fill="x")
-        hdr.pack_propagate(False)
-        tk.Label(hdr, text="Arrêts déclarés", bg=NAVY, fg=WHITE,
-                 font=("Arial", 11, "bold")).pack(side="left", padx=12, pady=8)
+        kpi = getattr(self, "_pilot_kpi_data", {})
 
-        # Boutons filtre
-        filter_var = tk.StringVar(value="8h")
-        btn_bar = tk.Frame(inner, bg=WHITE)
-        btn_bar.pack(fill="x", padx=6, pady=(6, 0))
-        content_frame = tk.Frame(inner, bg=WHITE)
-        content_frame.pack(fill="both", expand=True, padx=6, pady=4)
+        inner.columnconfigure(0, weight=1)
+        inner.columnconfigure(1, weight=1)
+        inner.rowconfigure(0, weight=0)
+        inner.rowconfigure(1, weight=1)
 
-        def _show_filter(window):
-            filter_var.set(window)
-            for w in content_frame.winfo_children():
-                w.destroy()
-            now = datetime.datetime.now()
-            if window == "session":
-                evts = [e for e in self._tl_events
-                        if e.get("cat") in ("ratt", "pb")
-                        and not e.get("key", "").startswith("_hist")]
-            elif window == "8h":
-                cutoff = now - datetime.timedelta(hours=8)
-                evts = [e for e in self._tl_events
-                        if e.get("cat") in ("ratt", "pb")
-                        and e.get("start", now) >= cutoff]
-            else:  # 24h / aujourd'hui
-                cutoff = now - datetime.timedelta(hours=24)
-                evts = [e for e in self._tl_events
-                        if e.get("cat") in ("ratt", "pb")
-                        and e.get("start", now) >= cutoff]
+        def _make_col(col_idx, title, pilot_name, trs_val, stops):
+            accent = GREEN if trs_val >= 70 else (ORANGE if trs_val >= 50 else C_RED)
+            # En-tête colonne
+            hdr = tk.Frame(inner, bg=NAVY, height=36)
+            hdr.grid(row=0, column=col_idx, sticky="ew",
+                     padx=(0 if col_idx == 0 else 2, 0))
+            hdr.grid_propagate(False)
+            lbl_t = f"{title}"
+            if pilot_name:
+                lbl_t += f"  —  {pilot_name}"
+            tk.Label(hdr, text=lbl_t, bg=NAVY, fg=WHITE,
+                     font=("Arial", 9, "bold"), anchor="w").pack(
+                     side="left", padx=8, pady=6)
 
-            # Agréger par type
-            agg = {}
-            for e in evts:
-                key = e.get("key", "?")
-                label = next((ev[0] for ev in EVENTS if ev[1] == key), key)
-                dur = (e.get("end") or now - e["start"]).total_seconds() if isinstance(
-                    e.get("end"), datetime.datetime) else 0
-                if e["start"] and isinstance(e.get("end"), datetime.datetime):
-                    dur = (e["end"] - e["start"]).total_seconds()
-                elif e.get("start"):
-                    dur = (now - e["start"]).total_seconds()
-                if label not in agg:
-                    agg[label] = {"count": 0, "dur": 0.0,
-                                  "cat": e.get("cat", "pb")}
-                agg[label]["count"] += 1
-                agg[label]["dur"]   += max(0, dur)
+            # Badge TRS
+            trs_col = GREEN if trs_val >= 70 else (ORANGE if trs_val >= 50 else C_RED)
+            tk.Label(hdr, text=f"TRS {trs_val:.0f}%", bg=trs_col, fg=WHITE,
+                     font=("Arial", 9, "bold"), padx=6, pady=2).pack(
+                     side="right", padx=6, pady=5)
 
-            if not agg:
-                tk.Label(content_frame, text="Aucun arrêt sur cette période",
-                         bg=WHITE, fg=LGRAY, font=("Arial", 10)).pack(pady=16)
+            # Corps arrêts
+            body_col = tk.Frame(inner, bg=WHITE)
+            body_col.grid(row=1, column=col_idx, sticky="nsew",
+                          padx=(0 if col_idx == 0 else 2, 0), pady=2)
+
+            if not stops:
+                tk.Label(body_col, text="Aucun arrêt déclaré",
+                         bg=WHITE, fg=LGRAY,
+                         font=("Arial", 9)).pack(pady=12, padx=6, anchor="w")
                 return
 
-            sorted_agg = sorted(agg.items(), key=lambda x: -x[1]["dur"])
-            max_dur = max(v["dur"] for v in agg.values()) or 1
-            for lbl, data in sorted_agg:
-                row_f = tk.Frame(content_frame, bg=WHITE)
-                row_f.pack(fill="x", pady=1)
-                col = C_RATT if data["cat"] == "ratt" else C_RED
-                tk.Label(row_f, text=lbl, bg=WHITE, fg=DARK,
-                         font=("Arial", 9), anchor="w", width=20).pack(side="left")
-                tk.Label(row_f, text=f"×{data['count']}",
-                         bg=WHITE, fg=GRAY, font=("Arial", 9, "bold"),
-                         width=4).pack(side="left")
-                bar_f = tk.Frame(row_f, bg=LGRAY, height=12)
-                bar_f.pack(side="left", fill="x", expand=True, padx=(4, 0))
-                bar_f.update_idletasks()
-                def _draw_bar(evt, f=bar_f, d=data["dur"], mx=max_dur, c=col):
-                    w = f.winfo_width()
-                    if w < 2:
-                        return
-                    fill = tk.Frame(f, bg=c, width=max(2, int(w * d / mx)), height=12)
-                    fill.place(x=0, y=0)
-                bar_f.bind("<Configure>", _draw_bar)
-                tk.Label(row_f, text=fmt(data["dur"]),
+            sorted_stops = sorted(stops.items(), key=lambda x: -x[1]["dur"])
+            max_dur = max(d["dur"] for d in stops.values()) or 1
+
+            for lbl, data in sorted_stops[:6]:  # Max 6 lignes
+                c = C_RATT if data["cat"] == "ratt" else C_RED
+                rf = tk.Frame(body_col, bg=WHITE)
+                rf.pack(fill="x", padx=4, pady=1)
+                tk.Frame(rf, bg=c, width=4).pack(side="left", fill="y")
+                # Nom court (enlève "Rattrapage: " / "PB Technique: ")
+                short = lbl.split(": ", 1)[-1] if ": " in lbl else lbl
+                tk.Label(rf, text=short, bg=WHITE, fg=DARK,
+                         font=("Arial", 8), anchor="w").pack(
+                         side="left", padx=(4, 0), fill="x", expand=True)
+                tk.Label(rf, text=f"×{data['count']}  {fmt(data['dur'])}",
                          bg=WHITE, fg=GRAY, font=("Arial", 8),
-                         width=7).pack(side="left")
+                         anchor="e").pack(side="right", padx=4)
 
-        for label, val in [("Session", "session"), ("8 h", "8h"), ("24 h", "24h")]:
-            b = tk.Button(btn_bar, text=label, relief="flat", cursor="hand2",
-                          font=("Arial", 9, "bold"), padx=8, pady=3,
-                          command=lambda v=val: _show_filter(v))
-            b.pack(side="left", padx=2)
+        last_p  = kpi.get("last_pilot") or ""
+        prev_p  = kpi.get("prev_pilot") or ""
+        last_s  = kpi.get("last_stops", {})
+        prev_s  = kpi.get("prev_stops", {})
+        last_t  = kpi.get("last_trs",  0.0)
+        prev_t  = kpi.get("prev_trs",  0.0)
 
-            def _style_btns():
-                for child in btn_bar.winfo_children():
-                    if isinstance(child, tk.Button):
-                        v = child.cget("text")
-                        vmap = {"Session": "session", "8 h": "8h", "24 h": "24h"}
-                        active = (vmap.get(v) == filter_var.get())
-                        child.config(bg=NAVY if active else LGRAY,
-                                     fg=WHITE if active else DARK)
-            b.config(command=lambda v=val, _sb=_style_btns: [_show_filter(v), _sb()])
-
-        _show_filter("8h")
-        # Style initial
-        for child in btn_bar.winfo_children():
-            if isinstance(child, tk.Button):
-                v = child.cget("text")
-                vmap = {"Session": "session", "8 h": "8h", "24 h": "24h"}
-                active = (vmap.get(v) == "8h")
-                child.config(bg=NAVY if active else LGRAY,
-                             fg=WHITE if active else DARK)
+        _make_col(0, "Poste en cours",   last_p, last_t, last_s)
+        _make_col(1, "Poste précédent",  prev_p, prev_t, prev_s)
 
     def _refresh_main_kpi(self):
         path = self.cfg.get("db_path", "")
         last_dt_str = ""
-        global_trs = 0.0
+        pilot_trs   = 0.0
+        last_pilot  = ""
         if path and os.path.exists(path):
             try:
                 wb   = load_workbook(path, read_only=True, data_only=True)
@@ -1943,42 +1917,113 @@ class App:
                         for r in ws_d.iter_rows(min_row=_mr, values_only=True)
                         if any(r)]
                 wb.close()
-                if rows:
-                    last = rows[-1]
-                    d_s  = str(last[1] or "")[:10]
-                    t_s  = str(last[18] or "")[:5]
-                    if d_s and t_s:
-                        last_dt_str = f"{d_s} à {t_s}"
-                # TRS global : sum(equiv) / sum(expected) sur 12h
-                cutoff = datetime.datetime.now() - datetime.timedelta(hours=12)
-                total_equiv = 0.0
-                total_of_s  = 0.0
-                prod_ref    = self._get_prod_ref()
+                # Pilotes uniques dans l'ordre d'apparition (aujourd'hui)
+                today = datetime.date.today().strftime("%d/%m/%Y")
+                pilots_seen = []
                 for row in rows:
+                    p = str(row[3] or "").strip()
+                    d = str(row[1] or "").strip()[:10]
+                    if d == today and p and p not in pilots_seen:
+                        pilots_seen.append(p)
+                last_pilot = pilots_seen[-1] if pilots_seen else ""
+                # TRS du dernier pilote
+                prod_ref   = self._get_prod_ref()
+                tot_eq, tot_s = 0.0, 0.0
+                for row in rows:
+                    d = str(row[1] or "").strip()[:10]
+                    p = str(row[3] or "").strip()
+                    if d != today or p != last_pilot:
+                        continue
                     try:
-                        date_s = str(row[1] or "")
-                        time_s = str(row[17] or "")
-                        dt = datetime.datetime.strptime(
-                            f"{date_s} {time_s}", "%d/%m/%Y %H:%M:%S")
-                        if dt < cutoff:
-                            continue
+                        tot_eq += float(str(row[15] or 0).replace(",", "."))
+                        tot_s  += _hms_to_sec(str(row[16] or "00:00:00"))
                     except Exception:
                         pass
                     try:
-                        total_equiv += float(str(row[15] or 0).replace(",", "."))
-                        total_of_s  += _hms_to_sec(str(row[16] or "00:00:00"))
+                        d_s = str(row[1] or "")[:10]
+                        t_s = str(row[18] or "")[:5]
+                        if d_s and t_s:
+                            last_dt_str = f"{d_s} à {t_s}"
                     except Exception:
                         pass
-                if prod_ref > 0 and total_of_s > 0:
-                    expected   = prod_ref * total_of_s / 28800.0
-                    global_trs = (total_equiv / expected * 100.0) if expected > 0 else 0.0
+                if prod_ref > 0 and tot_s > 0:
+                    pilot_trs = tot_eq / (prod_ref * tot_s / 28800.0) * 100.0
+                # Charger le cache KPI pilotes (pour le panneau arrêts)
+                self._load_pilot_kpi(rows, today)
             except Exception:
                 pass
-        self._main_gauge.update_gauge(global_trs)
+        self._main_gauge.update_gauge(pilot_trs)
         calc_text = (f"TRS calculé le {last_dt_str}" if last_dt_str
                      else "TRS non calculé")
         if hasattr(self, "_trs_calc_lbl") and self._trs_calc_lbl.winfo_exists():
             self._trs_calc_lbl.config(text=calc_text)
+        if hasattr(self, "_pilot_name_lbl") and self._pilot_name_lbl.winfo_exists():
+            self._pilot_name_lbl.config(
+                text=f"Pilote : {last_pilot}" if last_pilot else "Aucune déclaration")
+
+    def _load_pilot_kpi(self, rows, today):
+        """Calcule les KPIs par pilote (dernier et précédent) pour le panneau arrêts."""
+        path = self.cfg.get("db_path", "")
+        pilots_seen = []
+        for row in rows:
+            p = str(row[3] or "").strip()
+            d = str(row[1] or "").strip()[:10]
+            if d == today and p and p not in pilots_seen:
+                pilots_seen.append(p)
+        last_pilot = pilots_seen[-1] if pilots_seen else None
+        prev_pilot = pilots_seen[-2] if len(pilots_seen) >= 2 else None
+        prod_ref   = self._get_prod_ref()
+        totals = {}
+        for p in [last_pilot, prev_pilot]:
+            if p:
+                totals[p] = {"eq": 0.0, "s": 0.0}
+        for row in rows:
+            d = str(row[1] or "").strip()[:10]
+            p = str(row[3] or "").strip()
+            if d != today or p not in totals:
+                continue
+            try:
+                totals[p]["eq"] += float(str(row[15] or 0).replace(",", "."))
+                totals[p]["s"]  += _hms_to_sec(str(row[16] or "00:00:00"))
+            except Exception:
+                pass
+        def _trs(p):
+            if not p or p not in totals:
+                return 0.0
+            eq, s = totals[p]["eq"], totals[p]["s"]
+            return (eq / (prod_ref * s / 28800.0) * 100.0
+                    if prod_ref > 0 and s > 0 else 0.0)
+        last_stops, prev_stops = {}, {}
+        if path and os.path.exists(path):
+            try:
+                wb_e = load_workbook(path, read_only=True, data_only=True)
+                if "Evenements" in wb_e.sheetnames:
+                    for row in wb_e["Evenements"].iter_rows(min_row=2, values_only=True):
+                        if not row or not row[0]:
+                            continue
+                        p = str(row[4] or "").strip()
+                        d = str(row[2] or "").strip()[:10]
+                        if d != today:
+                            continue
+                        label = str(row[0] or "")
+                        cat   = "ratt" if "rattrapage" in label.lower() else "pb"
+                        dur_s = _hms_to_sec(str(row[18] or "00:00:00"))
+                        target = (last_stops if p == last_pilot
+                                  else (prev_stops if p == prev_pilot else None))
+                        if target is None:
+                            continue
+                        if label not in target:
+                            target[label] = {"count": 0, "dur": 0.0, "cat": cat}
+                        target[label]["count"] += 1
+                        target[label]["dur"]   += dur_s
+                wb_e.close()
+            except Exception:
+                pass
+        self._pilot_kpi_data = {
+            "last_pilot": last_pilot, "prev_pilot": prev_pilot,
+            "last_trs": _trs(last_pilot), "prev_trs": _trs(prev_pilot),
+            "last_stops": last_stops,     "prev_stops": prev_stops,
+        }
 
     def _load_table(self, tree):
         path = self.cfg.get("db_path", "")
@@ -3296,7 +3341,8 @@ class App:
         ok = self._write_excel(row, v)
         if ok:
             self._delete_session()
-            self._saved_form_data = {}   # Reset formulaire
+            self._saved_form_data = {}
+            self._reset_form_next = True   # Formulaire vide au prochain OF
             self._show_main()
             _toast(self.root, "✔  Production declaree avec succes !", bg=GREEN)
         else:
@@ -3305,6 +3351,7 @@ class App:
             self._prod_active = False
             self._delete_session()
             self._saved_form_data = {}
+            self._reset_form_next = True
             self._show_main()
             # Overlay plein écran d'alerte fichier ouvert
             ov = tk.Frame(self.root, bg=WHITE)
@@ -3449,11 +3496,14 @@ class App:
             self._schedule_pending_retry()
             return
         try:
-            wb = load_workbook(path)
-            wb["Data"].append(payload["row"])
+            wb   = load_workbook(path)
+            ws_d = wb["Data"]
+            ws_d.append(payload["row"])
+            self._format_row(ws_d, ws_d.max_row)
             ws_e = self._ensure_events_sheet(wb)
             for ev_row in payload.get("events_rows", []):
                 ws_e.append(ev_row)
+                self._format_row(ws_e, ws_e.max_row)
             wb.save(path)
             wb.close()
             os.remove(PENDING_FILE)
@@ -3466,6 +3516,16 @@ class App:
         except Exception:
             self._schedule_pending_retry()
 
+    @staticmethod
+    def _format_row(ws, row_idx):
+        """Centre et encadre toutes les cellules d'une ligne Excel."""
+        thin   = Side(style="thin")
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        align  = Alignment(horizontal="center", vertical="center")
+        for cell in ws[row_idx]:
+            cell.alignment = align
+            cell.border    = border
+
     def _write_excel(self, row, v):
         path = self.cfg.get("db_path", "")
         if not path:
@@ -3473,7 +3533,9 @@ class App:
             return False
         try:
             wb = load_workbook(path)
-            wb["Data"].append(row)   # Ajout uniquement — aucune modif de mise en forme
+            ws_d = wb["Data"]
+            ws_d.append(row)
+            self._format_row(ws_d, ws_d.max_row)
             self._write_events_to_wb(wb, v)
             wb.save(path)
             wb.close()
@@ -3522,6 +3584,7 @@ class App:
                 fmt(dur),
                 ev.get("comment", ""),
             ])
+            self._format_row(ws, ws.max_row)
 
     def _write_changement_of_excel(self, start_dt, end_dt):
         path = self.cfg.get("db_path", "")
