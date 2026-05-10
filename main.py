@@ -1666,15 +1666,18 @@ class App:
             return -1
 
     def _get_prod_ref(self):
-        """Lit 'Prod de reference (8h)' ligne 1 de la colonne dans Listes."""
-        for key in self.lists:
-            if "reference" in key.lower() or "ref" in key.lower():
-                vals = self.lists[key]
-                if vals:
-                    try:
-                        return float(str(vals[0]).replace(",", "."))
-                    except Exception:
-                        pass
+        """Lit la quantite de reference 8h depuis la cellule I2 de l'onglet Listes."""
+        path = self.cfg.get("db_path", "")
+        if not path or not os.path.exists(path):
+            return 0.0
+        try:
+            wb  = load_workbook(path, read_only=True, data_only=True)
+            val = wb["Listes"]["I2"].value
+            wb.close()
+            if val is not None:
+                return float(str(val).replace(",", "."))
+        except Exception:
+            pass
         return 0.0
 
     def _refresh_main_kpi(self):
@@ -2127,6 +2130,9 @@ class App:
         right_bar = tk.Frame(hdr, bg=WHITE)
         right_bar.pack(side="right", padx=12)
         self._db_widget(right_bar, WHITE).pack(side="right", padx=4)
+        tk.Button(right_bar, text="📊", bg=WHITE, fg=GREEN,
+                  font=("Arial", 16), relief="flat", cursor="hand2",
+                  command=self._show_excel_info).pack(side="right", padx=4)
 
         # ── Barre de statut Canvas (chrono + KPI, change couleur) ────────────
         self._status_cv = tk.Canvas(outer, height=72, bg=BG, highlightthickness=0)
@@ -2137,30 +2143,27 @@ class App:
         self._make_tabs(outer, "production")
         self._make_timeline(outer)
 
-        # ── Corps ─────────────────────────────────────────────────────────────
+        # ── Corps 33/33/33 ────────────────────────────────────────────────────
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=6, pady=(4, 6))
+        body.columnconfigure(0, weight=1)
+        body.columnconfigure(1, weight=1)
+        body.columnconfigure(2, weight=1)
+        body.rowconfigure(0, weight=1)
 
-        # Zone 1 : formulaire (40%)
+        # Zone 1 : formulaire
         left = tk.Frame(body, bg=WHITE)
-        left.pack(side="left", fill="both", expand=True)
-        tk.Frame(left, bg=LGRAY, height=1).pack(fill="x")
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
         self._build_form(left)
 
-        tk.Frame(body, bg=LGRAY, width=1).pack(side="left", fill="y")
-
-        # Zone 2 : arrets actifs + boutons (35%)
-        mid = tk.Frame(body, bg=BG, width=320)
-        mid.pack(side="left", fill="both")
-        mid.pack_propagate(False)
+        # Zone 2 : arrets actifs + boutons
+        mid = tk.Frame(body, bg=BG)
+        mid.grid(row=0, column=1, sticky="nsew", padx=2)
         self._build_right_panel(mid)
 
-        tk.Frame(body, bg=LGRAY, width=1).pack(side="left", fill="y")
-
-        # Zone 3 : récap arrêts de l'OF (25%)
-        recap_panel = tk.Frame(body, bg=WHITE, width=220)
-        recap_panel.pack(side="left", fill="both")
-        recap_panel.pack_propagate(False)
+        # Zone 3 : récap arrêts de l'OF
+        recap_panel = tk.Frame(body, bg=WHITE)
+        recap_panel.grid(row=0, column=2, sticky="nsew", padx=(2, 0))
         self._recap_panel = recap_panel
         self._build_stops_recap(recap_panel)
 
@@ -2176,20 +2179,20 @@ class App:
         c.columnconfigure(2, weight=1)
         ri = [0]
 
-        LFONT = ("Arial", 7)
-        EFONT = ("Arial", 9)
+        LFONT = ("Arial", 9)
+        EFONT = ("Arial", 11, "bold")
 
         def sec(txt, color=NAVY, ncols=3):
             row = tk.Frame(c, bg=WHITE)
-            row.grid(row=ri[0], column=0, columnspan=ncols, sticky="ew", pady=(5, 1))
-            tk.Frame(row, bg=color, width=4).pack(side="left", fill="y")
+            row.grid(row=ri[0], column=0, columnspan=ncols, sticky="ew", pady=(8, 2))
+            tk.Frame(row, bg=color, width=5).pack(side="left", fill="y")
             tk.Label(row, text=f"  {txt}", bg=WHITE, fg=color,
-                     font=("Arial", 8, "bold"), pady=1).pack(side="left")
+                     font=("Arial", 10, "bold"), pady=2).pack(side="left")
             ri[0] += 1
 
         def fld(lbl_txt, key, ftype, lh=None, col=0, adv=True, suffix=None):
             cell = tk.Frame(c, bg=WHITE)
-            cell.grid(row=ri[0], column=col, sticky="ew", padx=2, pady=1)
+            cell.grid(row=ri[0], column=col, sticky="ew", padx=3, pady=3)
             cell.columnconfigure(0, weight=1)
             tk.Label(cell, text=lbl_txt, bg=WHITE, fg=GRAY,
                      font=LFONT, anchor="w").grid(row=0, column=0, columnspan=2, sticky="w")
@@ -2198,14 +2201,14 @@ class App:
             if ftype == "entry":
                 e = tk.Entry(cell, textvariable=var, bg=WHITE, fg=DARK,
                              font=EFONT, relief="solid", bd=1, insertbackground=DARK)
-                e.grid(row=1, column=0, sticky="ew", ipady=2)
+                e.grid(row=1, column=0, sticky="ew", ipady=6)
                 if suffix:
                     tk.Label(cell, text=suffix, bg=WHITE, fg=GRAY,
                              font=LFONT).grid(row=1, column=1, sticky="w", padx=(2, 0))
             else:
                 cb = ttk.Combobox(cell, textvariable=var,
                                   values=self._get_list(lh) if lh else [],
-                                  font=EFONT, state="readonly")
+                                  font=EFONT, state="readonly", height=6)
                 cb.grid(row=1, column=0, columnspan=2, sticky="ew")
             if adv:
                 ri[0] += 1
@@ -2270,6 +2273,112 @@ class App:
         self._comment_txt.pack(fill="x")
         # Restaurer les valeurs sauvegardées si disponibles
         self.root.after(50, self._restore_form_data)
+
+    # ── Popup info structure fichier Excel ───────────────────────────────────
+    def _show_excel_info(self):
+        win = tk.Toplevel(self.root)
+        win.title("Structure du fichier Excel")
+        win.geometry("680x540")
+        win.configure(bg=WHITE)
+        win.attributes("-topmost", True)
+
+        # En-tête
+        hdr = tk.Frame(win, bg=NAVY, height=52)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="📊  Structure du fichier Excel KPI-ORC",
+                 bg=NAVY, fg=WHITE, font=("Arial", 14, "bold")).pack(
+                 side="left", padx=16, pady=12)
+        tk.Button(hdr, text="✕", bg=NAVY, fg=WHITE, font=("Arial", 12, "bold"),
+                  relief="flat", cursor="hand2",
+                  command=win.destroy).pack(side="right", padx=12)
+
+        nb = ttk.Notebook(win)
+        nb.pack(fill="both", expand=True, padx=8, pady=8)
+
+        def col_letter(i):
+            letters = ""
+            i += 1
+            while i > 0:
+                i, r = divmod(i - 1, 26)
+                letters = chr(65 + r) + letters
+            return letters
+
+        def make_tab(label, headers, extra_rows=None):
+            frame = tk.Frame(nb, bg=WHITE)
+            nb.add(frame, text=f"  {label}  ")
+            cv = tk.Canvas(frame, bg=WHITE, highlightthickness=0)
+            sb = ttk.Scrollbar(frame, orient="vertical", command=cv.yview)
+            cv.configure(yscrollcommand=sb.set)
+            sb.pack(side="right", fill="y")
+            cv.pack(side="left", fill="both", expand=True)
+            inner = tk.Frame(cv, bg=WHITE)
+            cv.create_window((0, 0), window=inner, anchor="nw")
+            inner.bind("<Configure>", lambda e: cv.configure(
+                scrollregion=cv.bbox("all")))
+
+            # En-tête colonnes
+            tk.Label(inner, text="Col", bg=LGRAY, fg=NAVY,
+                     font=("Arial", 9, "bold"), width=5,
+                     relief="flat", padx=4, pady=4).grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
+            tk.Label(inner, text="Nom de la colonne", bg=LGRAY, fg=NAVY,
+                     font=("Arial", 9, "bold"),
+                     relief="flat", padx=4, pady=4, anchor="w").grid(row=0, column=1, sticky="nsew", padx=1, pady=1)
+            inner.columnconfigure(1, weight=1)
+
+            rows = [(col_letter(i), h) for i, h in enumerate(headers)]
+            if extra_rows:
+                rows += extra_rows
+            for ri, (col, name) in enumerate(rows, start=1):
+                bg = WHITE if ri % 2 == 0 else BG
+                tk.Label(inner, text=col, bg=bg, fg=GRAY,
+                         font=("Arial", 9, "bold"), width=5,
+                         anchor="center", padx=4, pady=3).grid(row=ri, column=0, sticky="nsew", padx=1, pady=0)
+                tk.Label(inner, text=name, bg=bg, fg=DARK,
+                         font=("Arial", 9), anchor="w",
+                         padx=6, pady=3).grid(row=ri, column=1, sticky="nsew", padx=1, pady=0)
+            return frame
+
+        make_tab("Onglet Data", DATA_HEADERS)
+        make_tab("Onglet Evenements", EVT_HEADERS)
+
+        listes_info = [
+            ("A", "Pilotes  (liste déroulante)"),
+            ("B", "Co-pilotes  (liste déroulante)"),
+            ("C", "Postes  (liste déroulante)"),
+            ("D", "Taille produit  (liste déroulante)"),
+            ("E", "Type produit  (liste déroulante)"),
+            ("F", "Fibre  (liste déroulante)"),
+            ("G", "Nb personnes  (liste déroulante)"),
+            ("H", "Equivalence coef  (coef par type produit)"),
+            ("I2", "Référence production 8h  ← valeur lue pour le TRS"),
+        ]
+        frame = tk.Frame(nb, bg=WHITE)
+        nb.add(frame, text="  Onglet Listes  ")
+        cv = tk.Canvas(frame, bg=WHITE, highlightthickness=0)
+        sb = ttk.Scrollbar(frame, orient="vertical", command=cv.yview)
+        cv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        cv.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(cv, bg=WHITE)
+        cv.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        inner.columnconfigure(1, weight=1)
+        tk.Label(inner, text="Cellule", bg=LGRAY, fg=NAVY,
+                 font=("Arial", 9, "bold"), width=8,
+                 relief="flat", padx=4, pady=4).grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
+        tk.Label(inner, text="Contenu", bg=LGRAY, fg=NAVY,
+                 font=("Arial", 9, "bold"),
+                 relief="flat", padx=4, pady=4, anchor="w").grid(row=0, column=1, sticky="nsew", padx=1, pady=1)
+        for ri, (col, desc) in enumerate(listes_info, start=1):
+            bg = WHITE if ri % 2 == 0 else BG
+            fg_col = GREEN if col == "I2" else GRAY
+            tk.Label(inner, text=col, bg=bg, fg=fg_col,
+                     font=("Arial", 9, "bold"), width=8,
+                     anchor="center", padx=4, pady=3).grid(row=ri, column=0, sticky="nsew", padx=1, pady=0)
+            tk.Label(inner, text=desc, bg=bg, fg=DARK,
+                     font=("Arial", 9), anchor="w",
+                     padx=6, pady=3).grid(row=ri, column=1, sticky="nsew", padx=1, pady=0)
 
     # ── Panneau droit : arrets actifs + boutons ───────────────────────────────
     def _build_right_panel(self, parent):
