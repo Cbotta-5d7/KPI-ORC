@@ -1453,6 +1453,92 @@ class App:
         """Rafraîchit juste le badge pilote dans la vue production."""
         self._show_main() if not self._prod_active else None
 
+    def _confirm_quit(self):
+        """Vérifie que tout est en ordre avant de quitter l'application."""
+        issues = []
+
+        # 1. Production active non terminée
+        if self._prod_active:
+            issues.append(("prod", "Une production est en cours et n'a pas été déclarée."))
+
+        # 2. Arrêts encore ouverts
+        running_stops = [k for k in self._timers if self._t_running(k)]
+        if running_stops:
+            labels = [next((e[0] for e in EVENTS if e[1] == k), k) for k in running_stops]
+            issues.append(("stops", f"{len(running_stops)} arrêt(s) encore en cours : {', '.join(labels)}"))
+
+        # 3. Déclaration en attente (Excel verrouillé)
+        if os.path.exists(PENDING_FILE):
+            issues.append(("pending", "Une déclaration est en attente d'écriture (Excel verrouillé)."))
+
+        # 4. Nettoyage non déclaré aujourd'hui
+        today = datetime.date.today()
+        has_nettoyage = any(
+            ev.get("key") == "nettoyage"
+            and ev.get("start") is not None
+            and ev["start"].date() == today
+            for ev in self._tl_events
+        )
+        if not has_nettoyage:
+            issues.append(("nettoyage", "Aucun arrêt nettoyage déclaré aujourd'hui."))
+
+        if not issues:
+            # Tout est OK → quitter directement
+            self.root.destroy()
+            return
+
+        # Afficher un overlay de confirmation avec la liste des problèmes
+        ov = tk.Frame(self.root, bg=WHITE)
+        ov.place(relx=0, rely=0, relwidth=1, relheight=1)
+        ov.lift()
+
+        hdr_ov = tk.Frame(ov, bg=C_RED, height=80)
+        hdr_ov.pack(fill="x")
+        hdr_ov.pack_propagate(False)
+        tk.Frame(hdr_ov, bg=DARK, width=6).pack(side="left", fill="y")
+        tk.Label(hdr_ov, text="⚠  Attention avant de quitter",
+                 bg=C_RED, fg=WHITE,
+                 font=("Arial", 20, "bold")).pack(side="left", padx=20, pady=20)
+
+        body_ov = tk.Frame(ov, bg=WHITE)
+        body_ov.pack(fill="both", expand=True, padx=60, pady=24)
+
+        tk.Label(body_ov,
+                 text="Les points suivants nécessitent votre attention :",
+                 bg=WHITE, fg=DARK, font=("Arial", 13, "bold")).pack(anchor="w", pady=(0, 16))
+
+        ICONS = {"prod": "🔴", "stops": "🟠", "pending": "🟡", "nettoyage": "🔵"}
+        for kind, msg in issues:
+            row = tk.Frame(body_ov, bg=WHITE)
+            row.pack(anchor="w", pady=4, fill="x")
+            tk.Label(row, text=ICONS.get(kind, "•"), bg=WHITE,
+                     font=("Arial", 14)).pack(side="left", padx=(0, 10))
+            tk.Label(row, text=msg, bg=WHITE, fg=DARK,
+                     font=("Arial", 12), justify="left").pack(side="left")
+
+        # Boutons
+        btn_frame = tk.Frame(body_ov, bg=WHITE)
+        btn_frame.pack(pady=(32, 0), anchor="w")
+
+        def _force_quit():
+            # Arrêter tous les timers ouverts proprement avant de quitter
+            self._t_stop_all()
+            self._tl_close_all()
+            self.root.destroy()
+
+        tk.Button(btn_frame,
+                  text="✕  Quitter quand même",
+                  command=_force_quit,
+                  bg=C_RED, fg=WHITE,
+                  font=("Arial", 13, "bold"), relief="flat",
+                  padx=20, pady=12, cursor="hand2").pack(side="left", padx=(0, 16))
+        tk.Button(btn_frame,
+                  text="↩  Retour",
+                  command=ov.destroy,
+                  bg=LGRAY, fg=DARK,
+                  font=("Arial", 13), relief="flat",
+                  padx=20, pady=12, cursor="hand2").pack(side="left")
+
     def _make_header(self, parent, title, subtitle=""):
         hdr = tk.Frame(parent, bg=NAVY, height=68)
         hdr.pack(fill="x")
@@ -1468,6 +1554,10 @@ class App:
         tk.Button(right_bar, text="📊", bg=NAVY, fg=WHITE,
                   font=("Arial", 16), relief="flat", cursor="hand2",
                   command=self._show_excel_info).pack(side="right", padx=4)
+        tk.Button(right_bar, text="⏻  Quitter", bg=C_RED, fg=WHITE,
+                  font=("Arial", 10, "bold"), relief="flat",
+                  padx=10, pady=2, cursor="hand2",
+                  command=self._confirm_quit).pack(side="right", padx=8)
         self._pilot_badge(right_bar, NAVY).pack(side="right", padx=12)
         return hdr
 
