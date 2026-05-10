@@ -2004,23 +2004,40 @@ class App:
         top.pack(fill="x", pady=(0, 8))
         top.pack_propagate(False)
 
-        # TRS gauge (gauche, taille fixe)
+        # ── Zone TRS : Poste en cours + Poste précédent ──────────────────────
         trs_wrap, trs_inner = shadow_frame(top, bg=WHITE)
         trs_wrap.pack(side="left", fill="y", padx=(0, 14))
-        tk.Label(trs_inner, text="TRS", bg=WHITE, fg=GRAY,
-                 font=("Arial", 10, "bold")).pack(pady=(10, 0), padx=16)
-        tk.Label(trs_inner, text="Taux de Rendement Synthetique",
-                 bg=WHITE, fg=LGRAY, font=("Arial", 8)).pack()
-        self._main_gauge = Gauge(trs_inner, bg=WHITE,
-                                  width=290, height=110, highlightthickness=0)
-        self._main_gauge.pack(padx=16, pady=(0, 2))
-        self._pilot_name_lbl = tk.Label(trs_inner, text="",
-                                         bg=WHITE, fg=NAVY,
-                                         font=("Arial", 10, "bold"))
-        self._pilot_name_lbl.pack(pady=(0, 2))
-        self._trs_calc_lbl = tk.Label(trs_inner, text="TRS non calculé",
-                                       bg=WHITE, fg=GRAY, font=("Arial", 9))
-        self._trs_calc_lbl.pack(pady=(0, 8))
+        trs_inner.columnconfigure(0, weight=1)
+        trs_inner.columnconfigure(1, weight=1)
+
+        # Colonne gauche : poste en cours
+        col_cur = tk.Frame(trs_inner, bg=WHITE)
+        col_cur.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=6)
+        tk.Frame(trs_inner, bg=LGRAY, width=1).grid(row=0, column=1, sticky="ns", pady=8)
+        tk.Label(col_cur, text="Poste en cours", bg=WHITE, fg=NAVY,
+                 font=("Arial", 9, "bold")).pack(pady=(6, 0))
+        self._main_gauge = Gauge(col_cur, bg=WHITE,
+                                 width=200, height=100, highlightthickness=0)
+        self._main_gauge.pack(pady=(0, 2))
+        self._pilot_name_lbl = tk.Label(col_cur, text="",
+                                        bg=WHITE, fg=DARK, font=("Arial", 9, "bold"))
+        self._pilot_name_lbl.pack()
+        self._trs_calc_lbl = tk.Label(col_cur, text="TRS non calculé",
+                                      bg=WHITE, fg=GRAY, font=("Arial", 8))
+        self._trs_calc_lbl.pack(pady=(0, 4))
+
+        # Colonne droite : poste précédent
+        col_prev = tk.Frame(trs_inner, bg=WHITE)
+        col_prev.grid(row=0, column=2, sticky="nsew", padx=(4, 8), pady=6)
+        tk.Label(col_prev, text="Poste précédent", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold")).pack(pady=(6, 0))
+        self._prev_gauge = Gauge(col_prev, bg=WHITE,
+                                 width=200, height=100, highlightthickness=0)
+        self._prev_gauge.pack(pady=(0, 2))
+        self._prev_pilot_lbl = tk.Label(col_prev, text="—",
+                                        bg=WHITE, fg=GRAY, font=("Arial", 9))
+        self._prev_pilot_lbl.pack(pady=(0, 4))
+
         self._pilot_kpi_data = {}
         self._refresh_main_kpi()
 
@@ -2366,9 +2383,28 @@ class App:
                      else "TRS non calculé")
         if hasattr(self, "_trs_calc_lbl") and self._trs_calc_lbl.winfo_exists():
             self._trs_calc_lbl.config(text=calc_text)
+        kpi = getattr(self, "_pilot_kpi_data", {})
+        cur_poste = kpi.get("last_poste", "")
         if hasattr(self, "_pilot_name_lbl") and self._pilot_name_lbl.winfo_exists():
-            self._pilot_name_lbl.config(
-                text=f"Pilote : {last_pilot}" if last_pilot else "Aucune déclaration")
+            parts = []
+            if last_pilot:
+                parts.append(f"Pilote : {last_pilot}")
+            if cur_poste:
+                parts.append(cur_poste)
+            self._pilot_name_lbl.config(text="  |  ".join(parts) if parts else "Aucune déclaration")
+        # Jauge poste précédent
+        prev_trs   = kpi.get("prev_trs",   0.0)
+        prev_pilot = kpi.get("prev_pilot", "")
+        prev_poste = kpi.get("prev_poste", "")
+        if hasattr(self, "_prev_gauge") and self._prev_gauge.winfo_exists():
+            self._prev_gauge.update_gauge(prev_trs)
+        if hasattr(self, "_prev_pilot_lbl") and self._prev_pilot_lbl.winfo_exists():
+            parts2 = []
+            if prev_pilot:
+                parts2.append(f"Pilote : {prev_pilot}")
+            if prev_poste:
+                parts2.append(prev_poste)
+            self._prev_pilot_lbl.config(text="  |  ".join(parts2) if parts2 else "—")
 
     def _load_pilot_kpi(self, rows, today):
         """Calcule les KPIs par pilote (connecté et précédent, 12 dernières heures)."""
@@ -2404,7 +2440,7 @@ class App:
                 break
 
         prod_ref = self._get_prod_ref()
-        totals   = {p: {"eq": 0.0, "s": 0.0}
+        totals   = {p: {"eq": 0.0, "s": 0.0, "poste": ""}
                     for p in [last_pilot, prev_pilot] if p}
 
         for row in rows:
@@ -2415,6 +2451,8 @@ class App:
             try:
                 totals[p]["eq"] += float(str(row[15] or 0).replace(",", "."))
                 totals[p]["s"]  += _hms_to_sec(str(row[16] or "00:00:00"))
+                if not totals[p]["poste"]:
+                    totals[p]["poste"] = str(row[2] or "").strip()
             except Exception:
                 pass
 
@@ -2460,6 +2498,10 @@ class App:
             "last_pilot": last_pilot, "prev_pilot": prev_pilot,
             "last_trs": _trs(last_pilot), "prev_trs": _trs(prev_pilot),
             "last_stops": last_stops,     "prev_stops": prev_stops,
+            "last_eq":    totals.get(last_pilot, {}).get("eq",    0.0),
+            "last_s":     totals.get(last_pilot, {}).get("s",     0.0),
+            "last_poste": totals.get(last_pilot, {}).get("poste", ""),
+            "prev_poste": totals.get(prev_pilot, {}).get("poste", "") if prev_pilot else "",
         }
 
     def _load_table(self, tree):
@@ -2476,11 +2518,12 @@ class App:
         except Exception:
             return
 
-        # Conserver (excel_row, data)
+        # Conserver (excel_row, data) — 50 dernières lignes uniquement
         indexed = []
         for i, r in enumerate(rows_raw, start=min_r):
             if any(r):
                 indexed.append((i, list(r) + [None] * 55))
+        indexed = indexed[-50:]  # 50 dernières déclarations
 
         def _sd(row, idx):
             t = 0
@@ -3771,8 +3814,15 @@ class App:
             expected = prod_ref * of_s / 28800.0
             trs_pct  = (equiv / expected * 100.0) if expected > 0 else -1.0
 
-        # TRS du poste (12h) — depuis _pilot_kpi_data
-        pilot_trs_12h = self._pilot_kpi_data.get("last_trs", -1.0) if hasattr(self, "_pilot_kpi_data") else -1.0
+        # TRS du poste (12h) = historique Excel + déclaration actuelle
+        kpi = getattr(self, "_pilot_kpi_data", {})
+        hist_eq = kpi.get("last_eq", 0.0)
+        hist_s  = kpi.get("last_s",  0.0)
+        total_eq = hist_eq + equiv
+        total_s  = hist_s  + of_s
+        pilot_trs_12h = -1.0
+        if prod_ref > 0 and total_s > 0:
+            pilot_trs_12h = total_eq / (prod_ref * total_s / 28800.0) * 100.0
 
         def _ts(key):
             return fmt(self._t_get(key))
