@@ -23,7 +23,7 @@ GRAY    = "#64748b"
 LGRAY   = "#dde4ef"
 DARK    = "#0f172a"
 
-TIMELINE_WINDOW = 10  # minutes  ← mettre 480 pour 8h
+TIMELINE_WINDOW = 480  # minutes (8h)
 
 EVENTS = [
     ("Pochon / Fibre",       "ratt_pochon",      "ratt"),
@@ -656,6 +656,7 @@ class App:
         self._stop_timer_lbls = {}
         self._active_stops_container = None
         self._main_prod_panel = None
+        self._saved_form_data = {}   # Mémoire formulaire entre onglets
 
         self._load_lists()
         self._load_history_from_excel()
@@ -1219,6 +1220,7 @@ class App:
     #  ECRAN PRINCIPAL
     # =========================================================================
     def _show_main(self):
+        self._save_form_data()
         self._cells = []
         self._clear()
         self._db_labels.clear()
@@ -1362,6 +1364,45 @@ class App:
         tree.bind("<Button-1>", self._on_tree_click)
 
         self._after_id = self.root.after(1000, self._tick)
+
+    def _save_form_data(self):
+        """Sauvegarde les valeurs du formulaire de production avant de quitter la vue."""
+        if hasattr(self, "fv") and self.fv:
+            self._saved_form_data = {k: v.get() for k, v in self.fv.items()}
+        if hasattr(self, "_comment_txt") and self._comment_txt:
+            try:
+                self._saved_form_data["_comment"] = self._comment_txt.get("1.0", "end").strip()
+            except Exception:
+                pass
+        if hasattr(self, "_v_kit") and self._v_kit:
+            try:
+                self._saved_form_data["_kit"] = self._v_kit.get()
+            except Exception:
+                pass
+
+    def _restore_form_data(self):
+        """Restaure les valeurs du formulaire après retour en production."""
+        if not self._saved_form_data:
+            return
+        for k, v in self._saved_form_data.items():
+            if k.startswith("_"):
+                continue
+            if k in self.fv:
+                try:
+                    self.fv[k].set(v)
+                except Exception:
+                    pass
+        if "_comment" in self._saved_form_data and self._comment_txt:
+            try:
+                self._comment_txt.delete("1.0", "end")
+                self._comment_txt.insert("1.0", self._saved_form_data["_comment"])
+            except Exception:
+                pass
+        if "_kit" in self._saved_form_data and self._v_kit:
+            try:
+                self._v_kit.set(self._saved_form_data["_kit"])
+            except Exception:
+                pass
 
     def _nav_to_production(self):
         self._clear()
@@ -1529,6 +1570,7 @@ class App:
             wb.save(path)
             wb.close()
             self._refresh_table()
+            self._refresh_main_kpi()
             messagebox.showinfo("Supprime", "Declaration supprimee.")
         except Exception as e:
             messagebox.showerror("Erreur", f"Suppression impossible:\n{e}")
@@ -1706,6 +1748,7 @@ class App:
                 messagebox.showinfo("Succes", "Modifications sauvegardees !", parent=top)
                 top.destroy()
                 self._refresh_table()
+                self._refresh_main_kpi()
             except Exception as e:
                 messagebox.showerror("Erreur", f"Sauvegarde impossible:\n{e}", parent=top)
 
@@ -1877,34 +1920,25 @@ class App:
 
         self._after_id = self.root.after(1000, self._tick)
 
-    # ── Formulaire avec scroll (s'adapte a toute taille d'ecran) ─────────────
+    # ── Formulaire compact 3 colonnes (pas de scroll) ────────────────────────
     def _build_form(self, parent):
         self.fv = {}
-
-        # Canvas scrollable
-        canv = tk.Canvas(parent, bg=WHITE, highlightthickness=0)
-        sb   = ttk.Scrollbar(parent, orient="vertical", command=canv.yview)
-        canv.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        canv.pack(side="left", fill="both", expand=True)
-        c = tk.Frame(canv, bg=WHITE)
-        win_id = canv.create_window((0, 0), window=c, anchor="nw")
-        c.bind("<Configure>", lambda e: canv.configure(scrollregion=canv.bbox("all")))
-        canv.bind("<Configure>", lambda e: canv.itemconfig(win_id, width=e.width))
-        canv.bind("<MouseWheel>", lambda e: canv.yview_scroll(-1*(e.delta//120), "units"))
-
+        c = tk.Frame(parent, bg=WHITE)
+        c.pack(fill="both", expand=True, padx=4, pady=2)
         c.columnconfigure(0, weight=1)
         c.columnconfigure(1, weight=1)
+        c.columnconfigure(2, weight=1)
         ri = [0]
 
-        def sec(txt, color=NAVY):
+        LFONT = ("Arial", 7)
+        EFONT = ("Arial", 9)
+
+        def sec(txt, color=NAVY, ncols=3):
             row = tk.Frame(c, bg=WHITE)
-            row.grid(row=ri[0], column=0, columnspan=2, sticky="ew", pady=(8, 2))
+            row.grid(row=ri[0], column=0, columnspan=ncols, sticky="ew", pady=(5, 1))
             tk.Frame(row, bg=color, width=4).pack(side="left", fill="y")
             tk.Label(row, text=f"  {txt}", bg=WHITE, fg=color,
-                     font=("Arial", 9, "bold"), pady=2).pack(side="left")
-            tk.Frame(c, bg=LGRAY, height=1).grid(
-                row=ri[0], column=0, columnspan=2, sticky="ew")
+                     font=("Arial", 8, "bold"), pady=1).pack(side="left")
             ri[0] += 1
 
         def fld(lbl_txt, key, ftype, lh=None, col=0, adv=True, suffix=None):
@@ -1912,74 +1946,84 @@ class App:
             cell.grid(row=ri[0], column=col, sticky="ew", padx=2, pady=1)
             cell.columnconfigure(0, weight=1)
             tk.Label(cell, text=lbl_txt, bg=WHITE, fg=GRAY,
-                     font=("Arial", 8), anchor="w").grid(row=0, column=0, columnspan=2, sticky="w")
+                     font=LFONT, anchor="w").grid(row=0, column=0, columnspan=2, sticky="w")
             var = tk.StringVar()
             self.fv[key] = var
             if ftype == "entry":
                 e = tk.Entry(cell, textvariable=var, bg=WHITE, fg=DARK,
-                             font=("Arial", 10), relief="solid", bd=1,
-                             insertbackground=DARK)
-                e.grid(row=1, column=0, sticky="ew", ipady=3)
+                             font=EFONT, relief="solid", bd=1, insertbackground=DARK)
+                e.grid(row=1, column=0, sticky="ew", ipady=2)
                 if suffix:
                     tk.Label(cell, text=suffix, bg=WHITE, fg=GRAY,
-                             font=("Arial", 9)).grid(row=1, column=1, sticky="w", padx=(2, 0))
+                             font=LFONT).grid(row=1, column=1, sticky="w", padx=(2, 0))
             else:
                 cb = ttk.Combobox(cell, textvariable=var,
                                   values=self._get_list(lh) if lh else [],
-                                  font=("Arial", 10), state="readonly")
+                                  font=EFONT, state="readonly")
                 cb.grid(row=1, column=0, columnspan=2, sticky="ew")
             if adv:
                 ri[0] += 1
 
-        def row2(l1, k1, t1, h1, l2, k2, t2, h2, sfx1=None, sfx2=None):
-            fld(l1, k1, t1, h1, col=0, adv=False, suffix=sfx1)
-            fld(l2, k2, t2, h2, col=1, adv=True,  suffix=sfx2)
+        def row3(l1, k1, t1, h1, l2, k2, t2, h2, l3, k3, t3, h3,
+                 s1=None, s2=None, s3=None):
+            fld(l1, k1, t1, h1, col=0, adv=False, suffix=s1)
+            fld(l2, k2, t2, h2, col=1, adv=False, suffix=s2)
+            fld(l3, k3, t3, h3, col=2, adv=True,  suffix=s3)
 
+        def row2(l1, k1, t1, h1, l2, k2, t2, h2, s1=None, s2=None):
+            fld(l1, k1, t1, h1, col=0, adv=False, suffix=s1)
+            fld(l2, k2, t2, h2, col=1, adv=True,  suffix=s2)
+
+        # ── Identification (3 colonnes) ──
         sec("Identification", NAVY)
-        row2("N° OF *",        "of_num",    "entry", None,
-             "Poste *",        "poste",     "combo", "Postes")
-        row2("Pilote *",       "pilote",    "combo", "Pilotes",
-             "Co-Pilote",      "copilote",  "combo", "Co-Pilotes")
-        fld("Nb personnes",    "nb_pers",   "combo", "Nombre operateur", col=0)
+        row3("N° OF *",    "of_num",  "entry", None,
+             "Poste *",    "poste",   "combo", "Postes",
+             "Pilote *",   "pilote",  "combo", "Pilotes")
+        row3("Co-Pilote",  "copilote","combo", "Co-Pilote",
+             "Nb personnes","nb_pers","combo", "Nb personne",
+             "Fibre",      "fibre",   "combo", "Fibre")
 
+        # ── Produit ──
         sec("Produit", NAVY_L)
-        # Case a cocher KIT
+        # KIT checkbox sur une ligne
         self._v_kit = tk.BooleanVar()
         kit_f = tk.Frame(c, bg=WHITE)
-        kit_f.grid(row=ri[0], column=0, columnspan=2, sticky="w", padx=4, pady=2)
+        kit_f.grid(row=ri[0], column=0, columnspan=3, sticky="w", padx=4, pady=1)
         ri[0] += 1
         tk.Checkbutton(kit_f, text="Kit de 2 pièces", variable=self._v_kit,
-                       bg=WHITE, fg=DARK, font=("Arial", 10),
+                       bg=WHITE, fg=DARK, font=EFONT,
                        activebackground=WHITE, selectcolor=WHITE).pack(side="left")
 
-        row2("Taille",          "taille",    "combo", "Taille produit",
-             "Type produit",    "type_prod", "combo", "Type produit")
-        row2("Code produit *",  "code_prod", "entry", None,
-             "Poids garnissage","poids",     "entry", None, sfx2="gr")
-        fld("Fibre",            "fibre",     "combo", "Fibre", col=0)
+        row3("Taille",         "taille",    "combo", "Taille produit",
+             "Type produit",   "type_prod", "combo", "Type produit",
+             "Code produit *", "code_prod", "entry", None)
+        row2("Poids garnissage","poids",    "entry", None,
+             "Qte fabriquée *","qte_fab",   "entry", None,
+             s1="gr")
 
-        sec("Quantités", GREEN)
-        row2("Qte fabriquée *", "qte_fab",   "entry", None,
-             "Qte emballée",    "qte_emb",   "entry", None)
+        # ── Quantités / Qualité ──
+        sec("Quantités & Qualité", GREEN)
+        row3("Qte emballée",    "qte_emb",    "entry", None,
+             "OF taie",         "of_taie",    "entry", None,
+             "Traca fibre",     "traca",      "entry", None)
+        row3("Ref. taie",       "ref_taie",   "entry", None,
+             "Nb déf. couture", "nb_def_cout","entry", None,
+             "Mq. taie",        "mq_taie",    "entry", None)
+        row3("Mq. housse (nb)", "mq_housse",  "entry", None,
+             "Mq. encart (nb)", "mq_encart",  "entry", None,
+             "Nb taie 2nd",     "nb_taie2",   "entry", None)
 
-        sec("Taie / Qualité", GRAY)
-        row2("OF taie",         "of_taie",   "entry", None,
-             "Traca fibre",     "traca",     "entry", None)
-        row2("Ref. taie",       "ref_taie",  "entry", None,
-             "Nb taie 2nd",     "nb_taie2",  "entry", None)
-        row2("Nb déf. couture", "nb_def_cout","entry", None,
-             "Mq. taie",        "mq_taie",   "entry", None)
-        row2("Mq. housse/encart (nb)", "mq_housse", "entry", None,
-             "Mq. encart (nb)", "mq_encart", "entry", None)
-
+        # ── Commentaire ──
         sec("Commentaire", GRAY)
         txt_f = tk.Frame(c, bg=WHITE)
-        txt_f.grid(row=ri[0], column=0, columnspan=2, sticky="ew", padx=2, pady=2)
+        txt_f.grid(row=ri[0], column=0, columnspan=3, sticky="ew", padx=2, pady=2)
         ri[0] += 1
-        self._comment_txt = tk.Text(txt_f, height=3, bg=WHITE, fg=DARK,
-                                     font=("Arial", 10), relief="solid", bd=1,
+        self._comment_txt = tk.Text(txt_f, height=2, bg=WHITE, fg=DARK,
+                                     font=EFONT, relief="solid", bd=1,
                                      wrap="word", insertbackground=DARK)
         self._comment_txt.pack(fill="x")
+        # Restaurer les valeurs sauvegardées si disponibles
+        self.root.after(50, self._restore_form_data)
 
     # ── Panneau droit : arrets actifs + boutons ───────────────────────────────
     def _build_right_panel(self, parent):
@@ -2155,20 +2199,31 @@ class App:
             self._make_selector_btn(pb_g, lbl, key, cat, i // ncols_p, i % ncols_p, _close)
 
     def _make_selector_btn(self, parent, label, key, cat, row, col, close_fn):
-        running  = self._t_running(key)
-        elapsed  = self._t_get(key)
-        color    = C_RATT if cat == "ratt" else C_RED
-        # Theme clair : fond blanc, bouton coloré si en cours
-        bg_outer = _off(color, +50) if running else LGRAY
-        bg_face  = color             if running else WHITE
-        fg_txt   = WHITE             if running else DARK
+        running = self._t_running(key)
+        elapsed = self._t_get(key)
+        color   = C_RATT if cat == "ratt" else C_RED
+        face    = color if running else NAVY_L
 
-        outer = tk.Frame(parent, bg=bg_outer, padx=2, pady=2)
-        outer.grid(row=row, column=col, sticky="nsew", padx=3, pady=3)
-        inner = tk.Frame(outer, bg=bg_face)
-        inner.pack(fill="both", expand=True)
+        cv = tk.Canvas(parent, highlightthickness=0, bg=WHITE, cursor="hand2")
+        cv.grid(row=row, column=col, sticky="nsew", padx=3, pady=3)
 
-        txt = label + (f"\n{fmt(elapsed)}" if running else "")
+        def _draw(e=None):
+            cv.delete("all")
+            bw, bh = cv.winfo_width(), cv.winfo_height()
+            if bw < 10 or bh < 10:
+                return
+            shad = _off(face, -50)
+            _rrect(cv, 3, 4, bw-1, bh, 10, fill=shad)
+            _rrect(cv, 0, 0, bw-4, bh-4, 10, fill=face)
+            _rrect(cv, 1, 1, bw-5, bh//3, 10, fill=_off(face, +40))
+            lines = [label]
+            if running:
+                lines.append(fmt(elapsed))
+                lines.append("● EN COURS")
+            txt = "\n".join(lines)
+            cv.create_text(bw//2-2, bh//2-2, text=txt,
+                           fill=WHITE, font=("Arial", 9, "bold"),
+                           justify="center", width=bw-12)
 
         def _action(k=key, c=cat):
             if self._t_running(k):
@@ -2179,14 +2234,8 @@ class App:
                 self._tl_open(k, c)
                 close_fn()
 
-        tk.Button(inner, text=txt, bg=bg_face, fg=fg_txt,
-                  font=("Arial", 10, "bold"), relief="flat",
-                  command=_action, cursor="hand2",
-                  wraplength=130, pady=14, padx=6).pack(fill="both", expand=True)
-
-        if running:
-            tk.Label(inner, text="● EN COURS", bg=bg_face, fg=WHITE,
-                     font=("Arial", 8, "bold")).pack(pady=(0, 4))
+        cv.bind("<Configure>", _draw)
+        cv.bind("<Button-1>",  lambda e: _action())
 
     # ── Popup description d'arret ─────────────────────────────────────────────
     def _ask_stop_description(self, key):
@@ -2362,7 +2411,7 @@ class App:
         recap.configure(bg=WHITE)
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
-        pw, ph = min(520, sw - 60), 420
+        pw, ph = min(680, sw - 60), 440
         recap.geometry(f"{pw}x{ph}+{(sw-pw)//2}+{(sh-ph)//2}")
 
         # Header
@@ -2373,27 +2422,41 @@ class App:
                  bg=NAVY, fg=WHITE, font=("Arial", 15, "bold")).pack(
                  side="left", padx=20, pady=14)
 
+        # Corps en 2 colonnes : infos à gauche, jauge TRS à droite
         body_r = tk.Frame(recap, bg=WHITE)
-        body_r.pack(fill="both", expand=True, padx=24, pady=12)
+        body_r.pack(fill="both", expand=True, padx=16, pady=8)
+        left_r = tk.Frame(body_r, bg=WHITE)
+        left_r.pack(side="left", fill="both", expand=True)
+        right_r = tk.Frame(body_r, bg=WHITE, width=200)
+        right_r.pack(side="right", fill="y")
+        right_r.pack_propagate(False)
 
         def _row_info(lbl, val, color=DARK, bold=False):
-            f = tk.Frame(body_r, bg=WHITE)
-            f.pack(fill="x", pady=1)
+            f = tk.Frame(left_r, bg=WHITE)
+            f.pack(fill="x", pady=2)
             tk.Label(f, text=lbl, bg=WHITE, fg=GRAY,
                      font=("Arial", 10), width=22, anchor="w").pack(side="left")
             tk.Label(f, text=str(val), bg=WHITE, fg=color,
                      font=("Arial", 10, "bold" if bold else "normal")).pack(side="left")
 
-        trs_col = GREEN if trs_pct >= 75 else C_RATT if trs_pct >= 55 else C_RED
-        _row_info("N° OF",             v.get("of_num","—"))
-        _row_info("Quantité fabriquée",f"{qte_fab}")
-        _row_info("Equivalence",        f"{equiv:.2f}")
-        _row_info("Durée production",   fmt(of_s))
-        _row_info("Durée arrêts",        fmt(stop_s))
-        if trs_pct >= 0:
-            _row_info("TRS de cet OF",  f"{trs_pct:.1f}%", trs_col, bold=True)
+        _row_info("N° OF",              v.get("of_num","—"))
+        _row_info("Quantité fabriquée", f"{qte_fab}")
+        _row_info("Equivalence",         f"{equiv:.2f}")
+        _row_info("Durée production",    fmt(of_s))
+        _row_info("Durée arrêts",         fmt(stop_s))
 
-        tk.Frame(body_r, bg=LGRAY, height=1).pack(fill="x", pady=8)
+        # Jauge TRS graphique
+        trs_col = GREEN if trs_pct >= 75 else C_RATT if trs_pct >= 55 else C_RED
+        tk.Label(right_r, text="TRS cet OF", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold")).pack(pady=(12, 0))
+        gauge_r = Gauge(right_r, bg=WHITE, width=180, height=120,
+                        highlightthickness=0)
+        gauge_r.pack(padx=8)
+        trs_disp = max(0.0, trs_pct) if trs_pct >= 0 else 0.0
+        trs_time  = f"{trs_disp:.1f}%" if trs_pct >= 0 else "—"
+        gauge_r.update_gauge(trs_disp, trs_time)
+
+        tk.Frame(left_r, bg=LGRAY, height=1).pack(fill="x", pady=8)
 
         btn_row_r = tk.Frame(recap, bg=WHITE)
         btn_row_r.pack(fill="x", padx=24, pady=(0, 18))
@@ -2568,11 +2631,17 @@ class App:
             wb  = load_workbook(path)
             ws  = self._ensure_events_sheet(wb)
             dur = (end_dt - start_dt).total_seconds()
+            # Même structure que _write_events_to_wb (EVT_HEADERS)
+            # "Evenement","OF","Date","Poste","Pilote","Co-Pilote","Nb Personnes",
+            # "Taille","Type Produit","Code Produit","Fibre","Poids Garnissage",
+            # "OF Taie","Traca Fibre","Ref Taie","Kit",
+            # "Heure Debut","Heure Fin","Duree","Commentaire"
             ws.append([
-                "Changement d'OF", "", "", "", "", "", "", "", "", "",
+                "Changement d'OF",
+                "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
                 start_dt.strftime("%H:%M:%S"),
                 end_dt.strftime("%H:%M:%S"),
-                fmt(dur),
+                fmt(dur), "",
             ])
             wb.save(path)
             wb.close()
