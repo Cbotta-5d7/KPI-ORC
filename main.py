@@ -2574,16 +2574,23 @@ class App:
         of_lbl = str(row_data[0] or "?")
         top = tk.Toplevel(self.root)
         top.title(f"Modifier OF {of_lbl}")
-        top.geometry("960x680")
         top.grab_set()
         top.resizable(True, True)
         top.update_idletasks()
-        x = self.root.winfo_x() + max(0, (self.root.winfo_width()  - 960) // 2)
-        y = self.root.winfo_y() + max(0, (self.root.winfo_height() - 680) // 2)
-        top.geometry(f"960x680+{x}+{y}")
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        pw, ph = min(960, sw - 40), min(800, sh - 80)
+        x = self.root.winfo_x() + max(0, (self.root.winfo_width()  - pw) // 2)
+        y = self.root.winfo_y() + max(0, (self.root.winfo_height() - ph) // 2)
+        top.geometry(f"{pw}x{ph}+{x}+{y}")
+        top.minsize(760, 500)
+
+        # Boutons toujours visibles en bas (créés AVANT le notebook)
+        btm = tk.Frame(top, bg=BG)
+        btm.pack(side="bottom", fill="x", padx=10, pady=8)
 
         nb = ttk.Notebook(top)
-        nb.pack(fill="both", expand=True, padx=8, pady=8)
+        nb.pack(fill="both", expand=True, padx=8, pady=(8, 0))
 
         # ── Tab 1 : Donnees OF ────────────────────────────────────────────────
         tab1 = tk.Frame(nb, bg=WHITE)
@@ -2682,8 +2689,6 @@ class App:
                       width=14).pack(pady=5)
 
         # ── Barre de sauvegarde ───────────────────────────────────────────────
-        btm = tk.Frame(top, bg=BG)
-        btm.pack(fill="x", padx=10, pady=(0, 8))
 
         def _save():
             path2 = self.cfg.get("db_path", "")
