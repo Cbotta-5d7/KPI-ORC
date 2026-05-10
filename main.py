@@ -784,16 +784,16 @@ class App:
             pass
 
     def _select_db(self):
-        # Demande le mot de passe DB
+        # ── Étape 1 : mot de passe ─────────────────────────────────────────────
         top = tk.Toplevel(self.root)
         top.title("Acces base de donnees")
-        top.geometry("320x160")
+        top.geometry("320x180")
         top.resizable(False, False)
         top.grab_set()
         top.update_idletasks()
         x = self.root.winfo_x() + (self.root.winfo_width()  - 320) // 2
-        y = self.root.winfo_y() + (self.root.winfo_height() - 160) // 2
-        top.geometry(f"320x160+{x}+{y}")
+        y = self.root.winfo_y() + (self.root.winfo_height() - 180) // 2
+        top.geometry(f"320x180+{x}+{y}")
         allowed = tk.BooleanVar(value=False)
         tk.Label(top, text="Mot de passe base de donnees",
                  font=("Arial", 10, "bold"), fg=DARK).pack(pady=(18, 4))
@@ -820,23 +820,84 @@ class App:
         top.wait_window()
         if not allowed.get():
             return
+
+        # ── Étape 2 : sélection du fichier ─────────────────────────────────────
         p = filedialog.askopenfilename(
             title="Selectionner la Base de Donnees",
             filetypes=[("Excel", "*.xlsx *.xlsm"), ("Tous", "*.*")])
-        if p:
-            self.cfg["db_path"] = p
+        if not p:
+            return
+
+        self.cfg["db_path"] = p
+        save_cfg(self.cfg)
+        self._prod_ref_cached = 0.0
+        self._load_lists()   # tente auto-détection I2
+        self._ensure_excel_headers(p)
+        self._load_history_from_excel()
+        name = os.path.basename(p)
+        for lbl in self._db_labels:
+            try:
+                lbl.config(text=f"DB: {name}")
+            except Exception:
+                pass
+
+        # ── Étape 3 : saisie / confirmation de la référence de production ──────
+        self._ask_prod_ref()
+
+    def _ask_prod_ref(self):
+        """Dialogue pour saisir/confirmer la référence production 8h (I2 Listes)."""
+        current = float(self.cfg.get("prod_ref", self._prod_ref_cached) or 0)
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Référence de production")
+        dlg.geometry("380x230")
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width()  - 380) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 230) // 2
+        dlg.geometry(f"380x230+{x}+{y}")
+        dlg.configure(bg=WHITE)
+
+        tk.Frame(dlg, bg=NAVY, height=6).pack(fill="x")
+        tk.Label(dlg, text="Référence de production (8h)",
+                 bg=WHITE, fg=NAVY, font=("Arial", 13, "bold")).pack(pady=(16, 4))
+        tk.Label(dlg,
+                 text="Nombre de pièces attendues en 8h\n"
+                      "(valeur de la cellule I2 de l'onglet Listes)",
+                 bg=WHITE, fg=GRAY, font=("Arial", 10),
+                 justify="center").pack()
+
+        rv = tk.StringVar(value=str(int(current)) if current > 0 else "")
+        err = tk.Label(dlg, text="", fg=C_RED, font=("Arial", 9), bg=WHITE)
+        err.pack()
+        e = tk.Entry(dlg, textvariable=rv, font=("Arial", 22, "bold"),
+                     width=8, justify="center", relief="solid", bd=2,
+                     fg=NAVY)
+        e.pack(pady=4)
+        e.focus()
+        e.select_range(0, "end")
+
+        def _save(ev=None):
+            try:
+                val = float(rv.get().replace(",", ".").strip())
+                if val <= 0:
+                    raise ValueError
+            except ValueError:
+                err.config(text="Entrez un nombre entier positif (ex: 850)")
+                return
+            self.cfg["prod_ref"] = val
             save_cfg(self.cfg)
-            self._prod_ref_cached = 0.0   # reset cache before reloading
-            self._load_lists()
-            self._ensure_excel_headers(p)
-            self._load_history_from_excel()
-            name = os.path.basename(p)
-            for lbl in self._db_labels:
-                try:
-                    lbl.config(text=f"DB: {name}")
-                except Exception:
-                    pass
-            messagebox.showinfo("Succes", f"Connecte :\n{name}")
+            self._prod_ref_cached = val
+            dlg.destroy()
+            messagebox.showinfo("Configuré",
+                                f"Référence production : {int(val)} pcs / 8h\n"
+                                "Le TRS sera calculé sur cette base.")
+
+        e.bind("<Return>", _save)
+        tk.Button(dlg, text="✔  Enregistrer", command=_save,
+                  bg=GREEN, fg=WHITE, font=("Arial", 12, "bold"),
+                  relief="flat", pady=8, cursor="hand2").pack(
+                  fill="x", padx=40, pady=(4, 16))
 
     def _db_widget(self, parent, bg):
         f    = tk.Frame(parent, bg=bg)
@@ -845,6 +906,12 @@ class App:
                         fg="#7a99c0", font=("Arial", 9))
         lbl.pack(side="left", padx=6)
         self._db_labels.append(lbl)
+        prod_ref_val = self.cfg.get("prod_ref", 0)
+        ref_color = GREEN if prod_ref_val and float(prod_ref_val or 0) > 0 else C_RED
+        tk.Button(f, text=f"Réf:{int(float(prod_ref_val or 0))}pcs",
+                  command=self._ask_prod_ref,
+                  bg=ref_color, fg=WHITE, font=("Arial", 9, "bold"),
+                  relief="flat", padx=6, pady=2, cursor="hand2").pack(side="left", padx=4)
         tk.Button(f, text="⚙", command=self._select_db,
                   bg=NAVY_L, fg=WHITE, font=("Arial", 14),
                   relief="flat", padx=10, pady=2, cursor="hand2").pack(side="left")
@@ -1734,26 +1801,15 @@ class App:
             return -1
 
     def _get_prod_ref(self):
-        """Retourne la référence de production 8h (cellule I2 de Listes)."""
-        if self._prod_ref_cached > 0:
-            return self._prod_ref_cached
-        path = self.cfg.get("db_path", "")
-        if not path or not os.path.exists(path):
-            return 0.0
+        """Référence de production 8h — lue depuis config.json (priorité absolue)."""
+        cfg_val = self.cfg.get("prod_ref", 0)
         try:
-            wb = load_workbook(path, read_only=True, data_only=True)
-            ws = wb["Listes"]
-            for row in ws.iter_rows(min_row=2, max_row=2, min_col=9, max_col=9,
-                                    values_only=True):
-                if row and row[0] is not None:
-                    val = float(str(row[0]).replace(",", "."))
-                    wb.close()
-                    self._prod_ref_cached = val
-                    return val
-            wb.close()
-        except Exception:
+            v = float(cfg_val)
+            if v > 0:
+                return v
+        except (TypeError, ValueError):
             pass
-        return 0.0
+        return self._prod_ref_cached   # fallback cache I2
 
     def _refresh_main_kpi(self):
         path = self.cfg.get("db_path", "")
