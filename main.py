@@ -1667,9 +1667,9 @@ class App:
 
         # Onglet Production
         is_prod_tab = (active == "production")
-        fg_prod  = NAVY if is_prod_tab else (GRAY if self._prod_active else LGRAY)
-        tab_bg_p = WHITE if is_prod_tab else "#dce4f0"
-        accent_p = C_RED if is_prod_tab else tab_bg_p
+        fg_prod  = NAVY if is_prod_tab else (C_RED if self._prod_active else LGRAY)
+        tab_bg_p = WHITE if is_prod_tab else ("#fff0f0" if self._prod_active else "#dce4f0")
+        accent_p = C_RED if (is_prod_tab or self._prod_active) else tab_bg_p
         prod_f = tk.Frame(bar, bg=tab_bg_p,
                           relief="raised" if is_prod_tab else "groove", bd=1)
         prod_f.pack(side="left", padx=(0, 2), pady=(3, 0))
@@ -2648,12 +2648,44 @@ class App:
         def _refresh_evt():
             for item in evt_tree.get_children():
                 evt_tree.delete(item)
+            # Reset stop columns in field_vars then recompute from evt_data
+            _EVT_KEY_TO_COL = {
+                "ratt_pochon": 26, "ratt_couture": 27, "ratt_emb": 28,
+                "ratt_presse_soud": 29, "ratt_presse_zip": 30,
+                "pb_chargeuse": 31, "pb_carde": 32, "pb_etaleur": 33,
+                "pb_coupe": 34, "pb_tapis1": 35, "pb_enrouleur": 36,
+                "pb_pesee": 37, "pb_deviation": 38, "pb_enfileur": 39,
+                "pb_kinna": 40, "pb_tapeuse": 41, "pb_table_rot": 42,
+                "pb_h100": 43, "pb_traversin": 44, "pb_presse_orc": 45,
+                "pb_presse_zip2": 46, "pb_cercleuse": 47, "pb_enrouleuse": 48,
+            }
+            for col_idx in _EVT_KEY_TO_COL.values():
+                if col_idx < len(field_vars):
+                    field_vars[col_idx].set("00:00:00")
+            cumul = {}
             for i, r in enumerate(evt_data):
-                while len(r) < 13:
+                while len(r) < 20:
                     r.append("")
+                label   = str(r[0] or "")
+                hd_str  = str(r[16] or "")
+                hf_str  = str(r[17] or "")
+                dur_str = str(r[18] or "")
                 evt_tree.insert("", "end", iid=str(i),
-                                values=(r[0] or "", r[10] or "",
-                                        r[11] or "", r[12] or ""))
+                                values=(label, hd_str, hf_str, dur_str))
+                # Accumuler durée dans la colonne Data correspondante
+                short = label.replace("Rattrapage: ", "").replace("PB Technique: ", "")
+                for ev_label, ev_key, _ in EVENTS:
+                    if ev_label.strip().lower() == short.strip().lower():
+                        col_idx = _EVT_KEY_TO_COL.get(ev_key)
+                        if col_idx is not None:
+                            try:
+                                cumul[col_idx] = cumul.get(col_idx, 0) + _hms_to_sec(dur_str)
+                            except Exception:
+                                pass
+                        break
+            for col_idx, secs in cumul.items():
+                if col_idx < len(field_vars):
+                    field_vars[col_idx].set(fmt(secs))
 
         _refresh_evt()
 
@@ -2769,8 +2801,8 @@ class App:
         lbl("Heure fin   (HH:MM:SS) :", 2)
 
         type_var = tk.StringVar(value=existing[0] if existing else "")
-        hd_var   = tk.StringVar(value=existing[10] if existing and len(existing) > 10 else "")
-        hf_var   = tk.StringVar(value=existing[11] if existing and len(existing) > 11 else "")
+        hd_var   = tk.StringVar(value=existing[16] if existing and len(existing) > 16 else "")
+        hf_var   = tk.StringVar(value=existing[17] if existing and len(existing) > 17 else "")
 
         ttk.Combobox(frm, textvariable=type_var,
                      values=ALL_EVENT_TYPES, state="readonly",
@@ -2789,20 +2821,28 @@ class App:
                               _hms_to_sec(hd_var.get())))
             except Exception:
                 dur = "00:00:00"
+            # Construire une ligne 20 colonnes alignée sur EVT_HEADERS
             new_row = [
-                type_var.get(),
-                str(row_data[0] or ""),
-                str(row_data[1] or ""),
-                str(row_data[2] or ""),
-                str(row_data[3] or ""),
-                str(row_data[4] or ""),
-                str(row_data[5] or ""),
-                str(row_data[6] or ""),
-                str(row_data[8] or ""),
-                str(row_data[7] or ""),
-                hd_var.get(),
-                hf_var.get(),
-                dur,
+                type_var.get(),          # 0  Evenement
+                str(row_data[0] or ""), # 1  OF
+                str(row_data[1] or ""), # 2  Date
+                str(row_data[2] or ""), # 3  Poste
+                str(row_data[3] or ""), # 4  Pilote
+                str(row_data[4] or ""), # 5  Co-Pilote
+                str(row_data[5] or ""), # 6  Nb Personnes
+                str(row_data[6] or ""), # 7  Taille
+                str(row_data[8] or ""), # 8  Type Produit
+                str(row_data[7] or ""), # 9  Code Produit
+                str(row_data[10] or ""),# 10 Fibre
+                str(row_data[9] or ""), # 11 Poids Garnissage
+                str(row_data[11] or ""),# 12 OF Taie
+                str(row_data[12] or ""),# 13 Traca Fibre
+                str(row_data[22] or ""),# 14 Ref Taie
+                str(row_data[21] or ""),# 15 Kit
+                hd_var.get(),           # 16 Heure Debut
+                hf_var.get(),           # 17 Heure Fin
+                dur,                    # 18 Duree
+                "",                     # 19 Commentaire
             ]
             if idx is None:
                 evt_data.append(new_row)
@@ -3814,7 +3854,7 @@ class App:
 
         _row_info("N° OF",              v.get("of_num","—"))
         _row_info("Quantité fabriquée", f"{qte_fab}")
-        _row_info("Equivalence",         f"{equiv:.2f}")
+        _row_info("Equivalence",         f"{int(round(equiv))}")
         _row_info("Durée production",    fmt(of_s))
         _row_info("Durée arrêts",         fmt(stop_s))
 
