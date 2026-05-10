@@ -968,13 +968,14 @@ class App:
             changes_serial = [self._dt_str(d) for d in self._of_changes]
 
             data = {
-                "of_start":       self._dt_str(self._of_start),
-                "last_of_end":    self._dt_str(self._last_of_end),
-                "timers":         timers_serial,
-                "tl_events":      events_serial,
-                "of_periods":     periods_serial,
-                "of_changes":     changes_serial,
-                "form_data":      self._saved_form_data,
+                "of_start":         self._dt_str(self._of_start),
+                "last_of_end":      self._dt_str(self._last_of_end),
+                "timers":           timers_serial,
+                "tl_events":        events_serial,
+                "of_periods":       periods_serial,
+                "of_changes":       changes_serial,
+                "form_data":        self._saved_form_data,
+                "logged_in_pilot":  self._logged_in_pilot,
             }
             with open(SESSION_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -1031,6 +1032,11 @@ class App:
 
             # Formulaire
             self._saved_form_data = data.get("form_data", {})
+
+            # Pilote connecté
+            pilot = data.get("logged_in_pilot")
+            if pilot:
+                self._logged_in_pilot = pilot
 
             return True
         except Exception:
@@ -1311,6 +1317,118 @@ class App:
         if not self._logged_in_pilot:
             self._show_login_overlay()
 
+    def _check_nettoyage_before_logout(self, on_confirmed):
+        """Vérifie si le pilote courant a déclaré un nettoyage aujourd'hui.
+        Si oui, appelle on_confirmed() directement.
+        Sinon, affiche un overlay d'avertissement."""
+        today = datetime.date.today()
+        has_nettoyage = any(
+            ev.get("key") == "nettoyage"
+            and ev.get("start") is not None
+            and ev["start"].date() == today
+            for ev in self._tl_events
+        )
+        if has_nettoyage:
+            on_confirmed()
+            return
+
+        # Overlay d'avertissement nettoyage non déclaré
+        ov = tk.Frame(self.root, bg=WHITE)
+        ov.place(relx=0, rely=0, relwidth=1, relheight=1)
+        ov.lift()
+
+        hdr_ov = tk.Frame(ov, bg=C_RED, height=80)
+        hdr_ov.pack(fill="x")
+        hdr_ov.pack_propagate(False)
+        tk.Frame(hdr_ov, bg=DARK, width=6).pack(side="left", fill="y")
+        tk.Label(hdr_ov, text="⚠  ATTENTION — Nettoyage non déclaré",
+                 bg=C_RED, fg=WHITE,
+                 font=("Arial", 20, "bold")).pack(side="left", padx=20, pady=20)
+
+        body_ov = tk.Frame(ov, bg=WHITE)
+        body_ov.pack(fill="both", expand=True, padx=60, pady=30)
+
+        tk.Label(body_ov,
+                 text="Vous n'avez pas encore déclaré d'arrêt nettoyage aujourd'hui.",
+                 bg=WHITE, fg=DARK, font=("Arial", 14)).pack(pady=(0, 30))
+
+        btn_row = tk.Frame(body_ov, bg=WHITE)
+        btn_row.pack()
+
+        def _ajouter_nettoyage():
+            ov.destroy()
+            # Demander la durée du nettoyage
+            dur_ov = tk.Frame(self.root, bg=WHITE)
+            dur_ov.place(relx=0, rely=0, relwidth=1, relheight=1)
+            dur_ov.lift()
+
+            dur_hdr = tk.Frame(dur_ov, bg=NAVY, height=70)
+            dur_hdr.pack(fill="x")
+            dur_hdr.pack_propagate(False)
+            tk.Frame(dur_hdr, bg=GREEN, width=6).pack(side="left", fill="y")
+            tk.Label(dur_hdr, text="Déclarer un arrêt Nettoyage",
+                     bg=NAVY, fg=WHITE,
+                     font=("Arial", 18, "bold")).pack(side="left", padx=20, pady=16)
+
+            dur_body = tk.Frame(dur_ov, bg=WHITE)
+            dur_body.pack(fill="both", expand=True, padx=80, pady=40)
+
+            tk.Label(dur_body, text="Durée du nettoyage (minutes) :",
+                     bg=WHITE, fg=DARK, font=("Arial", 14)).pack(pady=(0, 10))
+            dur_var = tk.StringVar()
+            dur_err = tk.Label(dur_body, text="", bg=WHITE, fg=C_RED, font=("Arial", 10))
+            dur_err.pack()
+            dur_entry = tk.Entry(dur_body, textvariable=dur_var,
+                                 font=("Arial", 22, "bold"), width=8,
+                                 justify="center", relief="solid", bd=2, fg=NAVY)
+            dur_entry.pack(pady=8)
+            dur_entry.focus()
+
+            def _valider_dur(ev=None):
+                try:
+                    minutes = int(dur_var.get().strip())
+                    if minutes <= 0:
+                        raise ValueError
+                except (ValueError, TypeError):
+                    dur_err.config(text="Entrez un nombre de minutes valide (entier > 0)")
+                    return
+                now_ts = datetime.datetime.now()
+                start_ts = now_ts - datetime.timedelta(minutes=minutes)
+                self._tl_events.append({
+                    "key": "nettoyage",
+                    "cat": "ratt",
+                    "start": start_ts,
+                    "end": now_ts,
+                    "comment": "Nettoyage déclaré au changement de poste",
+                })
+                self._save_session()
+                dur_ov.destroy()
+                on_confirmed()
+
+            dur_entry.bind("<Return>", _valider_dur)
+            tk.Button(dur_body, text="✔   Valider",
+                      command=_valider_dur,
+                      bg=GREEN, fg=WHITE, font=("Arial", 14, "bold"),
+                      relief="flat", pady=12, cursor="hand2").pack(
+                      fill="x", padx=80, pady=(8, 0))
+
+        def _confirmer_sans():
+            ov.destroy()
+            on_confirmed()
+
+        tk.Button(btn_row,
+                  text="✔  Ajouter un nettoyage maintenant",
+                  command=_ajouter_nettoyage,
+                  bg=GREEN, fg=WHITE,
+                  font=("Arial", 13, "bold"), relief="flat",
+                  padx=20, pady=14, cursor="hand2").pack(pady=6, fill="x")
+        tk.Button(btn_row,
+                  text="✕  Confirmer sans nettoyage",
+                  command=_confirmer_sans,
+                  bg=LGRAY, fg=DARK,
+                  font=("Arial", 13), relief="flat",
+                  padx=20, pady=12, cursor="hand2").pack(pady=6, fill="x")
+
     def _pilot_badge(self, parent, bg):
         """Encart 'Pilote connecté: XXX' avec bouton Changer."""
         dark_bg = bg in (NAVY, NAVY_L, DARK)
@@ -1326,9 +1444,8 @@ class App:
         tk.Button(f, text="⇄", bg=col, fg=WHITE,
                   font=("Arial", 10, "bold"), relief="flat",
                   padx=6, cursor="hand2",
-                  command=lambda: self._show_login_overlay(
-                      on_success=self._show_main if self._mode == "main"
-                      else lambda: None
+                  command=lambda: self._check_nettoyage_before_logout(
+                      lambda: self._show_login_overlay(on_success=self._show_main)
                   )).pack(side="left", padx=(6, 0))
         return f
 
@@ -1443,7 +1560,7 @@ class App:
         any_running = any(self._t_running(k) for k in self._timers)
 
         # ── Vue production ────────────────────────────────────────────────────
-        if self._mode == "production" and self._prod_active:
+        if self._mode == "production" and self._prod_active and self._of_start:
             of_s   = (now - self._of_start).total_seconds()
             stop_s = self._t_wall_clock_stops()
             try:
@@ -1458,7 +1575,7 @@ class App:
                     self._stop_timer_lbls.pop(key, None)
 
         # ── Vue principale ────────────────────────────────────────────────────
-        if self._mode == "main" and self._prod_active:
+        if self._mode == "main" and self._prod_active and self._of_start:
             of_s = (now - self._of_start).total_seconds()
             try:
                 if self._elapsed_lbl:
@@ -1769,13 +1886,14 @@ class App:
                      font=("Arial", 13, "bold")).pack(side="left")
 
             # Heure de debut
+            debut_str2 = self._of_start.strftime('%H:%M:%S') if self._of_start else "--:--:--"
             tk.Label(prod_inner,
-                     text=f"Début : {self._of_start.strftime('%H:%M:%S')}",
+                     text=f"Début : {debut_str2}",
                      bg=NAVY, fg="#7a99c0",
                      font=("Arial", 10)).pack(anchor="w", padx=14, pady=(0, 2))
 
             # Chrono elapsed (mis a jour par _tick)
-            of_s_now = (datetime.datetime.now() - self._of_start).total_seconds()
+            of_s_now = (datetime.datetime.now() - self._of_start).total_seconds() if self._of_start else 0.0
             self._elapsed_lbl = tk.Label(prod_inner,
                                           text=f"⏱  {fmt(of_s_now)}",
                                           bg=NAVY, fg="#4ade80",
@@ -2546,9 +2664,9 @@ class App:
                 else:
                     h = int(gap // 3600)
                     m = int((gap % 3600) // 60)
-                    s = int(gap % 60)
-                    ts = f"{h}h {m:02d}min" if h > 0 else f"{m}min {s:02d}s"
-                    result = [False]
+                    ts = f"{h}h {m:02d}min" if h > 0 else f"{m}min"
+                    # ── Overlay inter-poste 3 questions ───────────────────────
+                    result = {"same_of": None, "interposte": None}
                     OV_BG = WHITE
                     ov = tk.Frame(self.root, bg=OV_BG)
                     ov.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -2558,47 +2676,92 @@ class App:
                     hdr_ov.pack(fill="x")
                     hdr_ov.pack_propagate(False)
                     tk.Frame(hdr_ov, bg=DARK, width=6).pack(side="left", fill="y")
-                    tk.Label(hdr_ov, text="CHANGEMENT D'OF",
+                    tk.Label(hdr_ov,
+                             text=f"NOUVEAU POSTE  —  Pilote : {self._logged_in_pilot}",
                              bg=ORANGE, fg=WHITE,
-                             font=("Arial", 22, "bold")).pack(
+                             font=("Arial", 20, "bold")).pack(
                              side="left", padx=20, pady=20)
 
                     body_ov = tk.Frame(ov, bg=OV_BG)
-                    body_ov.pack(fill="both", expand=True, padx=60, pady=40)
+                    body_ov.pack(fill="both", expand=True, padx=60, pady=30)
 
                     tk.Label(body_ov,
-                             text=f"Le dernier OF a été terminé il y a  {ts}.",
-                             bg=OV_BG, fg=DARK,
-                             font=("Arial", 16)).pack(pady=(0, 12))
+                             text=f"Durée depuis fin du poste précédent :  {ts}",
+                             bg=OV_BG, fg=DARK, font=("Arial", 14)).pack(pady=(0, 24))
+
+                    # ── Question 1 ────────────────────────────────────────────
                     tk.Label(body_ov,
-                             text="Voulez-vous déclarer ce temps comme « Changement d'OF » ?",
-                             bg=OV_BG, fg=DARK, font=("Arial", 15)).pack(pady=(0, 40))
+                             text="Question 1 : Même OF que le poste précédent ?",
+                             bg=OV_BG, fg=NAVY, font=("Arial", 15, "bold")).pack(anchor="w")
 
-                    btn_row = tk.Frame(body_ov, bg=OV_BG)
-                    btn_row.pack()
+                    q2_frame = tk.Frame(body_ov, bg=OV_BG)  # hidden until Q1 answered
 
-                    def _oui():
-                        result[0] = True
+                    def _same_of():
+                        result["same_of"] = True
+                        btn_same.config(relief="sunken", bg=_off(GREEN, -30))
+                        btn_nouvel.config(state="disabled")
+                        q2_frame.pack(fill="x", pady=(16, 0))
+
+                    def _nouvel_of():
+                        result["same_of"] = False
+                        result["interposte"] = False
                         ov.destroy()
-                    def _non():
-                        result[0] = False
-                        ov.destroy()
 
-                    tk.Button(btn_row, text="✔   OUI — Déclarer comme changement d'OF",
-                              command=_oui, bg=GREEN, fg=WHITE,
-                              font=("Arial", 14, "bold"), relief="flat",
-                              padx=20, pady=14, cursor="hand2").pack(pady=6, fill="x")
-                    tk.Button(btn_row, text="✕   NON — Ignorer cet intervalle",
-                              command=_non, bg=LGRAY, fg=DARK,
+                    btn_row_q1 = tk.Frame(body_ov, bg=OV_BG)
+                    btn_row_q1.pack(fill="x", pady=(10, 0))
+                    btn_same = tk.Button(btn_row_q1,
+                              text="✔  OUI — Même OF",
+                              command=_same_of, bg=GREEN, fg=WHITE,
+                              font=("Arial", 13, "bold"), relief="flat",
+                              padx=20, pady=12, cursor="hand2")
+                    btn_same.pack(side="left", padx=(0, 12))
+                    btn_nouvel = tk.Button(btn_row_q1,
+                              text="✕  NON — Nouvel OF",
+                              command=_nouvel_of, bg=LGRAY, fg=DARK,
                               font=("Arial", 13), relief="flat",
-                              padx=20, pady=12, cursor="hand2").pack(pady=6, fill="x")
+                              padx=20, pady=12, cursor="hand2")
+                    btn_nouvel.pack(side="left")
+
+                    # ── Question 2 (affichée après Q1 = OUI) ─────────────────
+                    tk.Label(q2_frame,
+                             text=f"Question 2 : Ce temps de {ts} est-il un arrêt inter-poste ?",
+                             bg=OV_BG, fg=NAVY, font=("Arial", 15, "bold")).pack(anchor="w")
+                    btn_row_q2 = tk.Frame(q2_frame, bg=OV_BG)
+                    btn_row_q2.pack(fill="x", pady=(10, 0))
+
+                    def _oui_interposte():
+                        result["interposte"] = True
+                        ov.destroy()
+
+                    def _non_interposte():
+                        result["interposte"] = False
+                        ov.destroy()
+
+                    tk.Button(btn_row_q2,
+                              text="✔  OUI — Déclarer comme arrêt inter-poste",
+                              command=_oui_interposte, bg=GREEN, fg=WHITE,
+                              font=("Arial", 13, "bold"), relief="flat",
+                              padx=20, pady=12, cursor="hand2").pack(side="left", padx=(0, 12))
+                    tk.Button(btn_row_q2,
+                              text="✕  NON — Ignorer ce temps",
+                              command=_non_interposte, bg=LGRAY, fg=DARK,
+                              font=("Arial", 13), relief="flat",
+                              padx=20, pady=12, cursor="hand2").pack(side="left")
 
                     self.root.wait_window(ov)
-                    do_changeof = result[0]
+
+                    # Interpréter le résultat
+                    if result["same_of"] and result["interposte"]:
+                        do_changeof = True
+                    else:
+                        do_changeof = False
                 if do_changeof:
                     self._write_changement_of_excel(self._last_of_end, now)
+                    # Choisir la clé timeline : interposte si existante, sinon changeof
+                    interposte_key = next(
+                        (e[1] for e in EVENTS if e[1] == "ratt_interposte"), "changeof")
                     self._tl_events.append({
-                        "key": "_changeof", "cat": "changeof",
+                        "key": interposte_key, "cat": "ratt",
                         "start": self._last_of_end, "end": now
                     })
             # Si gap > 8h : nouveau départ, on ignore l'intervalle
@@ -2634,7 +2797,8 @@ class App:
         tk.Label(hdr, text="KPI-ORC  |  ORC1",
                  bg=WHITE, fg=NAVY, font=("Arial", 15, "bold")).pack(
                  side="left", padx=16, pady=12)
-        tk.Label(hdr, text=f"Debut : {self._of_start.strftime('%H:%M:%S')}",
+        debut_str = self._of_start.strftime('%H:%M:%S') if self._of_start else "--:--:--"
+        tk.Label(hdr, text=f"Debut : {debut_str}",
                  bg=WHITE, fg=GRAY, font=("Arial", 11)).pack(side="left")
         right_bar = tk.Frame(hdr, bg=WHITE)
         right_bar.pack(side="right", padx=12)
@@ -3341,6 +3505,9 @@ class App:
         self._t_stop_all()
         self._tl_close_all()
 
+        if not self._of_start:
+            messagebox.showerror("Erreur", "Impossible de clôturer : heure de début inconnue.")
+            return
         of_s    = (end_dt - self._of_start).total_seconds()
         stop_s  = self._t_wall_clock_stops()
         qte_fab = _n("qte_fab")
@@ -3614,7 +3781,7 @@ class App:
                 v.get("fibre", ""),
                 v.get("poids", ""),
                 v.get("of_taie", ""),  v.get("traca", ""),
-                kit_val,
+                v.get("ref_taie", ""), kit_val,
                 start.strftime("%H:%M:%S"),
                 end.strftime("%H:%M:%S"),
                 fmt(dur),
