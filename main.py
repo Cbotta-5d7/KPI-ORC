@@ -622,6 +622,7 @@ class App:
         self.root = root
         self.root.title("KPI-ORC | Ligne ORC1")
         self.root.configure(bg=BG)
+        self.root.overrideredirect(True)
         try:
             self.root.state("zoomed")
         except Exception:
@@ -902,15 +903,10 @@ class App:
                   fill="x", padx=40, pady=(4, 16))
 
     def _db_widget(self, parent, bg):
-        f    = tk.Frame(parent, bg=bg)
-        name = os.path.basename(self.cfg.get("db_path", "")) or "Non connectee"
-        lbl  = tk.Label(f, text=f"DB: {name}", bg=bg,
-                        fg="#7a99c0", font=("Arial", 9))
-        lbl.pack(side="left", padx=6)
-        self._db_labels.append(lbl)
-        tk.Button(f, text="⚙", command=self._select_db,
-                  bg=NAVY_L, fg=WHITE, font=("Arial", 14),
-                  relief="flat", padx=10, pady=2, cursor="hand2").pack(side="left")
+        f = tk.Frame(parent, bg=bg)
+        tk.Button(f, text="⚙  Base", command=self._select_db,
+                  bg=NAVY_L, fg=WHITE, font=("Arial", 10, "bold"),
+                  relief="flat", padx=12, pady=4, cursor="hand2").pack(side="left")
         return f
 
     def _get_list(self, h):
@@ -1236,14 +1232,14 @@ class App:
 
     def _show_login_overlay(self, on_success=None):
         """Overlay plein écran de connexion pilote."""
-        ov = tk.Frame(self.root, bg=NAVY)
+        ov = tk.Frame(self.root, bg=BG)
         ov.place(relx=0, rely=0, relwidth=1, relheight=1)
         ov.lift()
 
         tk.Frame(ov, bg=GREEN, height=6).pack(fill="x")
-        tk.Label(ov, text="KPI-ORC", bg=NAVY, fg=WHITE,
+        tk.Label(ov, text="KPI-ORC", bg=BG, fg=NAVY,
                  font=("Arial", 28, "bold")).pack(pady=(40, 4))
-        tk.Label(ov, text="Connexion Pilote", bg=NAVY, fg="#7a99c0",
+        tk.Label(ov, text="Connexion Pilote", bg=BG, fg=GRAY,
                  font=("Arial", 14)).pack(pady=(0, 32))
 
         card = tk.Frame(ov, bg=WHITE, bd=0)
@@ -1321,6 +1317,30 @@ class App:
         """Vérifie si le pilote courant a déclaré un nettoyage aujourd'hui.
         Si oui, appelle on_confirmed() directement.
         Sinon, affiche un overlay d'avertissement."""
+        if self._prod_active:
+            ov_p = tk.Frame(self.root, bg=WHITE)
+            ov_p.place(relx=0, rely=0, relwidth=1, relheight=1)
+            ov_p.lift()
+            hdr_p = tk.Frame(ov_p, bg=ORANGE, height=80)
+            hdr_p.pack(fill="x")
+            hdr_p.pack_propagate(False)
+            tk.Frame(hdr_p, bg=DARK, width=6).pack(side="left", fill="y")
+            tk.Label(hdr_p, text="⚠  Production en cours",
+                     bg=ORANGE, fg=WHITE,
+                     font=("Arial", 20, "bold")).pack(side="left", padx=20, pady=20)
+            body_p = tk.Frame(ov_p, bg=WHITE)
+            body_p.pack(fill="both", expand=True, padx=60, pady=40)
+            tk.Label(body_p,
+                     text="Une déclaration de production est en cours.\n"
+                          "Veuillez la clôturer avant de vous déconnecter.",
+                     bg=WHITE, fg=DARK, font=("Arial", 14),
+                     justify="center").pack(pady=(0, 30))
+            tk.Button(body_p, text="↩  Retour",
+                      command=ov_p.destroy,
+                      bg=NAVY, fg=WHITE,
+                      font=("Arial", 13, "bold"), relief="flat",
+                      padx=20, pady=12, cursor="hand2").pack()
+            return
         today = datetime.date.today()
         has_nettoyage = any(
             ev.get("key") == "nettoyage"
@@ -1561,19 +1581,26 @@ class App:
                      font=("Arial", 11)).pack(side="left", padx=4)
         right_bar = tk.Frame(hdr, bg=NAVY)
         right_bar.pack(side="right", padx=12)
-        self._db_widget(right_bar, NAVY).pack(side="right", padx=4)
-        tk.Button(right_bar, text="📊", bg=NAVY, fg=WHITE,
-                  font=("Arial", 16), relief="flat", cursor="hand2",
-                  command=self._show_excel_info).pack(side="right", padx=4)
-        tk.Button(right_bar, text="🔄  Actualiser", bg=NAVY_L, fg=WHITE,
-                  font=("Arial", 10, "bold"), relief="flat",
-                  padx=10, pady=2, cursor="hand2",
-                  command=self._refresh_all).pack(side="right", padx=4)
+        BTN = dict(font=("Arial", 10, "bold"), relief="flat", padx=12, pady=4, cursor="hand2")
+        # Quitter
         tk.Button(right_bar, text="⏻  Quitter", bg=C_RED, fg=WHITE,
-                  font=("Arial", 10, "bold"), relief="flat",
-                  padx=10, pady=2, cursor="hand2",
-                  command=self._confirm_quit).pack(side="right", padx=8)
-        self._pilot_badge(right_bar, NAVY).pack(side="right", padx=12)
+                  command=self._confirm_quit, **BTN).pack(side="right", padx=4)
+        # Actualiser
+        tk.Button(right_bar, text="🔄  Actualiser", bg=NAVY_L, fg=WHITE,
+                  command=self._refresh_all, **BTN).pack(side="right", padx=4)
+        # Base données (remplace _db_widget)
+        tk.Button(right_bar, text="⚙  Base", bg=NAVY_L, fg=WHITE,
+                  command=self._select_db, **BTN).pack(side="right", padx=4)
+        # Listes Excel
+        tk.Button(right_bar, text="⚙  Listes", bg=NAVY_L, fg=WHITE,
+                  command=self._show_excel_info, **BTN).pack(side="right", padx=4)
+        # Pilote (shows name)
+        pilot_name = self._logged_in_pilot or "Non connecté"
+        pilot_bg   = GREEN if self._logged_in_pilot else C_RED
+        tk.Button(right_bar, text=f"👤  {pilot_name}", bg=pilot_bg, fg=WHITE,
+                  command=lambda: self._check_nettoyage_before_logout(
+                      lambda: self._show_login_overlay(on_success=self._show_main)
+                  ), **BTN).pack(side="right", padx=4)
         return hdr
 
     def _make_timeline(self, parent):
@@ -1790,25 +1817,44 @@ class App:
                 cv.create_text(260, h // 2 + 8, text=f"≥ {pcs_obj} pcs",
                                font=("Arial", 13, "bold"), fill="#4ade80", anchor="w")
 
-            # Barre PROD/ARRET — plus visible
+            # Barre PROD/ARRET 3D
             if of_s > 0:
                 prod_r = max(0.0, (of_s - stop_s) / of_s)
                 pct_p  = int(prod_r * 100)
-                bx, bw2, by, bh2 = w - 320, 300, 10, h - 20
-                # Fond arrêt (orange)
-                cv.create_rectangle(bx, by, bx + bw2, by + bh2,
-                                    fill="#c2410c", outline="")
-                # Part prod (vert)
-                cv.create_rectangle(bx, by, bx + int(bw2 * prod_r), by + bh2,
-                                    fill="#16a34a", outline="")
-                # Texte PROD
-                cv.create_text(bx + 8, by + bh2 // 2,
+                bx, bw2, by, bh2 = w - 320, 300, 8, h - 16
+                # Ombre bas-droite
+                cv.create_rectangle(bx+3, by+3, bx+bw2+3, by+bh2+3,
+                                    fill="#1a0000", outline="")
+                # Fond arrêt (rouge foncé)
+                cv.create_rectangle(bx, by, bx+bw2, by+bh2,
+                                    fill="#991b1b", outline="")
+                # Part prod (vert foncé)
+                prod_w = int(bw2 * prod_r)
+                if prod_w > 0:
+                    cv.create_rectangle(bx, by, bx+prod_w, by+bh2,
+                                        fill="#166534", outline="")
+                # Reflet lumineux haut (3D)
+                ref_h = max(3, bh2 // 3)
+                if prod_w > 0:
+                    cv.create_rectangle(bx+1, by+1, bx+prod_w-1, by+ref_h,
+                                        fill="#22c55e", outline="")
+                cv.create_rectangle(bx+prod_w, by+1, bx+bw2-1, by+ref_h,
+                                    fill="#ef4444", outline="")
+                # Bord brillant gauche
+                cv.create_rectangle(bx, by, bx+2, by+bh2, fill="#4ade80", outline="")
+                # Textes
+                cv.create_text(bx+10, by+bh2//2+1,
+                               text=f"PROD {pct_p}%",
+                               font=("Arial", 12, "bold"), fill="#00000055", anchor="w")
+                cv.create_text(bx+10, by+bh2//2-1,
                                text=f"PROD {pct_p}%",
                                font=("Arial", 12, "bold"), fill=WHITE, anchor="w")
-                # Texte ARRÊT
                 if pct_p < 95:
-                    cv.create_text(bx + bw2 - 8, by + bh2 // 2,
-                                   text=f"ARRÊT {100 - pct_p}%",
+                    cv.create_text(bx+bw2-8, by+bh2//2+1,
+                                   text=f"ARRÊT {100-pct_p}%",
+                                   font=("Arial", 11, "bold"), fill="#00000055", anchor="e")
+                    cv.create_text(bx+bw2-8, by+bh2//2-1,
+                                   text=f"ARRÊT {100-pct_p}%",
                                    font=("Arial", 11, "bold"), fill=WHITE, anchor="e")
 
     def _reset_activity(self, event=None):
@@ -2907,11 +2953,26 @@ class App:
                  bg=WHITE, fg=GRAY, font=("Arial", 11)).pack(side="left")
         right_bar = tk.Frame(hdr, bg=WHITE)
         right_bar.pack(side="right", padx=12)
-        self._db_widget(right_bar, WHITE).pack(side="right", padx=4)
-        tk.Button(right_bar, text="📊", bg=WHITE, fg=GREEN,
-                  font=("Arial", 16), relief="flat", cursor="hand2",
-                  command=self._show_excel_info).pack(side="right", padx=4)
-        self._pilot_badge(right_bar, WHITE).pack(side="right", padx=12)
+        BTN_P = dict(font=("Arial", 10, "bold"), relief="flat", padx=12, pady=4, cursor="hand2")
+        # Quitter
+        tk.Button(right_bar, text="⏻  Quitter", bg=C_RED, fg=WHITE,
+                  command=self._confirm_quit, **BTN_P).pack(side="right", padx=4)
+        # Actualiser
+        tk.Button(right_bar, text="🔄  Actualiser", bg=NAVY_L, fg=WHITE,
+                  command=self._refresh_all, **BTN_P).pack(side="right", padx=4)
+        # Base données
+        tk.Button(right_bar, text="⚙  Base", bg=NAVY_L, fg=WHITE,
+                  command=self._select_db, **BTN_P).pack(side="right", padx=4)
+        # Listes
+        tk.Button(right_bar, text="⚙  Listes", bg=NAVY_L, fg=WHITE,
+                  command=self._show_excel_info, **BTN_P).pack(side="right", padx=4)
+        # Pilote
+        pilot_name_p = self._logged_in_pilot or "Non connecté"
+        pilot_bg_p   = GREEN if self._logged_in_pilot else C_RED
+        tk.Button(right_bar, text=f"👤  {pilot_name_p}", bg=pilot_bg_p, fg=WHITE,
+                  command=lambda: self._check_nettoyage_before_logout(
+                      lambda: self._show_login_overlay(on_success=self._show_main)
+                  ), **BTN_P).pack(side="right", padx=4)
 
         # ── Barre de statut Canvas (chrono + KPI, change couleur) ────────────
         self._status_cv = tk.Canvas(outer, height=72, bg=BG, highlightthickness=0)
@@ -3065,6 +3126,23 @@ class App:
         self._comment_txt.pack(fill="x")
         # Restaurer les valeurs sauvegardées si disponibles
         self.root.after(50, self._restore_form_data)
+        # Actualiser le compteur pièces quand taille/type_prod change
+        def _on_prod_type_change(*_):
+            if self._prod_active and self._status_cv:
+                self.root.after(50, lambda: self._tick_force_redraw())
+        for _key in ("taille", "type_prod"):
+            if _key in self.fv:
+                self.fv[_key].trace_add("write", _on_prod_type_change)
+
+    def _tick_force_redraw(self):
+        """Force un recalcul du statut bar (pièces attendues) sans attendre le tick."""
+        if not self._prod_active or not self._of_start:
+            return
+        now   = datetime.datetime.now()
+        of_s  = (now - self._of_start).total_seconds()
+        stop_s = self._t_wall_clock_stops()
+        any_r  = any(self._t_running(k) for k in self._timers)
+        self._redraw_status(of_s, stop_s, any_r)
 
     # ── Popup info structure fichier Excel ───────────────────────────────────
     def _show_excel_info(self):
@@ -3324,12 +3402,14 @@ class App:
 
     # ── Récap arrêts de l'OF (zone droite) ───────────────────────────────────
     def _build_stops_recap(self, parent):
-        tk.Frame(parent, bg=LGRAY, height=1).pack(fill="x")
-        hdr_f = tk.Frame(parent, bg=WHITE)
-        hdr_f.pack(fill="x", padx=8, pady=(6, 2))
-        tk.Frame(hdr_f, bg=C_RED, width=4).pack(side="left", fill="y")
-        tk.Label(hdr_f, text="  RÉCAP ARRÊTS OF",
-                 bg=WHITE, fg=DARK, font=("Arial", 8, "bold")).pack(side="left")
+        hdr_f = tk.Frame(parent, bg="#c0392b", relief="raised", bd=2)
+        hdr_f.pack(fill="x")
+        # Reflet 3D haut
+        tk.Frame(hdr_f, bg="#e74c3c", height=3).pack(fill="x", side="top")
+        inner_hdr = tk.Frame(hdr_f, bg="#c0392b")
+        inner_hdr.pack(fill="x", padx=6, pady=4)
+        tk.Label(inner_hdr, text="RÉCAP ARRÊTS OF",
+                 bg="#c0392b", fg=WHITE, font=("Arial", 9, "bold")).pack(side="left")
         self._recap_inner = tk.Frame(parent, bg=WHITE)
         self._recap_inner.pack(fill="both", expand=True, padx=4, pady=4)
         self._refresh_stops_recap()
