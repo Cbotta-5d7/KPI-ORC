@@ -4,9 +4,10 @@ from tkinter import ttk, filedialog, messagebox
 import json, os, sys, datetime, math
 from openpyxl import load_workbook
 
-CONFIG_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
-PASSWORD    = "0000"
-DB_PASSWORD = "4594"
+CONFIG_FILE  = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
+SESSION_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_session.json")
+PASSWORD     = "0000"
+DB_PASSWORD  = "4594"
 
 NAVY    = "#1a1f5e"   # Dodo bleu marine
 NAVY_L  = "#2d3490"   # Dodo bleu marine clair
@@ -660,6 +661,10 @@ class App:
 
         self._load_lists()
         self._load_history_from_excel()
+
+        # ── Vérifier si une session était en cours ──────────────────────────
+        if self._try_restore_session():
+            return  # Session restaurée, _show_production() déjà appelé
         self._show_main()
 
     # ── Historique depuis Excel (reconstruit la timeline au demarrage) ────────
@@ -822,6 +827,205 @@ class App:
     def _get_list(self, h):
         return self.lists.get(h, [])
 
+    # ── Persistance session ───────────────────────────────────────────────────
+    @staticmethod
+    def _dt_str(dt):
+        return dt.isoformat() if dt else None
+
+    @staticmethod
+    def _str_dt(s):
+        return datetime.datetime.fromisoformat(s) if s else None
+
+    def _save_session(self):
+        """Sauvegarde l'état complet de la production en cours dans un fichier JSON."""
+        if not self._prod_active:
+            # Pas de prod active : supprimer le fichier si présent
+            try:
+                os.remove(SESSION_FILE)
+            except FileNotFoundError:
+                pass
+            return
+        try:
+            # Timers : convertir les datetimes en string
+            timers_serial = {}
+            for k, t in self._timers.items():
+                timers_serial[k] = {
+                    "elapsed": t["elapsed"],
+                    "running": t["running"],
+                    "start":   self._dt_str(t.get("start")),
+                }
+
+            # Events : convertir les datetimes
+            events_serial = []
+            for ev in self._tl_events:
+                events_serial.append({
+                    "key":     ev["key"],
+                    "cat":     ev["cat"],
+                    "start":   self._dt_str(ev["start"]),
+                    "end":     self._dt_str(ev.get("end")),
+                    "comment": ev.get("comment", ""),
+                })
+
+            # Périodes OF
+            periods_serial = []
+            for p in self._of_periods:
+                periods_serial.append({
+                    "start":  self._dt_str(p["start"]),
+                    "end":    self._dt_str(p.get("end")),
+                    "of_num": p.get("of_num", ""),
+                })
+
+            # Changements OF
+            changes_serial = [self._dt_str(d) for d in self._of_changes]
+
+            data = {
+                "of_start":       self._dt_str(self._of_start),
+                "last_of_end":    self._dt_str(self._last_of_end),
+                "timers":         timers_serial,
+                "tl_events":      events_serial,
+                "of_periods":     periods_serial,
+                "of_changes":     changes_serial,
+                "form_data":      self._saved_form_data,
+            }
+            with open(SESSION_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def _load_session(self):
+        """Recharge l'état sauvegardé. Retourne True si une session a été restaurée."""
+        if not os.path.exists(SESSION_FILE):
+            return False
+        try:
+            with open(SESSION_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            if not data.get("of_start"):
+                return False
+
+            self._of_start    = self._str_dt(data["of_start"])
+            self._last_of_end = self._str_dt(data.get("last_of_end"))
+            self._prod_active = True
+
+            # Timers
+            self._timers = {}
+            for k, t in data.get("timers", {}).items():
+                self._timers[k] = {
+                    "elapsed": float(t["elapsed"]),
+                    "running": bool(t["running"]),
+                    "start":   self._str_dt(t.get("start")),
+                }
+
+            # Events timeline
+            self._tl_events = []
+            for ev in data.get("tl_events", []):
+                self._tl_events.append({
+                    "key":     ev["key"],
+                    "cat":     ev["cat"],
+                    "start":   self._str_dt(ev["start"]),
+                    "end":     self._str_dt(ev.get("end")),
+                    "comment": ev.get("comment", ""),
+                })
+
+            # Périodes OF
+            self._of_periods = []
+            for p in data.get("of_periods", []):
+                self._of_periods.append({
+                    "start":  self._str_dt(p["start"]),
+                    "end":    self._str_dt(p.get("end")),
+                    "of_num": p.get("of_num", ""),
+                })
+
+            # Changements OF
+            self._of_changes = [self._str_dt(d) for d in data.get("of_changes", [])
+                                 if d]
+
+            # Formulaire
+            self._saved_form_data = data.get("form_data", {})
+
+            return True
+        except Exception:
+            return False
+
+    def _delete_session(self):
+        try:
+            os.remove(SESSION_FILE)
+        except FileNotFoundError:
+            pass
+
+    def _try_restore_session(self):
+        """Si un fichier session existe, propose de reprendre. Retourne True si restauré."""
+        if not os.path.exists(SESSION_FILE):
+            return False
+
+        # Lire juste l'heure de début pour l'afficher dans la demande
+        try:
+            with open(SESSION_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            of_start_str = data.get("of_start", "")
+            if not of_start_str:
+                return False
+            dt = datetime.datetime.fromisoformat(of_start_str)
+            debut_fmt = dt.strftime("%H:%M le %d/%m/%Y")
+        except Exception:
+            return False
+
+        # Pop-up plein écran de reprise
+        resume = [False]
+        top = tk.Toplevel(self.root)
+        top.overrideredirect(True)
+        top.attributes("-topmost", True)
+        top.configure(bg=NAVY)
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        pw, ph = min(560, sw - 60), 260
+        top.geometry(f"{pw}x{ph}+{(sw-pw)//2}+{(sh-ph)//2}")
+
+        tk.Label(top, text="⚠  SESSION INTERROMPUE",
+                 bg=NAVY, fg=C_RED, font=("Arial", 20, "bold")).pack(pady=(30, 6))
+        tk.Label(top,
+                 text=f"L'application a été quittée pendant une production\n"
+                      f"démarrée à {debut_fmt}.\n\n"
+                      "Voulez-vous reprendre l'encours ?",
+                 bg=NAVY, fg=WHITE, font=("Arial", 12),
+                 justify="center").pack(pady=(0, 20))
+
+        btn_f = tk.Frame(top, bg=NAVY)
+        btn_f.pack()
+
+        def _oui():
+            resume[0] = True
+            top.destroy()
+
+        def _non():
+            resume[0] = False
+            top.destroy()
+
+        tk.Button(btn_f, text="✔  OUI, REPRENDRE",
+                  command=_oui, bg=GREEN, fg=WHITE,
+                  font=("Arial", 13, "bold"), relief="flat",
+                  padx=24, pady=10, cursor="hand2").pack(side="left", padx=8)
+        tk.Button(btn_f, text="✕  NON, ABANDONNER",
+                  command=_non, bg=C_RED, fg=WHITE,
+                  font=("Arial", 13, "bold"), relief="flat",
+                  padx=24, pady=10, cursor="hand2").pack(side="left", padx=8)
+
+        top.grab_set()
+        top.wait_window()
+
+        if not resume[0]:
+            self._delete_session()
+            return False
+
+        # Restaurer la session
+        if self._load_session():
+            self._show_production()
+            _toast(self.root, "Session reprise !", bg=GREEN, duration=2500)
+            return True
+
+        self._delete_session()
+        return False
+
     # ── Timers ────────────────────────────────────────────────────────────────
     def _t_start(self, key):
         t = self._timers.setdefault(
@@ -829,6 +1033,7 @@ class App:
         if not t["running"]:
             t["start"]   = datetime.datetime.now()
             t["running"] = True
+        self._save_session()
 
     def _t_stop(self, key):
         t = self._timers.get(key)
@@ -836,6 +1041,7 @@ class App:
             t["elapsed"] += (datetime.datetime.now() - t["start"]).total_seconds()
             t["running"]  = False
             t["start"]    = None
+        self._save_session()
 
     def _t_get(self, key):
         t = self._timers.get(key, {"elapsed": 0.0, "running": False, "start": None})
@@ -889,6 +1095,7 @@ class App:
             "key": key, "cat": cat,
             "start": datetime.datetime.now(), "end": None
         })
+        self._save_session()
 
     def _tl_close(self, key, comment=""):
         for ev in reversed(self._tl_events):
@@ -896,12 +1103,14 @@ class App:
                 ev["end"] = datetime.datetime.now()
                 ev["comment"] = comment
                 break
+        self._save_session()
 
     def _tl_close_all(self):
         now = datetime.datetime.now()
         for ev in self._tl_events:
             if ev["end"] is None:
                 ev["end"] = now
+        self._save_session()
 
     # ── Navigation ────────────────────────────────────────────────────────────
     def _clear(self):
@@ -1379,6 +1588,7 @@ class App:
                 self._saved_form_data["_kit"] = self._v_kit.get()
             except Exception:
                 pass
+        self._save_session()
 
     def _restore_form_data(self):
         """Restaure les valeurs du formulaire après retour en production."""
@@ -1863,6 +2073,7 @@ class App:
         if self._of_periods:
             self._of_changes.append(now)
         self._of_periods.append({"start": now, "end": None, "of_num": ""})
+        self._save_session()
         self._show_production()
 
     def _show_production(self):
@@ -2502,11 +2713,13 @@ class App:
 
         ok = self._write_excel(row, v)
         if ok:
+            self._delete_session()   # Session terminée avec succès
             self._show_main()
             _toast(self.root, "✔  Production declaree avec succes !", bg=GREEN)
         else:
             # Fichier ouvert → message specifique, retour prod
             self._prod_active = True
+            self._save_session()
             self._after_id = self.root.after(1000, self._tick)
             messagebox.showwarning(
                 "Fichier Excel ouvert",
