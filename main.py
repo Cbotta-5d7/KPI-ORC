@@ -676,6 +676,7 @@ class App:
         # ── Vérifier si une session était en cours ──────────────────────────
         if self._try_restore_session():
             return  # Session restaurée, _show_production() déjà appelé
+        self.root.after(500, self._maybe_show_login)
         self._show_main()
 
     # ── Historique depuis Excel (reconstruit la timeline au demarrage) ────────
