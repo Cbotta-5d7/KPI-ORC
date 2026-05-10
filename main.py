@@ -622,7 +622,6 @@ class App:
         self.root = root
         self.root.title("KPI-ORC | Ligne ORC1")
         self.root.configure(bg=BG)
-        self.root.overrideredirect(True)
         try:
             self.root.state("zoomed")
         except Exception:
@@ -1448,6 +1447,12 @@ class App:
                   bg=LGRAY, fg=DARK,
                   font=("Arial", 13), relief="flat",
                   padx=20, pady=12, cursor="hand2").pack(pady=6, fill="x")
+        tk.Button(btn_row,
+                  text="↩  Annuler",
+                  command=ov.destroy,
+                  bg=NAVY, fg=WHITE,
+                  font=("Arial", 13), relief="flat",
+                  padx=20, pady=12, cursor="hand2").pack(pady=6, fill="x")
 
     def _pilot_badge(self, parent, bg):
         """Encart 'Pilote connecté: XXX' avec bouton Changer."""
@@ -1850,18 +1855,18 @@ class App:
                                     fill="#ef4444", outline="")
                 # Bord brillant gauche
                 cv.create_rectangle(bx, by, bx+2, by+bh2, fill="#4ade80", outline="")
-                # Textes
-                cv.create_text(bx+10, by+bh2//2+1,
+                # Textes (ombre simulée : décalage +1/+1 en noir puis texte blanc)
+                cv.create_text(bx+11, by+bh2//2+1,
                                text=f"PROD {pct_p}%",
-                               font=("Arial", 12, "bold"), fill="#00000055", anchor="w")
-                cv.create_text(bx+10, by+bh2//2-1,
+                               font=("Arial", 12, "bold"), fill="#003300", anchor="w")
+                cv.create_text(bx+10, by+bh2//2,
                                text=f"PROD {pct_p}%",
                                font=("Arial", 12, "bold"), fill=WHITE, anchor="w")
                 if pct_p < 95:
-                    cv.create_text(bx+bw2-8, by+bh2//2+1,
+                    cv.create_text(bx+bw2-7, by+bh2//2+1,
                                    text=f"ARRÊT {100-pct_p}%",
-                                   font=("Arial", 11, "bold"), fill="#00000055", anchor="e")
-                    cv.create_text(bx+bw2-8, by+bh2//2-1,
+                                   font=("Arial", 11, "bold"), fill="#330000", anchor="e")
+                    cv.create_text(bx+bw2-8, by+bh2//2,
                                    text=f"ARRÊT {100-pct_p}%",
                                    font=("Arial", 11, "bold"), fill=WHITE, anchor="e")
 
@@ -3812,11 +3817,11 @@ class App:
         gauges_row = tk.Frame(right_r, bg=WHITE)
         gauges_row.pack(fill="x", pady=(8, 0))
 
-        # Jauge 1 : TRS cet OF
+        # Jauge 1 : TRS de cette déclaration
         g1_frame = tk.Frame(gauges_row, bg=WHITE)
         g1_frame.pack(side="left", expand=True, fill="both")
-        tk.Label(g1_frame, text="TRS cet OF", bg=WHITE, fg=GRAY,
-                 font=("Arial", 9, "bold")).pack(pady=(4, 0))
+        tk.Label(g1_frame, text="TRS de cette déclaration", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold"), wraplength=160, justify="center").pack(pady=(4, 0))
         trs_col = GREEN if trs_pct >= 75 else C_RATT if trs_pct >= 55 else C_RED
         gauge_r = Gauge(g1_frame, bg=WHITE, width=160, height=110,
                         highlightthickness=0)
@@ -3825,11 +3830,12 @@ class App:
         trs_label = f"{trs_disp:.1f}%" if trs_pct >= 0 else "—"
         gauge_r.update_gauge(trs_disp, trs_label)
 
-        # Jauge 2 : TRS poste 12h
+        # Jauge 2 : TRS poste entier du pilote
         g2_frame = tk.Frame(gauges_row, bg=WHITE)
         g2_frame.pack(side="left", expand=True, fill="both")
-        tk.Label(g2_frame, text="TRS poste (12h)", bg=WHITE, fg=GRAY,
-                 font=("Arial", 9, "bold")).pack(pady=(4, 0))
+        _pilot_lbl = self._logged_in_pilot or v.get("pilote", "—")
+        tk.Label(g2_frame, text=f"TRS poste — {_pilot_lbl}", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold"), wraplength=160, justify="center").pack(pady=(4, 0))
         trs12_disp = max(0.0, pilot_trs_12h) if pilot_trs_12h >= 0 else 0.0
         trs12_lbl  = f"{trs12_disp:.1f}%" if pilot_trs_12h >= 0 else "—"
         gauge_r2 = Gauge(g2_frame, bg=WHITE, width=160, height=110,
