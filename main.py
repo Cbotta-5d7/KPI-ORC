@@ -694,9 +694,7 @@ class App:
             # Periodes OF d'aujourd'hui
             if "Data" in wb.sheetnames:
                 ws = wb["Data"]
-                min_r = 2
-                if str(ws.cell(1, 1).value or "").strip() == DATA_HEADERS[0]:
-                    min_r = 2
+                min_r = 2 if str(ws.cell(1, 1).value or "").strip().upper() == "OF" else 1
                 for row in ws.iter_rows(min_row=min_r, values_only=True):
                     if not any(row):
                         continue
@@ -831,8 +829,7 @@ class App:
         self.cfg["db_path"] = p
         save_cfg(self.cfg)
         self._prod_ref_cached = 0.0
-        self._load_lists()   # tente auto-détection I2
-        self._ensure_excel_headers(p)
+        self._load_lists()
         self._load_history_from_excel()
         name = os.path.basename(p)
         for lbl in self._db_labels:
@@ -1818,8 +1815,10 @@ class App:
         if path and os.path.exists(path):
             try:
                 wb   = load_workbook(path, read_only=True, data_only=True)
+                ws_d = wb["Data"]
+                _mr  = 2 if str(ws_d.cell(1, 1).value or "").strip().upper() == "OF" else 1
                 rows = [list(r) + [None]*55
-                        for r in wb["Data"].iter_rows(min_row=2, values_only=True)
+                        for r in ws_d.iter_rows(min_row=_mr, values_only=True)
                         if any(r)]
                 wb.close()
                 if rows:
@@ -1859,11 +1858,8 @@ class App:
         try:
             wb = load_workbook(path, read_only=True, data_only=True)
             ws = wb["Data"]
-            # Sauter la ligne d'en-tete si presente
-            min_r = 2
             first = ws.cell(1, 1).value
-            if first and str(first).strip().upper() == "OF":
-                min_r = 2
+            min_r = 2 if str(first or "").strip().upper() == "OF" else 1
             rows_raw = list(ws.iter_rows(min_row=min_r, values_only=True))
             wb.close()
         except Exception:
@@ -2434,6 +2430,21 @@ class App:
         tk.Button(hdr, text="✕", bg=NAVY, fg=WHITE, font=("Arial", 12, "bold"),
                   relief="flat", cursor="hand2",
                   command=win.destroy).pack(side="right", padx=12)
+
+        def _open_listes():
+            path = self.cfg.get("db_path", "")
+            if not path or not os.path.exists(path):
+                messagebox.showwarning("Attention", "Aucun fichier Excel chargé.")
+                return
+            try:
+                os.startfile(path)
+            except Exception:
+                import subprocess
+                subprocess.Popen(["xdg-open", path])
+
+        tk.Button(hdr, text="📝  Modifier les listes", bg=GREEN, fg=WHITE,
+                  font=("Arial", 11, "bold"), relief="flat", cursor="hand2",
+                  command=_open_listes).pack(side="right", padx=12)
 
         nb = ttk.Notebook(win)
         nb.pack(fill="both", expand=True, padx=8, pady=8)
@@ -3132,13 +3143,7 @@ class App:
             return False
         try:
             wb = load_workbook(path)
-            # S'assurer que les en-tetes existent
-            ws = wb["Data"]
-            if ws.cell(1, 1).value != DATA_HEADERS[0]:
-                ws.insert_rows(1)
-                for i, h in enumerate(DATA_HEADERS, start=1):
-                    ws.cell(1, i).value = h
-            ws.append(row)
+            wb["Data"].append(row)   # Ajout uniquement — aucune modif de mise en forme
             self._write_events_to_wb(wb, v)
             wb.save(path)
             wb.close()
@@ -3151,14 +3156,7 @@ class App:
 
     def _ensure_events_sheet(self, wb):
         if "Evenements" not in wb.sheetnames:
-            ws = wb.create_sheet("Evenements")
-            ws.append(EVT_HEADERS)
-        else:
-            ws = wb["Evenements"]
-            if ws.cell(1, 1).value != EVT_HEADERS[0]:
-                ws.insert_rows(1)
-                for i, h in enumerate(EVT_HEADERS, start=1):
-                    ws.cell(1, i).value = h
+            wb.create_sheet("Evenements")
         return wb["Evenements"]
 
     def _write_events_to_wb(self, wb, v):
