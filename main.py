@@ -664,6 +664,7 @@ class App:
         self._main_prod_panel = None
         self._recap_panel     = None
         self._saved_form_data = {}   # Mémoire formulaire entre onglets
+        self._prod_ref_cached = 0.0
 
         self._load_lists()
         self._load_history_from_excel()
@@ -710,9 +711,14 @@ class App:
                             "start": start_dt, "end": end_dt,
                             "of_num": str(r[0] or "").strip()
                         })
-                # Separateurs d'OF (a partir du 2e OF de la journee)
-                for p in self._of_periods[1:]:
-                    self._of_changes.append(p["start"])
+                # Séparateurs d'OF — seulement si gap ≤ 8h
+                for i, p in enumerate(self._of_periods[1:], start=1):
+                    prev_end = self._of_periods[i - 1].get("end")
+                    if prev_end is None:
+                        continue
+                    gap_s = (p["start"] - prev_end).total_seconds()
+                    if gap_s <= 28800:
+                        self._of_changes.append(p["start"])
             # Evenements d'aujourd'hui
             if "Evenements" in wb.sheetnames:
                 ws_e = wb["Evenements"]
@@ -756,10 +762,20 @@ class App:
                 if cell.value:
                     headers[cell.column] = str(cell.value)
             self.lists = {h: [] for h in headers.values()}
-            for row in ws.iter_rows(min_row=2, values_only=True):
+            rows_listes = list(ws.iter_rows(min_row=2, values_only=True))
+            for row in rows_listes:
                 for ci, val in enumerate(row, 1):
                     if ci in headers and val is not None:
                         self.lists[headers[ci]].append(str(val))
+            # Cache de la référence de production (cellule I2 = colonne 9)
+            if rows_listes:
+                first_data_row = rows_listes[0]
+                if len(first_data_row) >= 9 and first_data_row[8] is not None:
+                    try:
+                        self._prod_ref_cached = float(
+                            str(first_data_row[8]).replace(",", "."))
+                    except Exception:
+                        pass
             wb.close()
         except Exception:
             pass
@@ -807,6 +823,7 @@ class App:
         if p:
             self.cfg["db_path"] = p
             save_cfg(self.cfg)
+            self._prod_ref_cached = 0.0   # reset cache before reloading
             self._load_lists()
             self._ensure_excel_headers(p)
             self._load_history_from_excel()
@@ -1154,10 +1171,12 @@ class App:
         if subtitle:
             tk.Label(hdr, text=subtitle, bg=NAVY, fg="#7a99c0",
                      font=("Arial", 11)).pack(side="left", padx=4)
-        # Zone droite : logo sur fond blanc + DB
         right_bar = tk.Frame(hdr, bg=NAVY)
         right_bar.pack(side="right", padx=12)
         self._db_widget(right_bar, NAVY).pack(side="right", padx=4)
+        tk.Button(right_bar, text="📊", bg=NAVY, fg=WHITE,
+                  font=("Arial", 16), relief="flat", cursor="hand2",
+                  command=self._show_excel_info).pack(side="right", padx=4)
         return hdr
 
     def _make_timeline(self, parent):
@@ -1666,16 +1685,23 @@ class App:
             return -1
 
     def _get_prod_ref(self):
-        """Lit la quantite de reference 8h depuis la cellule I2 de l'onglet Listes."""
+        """Retourne la référence de production 8h (cellule I2 de Listes)."""
+        if self._prod_ref_cached > 0:
+            return self._prod_ref_cached
         path = self.cfg.get("db_path", "")
         if not path or not os.path.exists(path):
             return 0.0
         try:
-            wb  = load_workbook(path, read_only=True, data_only=True)
-            val = wb["Listes"]["I2"].value
+            wb = load_workbook(path, read_only=True, data_only=True)
+            ws = wb["Listes"]
+            for row in ws.iter_rows(min_row=2, max_row=2, min_col=9, max_col=9,
+                                    values_only=True):
+                if row and row[0] is not None:
+                    val = float(str(row[0]).replace(",", "."))
+                    wb.close()
+                    self._prod_ref_cached = val
+                    return val
             wb.close()
-            if val is not None:
-                return float(str(val).replace(",", "."))
         except Exception:
             pass
         return 0.0
@@ -2073,7 +2099,7 @@ class App:
         now = datetime.datetime.now()
         if self._last_of_end is not None:
             gap = (now - self._last_of_end).total_seconds()
-            if gap > 30:
+            if 30 < gap <= 28800:   # > 30s et <= 8h
                 do_changeof = False
                 if gap < 300:  # Moins de 5 min → automatique
                     do_changeof = True
@@ -2093,6 +2119,7 @@ class App:
                         "key": "_changeof", "cat": "changeof",
                         "start": self._last_of_end, "end": now
                     })
+            # Si gap > 8h : nouveau départ, on ignore l'intervalle
 
         self._t_reset()
         self._of_start    = now
@@ -2146,9 +2173,9 @@ class App:
         # ── Corps 33/33/33 ────────────────────────────────────────────────────
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=6, pady=(4, 6))
-        body.columnconfigure(0, weight=1)
-        body.columnconfigure(1, weight=1)
-        body.columnconfigure(2, weight=1)
+        body.columnconfigure(0, weight=1, uniform="zone")
+        body.columnconfigure(1, weight=1, uniform="zone")
+        body.columnconfigure(2, weight=1, uniform="zone")
         body.rowconfigure(0, weight=1)
 
         # Zone 1 : formulaire
@@ -2179,8 +2206,9 @@ class App:
         c.columnconfigure(2, weight=1)
         ri = [0]
 
-        LFONT = ("Arial", 9)
-        EFONT = ("Arial", 11, "bold")
+        LFONT  = ("Arial", 9)
+        EFONT  = ("Arial", 11, "bold")
+        CELL_H = 62   # hauteur fixe de chaque cellule (uniforme)
 
         def sec(txt, color=NAVY, ncols=3):
             row = tk.Frame(c, bg=WHITE)
@@ -2191,25 +2219,30 @@ class App:
             ri[0] += 1
 
         def fld(lbl_txt, key, ftype, lh=None, col=0, adv=True, suffix=None):
-            cell = tk.Frame(c, bg=WHITE)
-            cell.grid(row=ri[0], column=col, sticky="ew", padx=3, pady=3)
+            cell = tk.Frame(c, bg=WHITE, height=CELL_H)
+            cell.grid(row=ri[0], column=col, sticky="ew", padx=3, pady=2)
+            cell.grid_propagate(False)
             cell.columnconfigure(0, weight=1)
+            cell.rowconfigure(1, weight=1)
             tk.Label(cell, text=lbl_txt, bg=WHITE, fg=GRAY,
-                     font=LFONT, anchor="w").grid(row=0, column=0, columnspan=2, sticky="w")
+                     font=LFONT, anchor="w").grid(row=0, column=0, columnspan=2,
+                                                  sticky="w", pady=(2, 0))
             var = tk.StringVar()
             self.fv[key] = var
             if ftype == "entry":
                 e = tk.Entry(cell, textvariable=var, bg=WHITE, fg=DARK,
-                             font=EFONT, relief="solid", bd=1, insertbackground=DARK)
-                e.grid(row=1, column=0, sticky="ew", ipady=6)
+                             font=EFONT, relief="solid", bd=1,
+                             insertbackground=DARK, width=1)
+                e.grid(row=1, column=0, sticky="nsew", padx=(0, 2), pady=(0, 3))
                 if suffix:
                     tk.Label(cell, text=suffix, bg=WHITE, fg=GRAY,
-                             font=LFONT).grid(row=1, column=1, sticky="w", padx=(2, 0))
+                             font=LFONT).grid(row=1, column=1, sticky="sw",
+                                              padx=(2, 0), pady=(0, 3))
             else:
                 cb = ttk.Combobox(cell, textvariable=var,
                                   values=self._get_list(lh) if lh else [],
-                                  font=EFONT, state="readonly", height=6)
-                cb.grid(row=1, column=0, columnspan=2, sticky="ew")
+                                  font=EFONT, state="readonly", height=6, width=1)
+                cb.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 3))
             if adv:
                 ri[0] += 1
 
