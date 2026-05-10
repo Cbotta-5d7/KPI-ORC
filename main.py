@@ -57,7 +57,7 @@ DATA_HEADERS = [
     "OF", "Date", "Poste", "Pilote", "Co-Pilote", "Nb Personnes",
     "Taille", "Code Produit", "Type Produit", "Poids Garnissage", "Fibre",
     "OF Taie", "Traca Fibre", "Qte Fabriquee", "Qte Emballee", "Equivalence",
-    "Duree OF", "Heure Debut", "Heure Fin", "Cadence/min", "Cadence/h/pers",
+    "Duree OF", "Heure Debut", "Heure Fin", "Cadence/min", "Cadence par heure",
     "Kit", "Ref Taie", "Nb Defaut Couture", "Mq Taie", "Mq Housse/Encart",
     "Ratt Pochon/Fibre", "Ratt Couture", "Ratt Emballage",
     "Ratt Presse Souder", "Ratt Presse ZIP",
@@ -307,14 +307,19 @@ class Timeline(tk.Canvas):
                 self.create_text(x, BY - 26, text="CHG OF",
                                  fill=ORANGE, font=("Arial", 7, "bold"), anchor="center")
 
+        # Lignes de tick toutes les 30 min, label seulement heures pile et demies
         for i in range(TIMELINE_WINDOW + 1):
+            if i % 30 != 0:
+                continue
             t = t0 + datetime.timedelta(minutes=i)
             x = i / TIMELINE_WINDOW * w
-            col = "#aab8cc" if i % 5 == 0 else "#ccd6e4"
-            self.create_line(x, BY - 2, x, BY + BH + 2, fill=col, width=1)
-            if i % 2 == 0:
-                self.create_text(x, BY - 10, text=t.strftime("%H:%M"),
-                                 font=("Arial", 7), fill=GRAY, anchor="center")
+            is_hour = (t.minute == 0)
+            col = "#aab8cc" if is_hour else "#ccd6e4"
+            lw  = 2 if is_hour else 1
+            self.create_line(x, BY - 4, x, BY + BH + 4, fill=col, width=lw)
+            self.create_text(x, BY - 10, text=t.strftime("%H:%M"),
+                             font=("Arial", 8 if is_hour else 7, "bold" if is_hour else "normal"),
+                             fill=GRAY if not is_hour else DARK, anchor="center")
 
         self.create_line(w - 1, BY - 8, w - 1, BY + BH + 8, fill=ORANGE, width=2)
 
@@ -657,6 +662,7 @@ class App:
         self._stop_timer_lbls = {}
         self._active_stops_container = None
         self._main_prod_panel = None
+        self._recap_panel     = None
         self._saved_form_data = {}   # Mémoire formulaire entre onglets
 
         self._load_lists()
@@ -1096,6 +1102,7 @@ class App:
             "start": datetime.datetime.now(), "end": None
         })
         self._save_session()
+        self._refresh_stops_recap()
 
     def _tl_close(self, key, comment=""):
         for ev in reversed(self._tl_events):
@@ -1104,6 +1111,7 @@ class App:
                 ev["comment"] = comment
                 break
         self._save_session()
+        self._refresh_stops_recap()
 
     def _tl_close_all(self):
         now = datetime.datetime.now()
@@ -1111,6 +1119,7 @@ class App:
             if ev["end"] is None:
                 ev["end"] = now
         self._save_session()
+        self._refresh_stops_recap()
 
     # ── Navigation ────────────────────────────────────────────────────────────
     def _clear(self):
@@ -1936,6 +1945,17 @@ class App:
             try:
                 wb2 = load_workbook(path2)
                 ws2 = wb2["Data"]
+                # Recalculer equivalence et TRS avant sauvegarde
+                vals = [v.get() for v in field_vars]
+                try:
+                    qte_f = int(str(vals[13] or 0))
+                    taille_v  = str(vals[6] or "")
+                    type_pv   = str(vals[8] or "")
+                    new_equiv = self._calc_equiv(qte_f, taille_v, type_pv)
+                    vals[15]  = str(new_equiv)
+                    field_vars[15].set(str(new_equiv))
+                except Exception:
+                    pass
                 for col_i, var in enumerate(field_vars, start=1):
                     ws2.cell(row=excel_row, column=col_i).value = var.get()
                 # Mettre a jour onglet Evenements
@@ -2051,15 +2071,20 @@ class App:
         if self._last_of_end is not None:
             gap = (now - self._last_of_end).total_seconds()
             if gap > 30:
-                h = int(gap // 3600)
-                m = int((gap % 3600) // 60)
-                s = int(gap % 60)
-                ts = f"{h}h {m:02d}min" if h > 0 else f"{m}min {s:02d}s"
-                if messagebox.askyesno(
+                do_changeof = False
+                if gap < 300:  # Moins de 5 min → automatique
+                    do_changeof = True
+                else:
+                    h = int(gap // 3600)
+                    m = int((gap % 3600) // 60)
+                    s = int(gap % 60)
+                    ts = f"{h}h {m:02d}min" if h > 0 else f"{m}min {s:02d}s"
+                    do_changeof = messagebox.askyesno(
                         "Changement d'OF",
                         f"Le dernier OF a ete termine il y a {ts}.\n\n"
                         "Voulez-vous declarer ce temps comme\n"
-                        "\"Changement d'OF\" ?"):
+                        "\"Changement d'OF\" ?")
+                if do_changeof:
                     self._write_changement_of_excel(self._last_of_end, now)
                     self._tl_events.append({
                         "key": "_changeof", "cat": "changeof",
@@ -2116,7 +2141,7 @@ class App:
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=6, pady=(4, 6))
 
-        # Gauche : formulaire (50%)
+        # Zone 1 : formulaire (40%)
         left = tk.Frame(body, bg=WHITE)
         left.pack(side="left", fill="both", expand=True)
         tk.Frame(left, bg=LGRAY, height=1).pack(fill="x")
@@ -2124,10 +2149,20 @@ class App:
 
         tk.Frame(body, bg=LGRAY, width=1).pack(side="left", fill="y")
 
-        # Droite : arrets actifs + boutons (50%)
-        right = tk.Frame(body, bg=BG)
-        right.pack(side="left", fill="both", expand=True)
-        self._build_right_panel(right)
+        # Zone 2 : arrets actifs + boutons (35%)
+        mid = tk.Frame(body, bg=BG, width=320)
+        mid.pack(side="left", fill="both")
+        mid.pack_propagate(False)
+        self._build_right_panel(mid)
+
+        tk.Frame(body, bg=LGRAY, width=1).pack(side="left", fill="y")
+
+        # Zone 3 : récap arrêts de l'OF (25%)
+        recap_panel = tk.Frame(body, bg=WHITE, width=220)
+        recap_panel.pack(side="left", fill="both")
+        recap_panel.pack_propagate(False)
+        self._recap_panel = recap_panel
+        self._build_stops_recap(recap_panel)
 
         self._after_id = self.root.after(1000, self._tick)
 
@@ -2190,8 +2225,8 @@ class App:
         row3("N° OF *",    "of_num",  "entry", None,
              "Poste *",    "poste",   "combo", "Postes",
              "Pilote *",   "pilote",  "combo", "Pilotes")
-        row3("Co-Pilote",  "copilote","combo", "Co-Pilote",
-             "Nb personnes","nb_pers","combo", "Nb personne",
+        row3("Co-Pilote",  "copilote","combo", "Co-pilotes",
+             "Nb personnes","nb_pers","combo", "Nb personnes",
              "Fibre",      "fibre",   "combo", "Fibre")
 
         # ── Produit ──
@@ -2209,13 +2244,13 @@ class App:
              "Type produit",   "type_prod", "combo", "Type produit",
              "Code produit *", "code_prod", "entry", None)
         row2("Poids garnissage","poids",    "entry", None,
-             "Qte fabriquée *","qte_fab",   "entry", None,
+             "OF taie",        "of_taie",   "entry", None,
              s1="gr")
 
         # ── Quantités / Qualité ──
         sec("Quantités & Qualité", GREEN)
-        row3("Qte emballée",    "qte_emb",    "entry", None,
-             "OF taie",         "of_taie",    "entry", None,
+        row3("Qte fabriquée *", "qte_fab",   "entry", None,
+             "Qte emballée",    "qte_emb",   "entry", None,
              "Traca fibre",     "traca",      "entry", None)
         row3("Ref. taie",       "ref_taie",   "entry", None,
              "Nb déf. couture", "nb_def_cout","entry", None,
@@ -2250,17 +2285,27 @@ class App:
         def _make_cv_btn(text, color, cmd):
             cv = tk.Canvas(parent, height=BTN_H, highlightthickness=0, bg=BG)
             cv.pack(fill="x", padx=8, pady=(0, 4))
+            pressed = [False]
             def _draw(e=None):
                 cv.delete("all")
                 bw, bh = cv.winfo_width(), cv.winfo_height()
                 if bw < 10: return
-                _rrect(cv, 4, 5, bw-1, bh, 14, fill=_off(color, -40))
-                _rrect(cv, 0, 0, bw-5, bh-5, 14, fill=color)
-                _rrect(cv, 2, 2, bw-7, bh//3, 14, fill=_off(color, +45))
+                c = _off(color, -60) if pressed[0] else color
+                _rrect(cv, 4, 5, bw-1, bh, 14, fill=_off(c, -40))
+                _rrect(cv, 0, 0, bw-5, bh-5, 14, fill=c)
+                _rrect(cv, 2, 2, bw-7, bh//3, 14, fill=_off(c, +45))
                 cv.create_text(bw//2-2, bh//2-2, text=text,
                                fill=WHITE, font=BTN_FONT)
+            def _press(e):
+                pressed[0] = True
+                _draw()
+            def _release(e):
+                pressed[0] = False
+                _draw()
+                cmd()
             cv.bind("<Configure>", _draw)
-            cv.bind("<Button-1>", lambda e: cmd())
+            cv.bind("<ButtonPress-1>",  _press)
+            cv.bind("<ButtonRelease-1>", _release)
             cv.config(cursor="hand2")
             return cv
 
@@ -2325,6 +2370,68 @@ class App:
                             font=("Arial", 28, "bold"))
             tlbl.pack(pady=(2, 10))
             self._stop_timer_lbls[key] = tlbl
+
+    # ── Récap arrêts de l'OF (zone droite) ───────────────────────────────────
+    def _build_stops_recap(self, parent):
+        tk.Frame(parent, bg=LGRAY, height=1).pack(fill="x")
+        hdr_f = tk.Frame(parent, bg=WHITE)
+        hdr_f.pack(fill="x", padx=8, pady=(6, 2))
+        tk.Frame(hdr_f, bg=C_RED, width=4).pack(side="left", fill="y")
+        tk.Label(hdr_f, text="  RÉCAP ARRÊTS OF",
+                 bg=WHITE, fg=DARK, font=("Arial", 8, "bold")).pack(side="left")
+        self._recap_inner = tk.Frame(parent, bg=WHITE)
+        self._recap_inner.pack(fill="both", expand=True, padx=4, pady=4)
+        self._refresh_stops_recap()
+
+    def _refresh_stops_recap(self):
+        inner = getattr(self, "_recap_inner", None)
+        if not inner:
+            return
+        for w in inner.winfo_children():
+            w.destroy()
+        # Cumuler par clé d'arrêt
+        cumuls = {}
+        now = datetime.datetime.now()
+        for ev in self._tl_events:
+            if ev.get("cat") not in ("ratt", "pb"):
+                continue
+            if self._of_start and ev["start"] < self._of_start:
+                continue
+            key  = ev["key"]
+            s    = ev["start"]
+            e    = ev.get("end") or now
+            dur  = (e - s).total_seconds()
+            if key not in cumuls:
+                cumuls[key] = {"dur": 0.0, "cat": ev["cat"], "n": 0}
+            cumuls[key]["dur"] += dur
+            cumuls[key]["n"]   += 1
+        if not cumuls:
+            tk.Label(inner, text="Aucun arrêt", bg=WHITE, fg=LGRAY,
+                     font=("Arial", 9, "italic")).pack(pady=12)
+            return
+        for key, info in sorted(cumuls.items(), key=lambda x: -x[1]["dur"]):
+            label = next((e[0] for e in EVENTS if e[1] == key), key)
+            color = C_RATT if info["cat"] == "ratt" else C_RED
+            mins  = int(info["dur"] // 60)
+            secs  = int(info["dur"] % 60)
+            dur_s = f"{mins}min {secs:02d}s" if mins > 0 else f"{secs}s"
+            row_f = tk.Frame(inner, bg=WHITE)
+            row_f.pack(fill="x", pady=1, padx=2)
+            tk.Frame(row_f, bg=color, width=4).pack(side="left", fill="y")
+            name_f = tk.Frame(row_f, bg=WHITE)
+            name_f.pack(side="left", fill="both", expand=True, padx=(4, 0))
+            tk.Label(name_f, text=label, bg=WHITE, fg=DARK,
+                     font=("Arial", 8), anchor="w",
+                     wraplength=120).pack(anchor="w")
+            tk.Label(name_f, text=f"× {info['n']}  —  {dur_s}",
+                     bg=WHITE, fg=color, font=("Arial", 8, "bold"),
+                     anchor="w").pack(anchor="w")
+        tk.Frame(inner, bg=LGRAY, height=1).pack(fill="x", pady=4)
+        total = sum(v["dur"] for v in cumuls.values())
+        tm = int(total // 60)
+        ts = int(total % 60)
+        tk.Label(inner, text=f"Total : {tm}min {ts:02d}s",
+                 bg=WHITE, fg=DARK, font=("Arial", 8, "bold")).pack(anchor="w", padx=6)
 
     def _start_nettoyage(self):
         key = "nettoyage"
@@ -2713,7 +2820,8 @@ class App:
 
         ok = self._write_excel(row, v)
         if ok:
-            self._delete_session()   # Session terminée avec succès
+            self._delete_session()
+            self._saved_form_data = {}   # Reset formulaire
             self._show_main()
             _toast(self.root, "✔  Production declaree avec succes !", bg=GREEN)
         else:
@@ -2727,10 +2835,10 @@ class App:
                 "La production n'a PAS été annulée.")
 
     def _calc_equiv(self, qte, taille, type_prod):
-        """Cherche le coef d'equivalence pour type_prod dans la colonne Equivalence
-        en face de la colonne Type produit dans le fichier Listes."""
+        """Cherche le coef d'equivalence pour type_prod dans la colonne Equivalence coef."""
         types  = self._get_list("Type produit")
-        equivs = self._get_list("Equivalence")
+        # Accepte 'Equivalence coef' ou 'Equivalence' comme nom de colonne
+        equivs = self._get_list("Equivalence coef") or self._get_list("Equivalence")
         if type_prod and types and equivs:
             for i, t in enumerate(types):
                 if str(t).strip().lower() == str(type_prod).strip().lower():
