@@ -768,14 +768,17 @@ class App:
                     if ci in headers and val is not None:
                         self.lists[headers[ci]].append(str(val))
             # Cache de la référence de production (cellule I2 = colonne 9)
-            if rows_listes:
-                first_data_row = rows_listes[0]
-                if len(first_data_row) >= 9 and first_data_row[8] is not None:
-                    try:
+            # Lecture explicite min_col=9,max_col=9 pour garantir la cellule I2
+            # même si elle n'a pas de header en ligne 1
+            try:
+                for row_i2 in ws.iter_rows(min_row=2, max_row=2,
+                                           min_col=9, max_col=9, values_only=True):
+                    if row_i2 and row_i2[0] is not None:
                         self._prod_ref_cached = float(
-                            str(first_data_row[8]).replace(",", "."))
-                    except Exception:
-                        pass
+                            str(row_i2[0]).replace(",", "."))
+                    break
+            except Exception:
+                pass
             wb.close()
         except Exception:
             pass
@@ -1453,6 +1456,50 @@ class App:
         top.wait_window()
         return result.get()
 
+    # ── Vérification fichier Excel au démarrage ───────────────────────────────
+    def _check_db_on_startup(self):
+        path = self.cfg.get("db_path", "")
+        if path and os.path.exists(path):
+            return
+        top = tk.Toplevel(self.root)
+        top.overrideredirect(True)
+        top.attributes("-topmost", True)
+        top.configure(bg=C_RED)
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        pw, ph = min(560, sw - 60), 280
+        top.geometry(f"{pw}x{ph}+{(sw-pw)//2}+{(sh-ph)//2}")
+
+        tk.Label(top, text="⚠  AUCUN FICHIER EXCEL CHARGÉ",
+                 bg=C_RED, fg=WHITE, font=("Arial", 18, "bold")).pack(pady=(28, 4))
+        tk.Label(top, text="Appelez le Bureau Méthodes\npour connecter la base de données.",
+                 bg=C_RED, fg=WHITE, font=("Arial", 13),
+                 justify="center").pack(pady=(0, 16))
+
+        pw2 = tk.StringVar()
+        err_lbl = tk.Label(top, text="", bg=C_RED, fg="#ffdddd", font=("Arial", 10))
+        err_lbl.pack()
+        pe = tk.Entry(top, textvariable=pw2, show="*",
+                      font=("Arial", 20), width=8, justify="center",
+                      relief="solid", bd=2)
+        pe.pack(pady=4)
+        pe.focus()
+
+        def _confirm(ev=None):
+            if pw2.get() == DB_PASSWORD:
+                top.destroy()
+                self._select_db()
+            else:
+                err_lbl.config(text="Mot de passe incorrect")
+                pw2.set("")
+
+        pe.bind("<Return>", _confirm)
+        tk.Button(top, text="Valider  →  Charger le fichier",
+                  command=_confirm, bg=DARK, fg=WHITE,
+                  font=("Arial", 13, "bold"), relief="flat",
+                  pady=10, cursor="hand2").pack(fill="x", padx=40, pady=(4, 20))
+        top.wait_window()
+
     # =========================================================================
     #  ECRAN PRINCIPAL
     # =========================================================================
@@ -1472,6 +1519,8 @@ class App:
         outer.bind("<Button-1>", self._reset_activity)
 
         self._make_header(outer, "KPI-ORC", "Ligne ORC1")
+        # Vérifier la DB après rendu de la fenêtre principale
+        self.root.after(200, self._check_db_on_startup)
         self._make_tabs(outer, "main")
         self._make_timeline(outer)
 
@@ -2173,9 +2222,9 @@ class App:
         # ── Corps 33/33/33 ────────────────────────────────────────────────────
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=6, pady=(4, 6))
-        body.columnconfigure(0, weight=1, uniform="zone")
-        body.columnconfigure(1, weight=1, uniform="zone")
-        body.columnconfigure(2, weight=1, uniform="zone")
+        body.columnconfigure(0, weight=3)   # formulaire (50%)
+        body.columnconfigure(1, weight=2)   # arrêts actifs (33%)
+        body.columnconfigure(2, weight=1)   # récap (17%)
         body.rowconfigure(0, weight=1)
 
         # Zone 1 : formulaire
@@ -2208,7 +2257,7 @@ class App:
 
         LFONT  = ("Arial", 9)
         EFONT  = ("Arial", 11, "bold")
-        CELL_H = 62   # hauteur fixe de chaque cellule (uniforme)
+        CELL_H = 52   # hauteur fixe de chaque cellule (uniforme)
 
         def sec(txt, color=NAVY, ncols=3):
             row = tk.Frame(c, bg=WHITE)
@@ -2267,21 +2316,25 @@ class App:
 
         # ── Produit ──
         sec("Produit", NAVY_L)
-        # KIT checkbox sur une ligne
-        self._v_kit = tk.BooleanVar()
-        kit_f = tk.Frame(c, bg=WHITE)
-        kit_f.grid(row=ri[0], column=0, columnspan=3, sticky="w", padx=4, pady=1)
-        ri[0] += 1
-        tk.Checkbutton(kit_f, text="Kit de 2 pièces", variable=self._v_kit,
-                       bg=WHITE, fg=DARK, font=EFONT,
-                       activebackground=WHITE, selectcolor=WHITE).pack(side="left")
-
         row3("Taille",         "taille",    "combo", "Taille produit",
              "Type produit",   "type_prod", "combo", "Type produit",
              "Code produit *", "code_prod", "entry", None)
-        row2("Poids garnissage","poids",    "entry", None,
-             "OF taie",        "of_taie",   "entry", None,
-             s1="gr")
+
+        # Poids | OF taie | Kit (inline, même ligne)
+        self._v_kit = tk.BooleanVar()
+        fld("Poids garnissage", "poids",   "entry", None, col=0, adv=False, suffix="gr")
+        fld("OF taie",          "of_taie", "entry", None, col=1, adv=False)
+        kit_cell = tk.Frame(c, bg=WHITE, height=CELL_H)
+        kit_cell.grid(row=ri[0], column=2, sticky="ew", padx=3, pady=2)
+        kit_cell.grid_propagate(False)
+        kit_cell.rowconfigure(1, weight=1)
+        tk.Label(kit_cell, text="Options", bg=WHITE, fg=GRAY,
+                 font=LFONT, anchor="w").grid(row=0, column=0, sticky="w", pady=(2, 0))
+        tk.Checkbutton(kit_cell, text="Kit 2 pièces", variable=self._v_kit,
+                       bg=WHITE, fg=DARK, font=("Arial", 9),
+                       activebackground=WHITE, selectcolor=WHITE).grid(
+                       row=1, column=0, sticky="w", padx=4)
+        ri[0] += 1
 
         # ── Quantités / Qualité ──
         sec("Quantités & Qualité", GREEN)
@@ -2300,8 +2353,8 @@ class App:
         txt_f = tk.Frame(c, bg=WHITE)
         txt_f.grid(row=ri[0], column=0, columnspan=3, sticky="ew", padx=2, pady=2)
         ri[0] += 1
-        self._comment_txt = tk.Text(txt_f, height=2, bg=WHITE, fg=DARK,
-                                     font=EFONT, relief="solid", bd=1,
+        self._comment_txt = tk.Text(txt_f, height=1, bg=WHITE, fg=DARK,
+                                     font=("Arial", 10), relief="solid", bd=1,
                                      wrap="word", insertbackground=DARK)
         self._comment_txt.pack(fill="x")
         # Restaurer les valeurs sauvegardées si disponibles
@@ -2451,9 +2504,9 @@ class App:
             cv.config(cursor="hand2")
             return cv
 
-        _make_cv_btn("⚠   DÉCLARER UN ARRÊT / RATTRAPAGE", C_RATT,
+        _make_cv_btn("⚠   DÉCLARER UN ARRÊT / RATTRAPAGE", "#ef4444",
                      self._show_stop_selector)
-        _make_cv_btn("🧹  DÉCLARER UN ARRÊT NETTOYAGE", "#6b7280",
+        _make_cv_btn("🧹  DÉCLARER UN ARRÊT NETTOYAGE", "#f87171",
                      lambda: self._start_nettoyage())
         _make_cv_btn("⏹   DÉCLARER LA FIN DE PRODUCTION", GREEN,
                      self._end_production)
