@@ -666,6 +666,7 @@ class App:
         self._recap_panel     = None
         self._saved_form_data  = {}   # Mémoire formulaire entre onglets
         self._reset_form_next  = False  # True = ne pas restaurer au prochain _show_production
+        self._logged_in_pilot  = None   # Pilote actuellement connecté
         self._prod_ref_cached  = 0.0
         self._pilot_kpi_data   = {}
 
@@ -1226,6 +1227,111 @@ class App:
         self._active_stops_container = None
         self._main_prod_panel = None
 
+    def _show_login_overlay(self, on_success=None):
+        """Overlay plein écran de connexion pilote."""
+        ov = tk.Frame(self.root, bg=NAVY)
+        ov.place(relx=0, rely=0, relwidth=1, relheight=1)
+        ov.lift()
+
+        tk.Frame(ov, bg=GREEN, height=6).pack(fill="x")
+        tk.Label(ov, text="KPI-ORC", bg=NAVY, fg=WHITE,
+                 font=("Arial", 28, "bold")).pack(pady=(40, 4))
+        tk.Label(ov, text="Connexion Pilote", bg=NAVY, fg="#7a99c0",
+                 font=("Arial", 14)).pack(pady=(0, 32))
+
+        card = tk.Frame(ov, bg=WHITE, bd=0)
+        card.pack(padx=120, pady=0, fill="x")
+        tk.Frame(card, bg=GREEN, height=4).pack(fill="x")
+        inner = tk.Frame(card, bg=WHITE)
+        inner.pack(padx=40, pady=30, fill="x")
+
+        tk.Label(inner, text="Nom du pilote", bg=WHITE, fg=GRAY,
+                 font=("Arial", 11)).pack(anchor="w")
+        pilot_var = tk.StringVar()
+        pilots = self._get_list("Pilotes")
+        cb = ttk.Combobox(inner, textvariable=pilot_var,
+                          values=pilots, font=("Arial", 14),
+                          state="readonly", width=28)
+        cb.pack(fill="x", pady=(4, 16))
+        if pilots:
+            cb.set(pilots[0])
+
+        passwords = self._get_list("Mots de passe")
+        need_pw = bool(passwords)
+
+        if need_pw:
+            tk.Label(inner, text="Mot de passe", bg=WHITE, fg=GRAY,
+                     font=("Arial", 11)).pack(anchor="w")
+            pw_var = tk.StringVar()
+            pw_e = tk.Entry(inner, textvariable=pw_var, show="*",
+                            font=("Arial", 14), width=28,
+                            relief="solid", bd=1)
+            pw_e.pack(fill="x", pady=(4, 16))
+        else:
+            pw_var = None
+
+        err_lbl = tk.Label(inner, text="", bg=WHITE, fg=C_RED,
+                           font=("Arial", 10))
+        err_lbl.pack()
+
+        def _connect(event=None):
+            name = pilot_var.get().strip()
+            if not name:
+                err_lbl.config(text="Sélectionnez un pilote.")
+                return
+            if need_pw:
+                pw = pw_var.get()
+                try:
+                    idx = pilots.index(name)
+                    expected = str(passwords[idx]) if idx < len(passwords) else ""
+                    if pw != expected:
+                        err_lbl.config(text="Mot de passe incorrect.")
+                        pw_var.set("")
+                        return
+                except (ValueError, IndexError):
+                    err_lbl.config(text="Pilote introuvable.")
+                    return
+            self._logged_in_pilot = name
+            ov.destroy()
+            if on_success:
+                on_success()
+            else:
+                self._show_main()
+
+        tk.Button(inner, text="✔   SE CONNECTER", command=_connect,
+                  bg=GREEN, fg=WHITE, font=("Arial", 14, "bold"),
+                  relief="flat", pady=12, cursor="hand2").pack(fill="x", pady=(8, 0))
+        if need_pw:
+            pw_e.bind("<Return>", _connect)
+        cb.bind("<Return>", _connect)
+        cb.focus()
+
+    def _maybe_show_login(self):
+        if not self._logged_in_pilot:
+            self._show_login_overlay()
+
+    def _pilot_badge(self, parent, bg):
+        """Encart 'Pilote connecté: XXX' avec bouton Changer."""
+        f = tk.Frame(parent, bg=bg)
+        name = self._logged_in_pilot or "Non connecté"
+        col = GREEN if self._logged_in_pilot else C_RED
+        tk.Label(f, text="Pilote connecté :", bg=bg, fg="#aabbd0",
+                 font=("Arial", 9)).pack(side="left", padx=(0, 4))
+        tk.Label(f, text=name, bg=bg, fg=WHITE,
+                 font=("Arial", 11, "bold")).pack(side="left")
+        tk.Button(f, text="⇄", bg=col, fg=WHITE,
+                  font=("Arial", 10, "bold"), relief="flat",
+                  padx=6, cursor="hand2",
+                  command=lambda: self._show_login_overlay(
+                      on_success=self._show_main if self._mode == "main"
+                      else self._show_production_header_refresh
+                  )).pack(side="left", padx=(8, 0))
+        return f
+
+    def _show_production_header_refresh(self):
+        """Rafraîchit juste le badge pilote dans la vue production."""
+        self._show_main() if not self._prod_active else None
+
     def _make_header(self, parent, title, subtitle=""):
         hdr = tk.Frame(parent, bg=NAVY, height=68)
         hdr.pack(fill="x")
@@ -1241,6 +1347,7 @@ class App:
         tk.Button(right_bar, text="📊", bg=NAVY, fg=WHITE,
                   font=("Arial", 16), relief="flat", cursor="hand2",
                   command=self._show_excel_info).pack(side="right", padx=4)
+        self._pilot_badge(right_bar, NAVY).pack(side="right", padx=12)
         return hdr
 
     def _make_timeline(self, parent):
@@ -1594,7 +1701,7 @@ class App:
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=20, pady=12)
 
-        top = tk.Frame(body, bg=BG, height=200)
+        top = tk.Frame(body, bg=BG, height=230)
         top.pack(fill="x", pady=(0, 8))
         top.pack_propagate(False)
 
@@ -1925,7 +2032,9 @@ class App:
                     d = str(row[1] or "").strip()[:10]
                     if d == today and p and p not in pilots_seen:
                         pilots_seen.append(p)
-                last_pilot = pilots_seen[-1] if pilots_seen else ""
+                last_pilot = (self._logged_in_pilot
+                              if self._logged_in_pilot else
+                              (pilots_seen[-1] if pilots_seen else ""))
                 # TRS du dernier pilote
                 prod_ref   = self._get_prod_ref()
                 tot_eq, tot_s = 0.0, 0.0
@@ -1970,8 +2079,14 @@ class App:
             d = str(row[1] or "").strip()[:10]
             if d == today and p and p not in pilots_seen:
                 pilots_seen.append(p)
-        last_pilot = pilots_seen[-1] if pilots_seen else None
-        prev_pilot = pilots_seen[-2] if len(pilots_seen) >= 2 else None
+        if self._logged_in_pilot:
+            last_pilot = self._logged_in_pilot
+            # Pilote précédent = dernier dans la liste différent du connecté
+            prev_pilot = next((p for p in reversed(pilots_seen)
+                               if p != last_pilot), None)
+        else:
+            last_pilot = pilots_seen[-1] if pilots_seen else None
+            prev_pilot = pilots_seen[-2] if len(pilots_seen) >= 2 else None
         prod_ref   = self._get_prod_ref()
         totals = {}
         for p in [last_pilot, prev_pilot]:
@@ -2378,6 +2493,9 @@ class App:
     #  ECRAN DE PRODUCTION
     # =========================================================================
     def _start_production(self):
+        if not self._logged_in_pilot:
+            self._show_login_overlay(on_success=self._start_production)
+            return
         now = datetime.datetime.now()
         if self._last_of_end is not None:
             gap = (now - self._last_of_end).total_seconds()
@@ -2484,6 +2602,7 @@ class App:
         tk.Button(right_bar, text="📊", bg=WHITE, fg=GREEN,
                   font=("Arial", 16), relief="flat", cursor="hand2",
                   command=self._show_excel_info).pack(side="right", padx=4)
+        self._pilot_badge(right_bar, WHITE).pack(side="right", padx=12)
 
         # ── Barre de statut Canvas (chrono + KPI, change couleur) ────────────
         self._status_cv = tk.Canvas(outer, height=72, bg=BG, highlightthickness=0)
@@ -2632,6 +2751,9 @@ class App:
                                      font=("Arial", 10), relief="solid", bd=1,
                                      wrap="word", insertbackground=DARK)
         self._comment_txt.pack(fill="x")
+        # Auto-remplir le pilote connecté
+        if self._logged_in_pilot and "pilote" in self.fv:
+            self.fv["pilote"].set(self._logged_in_pilot)
         # Restaurer les valeurs sauvegardées si disponibles
         self.root.after(50, self._restore_form_data)
 
