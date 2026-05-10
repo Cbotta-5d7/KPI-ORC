@@ -1313,20 +1313,23 @@ class App:
 
     def _pilot_badge(self, parent, bg):
         """Encart 'Pilote connecté: XXX' avec bouton Changer."""
+        dark_bg = bg in (NAVY, NAVY_L, DARK)
+        fg_sub  = "#aabbd0" if dark_bg else GRAY
+        fg_main = WHITE     if dark_bg else NAVY
         f = tk.Frame(parent, bg=bg)
         name = self._logged_in_pilot or "Non connecté"
         col = GREEN if self._logged_in_pilot else C_RED
-        tk.Label(f, text="Pilote connecté :", bg=bg, fg="#aabbd0",
-                 font=("Arial", 9)).pack(side="left", padx=(0, 4))
-        tk.Label(f, text=name, bg=bg, fg=WHITE,
+        tk.Label(f, text="Pilote :", bg=bg, fg=fg_sub,
+                 font=("Arial", 9)).pack(side="left", padx=(0, 2))
+        tk.Label(f, text=name, bg=bg, fg=fg_main,
                  font=("Arial", 11, "bold")).pack(side="left")
         tk.Button(f, text="⇄", bg=col, fg=WHITE,
                   font=("Arial", 10, "bold"), relief="flat",
                   padx=6, cursor="hand2",
                   command=lambda: self._show_login_overlay(
                       on_success=self._show_main if self._mode == "main"
-                      else self._show_production_header_refresh
-                  )).pack(side="left", padx=(8, 0))
+                      else lambda: None
+                  )).pack(side="left", padx=(6, 0))
         return f
 
     def _show_production_header_refresh(self):
@@ -1540,37 +1543,51 @@ class App:
         # Reflet haut
         _rrect(cv, 2, 2, w - 2, h // 3, r, fill=_off(face, +35))
 
+        # Compteur pièces attendues (hors arrêts)
+        pure_s   = max(0.0, of_s - stop_s)
+        prod_ref = self._get_prod_ref()
+        pcs_obj  = int(prod_ref * pure_s / 28800.0) if prod_ref > 0 else 0
+
         if any_running:
-            # Gros affichage EN ARRET
-            cv.create_text(20, h // 2, text="⚠  EN ARRET",
+            cv.create_text(20, h // 2, text="⚠  EN ARRÊT",
                            font=("Arial", 20, "bold"), fill=WHITE, anchor="w")
             cv.create_text(w // 2, h // 2, text=fmt(stop_s),
                            font=("Arial", 32, "bold"), fill="#ffff44", anchor="center")
-            # OF petit
             cv.create_text(w - 20, h // 2,
                            text=f"OF: {fmt(of_s)}",
                            font=("Arial", 13), fill="#ffcccc", anchor="e")
         else:
-            # Affichage normal production
             cv.create_text(20, h // 2, text="⏱",
                            font=("Arial", 16), fill=WHITE, anchor="w")
             cv.create_text(50, h // 2, text=fmt(of_s),
                            font=("Arial", 30, "bold"), fill=WHITE, anchor="w")
-            cv.create_text(260, h // 2, text=f"🔧  {fmt(stop_s)}",
-                           font=("Arial", 14), fill="#d4f5d4", anchor="w")
-            # KPI bar
+            # Pièces attendues
+            if pcs_obj > 0:
+                cv.create_text(260, h // 2 - 8, text="Objectif",
+                               font=("Arial", 8), fill="#d4f5d4", anchor="w")
+                cv.create_text(260, h // 2 + 8, text=f"≥ {pcs_obj} pcs",
+                               font=("Arial", 13, "bold"), fill="#4ade80", anchor="w")
+
+            # Barre PROD/ARRET — plus visible
             if of_s > 0:
                 prod_r = max(0.0, (of_s - stop_s) / of_s)
-                bx, bw2 = w - 280, 260
-                cv.create_rectangle(bx, h // 2 - 10, bx + bw2, h // 2 + 10,
-                                    fill=_off(GREEN, -60), outline="")
-                cv.create_rectangle(bx, h // 2 - 10,
-                                    bx + int(bw2 * prod_r), h // 2 + 10,
-                                    fill="#4ade80", outline="")
-                pct_p = int(prod_r * 100)
-                cv.create_text(bx + bw2 // 2, h // 2,
-                               text=f"PROD {pct_p}%  |  ARRET {100 - pct_p}%",
-                               font=("Arial", 9, "bold"), fill=WHITE, anchor="center")
+                pct_p  = int(prod_r * 100)
+                bx, bw2, by, bh2 = w - 320, 300, 10, h - 20
+                # Fond arrêt (orange)
+                cv.create_rectangle(bx, by, bx + bw2, by + bh2,
+                                    fill="#c2410c", outline="")
+                # Part prod (vert)
+                cv.create_rectangle(bx, by, bx + int(bw2 * prod_r), by + bh2,
+                                    fill="#16a34a", outline="")
+                # Texte PROD
+                cv.create_text(bx + 8, by + bh2 // 2,
+                               text=f"PROD {pct_p}%",
+                               font=("Arial", 12, "bold"), fill=WHITE, anchor="w")
+                # Texte ARRÊT
+                if pct_p < 95:
+                    cv.create_text(bx + bw2 - 8, by + bh2 // 2,
+                                   text=f"ARRÊT {100 - pct_p}%",
+                                   font=("Arial", 11, "bold"), fill=WHITE, anchor="e")
 
     def _reset_activity(self, event=None):
         self._last_activity = datetime.datetime.now()
@@ -1714,7 +1731,7 @@ class App:
         tk.Label(trs_inner, text="Taux de Rendement Synthetique",
                  bg=WHITE, fg=LGRAY, font=("Arial", 8)).pack()
         self._main_gauge = Gauge(trs_inner, bg=WHITE,
-                                  width=290, height=130, highlightthickness=0)
+                                  width=290, height=110, highlightthickness=0)
         self._main_gauge.pack(padx=16, pady=(0, 2))
         self._pilot_name_lbl = tk.Label(trs_inner, text="",
                                          bg=WHITE, fg=NAVY,
@@ -2072,43 +2089,60 @@ class App:
                 text=f"Pilote : {last_pilot}" if last_pilot else "Aucune déclaration")
 
     def _load_pilot_kpi(self, rows, today):
-        """Calcule les KPIs par pilote (dernier et précédent) pour le panneau arrêts."""
-        path = self.cfg.get("db_path", "")
-        pilots_seen = []
+        """Calcule les KPIs par pilote (connecté et précédent, 12 dernières heures)."""
+        path   = self.cfg.get("db_path", "")
+        cutoff = datetime.datetime.now() - datetime.timedelta(hours=12)
+
+        def _row_dt(row):
+            try:
+                return datetime.datetime.strptime(
+                    f"{str(row[1] or '').strip()[:10]} {str(row[17] or '').strip()}",
+                    "%d/%m/%Y %H:%M:%S")
+            except Exception:
+                return None
+
+        # Pilote en cours = connecté, sinon dernier déclarant dans les 12h
+        last_pilot = self._logged_in_pilot or None
+        if not last_pilot:
+            for row in reversed(rows):
+                dt = _row_dt(row)
+                if dt and dt >= cutoff:
+                    p = str(row[3] or "").strip()
+                    if p:
+                        last_pilot = p
+                        break
+
+        # Pilote précédent = dernier différent de last_pilot dans les rows
+        prev_pilot = None
+        for row in reversed(rows):
+            dt = _row_dt(row)
+            p  = str(row[3] or "").strip()
+            if p and p != last_pilot:
+                prev_pilot = p
+                break
+
+        prod_ref = self._get_prod_ref()
+        totals   = {p: {"eq": 0.0, "s": 0.0}
+                    for p in [last_pilot, prev_pilot] if p}
+
         for row in rows:
-            p = str(row[3] or "").strip()
-            d = str(row[1] or "").strip()[:10]
-            if d == today and p and p not in pilots_seen:
-                pilots_seen.append(p)
-        if self._logged_in_pilot:
-            last_pilot = self._logged_in_pilot
-            # Pilote précédent = dernier dans la liste différent du connecté
-            prev_pilot = next((p for p in reversed(pilots_seen)
-                               if p != last_pilot), None)
-        else:
-            last_pilot = pilots_seen[-1] if pilots_seen else None
-            prev_pilot = pilots_seen[-2] if len(pilots_seen) >= 2 else None
-        prod_ref   = self._get_prod_ref()
-        totals = {}
-        for p in [last_pilot, prev_pilot]:
-            if p:
-                totals[p] = {"eq": 0.0, "s": 0.0}
-        for row in rows:
-            d = str(row[1] or "").strip()[:10]
-            p = str(row[3] or "").strip()
-            if d != today or p not in totals:
+            dt = _row_dt(row)
+            p  = str(row[3] or "").strip()
+            if not dt or dt < cutoff or p not in totals:
                 continue
             try:
                 totals[p]["eq"] += float(str(row[15] or 0).replace(",", "."))
                 totals[p]["s"]  += _hms_to_sec(str(row[16] or "00:00:00"))
             except Exception:
                 pass
+
         def _trs(p):
             if not p or p not in totals:
                 return 0.0
             eq, s = totals[p]["eq"], totals[p]["s"]
             return (eq / (prod_ref * s / 28800.0) * 100.0
                     if prod_ref > 0 and s > 0 else 0.0)
+
         last_stops, prev_stops = {}, {}
         if path and os.path.exists(path):
             try:
@@ -2118,8 +2152,13 @@ class App:
                         if not row or not row[0]:
                             continue
                         p = str(row[4] or "").strip()
-                        d = str(row[2] or "").strip()[:10]
-                        if d != today:
+                        try:
+                            dt_e = datetime.datetime.strptime(
+                                f"{str(row[2] or '').strip()[:10]} {str(row[16] or '').strip()}",
+                                "%d/%m/%Y %H:%M:%S")
+                            if dt_e < cutoff:
+                                continue
+                        except Exception:
                             continue
                         label = str(row[0] or "")
                         cat   = "ratt" if "rattrapage" in label.lower() else "pb"
@@ -2687,6 +2726,9 @@ class App:
                                   values=self._get_list(lh) if lh else [],
                                   font=EFONT, state="readonly", height=6, width=1)
                 cb.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 3))
+                if key == "pilote" and self._logged_in_pilot:
+                    var.set(self._logged_in_pilot)
+                    cb.config(state="disabled")
             if adv:
                 ri[0] += 1
 
@@ -2752,9 +2794,6 @@ class App:
                                      font=("Arial", 10), relief="solid", bd=1,
                                      wrap="word", insertbackground=DARK)
         self._comment_txt.pack(fill="x")
-        # Auto-remplir le pilote connecté
-        if self._logged_in_pilot and "pilote" in self.fv:
-            self.fv["pilote"].set(self._logged_in_pilot)
         # Restaurer les valeurs sauvegardées si disponibles
         self.root.after(50, self._restore_form_data)
 
