@@ -1,4 +1,4 @@
-"""KPI-ORC v5.7 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
+"""KPI-ORC v5.21 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json, os, sys, datetime, math
@@ -6,6 +6,7 @@ from openpyxl import load_workbook
 
 CONFIG_FILE  = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
 SESSION_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_session.json")
+PENDING_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_pending.json")
 PASSWORD     = "0000"
 DB_PASSWORD  = "4594"
 
@@ -163,11 +164,11 @@ def shadow_frame(parent, bg=WHITE, shadow_px=4):
 #  Timeline
 # ─────────────────────────────────────────────────────────────────────────────
 class Timeline(tk.Canvas):
-    BAR_Y = 24
-    BAR_H = 34
+    BAR_Y = 44
+    BAR_H = 30
 
     def __init__(self, parent, app, **kw):
-        kw.setdefault("height", 72)
+        kw.setdefault("height", 84)
         kw.setdefault("bg", WHITE)
         kw.setdefault("highlightthickness", 0)
         super().__init__(parent, **kw)
@@ -1578,6 +1579,7 @@ class App:
         self._make_header(outer, "KPI-ORC", "Ligne ORC1")
         # Vérifier la DB après rendu de la fenêtre principale
         self.root.after(200, self._check_db_on_startup)
+        self.root.after(3000, self._check_pending)
         self._make_tabs(outer, "main")
         self._make_timeline(outer)
 
@@ -1606,47 +1608,52 @@ class App:
         right_zone = tk.Frame(top, bg=BG)
         right_zone.pack(side="left", fill="both", expand=True)
 
+        # Colonne gauche : bouton démarrer OU panneau prod en cours (largeur fixe)
+        btn_zone = tk.Frame(right_zone, bg=BG, width=260)
+        btn_zone.pack(side="left", fill="y", padx=(0, 8))
+        btn_zone.pack_propagate(False)
+
         if self._prod_active:
             # Grand panneau "Production en cours"
-            prod_wrap, prod_inner = shadow_frame(right_zone, bg=NAVY)
+            prod_wrap, prod_inner = shadow_frame(btn_zone, bg=NAVY)
             prod_wrap.pack(fill="both", expand=True)
             self._main_prod_panel = prod_wrap
 
             # Ligne titre avec point clignotant
             dot_row = tk.Frame(prod_inner, bg=NAVY)
-            dot_row.pack(fill="x", padx=20, pady=(16, 4))
+            dot_row.pack(fill="x", padx=14, pady=(12, 2))
             self._blink_dot = tk.Label(dot_row, text="●", bg=NAVY,
-                                       fg=C_RED, font=("Arial", 20))
-            self._blink_dot.pack(side="left", padx=(0, 8))
-            tk.Label(dot_row, text="PRODUCTION EN COURS",
+                                       fg=C_RED, font=("Arial", 16))
+            self._blink_dot.pack(side="left", padx=(0, 6))
+            tk.Label(dot_row, text="EN COURS",
                      bg=NAVY, fg=WHITE,
-                     font=("Arial", 16, "bold")).pack(side="left")
+                     font=("Arial", 13, "bold")).pack(side="left")
 
             # Heure de debut
             tk.Label(prod_inner,
-                     text=f"Debut : {self._of_start.strftime('%H:%M:%S')}",
+                     text=f"Début : {self._of_start.strftime('%H:%M:%S')}",
                      bg=NAVY, fg="#7a99c0",
-                     font=("Arial", 12)).pack(anchor="w", padx=20, pady=(0, 4))
+                     font=("Arial", 10)).pack(anchor="w", padx=14, pady=(0, 2))
 
             # Chrono elapsed (mis a jour par _tick)
             of_s_now = (datetime.datetime.now() - self._of_start).total_seconds()
             self._elapsed_lbl = tk.Label(prod_inner,
                                           text=f"⏱  {fmt(of_s_now)}",
                                           bg=NAVY, fg="#4ade80",
-                                          font=("Arial", 30, "bold"))
-            self._elapsed_lbl.pack(anchor="center", pady=(8, 6))
+                                          font=("Arial", 24, "bold"))
+            self._elapsed_lbl.pack(anchor="center", pady=(6, 4))
 
             # Arrets actifs + cumul
             n_actifs = sum(1 for k in self._timers if self._t_running(k))
             col_arr = C_RED if n_actifs > 0 else "#7a99c0"
             self._stops_lbl = tk.Label(prod_inner,
-                text=f"⚠  Arrets actifs: {n_actifs}  |  Cumul: {fmt(self._t_total_stops())}",
-                bg=NAVY, fg=col_arr, font=("Arial", 12, "bold"))
-            self._stops_lbl.pack(anchor="center", padx=20, pady=(0, 14))
+                text=f"⚠  {n_actifs} arrêt(s)  |  {fmt(self._t_total_stops())}",
+                bg=NAVY, fg=col_arr, font=("Arial", 10, "bold"))
+            self._stops_lbl.pack(anchor="center", padx=10, pady=(0, 10))
         else:
-            # Gros bouton vert "Démarrer"
-            btn_canvas = tk.Canvas(right_zone, bg=BG, highlightthickness=0)
-            btn_canvas.pack(fill="both", expand=True, padx=4, pady=8)
+            # Bouton vert "Démarrer" (plus étroit)
+            btn_canvas = tk.Canvas(btn_zone, bg=BG, highlightthickness=0)
+            btn_canvas.pack(fill="both", expand=True, padx=2, pady=6)
 
             def _draw_btn(e=None):
                 btn_canvas.delete("all")
@@ -1657,12 +1664,18 @@ class App:
                 _rrect(btn_canvas, 0, 0, bw-6, bh-7, 16, fill=GREEN)
                 _rrect(btn_canvas, 2, 2, bw-8, bh//3, 16, fill=_off(GREEN, +40))
                 btn_canvas.create_text(bw//2-3, bh//2-3,
-                                       text="▶   DEMARRER UNE PRODUCTION",
-                                       fill=WHITE, font=("Arial", 18, "bold"))
+                                       text="▶  DÉMARRER\nUNE PROD",
+                                       fill=WHITE, font=("Arial", 14, "bold"),
+                                       justify="center")
 
             btn_canvas.bind("<Configure>", _draw_btn)
             btn_canvas.bind("<Button-1>",  lambda e: self._start_production())
             btn_canvas.config(cursor="hand2")
+
+        # Colonne droite : panneau KPI arrêts
+        kpi_stops = tk.Frame(right_zone, bg=BG)
+        kpi_stops.pack(side="left", fill="both", expand=True)
+        self._build_stops_kpi_panel(kpi_stops)
 
         # Tableau recap
         lbl_frame = tk.Frame(body, bg=BG)
@@ -1805,6 +1818,117 @@ class App:
         except (TypeError, ValueError):
             pass
         return self._prod_ref_cached   # fallback cache I2
+
+    def _build_stops_kpi_panel(self, parent):
+        """Panneau KPI arrêts — aujourd'hui / 8h / 24h."""
+        wrap, inner = shadow_frame(parent, bg=WHITE)
+        wrap.pack(fill="both", expand=True)
+
+        hdr = tk.Frame(inner, bg=NAVY, height=38)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="Arrêts déclarés", bg=NAVY, fg=WHITE,
+                 font=("Arial", 11, "bold")).pack(side="left", padx=12, pady=8)
+
+        # Boutons filtre
+        filter_var = tk.StringVar(value="8h")
+        btn_bar = tk.Frame(inner, bg=WHITE)
+        btn_bar.pack(fill="x", padx=6, pady=(6, 0))
+        content_frame = tk.Frame(inner, bg=WHITE)
+        content_frame.pack(fill="both", expand=True, padx=6, pady=4)
+
+        def _show_filter(window):
+            filter_var.set(window)
+            for w in content_frame.winfo_children():
+                w.destroy()
+            now = datetime.datetime.now()
+            if window == "session":
+                evts = [e for e in self._tl_events
+                        if e.get("cat") in ("ratt", "pb")
+                        and not e.get("key", "").startswith("_hist")]
+            elif window == "8h":
+                cutoff = now - datetime.timedelta(hours=8)
+                evts = [e for e in self._tl_events
+                        if e.get("cat") in ("ratt", "pb")
+                        and e.get("start", now) >= cutoff]
+            else:  # 24h / aujourd'hui
+                cutoff = now - datetime.timedelta(hours=24)
+                evts = [e for e in self._tl_events
+                        if e.get("cat") in ("ratt", "pb")
+                        and e.get("start", now) >= cutoff]
+
+            # Agréger par type
+            agg = {}
+            for e in evts:
+                key = e.get("key", "?")
+                label = next((ev[0] for ev in EVENTS if ev[1] == key), key)
+                dur = (e.get("end") or now - e["start"]).total_seconds() if isinstance(
+                    e.get("end"), datetime.datetime) else 0
+                if e["start"] and isinstance(e.get("end"), datetime.datetime):
+                    dur = (e["end"] - e["start"]).total_seconds()
+                elif e.get("start"):
+                    dur = (now - e["start"]).total_seconds()
+                if label not in agg:
+                    agg[label] = {"count": 0, "dur": 0.0,
+                                  "cat": e.get("cat", "pb")}
+                agg[label]["count"] += 1
+                agg[label]["dur"]   += max(0, dur)
+
+            if not agg:
+                tk.Label(content_frame, text="Aucun arrêt sur cette période",
+                         bg=WHITE, fg=LGRAY, font=("Arial", 10)).pack(pady=16)
+                return
+
+            sorted_agg = sorted(agg.items(), key=lambda x: -x[1]["dur"])
+            max_dur = max(v["dur"] for v in agg.values()) or 1
+            for lbl, data in sorted_agg:
+                row_f = tk.Frame(content_frame, bg=WHITE)
+                row_f.pack(fill="x", pady=1)
+                col = C_RATT if data["cat"] == "ratt" else C_RED
+                tk.Label(row_f, text=lbl, bg=WHITE, fg=DARK,
+                         font=("Arial", 9), anchor="w", width=20).pack(side="left")
+                tk.Label(row_f, text=f"×{data['count']}",
+                         bg=WHITE, fg=GRAY, font=("Arial", 9, "bold"),
+                         width=4).pack(side="left")
+                bar_f = tk.Frame(row_f, bg=LGRAY, height=12)
+                bar_f.pack(side="left", fill="x", expand=True, padx=(4, 0))
+                bar_f.update_idletasks()
+                def _draw_bar(evt, f=bar_f, d=data["dur"], mx=max_dur, c=col):
+                    w = f.winfo_width()
+                    if w < 2:
+                        return
+                    fill = tk.Frame(f, bg=c, width=max(2, int(w * d / mx)), height=12)
+                    fill.place(x=0, y=0)
+                bar_f.bind("<Configure>", _draw_bar)
+                tk.Label(row_f, text=fmt(data["dur"]),
+                         bg=WHITE, fg=GRAY, font=("Arial", 8),
+                         width=7).pack(side="left")
+
+        for label, val in [("Session", "session"), ("8 h", "8h"), ("24 h", "24h")]:
+            b = tk.Button(btn_bar, text=label, relief="flat", cursor="hand2",
+                          font=("Arial", 9, "bold"), padx=8, pady=3,
+                          command=lambda v=val: _show_filter(v))
+            b.pack(side="left", padx=2)
+
+            def _style_btns():
+                for child in btn_bar.winfo_children():
+                    if isinstance(child, tk.Button):
+                        v = child.cget("text")
+                        vmap = {"Session": "session", "8 h": "8h", "24 h": "24h"}
+                        active = (vmap.get(v) == filter_var.get())
+                        child.config(bg=NAVY if active else LGRAY,
+                                     fg=WHITE if active else DARK)
+            b.config(command=lambda v=val, _sb=_style_btns: [_show_filter(v), _sb()])
+
+        _show_filter("8h")
+        # Style initial
+        for child in btn_bar.winfo_children():
+            if isinstance(child, tk.Button):
+                v = child.cget("text")
+                vmap = {"Session": "session", "8 h": "8h", "24 h": "24h"}
+                active = (vmap.get(v) == "8h")
+                child.config(bg=NAVY if active else LGRAY,
+                             fg=WHITE if active else DARK)
 
     def _refresh_main_kpi(self):
         path = self.cfg.get("db_path", "")
@@ -2459,7 +2583,7 @@ class App:
         txt_f = tk.Frame(c, bg=WHITE)
         txt_f.grid(row=ri[0], column=0, columnspan=3, sticky="ew", padx=2, pady=2)
         ri[0] += 1
-        self._comment_txt = tk.Text(txt_f, height=1, bg=WHITE, fg=DARK,
+        self._comment_txt = tk.Text(txt_f, height=3, bg=WHITE, fg=DARK,
                                      font=("Arial", 10), relief="solid", bd=1,
                                      wrap="word", insertbackground=DARK)
         self._comment_txt.pack(fill="x")
@@ -2510,6 +2634,14 @@ class App:
                 if pw_var.get() == PASSWORD:
                     pw_win.destroy()
                     try:
+                        wb2 = load_workbook(path)
+                        if "Listes" in wb2.sheetnames:
+                            wb2.active = wb2["Listes"]
+                        wb2.save(path)
+                        wb2.close()
+                    except Exception:
+                        pass
+                    try:
                         os.startfile(path)
                     except Exception:
                         import subprocess
@@ -2522,10 +2654,10 @@ class App:
                       bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
                       relief="flat", cursor="hand2", pady=6).pack(fill="x", padx=40, pady=8)
 
-        tk.Button(hdr, text="📝  Modifier les listes", bg=GREEN, fg=WHITE,
+        tk.Button(hdr, text="📝  Modifier les listes Excel", bg=GREEN, fg=WHITE,
                   font=("Arial", 11, "bold"), relief="flat", cursor="hand2",
-                  padx=10, pady=6,
-                  command=_open_listes).pack(side="right", padx=12, pady=8)
+                  padx=16, pady=6, wraplength=0,
+                  command=_open_listes).pack(side="right", padx=16, pady=8)
 
         nb = ttk.Notebook(win)
         nb.pack(fill="both", expand=True, padx=8, pady=8)
@@ -3168,14 +3300,42 @@ class App:
             self._show_main()
             _toast(self.root, "✔  Production declaree avec succes !", bg=GREEN)
         else:
-            # Fichier ouvert → message specifique, retour prod
-            self._prod_active = True
-            self._save_session()
-            self._after_id = self.root.after(1000, self._tick)
-            messagebox.showwarning(
-                "Fichier Excel ouvert",
-                "Veuillez fermer le fichier Excel,\ncontacter le Bureau méthodes.\n\n"
-                "La production n'a PAS été annulée.")
+            # Fichier Excel ouvert → sauvegarde temporaire + overlay avertissement
+            self._save_pending_declaration(row, v)
+            self._prod_active = False
+            self._delete_session()
+            self._saved_form_data = {}
+            self._show_main()
+            # Overlay plein écran d'alerte fichier ouvert
+            ov = tk.Frame(self.root, bg=WHITE)
+            ov.place(relx=0, rely=0, relwidth=1, relheight=1)
+            ov.lift()
+            hdr_ov = tk.Frame(ov, bg=C_RED, height=90)
+            hdr_ov.pack(fill="x")
+            hdr_ov.pack_propagate(False)
+            tk.Frame(hdr_ov, bg=DARK, width=6).pack(side="left", fill="y")
+            tk.Label(hdr_ov, text="⚠  FICHIER EXCEL OUVERT",
+                     bg=C_RED, fg=WHITE,
+                     font=("Arial", 24, "bold")).pack(
+                     side="left", padx=24, pady=24)
+            bdy = tk.Frame(ov, bg=WHITE)
+            bdy.pack(fill="both", expand=True, padx=80, pady=40)
+            tk.Label(bdy,
+                     text="Appelez l'encadrant !",
+                     bg=WHITE, fg=C_RED,
+                     font=("Arial", 20, "bold")).pack(pady=(0, 16))
+            tk.Label(bdy,
+                     text="La déclaration est sauvegardée temporairement.\n"
+                          "Elle sera enregistrée automatiquement\n"
+                          "dès que le fichier Excel sera fermé.",
+                     bg=WHITE, fg=DARK,
+                     font=("Arial", 14), justify="center").pack(pady=(0, 32))
+            def _close_ov():
+                ov.destroy()
+            tk.Button(bdy, text="✕  Fermer cet avertissement",
+                      command=_close_ov, bg=LGRAY, fg=DARK,
+                      font=("Arial", 13), relief="flat",
+                      padx=20, pady=10, cursor="hand2").pack()
 
     def _calc_equiv(self, qte, taille, type_prod):
         """Cherche le coef d'equivalence pour type_prod dans la colonne Equivalence coef."""
@@ -3216,6 +3376,95 @@ class App:
             wb.close()
         except Exception:
             pass
+
+    def _build_events_rows(self, v):
+        """Retourne la liste de lignes à écrire dans Evenements (pour sérialisation)."""
+        events_rows = []
+        of_start = self._of_start
+        kit_val  = "Oui" if self._v_kit.get() else "Non"
+        for ev in self._tl_events:
+            if ev.get("cat") not in ("ratt", "pb"):
+                continue
+            if not ev.get("key") or ev["key"].startswith("_"):
+                continue
+            if ev["start"] < of_start:
+                continue
+            cat_name = "Rattrapage" if ev["cat"] == "ratt" else "PB Technique"
+            label    = next((e[0] for e in EVENTS if e[1] == ev["key"]), ev["key"])
+            start    = ev["start"]
+            end      = ev.get("end") or datetime.datetime.now()
+            dur      = (end - start).total_seconds()
+            events_rows.append([
+                f"{cat_name}: {label}",
+                v.get("of_num", ""),
+                start.strftime("%d/%m/%Y"),
+                v.get("poste", ""),    v.get("pilote", ""),
+                v.get("copilote", ""), v.get("nb_pers", ""),
+                v.get("taille", ""),   v.get("type_prod", ""),
+                v.get("code_prod", ""),
+                v.get("fibre", ""),
+                v.get("poids", ""),
+                v.get("of_taie", ""),  v.get("traca", ""),
+                kit_val,
+                start.strftime("%H:%M:%S"),
+                end.strftime("%H:%M:%S"),
+                fmt(dur),
+                ev.get("comment", ""),
+            ])
+        return events_rows
+
+    def _save_pending_declaration(self, row, v):
+        """Sauvegarde une déclaration temporairement quand Excel est verrouillé."""
+        events_rows = self._build_events_rows(v)
+        payload = {
+            "db_path": self.cfg.get("db_path", ""),
+            "row": row,
+            "events_rows": events_rows,
+        }
+        try:
+            with open(PENDING_FILE, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, default=str)
+        except Exception:
+            pass
+        self._schedule_pending_retry()
+
+    def _schedule_pending_retry(self):
+        if hasattr(self, "_retry_pending_id"):
+            try:
+                self.root.after_cancel(self._retry_pending_id)
+            except Exception:
+                pass
+        self._retry_pending_id = self.root.after(8000, self._check_pending)
+
+    def _check_pending(self):
+        if not os.path.exists(PENDING_FILE):
+            return
+        try:
+            with open(PENDING_FILE, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception:
+            return
+        path = payload.get("db_path", "")
+        if not path or not os.path.exists(path):
+            self._schedule_pending_retry()
+            return
+        try:
+            wb = load_workbook(path)
+            wb["Data"].append(payload["row"])
+            ws_e = self._ensure_events_sheet(wb)
+            for ev_row in payload.get("events_rows", []):
+                ws_e.append(ev_row)
+            wb.save(path)
+            wb.close()
+            os.remove(PENDING_FILE)
+            _toast(self.root, "✔  Déclaration enregistrée dans Excel !", bg=GREEN)
+            if self._mode == "main":
+                self._refresh_table()
+                self._refresh_main_kpi()
+        except PermissionError:
+            self._schedule_pending_retry()
+        except Exception:
+            self._schedule_pending_retry()
 
     def _write_excel(self, row, v):
         path = self.cfg.get("db_path", "")
