@@ -2743,6 +2743,7 @@ class App:
                     pass
                 for col_i, var in enumerate(field_vars, start=1):
                     ws2.cell(row=excel_row, column=col_i).value = var.get()
+                self._format_row(ws2, excel_row)
                 # Mettre a jour onglet Evenements
                 of_num2 = str(row_data[0] or "")
                 of_date2 = str(row_data[1] or "")
@@ -2756,8 +2757,10 @@ class App:
                     ws_e.delete_rows(row_idx)
                 for r in keep:
                     ws_e.append(r)
+                    self._format_row(ws_e, ws_e.max_row)
                 for r in evt_data:
                     ws_e.append(r)
+                    self._format_row(ws_e, ws_e.max_row)
                 wb2.save(path2)
                 wb2.close()
                 messagebox.showinfo("Succes", "Modifications sauvegardees !", parent=top)
@@ -4200,6 +4203,7 @@ class App:
                 end_dt.strftime("%H:%M:%S"),
                 fmt(dur), "",
             ])
+            self._format_row(ws, ws.max_row)
             wb.save(path)
             wb.close()
         except Exception:
