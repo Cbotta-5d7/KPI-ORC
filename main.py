@@ -1453,6 +1453,17 @@ class App:
         """Rafraîchit juste le badge pilote dans la vue production."""
         self._show_main() if not self._prod_active else None
 
+    def _refresh_all(self):
+        """Recharge le fichier Excel (listes + historique + tableau) sans toucher à la prod en cours."""
+        self._load_lists()
+        self._load_history_from_excel()
+        if self._mode == "main":
+            self._refresh_table()
+            self._refresh_main_kpi()
+        elif self._mode == "production":
+            self._refresh_stops_recap()
+        _toast(self.root, "✔  Données Excel actualisées", bg=GREEN, duration=2000)
+
     def _confirm_quit(self):
         """Vérifie que tout est en ordre avant de quitter l'application."""
         issues = []
@@ -1554,6 +1565,10 @@ class App:
         tk.Button(right_bar, text="📊", bg=NAVY, fg=WHITE,
                   font=("Arial", 16), relief="flat", cursor="hand2",
                   command=self._show_excel_info).pack(side="right", padx=4)
+        tk.Button(right_bar, text="🔄  Actualiser", bg=NAVY_L, fg=WHITE,
+                  font=("Arial", 10, "bold"), relief="flat",
+                  padx=10, pady=2, cursor="hand2",
+                  command=self._refresh_all).pack(side="right", padx=4)
         tk.Button(right_bar, text="⏻  Quitter", bg=C_RED, fg=WHITE,
                   font=("Arial", 10, "bold"), relief="flat",
                   padx=10, pady=2, cursor="hand2",
