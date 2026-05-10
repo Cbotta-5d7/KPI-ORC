@@ -1795,7 +1795,15 @@ class App:
         # Compteur pièces attendues (hors arrêts)
         pure_s   = max(0.0, of_s - stop_s)
         prod_ref = self._get_prod_ref()
-        pcs_obj  = int(prod_ref * pure_s / 28800.0) if prod_ref > 0 else 0
+        # Adjust pcs_obj for current product equivalence coeff
+        _equiv_coef = 1.0
+        if hasattr(self, "fv"):
+            _taille_v   = self.fv["taille"].get()   if "taille"    in self.fv else ""
+            _type_pv    = self.fv["type_prod"].get() if "type_prod" in self.fv else ""
+            _raw_equiv  = self._calc_equiv(1, _taille_v, _type_pv)
+            if _raw_equiv > 0:
+                _equiv_coef = _raw_equiv
+        pcs_obj = int(prod_ref * pure_s / 28800.0 / _equiv_coef) if prod_ref > 0 else 0
 
         if any_running:
             cv.create_text(20, h // 2, text="⚠  EN ARRÊT",
@@ -3710,6 +3718,9 @@ class App:
             expected = prod_ref * of_s / 28800.0
             trs_pct  = (equiv / expected * 100.0) if expected > 0 else -1.0
 
+        # TRS du poste (12h) — depuis _pilot_kpi_data
+        pilot_trs_12h = self._pilot_kpi_data.get("last_trs", -1.0) if hasattr(self, "_pilot_kpi_data") else -1.0
+
         def _ts(key):
             return fmt(self._t_get(key))
 
@@ -3763,7 +3774,7 @@ class App:
         recap.configure(bg=WHITE)
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
-        pw, ph = min(680, sw - 60), 440
+        pw, ph = min(900, sw - 60), 460
         recap.geometry(f"{pw}x{ph}+{(sw-pw)//2}+{(sh-ph)//2}")
 
         # Header
@@ -3779,7 +3790,7 @@ class App:
         body_r.pack(fill="both", expand=True, padx=16, pady=8)
         left_r = tk.Frame(body_r, bg=WHITE)
         left_r.pack(side="left", fill="both", expand=True)
-        right_r = tk.Frame(body_r, bg=WHITE, width=200)
+        right_r = tk.Frame(body_r, bg=WHITE, width=400)
         right_r.pack(side="right", fill="y")
         right_r.pack_propagate(False)
 
@@ -3797,16 +3808,34 @@ class App:
         _row_info("Durée production",    fmt(of_s))
         _row_info("Durée arrêts",         fmt(stop_s))
 
-        # Jauge TRS graphique
+        # ── Deux jauges côte à côte ───────────────────────────────────────────
+        gauges_row = tk.Frame(right_r, bg=WHITE)
+        gauges_row.pack(fill="x", pady=(8, 0))
+
+        # Jauge 1 : TRS cet OF
+        g1_frame = tk.Frame(gauges_row, bg=WHITE)
+        g1_frame.pack(side="left", expand=True, fill="both")
+        tk.Label(g1_frame, text="TRS cet OF", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold")).pack(pady=(4, 0))
         trs_col = GREEN if trs_pct >= 75 else C_RATT if trs_pct >= 55 else C_RED
-        tk.Label(right_r, text="TRS cet OF", bg=WHITE, fg=GRAY,
-                 font=("Arial", 9, "bold")).pack(pady=(12, 0))
-        gauge_r = Gauge(right_r, bg=WHITE, width=180, height=120,
+        gauge_r = Gauge(g1_frame, bg=WHITE, width=160, height=110,
                         highlightthickness=0)
-        gauge_r.pack(padx=8)
-        trs_disp = max(0.0, trs_pct) if trs_pct >= 0 else 0.0
-        trs_time  = f"{trs_disp:.1f}%" if trs_pct >= 0 else "—"
-        gauge_r.update_gauge(trs_disp, trs_time)
+        gauge_r.pack()
+        trs_disp  = max(0.0, trs_pct) if trs_pct >= 0 else 0.0
+        trs_label = f"{trs_disp:.1f}%" if trs_pct >= 0 else "—"
+        gauge_r.update_gauge(trs_disp, trs_label)
+
+        # Jauge 2 : TRS poste 12h
+        g2_frame = tk.Frame(gauges_row, bg=WHITE)
+        g2_frame.pack(side="left", expand=True, fill="both")
+        tk.Label(g2_frame, text="TRS poste (12h)", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold")).pack(pady=(4, 0))
+        trs12_disp = max(0.0, pilot_trs_12h) if pilot_trs_12h >= 0 else 0.0
+        trs12_lbl  = f"{trs12_disp:.1f}%" if pilot_trs_12h >= 0 else "—"
+        gauge_r2 = Gauge(g2_frame, bg=WHITE, width=160, height=110,
+                         highlightthickness=0)
+        gauge_r2.pack()
+        gauge_r2.update_gauge(trs12_disp, trs12_lbl)
 
         tk.Frame(left_r, bg=LGRAY, height=1).pack(fill="x", pady=8)
 
