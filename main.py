@@ -6,6 +6,7 @@ from openpyxl import load_workbook
 
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
 PASSWORD    = "0000"
+DB_PASSWORD = "4594"
 
 NAVY    = "#1a1f5e"   # Dodo bleu marine
 NAVY_L  = "#2d3490"   # Dodo bleu marine clair
@@ -30,6 +31,7 @@ EVENTS = [
     ("Emballage",            "ratt_emb",         "ratt"),
     ("Presse Souder",        "ratt_presse_soud", "ratt"),
     ("Presse ZIP",           "ratt_presse_zip",  "ratt"),
+    ("Nettoyage",            "nettoyage",        "ratt"),
     ("Chargeuse",            "pb_chargeuse",     "pb"),
     ("Carde",                "pb_carde",         "pb"),
     ("Etaleur / Tour",       "pb_etaleur",       "pb"),
@@ -68,7 +70,8 @@ DATA_HEADERS = [
 
 EVT_HEADERS = [
     "Evenement", "OF", "Date", "Poste", "Pilote", "Co-Pilote",
-    "Nb Personnes", "Taille", "Type Produit", "Code Produit",
+    "Nb Personnes", "Taille", "Type Produit", "Code Produit", "Fibre",
+    "Poids Garnissage", "OF Taie", "Traca Fibre", "Ref Taie", "Kit",
     "Heure Debut", "Heure Fin", "Duree", "Commentaire",
 ]
 
@@ -350,7 +353,9 @@ class OFBar(tk.Canvas):
         self.create_text(4, BY + BH // 2, text="N° OF",
                          font=("Arial", 7, "bold"), fill=GRAY, anchor="w")
 
-        for p in self.app._of_periods:
+        # Segments entre les OF
+        periods_sorted = sorted(self.app._of_periods, key=lambda p: p["start"])
+        for idx, p in enumerate(periods_sorted):
             x1 = px(p["start"])
             x2 = px(p.get("end") or now)
             if x2 - x1 < 2:
@@ -362,8 +367,19 @@ class OFBar(tk.Canvas):
             if x2 - x1 > 40:
                 self.create_text((x1 + x2) / 2, BY + BH // 2,
                                  text=label, fill=WHITE,
-                                 font=("Arial", 8, "bold"),
-                                 anchor="center")
+                                 font=("Arial", 8, "bold"), anchor="center")
+            # Intervalle apres cet OF
+            if idx + 1 < len(periods_sorted):
+                gap_start = p.get("end") or now
+                gap_end   = periods_sorted[idx + 1]["start"]
+                gx1, gx2  = px(gap_start), px(gap_end)
+                if gx2 - gx1 > 2:
+                    self.create_rectangle(gx1, BY, gx2, BY + BH,
+                                          fill="#ccd6e4", outline=WHITE, width=1)
+                    if gx2 - gx1 > 40:
+                        self.create_text((gx1 + gx2) / 2, BY + BH // 2,
+                                         text="— Entre OF —", fill=GRAY,
+                                         font=("Arial", 7), anchor="center")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -604,7 +620,6 @@ class App:
         except Exception:
             self.root.attributes("-fullscreen", True)
 
-        self._logo_img    = _load_logo_image()
         self.cfg          = load_cfg()
         self.lists        = {}
         self._timers      = {}
@@ -738,6 +753,42 @@ class App:
             pass
 
     def _select_db(self):
+        # Demande le mot de passe DB
+        top = tk.Toplevel(self.root)
+        top.title("Acces base de donnees")
+        top.geometry("320x160")
+        top.resizable(False, False)
+        top.grab_set()
+        top.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width()  - 320) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 160) // 2
+        top.geometry(f"320x160+{x}+{y}")
+        allowed = tk.BooleanVar(value=False)
+        tk.Label(top, text="Mot de passe base de donnees",
+                 font=("Arial", 10, "bold"), fg=DARK).pack(pady=(18, 4))
+        err2 = tk.Label(top, text="", fg=C_RED, font=("Arial", 9))
+        err2.pack()
+        pv = tk.StringVar()
+        pe = tk.Entry(top, textvariable=pv, show="*",
+                      font=("Arial", 18), width=10, justify="center",
+                      relief="solid", bd=2)
+        pe.pack(pady=4)
+        pe.focus()
+        def _confirm_db(ev=None):
+            if pv.get() == DB_PASSWORD:
+                allowed.set(True)
+                top.destroy()
+            else:
+                err2.config(text="Mot de passe incorrect")
+                pv.set("")
+        pe.bind("<Return>", _confirm_db)
+        tk.Button(top, text="Valider", command=_confirm_db,
+                  bg=NAVY, fg=WHITE, font=("Arial", 10, "bold"),
+                  relief="flat", padx=16, pady=4,
+                  cursor="hand2").pack(pady=6)
+        top.wait_window()
+        if not allowed.get():
+            return
         p = filedialog.askopenfilename(
             title="Selectionner la Base de Donnees",
             filetypes=[("Excel", "*.xlsx *.xlsm"), ("Tous", "*.*")])
@@ -762,9 +813,9 @@ class App:
                         fg="#7a99c0", font=("Arial", 9))
         lbl.pack(side="left", padx=6)
         self._db_labels.append(lbl)
-        tk.Button(f, text="Database", command=self._select_db,
-                  bg=NAVY_L, fg=WHITE, font=("Arial", 9, "bold"),
-                  relief="flat", padx=10, pady=4, cursor="hand2").pack(side="left")
+        tk.Button(f, text="⚙", command=self._select_db,
+                  bg=NAVY_L, fg=WHITE, font=("Arial", 14),
+                  relief="flat", padx=10, pady=2, cursor="hand2").pack(side="left")
         return f
 
     def _get_list(self, h):
@@ -888,14 +939,6 @@ class App:
         right_bar = tk.Frame(hdr, bg=NAVY)
         right_bar.pack(side="right", padx=12)
         self._db_widget(right_bar, NAVY).pack(side="right", padx=4)
-        # Logo dans un cadre blanc arrondi
-        logo_frame = tk.Frame(right_bar, bg=WHITE, padx=8, pady=6)
-        logo_frame.pack(side="right", padx=(0, 10))
-        if self._logo_img:
-            tk.Label(logo_frame, image=self._logo_img, bg=WHITE).pack()
-        else:
-            tk.Label(logo_frame, text="DODO", bg=WHITE, fg=NAVY,
-                     font=("Arial", 15, "bold")).pack()
         return hdr
 
     def _make_timeline(self, parent):
@@ -1017,21 +1060,18 @@ class App:
                 pass
             # Panneau prod clignote en rouge si arret actif
             try:
+                def _set_bg_recursive(widget, col):
+                    try:
+                        widget.config(bg=col)
+                    except Exception:
+                        pass
+                    for child in widget.winfo_children():
+                        _set_bg_recursive(child, col)
                 if self._main_prod_panel and any_running:
                     col = C_RED if self._cell_blink else "#7a0000"
-                    self._main_prod_panel.config(bg=col)
-                    for w in self._main_prod_panel.winfo_children():
-                        try:
-                            w.config(bg=col)
-                        except Exception:
-                            pass
+                    _set_bg_recursive(self._main_prod_panel, col)
                 elif self._main_prod_panel and not any_running:
-                    self._main_prod_panel.config(bg=NAVY)
-                    for w in self._main_prod_panel.winfo_children():
-                        try:
-                            w.config(bg=NAVY)
-                        except Exception:
-                            pass
+                    _set_bg_recursive(self._main_prod_panel, NAVY)
             except Exception:
                 pass
 
@@ -1103,7 +1143,7 @@ class App:
                            font=("Arial", 16), fill=WHITE, anchor="w")
             cv.create_text(50, h // 2, text=fmt(of_s),
                            font=("Arial", 30, "bold"), fill=WHITE, anchor="w")
-            cv.create_text(260, h // 2, text=f"⏸  {fmt(stop_s)}",
+            cv.create_text(260, h // 2, text=f"🔧  {fmt(stop_s)}",
                            font=("Arial", 14), fill="#d4f5d4", anchor="w")
             # KPI bar
             if of_s > 0:
@@ -1295,17 +1335,20 @@ class App:
                         font=("Arial", 10, "bold"), relief="flat")
         style.map("KPI.Treeview", background=[("selected", "#dbeafe")])
 
-        cols = ("Date", "OF", "Pilote", "Poste", "Qte Fab",
-                "Duree OF", "PB Tech.", "Rattrap.", "✏", "🗑")
+        cols = ("Date", "OF", "Pilote", "Poste", "Qte Fab", "Qte Emb",
+                "Equiv", "TRS %", "Duree OF", "Arrêts", "✏", "🗑")
         tree = ttk.Treeview(tbl_inner, columns=cols, show="headings",
                             height=13, style="KPI.Treeview")
-        widths = {"Date": 90, "OF": 100, "Pilote": 160, "Poste": 90,
-                  "Qte Fab": 65, "Duree OF": 80,
-                  "PB Tech.": 90, "Rattrap.": 90, "✏": 36, "🗑": 36}
+        widths = {"Date": 85, "OF": 90, "Pilote": 130, "Poste": 80,
+                  "Qte Fab": 60, "Qte Emb": 60, "Equiv": 60,
+                  "TRS %": 65, "Duree OF": 75, "Arrêts": 75,
+                  "✏": 36, "🗑": 36}
         for c in cols:
             tree.heading(c, text=c)
-            tree.column(c, width=widths.get(c, 80), anchor="center",
+            tree.column(c, width=widths.get(c, 70), anchor="center",
                         stretch=(c not in ("✏", "🗑")))
+        style.configure("TRS.Treeview", font=("Arial", 10, "bold"))
+        tree.tag_configure("trs_hi", background="#e6f7ee", foreground=GREEN)
 
         sb_v = ttk.Scrollbar(tbl_inner, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=sb_v.set)
@@ -1347,21 +1390,73 @@ class App:
         elif col_name == "✏":
             self._edit_declaration(excel_row)
 
+    def _calc_trs_from_row(self, row):
+        """TRS d'une ligne Data: (equiv produit) / (ref * temps_prod / 28800) * 100."""
+        try:
+            equiv = float(str(row[15]).replace(",", ".")) if row[15] else 0.0
+            of_s  = _hms_to_sec(str(row[16])) if row[16] else 0
+            if of_s <= 0 or equiv <= 0:
+                return -1
+            prod_ref = self._get_prod_ref()
+            if prod_ref <= 0:
+                return -1
+            expected = prod_ref * of_s / 28800.0
+            return min(200.0, equiv / expected * 100.0)
+        except Exception:
+            return -1
+
+    def _get_prod_ref(self):
+        """Lit 'Prod de reference (8h)' ligne 1 de la colonne dans Listes."""
+        for key in self.lists:
+            if "reference" in key.lower() or "ref" in key.lower():
+                vals = self.lists[key]
+                if vals:
+                    try:
+                        return float(str(vals[0]).replace(",", "."))
+                    except Exception:
+                        pass
+        return 0.0
+
     def _refresh_main_kpi(self):
         path = self.cfg.get("db_path", "")
         last_time = "--:--"
+        global_trs = 0.0
         if path and os.path.exists(path):
             try:
                 wb   = load_workbook(path, read_only=True, data_only=True)
-                rows = [r for r in wb["Data"].iter_rows(min_row=2, values_only=True)
+                rows = [list(r) + [None]*55
+                        for r in wb["Data"].iter_rows(min_row=2, values_only=True)
                         if any(r)]
                 wb.close()
                 if rows:
-                    last      = list(rows[-1]) + [None] * 55
+                    last      = rows[-1]
                     last_time = str(last[18])[:5] if last[18] else "--:--"
+                # TRS global : sum(equiv) / sum(expected) sur 12h
+                cutoff = datetime.datetime.now() - datetime.timedelta(hours=12)
+                total_equiv = 0.0
+                total_of_s  = 0.0
+                prod_ref    = self._get_prod_ref()
+                for row in rows:
+                    try:
+                        date_s = str(row[1] or "")
+                        time_s = str(row[17] or "")
+                        dt = datetime.datetime.strptime(
+                            f"{date_s} {time_s}", "%d/%m/%Y %H:%M:%S")
+                        if dt < cutoff:
+                            continue
+                    except Exception:
+                        pass
+                    try:
+                        total_equiv += float(str(row[15] or 0).replace(",", "."))
+                        total_of_s  += _hms_to_sec(str(row[16] or "00:00:00"))
+                    except Exception:
+                        pass
+                if prod_ref > 0 and total_of_s > 0:
+                    expected   = prod_ref * total_of_s / 28800.0
+                    global_trs = min(200.0, total_equiv / expected * 100.0) if expected > 0 else 0.0
             except Exception:
                 pass
-        self._main_gauge.update_gauge(0.0, last_time)
+        self._main_gauge.update_gauge(global_trs, last_time)
 
     def _load_table(self, tree):
         path = self.cfg.get("db_path", "")
@@ -1397,15 +1492,27 @@ class App:
             return t
 
         for excel_row, row in list(reversed(indexed))[:15]:
-            tree.insert("", "end", iid=str(excel_row), values=(
-                str(row[1])[:10] if row[1]  else "",
-                str(row[0])      if row[0]  else "",
-                str(row[3])      if row[3]  else "",
-                str(row[2])      if row[2]  else "",
-                str(row[13])     if row[13] else "0",
-                str(row[16])     if row[16] else "",
-                fmt(_sd(row, range(31, 49))),
-                fmt(_sd(row, range(26, 31))),
+            qte_fab = int(row[13]) if row[13] and str(row[13]).isdigit() else 0
+            equiv   = float(str(row[15]).replace(",", ".")) if row[15] else 0.0
+            of_s    = _hms_to_sec(str(row[16])) if row[16] else 0
+            arr_s   = _sd(row, list(range(26, 31)) + list(range(31, 49)))
+            prod_s  = max(0, of_s - arr_s)
+            trs_str = ""
+            if of_s > 0:
+                trs_val = self._calc_trs_from_row(row)
+                trs_str = f"{trs_val:.0f}%" if trs_val >= 0 else ""
+            tags = ("trs_hi",) if trs_str else ()
+            tree.insert("", "end", iid=str(excel_row), tags=tags, values=(
+                str(row[1])[:10]      if row[1]  else "",
+                str(row[0])           if row[0]  else "",
+                str(row[3])           if row[3]  else "",
+                str(row[2])           if row[2]  else "",
+                str(row[13])          if row[13] else "0",
+                str(row[14])          if row[14] else "0",
+                f"{equiv:.1f}"        if equiv   else "",
+                trs_str,
+                str(row[16])          if row[16] else "",
+                fmt(arr_s),
                 "✏", "🗑",
             ))
 
@@ -1741,13 +1848,6 @@ class App:
         right_bar = tk.Frame(hdr, bg=WHITE)
         right_bar.pack(side="right", padx=12)
         self._db_widget(right_bar, WHITE).pack(side="right", padx=4)
-        logo_frame = tk.Frame(right_bar, bg=WHITE, padx=8, pady=6)
-        logo_frame.pack(side="right", padx=(0, 6))
-        if self._logo_img:
-            tk.Label(logo_frame, image=self._logo_img, bg=WHITE).pack()
-        else:
-            tk.Label(logo_frame, text="DODO", bg=WHITE, fg=NAVY,
-                     font=("Arial", 14, "bold")).pack()
 
         # ── Barre de statut Canvas (chrono + KPI, change couleur) ────────────
         self._status_cv = tk.Canvas(outer, height=72, bg=BG, highlightthickness=0)
@@ -1762,35 +1862,44 @@ class App:
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=6, pady=(4, 6))
 
-        # Gauche : formulaire (plus large)
-        left = tk.Frame(body, bg=WHITE, width=600)
-        left.pack(side="left", fill="both")
-        left.pack_propagate(False)
+        # Gauche : formulaire (50%)
+        left = tk.Frame(body, bg=WHITE)
+        left.pack(side="left", fill="both", expand=True)
         tk.Frame(left, bg=LGRAY, height=1).pack(fill="x")
         self._build_form(left)
 
         tk.Frame(body, bg=LGRAY, width=1).pack(side="left", fill="y")
 
-        # Droite : arrets actifs + boutons
+        # Droite : arrets actifs + boutons (50%)
         right = tk.Frame(body, bg=BG)
         right.pack(side="left", fill="both", expand=True)
         self._build_right_panel(right)
 
         self._after_id = self.root.after(1000, self._tick)
 
-    # ── Formulaire compact (pas de scroll) ───────────────────────────────────
+    # ── Formulaire avec scroll (s'adapte a toute taille d'ecran) ─────────────
     def _build_form(self, parent):
         self.fv = {}
-        c = tk.Frame(parent, bg=WHITE)
-        c.pack(fill="both", expand=True, padx=8, pady=6)
+
+        # Canvas scrollable
+        canv = tk.Canvas(parent, bg=WHITE, highlightthickness=0)
+        sb   = ttk.Scrollbar(parent, orient="vertical", command=canv.yview)
+        canv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canv.pack(side="left", fill="both", expand=True)
+        c = tk.Frame(canv, bg=WHITE)
+        win_id = canv.create_window((0, 0), window=c, anchor="nw")
+        c.bind("<Configure>", lambda e: canv.configure(scrollregion=canv.bbox("all")))
+        canv.bind("<Configure>", lambda e: canv.itemconfig(win_id, width=e.width))
+        canv.bind("<MouseWheel>", lambda e: canv.yview_scroll(-1*(e.delta//120), "units"))
+
         c.columnconfigure(0, weight=1)
         c.columnconfigure(1, weight=1)
         ri = [0]
 
         def sec(txt, color=NAVY):
             row = tk.Frame(c, bg=WHITE)
-            row.grid(row=ri[0], column=0, columnspan=2,
-                     sticky="ew", pady=(8, 2))
+            row.grid(row=ri[0], column=0, columnspan=2, sticky="ew", pady=(8, 2))
             tk.Frame(row, bg=color, width=4).pack(side="left", fill="y")
             tk.Label(row, text=f"  {txt}", bg=WHITE, fg=color,
                      font=("Arial", 9, "bold"), pady=2).pack(side="left")
@@ -1798,12 +1907,12 @@ class App:
                 row=ri[0], column=0, columnspan=2, sticky="ew")
             ri[0] += 1
 
-        def fld(lbl_txt, key, ftype, lh=None, col=0, adv=True):
+        def fld(lbl_txt, key, ftype, lh=None, col=0, adv=True, suffix=None):
             cell = tk.Frame(c, bg=WHITE)
             cell.grid(row=ri[0], column=col, sticky="ew", padx=2, pady=1)
             cell.columnconfigure(0, weight=1)
             tk.Label(cell, text=lbl_txt, bg=WHITE, fg=GRAY,
-                     font=("Arial", 8), anchor="w").grid(row=0, column=0, sticky="w")
+                     font=("Arial", 8), anchor="w").grid(row=0, column=0, columnspan=2, sticky="w")
             var = tk.StringVar()
             self.fv[key] = var
             if ftype == "entry":
@@ -1811,17 +1920,20 @@ class App:
                              font=("Arial", 10), relief="solid", bd=1,
                              insertbackground=DARK)
                 e.grid(row=1, column=0, sticky="ew", ipady=3)
+                if suffix:
+                    tk.Label(cell, text=suffix, bg=WHITE, fg=GRAY,
+                             font=("Arial", 9)).grid(row=1, column=1, sticky="w", padx=(2, 0))
             else:
                 cb = ttk.Combobox(cell, textvariable=var,
                                   values=self._get_list(lh) if lh else [],
                                   font=("Arial", 10), state="readonly")
-                cb.grid(row=1, column=0, sticky="ew")
+                cb.grid(row=1, column=0, columnspan=2, sticky="ew")
             if adv:
                 ri[0] += 1
 
-        def row2(l1, k1, t1, h1, l2, k2, t2, h2):
-            fld(l1, k1, t1, h1, col=0, adv=False)
-            fld(l2, k2, t2, h2, col=1, adv=True)
+        def row2(l1, k1, t1, h1, l2, k2, t2, h2, sfx1=None, sfx2=None):
+            fld(l1, k1, t1, h1, col=0, adv=False, suffix=sfx1)
+            fld(l2, k2, t2, h2, col=1, adv=True,  suffix=sfx2)
 
         sec("Identification", NAVY)
         row2("N° OF *",        "of_num",    "entry", None,
@@ -1831,41 +1943,34 @@ class App:
         fld("Nb personnes",    "nb_pers",   "combo", "Nombre operateur", col=0)
 
         sec("Produit", NAVY_L)
-        # Bouton KIT
+        # Case a cocher KIT
         self._v_kit = tk.BooleanVar()
         kit_f = tk.Frame(c, bg=WHITE)
-        kit_f.grid(row=ri[0], column=0, columnspan=2, sticky="w", padx=2, pady=2)
+        kit_f.grid(row=ri[0], column=0, columnspan=2, sticky="w", padx=4, pady=2)
         ri[0] += 1
-        def _toggle_kit():
-            self._v_kit.set(not self._v_kit.get())
-            kit_btn.config(
-                bg=NAVY if self._v_kit.get() else LGRAY,
-                fg=WHITE if self._v_kit.get() else DARK,
-                text="✔  KIT 2 pièces  (ACTIF)" if self._v_kit.get() else "  KIT 2 pièces  ")
-        kit_btn = tk.Button(kit_f, text="  KIT 2 pièces  ",
-                            command=_toggle_kit, bg=LGRAY, fg=DARK,
-                            font=("Arial", 9, "bold"), relief="flat",
-                            padx=10, pady=4, cursor="hand2")
-        kit_btn.pack(side="left")
-        row2("Taille",         "taille",    "combo", "Taille produit",
-             "Type produit",   "type_prod", "combo", "Type produit")
-        row2("Code produit *", "code_prod", "entry", None,
-             "Poids garnissage","poids",    "entry", None)
-        fld("Fibre",           "fibre",     "combo", "Fibre", col=0)
+        tk.Checkbutton(kit_f, text="Kit de 2 pièces", variable=self._v_kit,
+                       bg=WHITE, fg=DARK, font=("Arial", 10),
+                       activebackground=WHITE, selectcolor=WHITE).pack(side="left")
+
+        row2("Taille",          "taille",    "combo", "Taille produit",
+             "Type produit",    "type_prod", "combo", "Type produit")
+        row2("Code produit *",  "code_prod", "entry", None,
+             "Poids garnissage","poids",     "entry", None, sfx2="gr")
+        fld("Fibre",            "fibre",     "combo", "Fibre", col=0)
 
         sec("Quantités", GREEN)
-        row2("Qte fabriquée *","qte_fab",   "entry", None,
-             "Qte emballée",   "qte_emb",   "entry", None)
+        row2("Qte fabriquée *", "qte_fab",   "entry", None,
+             "Qte emballée",    "qte_emb",   "entry", None)
 
         sec("Taie / Qualité", GRAY)
-        row2("OF taie",        "of_taie",   "entry", None,
-             "Traca fibre",    "traca",     "entry", None)
-        row2("Ref. taie",      "ref_taie",  "entry", None,
-             "Nb taie 2nd",    "nb_taie2",  "entry", None)
-        row2("Nb déf. couture","nb_def_cout","entry", None,
-             "Mq. taie",       "mq_taie",   "entry", None)
-        row2("Mq. housse",     "mq_housse", "entry", None,
-             "Mq. encart",     "mq_encart", "entry", None)
+        row2("OF taie",         "of_taie",   "entry", None,
+             "Traca fibre",     "traca",     "entry", None)
+        row2("Ref. taie",       "ref_taie",  "entry", None,
+             "Nb taie 2nd",     "nb_taie2",  "entry", None)
+        row2("Nb déf. couture", "nb_def_cout","entry", None,
+             "Mq. taie",        "mq_taie",   "entry", None)
+        row2("Mq. housse/encart (nb)", "mq_housse", "entry", None,
+             "Mq. encart (nb)", "mq_encart", "entry", None)
 
         sec("Commentaire", GRAY)
         txt_f = tk.Frame(c, bg=WHITE)
@@ -1884,45 +1989,32 @@ class App:
         self._active_stops_container = stops_frame
         self._refresh_active_stops()
 
-        # Bouton DÉCLARER UN ARRÊT
-        btn_stop = tk.Canvas(parent, height=66, highlightthickness=0, bg=BG)
-        btn_stop.pack(fill="x", padx=8, pady=(0, 4))
+        BTN_H    = 66
+        BTN_FONT = ("Arial", 14, "bold")
 
-        def _draw_stop_btn(e=None):
-            btn_stop.delete("all")
-            w, h = btn_stop.winfo_width(), btn_stop.winfo_height()
-            if w < 10:
-                return
-            _rrect(btn_stop, 4, 5, w-1, h, 14, fill=_off(C_RATT, -40))
-            _rrect(btn_stop, 0, 0, w-5, h-5, 14, fill=C_RATT)
-            _rrect(btn_stop, 2, 2, w-7, h//3, 14, fill=_off(C_RATT, +50))
-            btn_stop.create_text(w//2-2, h//2-2,
-                                 text="⚠   DÉCLARER UN ARRÊT DE PRODUCTION",
-                                 fill=WHITE, font=("Arial", 14, "bold"))
+        def _make_cv_btn(text, color, cmd):
+            cv = tk.Canvas(parent, height=BTN_H, highlightthickness=0, bg=BG)
+            cv.pack(fill="x", padx=8, pady=(0, 4))
+            def _draw(e=None):
+                cv.delete("all")
+                bw, bh = cv.winfo_width(), cv.winfo_height()
+                if bw < 10: return
+                _rrect(cv, 4, 5, bw-1, bh, 14, fill=_off(color, -40))
+                _rrect(cv, 0, 0, bw-5, bh-5, 14, fill=color)
+                _rrect(cv, 2, 2, bw-7, bh//3, 14, fill=_off(color, +45))
+                cv.create_text(bw//2-2, bh//2-2, text=text,
+                               fill=WHITE, font=BTN_FONT)
+            cv.bind("<Configure>", _draw)
+            cv.bind("<Button-1>", lambda e: cmd())
+            cv.config(cursor="hand2")
+            return cv
 
-        btn_stop.bind("<Configure>", _draw_stop_btn)
-        btn_stop.bind("<Button-1>", lambda e: self._show_stop_selector())
-        btn_stop.config(cursor="hand2")
-
-        # Bouton FIN DE PRODUCTION (vert, bien visible)
-        btn_end = tk.Canvas(parent, height=72, highlightthickness=0, bg=BG)
-        btn_end.pack(fill="x", padx=8, pady=(0, 8))
-
-        def _draw_end(e=None):
-            btn_end.delete("all")
-            w, h = btn_end.winfo_width(), btn_end.winfo_height()
-            if w < 10:
-                return
-            _rrect(btn_end, 4, 5, w-1, h, 14, fill=_off(GREEN, -50))
-            _rrect(btn_end, 0, 0, w-5, h-5, 14, fill=GREEN)
-            _rrect(btn_end, 2, 2, w-7, h//3, 14, fill=_off(GREEN, +45))
-            btn_end.create_text(w//2-2, h//2-2,
-                                text="⏹   DÉCLARER LA FIN DE PRODUCTION",
-                                fill=WHITE, font=("Arial", 16, "bold"))
-
-        btn_end.bind("<Configure>", _draw_end)
-        btn_end.bind("<Button-1>", lambda e: self._end_production())
-        btn_end.config(cursor="hand2")
+        _make_cv_btn("⚠   DÉCLARER UN ARRÊT / RATTRAPAGE", C_RATT,
+                     self._show_stop_selector)
+        _make_cv_btn("🧹  DÉCLARER UN ARRÊT NETTOYAGE", "#6b7280",
+                     lambda: self._start_nettoyage())
+        _make_cv_btn("⏹   DÉCLARER LA FIN DE PRODUCTION", GREEN,
+                     self._end_production)
 
     # ── Arrets actifs ─────────────────────────────────────────────────────────
     def _refresh_active_stops(self):
@@ -1949,7 +2041,8 @@ class App:
             if not ev_info:
                 continue
             label, _, cat = ev_info
-            color = C_RATT if cat == "ratt" else C_RED
+            color    = C_RATT if cat == "ratt" else C_RED
+            type_lbl = "Rattrapage" if cat == "ratt" else "Problème technique"
 
             # Carte arret
             card_shad = tk.Frame(container, bg=_off(color, -40))
@@ -1959,8 +2052,12 @@ class App:
 
             top_row = tk.Frame(card, bg=color)
             top_row.pack(fill="x", padx=14, pady=(10, 2))
-            tk.Label(top_row, text=f"{'▶' if cat == 'ratt' else '⚠'}  {label}",
-                     bg=color, fg=WHITE, font=("Arial", 13, "bold")).pack(side="left")
+            name_col = tk.Frame(top_row, bg=color)
+            name_col.pack(side="left")
+            tk.Label(name_col, text=type_lbl.upper(), bg=color,
+                     fg=_off(WHITE, -60), font=("Arial", 8, "bold")).pack(anchor="w")
+            tk.Label(name_col, text=f"{'▶' if cat == 'ratt' else '⚠'}  {label}",
+                     bg=color, fg=WHITE, font=("Arial", 13, "bold")).pack(anchor="w")
 
             def _stop(k=key):
                 self._ask_stop_description(k)
@@ -1974,84 +2071,104 @@ class App:
             tlbl.pack(pady=(2, 10))
             self._stop_timer_lbls[key] = tlbl
 
+    def _start_nettoyage(self):
+        key = "nettoyage"
+        if self._t_running(key):
+            self._ask_stop_description(key)
+        else:
+            self._t_start(key)
+            self._tl_open(key, "ratt")
+            self._refresh_active_stops()
+
     # ── Selecteur d'arret ─────────────────────────────────────────────────────
     def _show_stop_selector(self):
-        overlay = tk.Frame(self.root, bg="#0d1030")
+        OV_BG = WHITE
+        overlay = tk.Frame(self.root, bg=OV_BG)
         overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
         overlay.lift()
 
-        # Header
-        hdr = tk.Frame(overlay, bg=NAVY, height=72)
+        # Header blanc avec bande bleue
+        hdr = tk.Frame(overlay, bg=OV_BG, height=68)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Label(hdr, text="CHOISIR UN ARRÊT DE PRODUCTION",
-                 bg=NAVY, fg=WHITE, font=("Arial", 18, "bold")).pack(
-                 side="left", padx=24, pady=20)
+        tk.Frame(hdr, bg=NAVY, width=6).pack(side="left", fill="y")
+        tk.Label(hdr, text="CHOISIR UN ARRÊT",
+                 bg=OV_BG, fg=NAVY, font=("Arial", 18, "bold")).pack(
+                 side="left", padx=16, pady=16)
+        tk.Frame(hdr, bg=LGRAY, height=1).pack(side="bottom", fill="x")
 
         def _close():
             overlay.destroy()
             self._refresh_active_stops()
 
-        close_cv = tk.Canvas(hdr, width=180, highlightthickness=0, bg=NAVY)
+        close_cv = tk.Canvas(hdr, width=160, highlightthickness=0, bg=OV_BG)
         close_cv.pack(side="right", padx=16, pady=12)
 
         def _draw_close(e=None):
             close_cv.delete("all")
             w, h = close_cv.winfo_width(), close_cv.winfo_height()
-            _rrect(close_cv, 2, 2, w-2, h-2, 10, fill=C_RED)
+            _rrect(close_cv, 2, 2, w-2, h-2, 10, fill=LGRAY)
             close_cv.create_text(w//2, h//2, text="✕  RETOUR",
-                                 fill=WHITE, font=("Arial", 13, "bold"))
+                                 fill=DARK, font=("Arial", 12, "bold"))
 
         close_cv.bind("<Configure>", _draw_close)
         close_cv.bind("<Button-1>", lambda e: _close())
         close_cv.config(cursor="hand2")
 
-        body = tk.Frame(overlay, bg="#0d1030")
-        body.pack(fill="both", expand=True, padx=16, pady=10)
+        body = tk.Frame(overlay, bg=OV_BG)
+        body.pack(fill="both", expand=True, padx=16, pady=8)
 
-        # RATTRAPAGES
-        rat_row = tk.Frame(body, bg="#0d1030")
+        # RATTRAPAGES (sans Nettoyage qui a son propre bouton)
+        ratt_events = [(l, k, c) for l, k, c in EVENTS if c == "ratt" and k != "nettoyage"]
+        rat_row = tk.Frame(body, bg=OV_BG)
         rat_row.pack(fill="x", pady=(0, 4))
         tk.Frame(rat_row, bg=C_RATT, width=5).pack(side="left", fill="y")
-        tk.Label(rat_row, text="  ARRÊTS RATTRAPAGE", bg="#0d1030", fg=C_RATT,
+        tk.Label(rat_row, text="  ARRÊTS RATTRAPAGE", bg=OV_BG, fg=C_RATT,
                  font=("Arial", 12, "bold")).pack(side="left", pady=4)
 
-        ratt_g = tk.Frame(body, bg="#0d1030")
-        ratt_g.pack(fill="x", pady=(0, 12))
-        for col in range(5):
+        ratt_g = tk.Frame(body, bg=OV_BG)
+        ratt_g.pack(fill="x", pady=(0, 10))
+        ncols_r = 5
+        for col in range(ncols_r):
             ratt_g.columnconfigure(col, weight=1)
         ratt_g.rowconfigure(0, weight=1)
-        for i, (lbl, key, cat) in enumerate(EVENTS[:5]):
-            self._make_selector_btn(ratt_g, lbl, key, cat, 0, i, _close)
+        for i, (lbl, key, cat) in enumerate(ratt_events):
+            self._make_selector_btn(ratt_g, lbl, key, cat, 0, i % ncols_r, _close)
 
         # PB TECHNIQUES
-        pb_row = tk.Frame(body, bg="#0d1030")
+        pb_events = [(l, k, c) for l, k, c in EVENTS if c == "pb"]
+        pb_row = tk.Frame(body, bg=OV_BG)
         pb_row.pack(fill="x", pady=(0, 4))
         tk.Frame(pb_row, bg=C_RED, width=5).pack(side="left", fill="y")
-        tk.Label(pb_row, text="  PROBLÈMES TECHNIQUES", bg="#0d1030", fg=C_RED,
+        tk.Label(pb_row, text="  PROBLÈMES TECHNIQUES", bg=OV_BG, fg=C_RED,
                  font=("Arial", 12, "bold")).pack(side="left", pady=4)
 
-        pb_g = tk.Frame(body, bg="#0d1030")
+        pb_g = tk.Frame(body, bg=OV_BG)
         pb_g.pack(fill="both", expand=True)
-        for col in range(6):
+        ncols_p = 6
+        nrows_p = (len(pb_events) + ncols_p - 1) // ncols_p
+        for col in range(ncols_p):
             pb_g.columnconfigure(col, weight=1)
-        for row in range(4):
+        for row in range(nrows_p):
             pb_g.rowconfigure(row, weight=1)
-        for i, (lbl, key, cat) in enumerate(EVENTS[5:]):
-            self._make_selector_btn(pb_g, lbl, key, cat, i // 6, i % 6, _close)
+        for i, (lbl, key, cat) in enumerate(pb_events):
+            self._make_selector_btn(pb_g, lbl, key, cat, i // ncols_p, i % ncols_p, _close)
 
     def _make_selector_btn(self, parent, label, key, cat, row, col, close_fn):
-        running = self._t_running(key)
-        elapsed = self._t_get(key)
-        color   = C_RATT if cat == "ratt" else C_RED
-        bg_face = _off(color, -10) if running else "#1e2560"
+        running  = self._t_running(key)
+        elapsed  = self._t_get(key)
+        color    = C_RATT if cat == "ratt" else C_RED
+        # Theme clair : fond blanc, bouton coloré si en cours
+        bg_outer = _off(color, +50) if running else LGRAY
+        bg_face  = color             if running else WHITE
+        fg_txt   = WHITE             if running else DARK
 
-        outer = tk.Frame(parent, bg=color if running else "#3a4080", padx=2, pady=2)
+        outer = tk.Frame(parent, bg=bg_outer, padx=2, pady=2)
         outer.grid(row=row, column=col, sticky="nsew", padx=3, pady=3)
         inner = tk.Frame(outer, bg=bg_face)
         inner.pack(fill="both", expand=True)
 
-        txt = label + (f"\n⏸ {fmt(elapsed)}" if running else "")
+        txt = label + (f"\n{fmt(elapsed)}" if running else "")
 
         def _action(k=key, c=cat):
             if self._t_running(k):
@@ -2062,13 +2179,13 @@ class App:
                 self._tl_open(k, c)
                 close_fn()
 
-        tk.Button(inner, text=txt, bg=bg_face, fg=WHITE,
+        tk.Button(inner, text=txt, bg=bg_face, fg=fg_txt,
                   font=("Arial", 10, "bold"), relief="flat",
                   command=_action, cursor="hand2",
                   wraplength=130, pady=14, padx=6).pack(fill="both", expand=True)
 
         if running:
-            tk.Label(inner, text="● EN COURS", bg=bg_face, fg=color,
+            tk.Label(inner, text="● EN COURS", bg=bg_face, fg=WHITE,
                      font=("Arial", 8, "bold")).pack(pady=(0, 4))
 
     # ── Popup description d'arret ─────────────────────────────────────────────
@@ -2134,33 +2251,49 @@ class App:
                     "Ils vont etre automatiquement arretes.\n\nContinuer ?"):
                 return
 
-        end_dt = datetime.datetime.now()
-        self._t_stop_all()
-        self._tl_close_all()
-        self._prod_active = False
-        self._last_of_end = end_dt
-
-        of_s = (end_dt - self._of_start).total_seconds()
-        v    = {k: var.get().strip() for k, var in self.fv.items()}
+        v = {k: var.get().strip() for k, var in self.fv.items()}
         v["comment"] = self._comment_txt.get("1.0", "end").strip()
 
-        if self._of_periods:
-            self._of_periods[-1]["end"] = end_dt
-            self._of_periods[-1]["of_num"] = v.get("of_num", "")
-
-        if not v.get("of_num"):
-            if not messagebox.askyesno(
-                    "Attention", "N° OF non saisi. Continuer quand meme ?"):
-                self._prod_active = True
-                self._after_id = self.root.after(1000, self._tick)
-                return
-
+        # ── Validation des saisies ─────────────────────────────────────────────
         def _n(k):
             try:
                 return int(v.get(k, 0) or 0)
             except Exception:
                 return 0
 
+        poids_str  = v.get("poids", "").strip()
+        qte_str    = v.get("qte_fab", "").strip()
+        if poids_str:
+            try:
+                poids_val = float(poids_str.replace(",", "."))
+                if not (50 <= poids_val <= 4000):
+                    messagebox.showwarning("Donnée incohérente",
+                                          f"Poids de garnissage : {poids_val} gr\n"
+                                          "Valeur attendue entre 50 et 4000 gr.")
+                    return
+            except Exception:
+                messagebox.showwarning("Donnée incohérente",
+                                       "Poids de garnissage : valeur non valide.")
+                return
+        if qte_str:
+            try:
+                qte_val = int(qte_str)
+                if not (1 <= qte_val <= 10000):
+                    messagebox.showwarning("Donnée incohérente",
+                                           f"Quantité fabriquée : {qte_val}\n"
+                                           "Valeur attendue entre 1 et 10 000.")
+                    return
+            except Exception:
+                messagebox.showwarning("Donnée incohérente",
+                                       "Quantité fabriquée : valeur non valide.")
+                return
+
+        end_dt = datetime.datetime.now()
+        self._t_stop_all()
+        self._tl_close_all()
+
+        of_s    = (end_dt - self._of_start).total_seconds()
+        stop_s  = self._t_wall_clock_stops()
         qte_fab = _n("qte_fab")
         nb_pers = max(1, _n("nb_pers") or 1)
         of_min  = of_s / 60
@@ -2169,6 +2302,12 @@ class App:
         c2      = round(qte_fab / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
         equiv   = self._calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
         kit     = 2 if self._v_kit.get() else 1
+
+        prod_ref = self._get_prod_ref()
+        trs_pct  = -1.0
+        if prod_ref > 0 and of_s > 0:
+            expected = prod_ref * of_s / 28800.0
+            trs_pct  = min(200.0, equiv / expected * 100.0) if expected > 0 else -1.0
 
         def _ts(key):
             return fmt(self._t_get(key))
@@ -2197,7 +2336,7 @@ class App:
             v.get("ref_taie",""),
             _n("nb_def_cout"),
             _n("mq_taie"),
-            f"Housse:{v.get('mq_housse','')} Encart:{v.get('mq_encart','')}",
+            _n("mq_housse") + _n("mq_encart"),
             _ts("ratt_pochon"),     _ts("ratt_couture"),
             _ts("ratt_emb"),        _ts("ratt_presse_soud"),
             _ts("ratt_presse_zip"),
@@ -2213,21 +2352,118 @@ class App:
             v.get("comment",""),
         ]
 
+        # ── Popup recap avant confirmation ────────────────────────────────────
+        confirmed = [False]
+        modified  = [False]
+
+        recap = tk.Toplevel(self.root)
+        recap.overrideredirect(True)
+        recap.attributes("-topmost", True)
+        recap.configure(bg=WHITE)
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        pw, ph = min(520, sw - 60), 420
+        recap.geometry(f"{pw}x{ph}+{(sw-pw)//2}+{(sh-ph)//2}")
+
+        # Header
+        hdr_r = tk.Frame(recap, bg=NAVY, height=56)
+        hdr_r.pack(fill="x")
+        hdr_r.pack_propagate(False)
+        tk.Label(hdr_r, text="RÉCAPITULATIF DE L'OF",
+                 bg=NAVY, fg=WHITE, font=("Arial", 15, "bold")).pack(
+                 side="left", padx=20, pady=14)
+
+        body_r = tk.Frame(recap, bg=WHITE)
+        body_r.pack(fill="both", expand=True, padx=24, pady=12)
+
+        def _row_info(lbl, val, color=DARK, bold=False):
+            f = tk.Frame(body_r, bg=WHITE)
+            f.pack(fill="x", pady=1)
+            tk.Label(f, text=lbl, bg=WHITE, fg=GRAY,
+                     font=("Arial", 10), width=22, anchor="w").pack(side="left")
+            tk.Label(f, text=str(val), bg=WHITE, fg=color,
+                     font=("Arial", 10, "bold" if bold else "normal")).pack(side="left")
+
+        trs_col = GREEN if trs_pct >= 75 else C_RATT if trs_pct >= 55 else C_RED
+        _row_info("N° OF",             v.get("of_num","—"))
+        _row_info("Quantité fabriquée",f"{qte_fab}")
+        _row_info("Equivalence",        f"{equiv:.2f}")
+        _row_info("Durée production",   fmt(of_s))
+        _row_info("Durée arrêts",        fmt(stop_s))
+        if trs_pct >= 0:
+            _row_info("TRS de cet OF",  f"{trs_pct:.1f}%", trs_col, bold=True)
+
+        tk.Frame(body_r, bg=LGRAY, height=1).pack(fill="x", pady=8)
+
+        btn_row_r = tk.Frame(recap, bg=WHITE)
+        btn_row_r.pack(fill="x", padx=24, pady=(0, 18))
+
+        def _modifier():
+            confirmed[0] = False
+            modified[0]  = True
+            recap.destroy()
+
+        def _confirmer():
+            confirmed[0] = True
+            recap.destroy()
+
+        tk.Button(btn_row_r, text="✏  MODIFIER",
+                  command=_modifier, bg=LGRAY, fg=DARK,
+                  font=("Arial", 13, "bold"), relief="flat",
+                  padx=20, pady=10, cursor="hand2").pack(side="left", fill="x", expand=True, padx=(0, 8))
+        tk.Button(btn_row_r, text="✔  CONFIRMER",
+                  command=_confirmer, bg=GREEN, fg=WHITE,
+                  font=("Arial", 13, "bold"), relief="flat",
+                  padx=20, pady=10, cursor="hand2").pack(side="left", fill="x", expand=True)
+
+        recap.wait_window()
+
+        if modified[0]:
+            # Retour a la vue production sans rien perdre
+            self._prod_active = True
+            self._after_id = self.root.after(1000, self._tick)
+            return
+
+        if not confirmed[0]:
+            # Ferme sans confirmer → retour prod
+            self._prod_active = True
+            self._after_id = self.root.after(1000, self._tick)
+            return
+
+        # ── Ecriture Excel ────────────────────────────────────────────────────
+        self._prod_active = False
+        self._last_of_end = end_dt
+        if self._of_periods:
+            self._of_periods[-1]["end"]    = end_dt
+            self._of_periods[-1]["of_num"] = v.get("of_num", "")
+
         ok = self._write_excel(row, v)
-        self._show_main()
         if ok:
+            self._show_main()
             _toast(self.root, "✔  Production declaree avec succes !", bg=GREEN)
         else:
-            messagebox.showerror("Erreur",
-                                 "Impossible d'ecrire dans Excel.\n"
-                                 "Verifiez que le fichier n'est pas ouvert.")
+            # Fichier ouvert → message specifique, retour prod
+            self._prod_active = True
+            self._after_id = self.root.after(1000, self._tick)
+            messagebox.showwarning(
+                "Fichier Excel ouvert",
+                "Veuillez fermer le fichier Excel,\ncontacter le Bureau méthodes.\n\n"
+                "La production n'a PAS été annulée.")
 
     def _calc_equiv(self, qte, taille, type_prod):
-        for item in self._get_list("Equivalence"):
-            try:
-                return round(qte * float(str(item).replace(",", ".")), 2)
-            except Exception:
-                pass
+        """Cherche le coef d'equivalence pour type_prod dans la colonne Equivalence
+        en face de la colonne Type produit dans le fichier Listes."""
+        types  = self._get_list("Type produit")
+        equivs = self._get_list("Equivalence")
+        if type_prod and types and equivs:
+            for i, t in enumerate(types):
+                if str(t).strip().lower() == str(type_prod).strip().lower():
+                    if i < len(equivs):
+                        try:
+                            return round(qte * float(str(equivs[i]).replace(",", ".")), 2)
+                        except Exception:
+                            pass
+        # Pas de correspondance
         return qte
 
     # ── Excel ─────────────────────────────────────────────────────────────────
@@ -2293,6 +2529,7 @@ class App:
     def _write_events_to_wb(self, wb, v):
         ws       = self._ensure_events_sheet(wb)
         of_start = self._of_start
+        kit_val  = "Oui" if self._v_kit.get() else "Non"
         for ev in self._tl_events:
             if ev.get("cat") not in ("ratt", "pb"):
                 continue
@@ -2313,6 +2550,10 @@ class App:
                 v.get("copilote", ""), v.get("nb_pers", ""),
                 v.get("taille", ""),   v.get("type_prod", ""),
                 v.get("code_prod", ""),
+                v.get("fibre", ""),
+                v.get("poids", ""),
+                v.get("of_taie", ""),  v.get("traca", ""),
+                v.get("ref_taie", ""), kit_val,
                 start.strftime("%H:%M:%S"),
                 end.strftime("%H:%M:%S"),
                 fmt(dur),
