@@ -399,7 +399,7 @@ class Gauge(tk.Canvas):
         self.bind("<Configure>", lambda e: self._draw())
 
     def update_gauge(self, value, time_str=""):
-        self._val  = max(0.0, min(100.0, float(value)))
+        self._val  = max(0.0, float(value))
         self._time = time_str
         self._draw()
 
@@ -414,13 +414,14 @@ class Gauge(tk.Canvas):
             return
         self.create_arc(cx-r, cy-r, cx+r, cy+r,
                         start=0, extent=180, style="arc", outline=LGRAY, width=16)
-        ext   = self._val * 180 / 100
+        visual_val = min(100.0, self._val)  # arc capped at 100 visually
+        ext   = visual_val * 180 / 100
         color = C_RED if self._val < 55 else ORANGE if self._val < 75 else GREEN
         if ext > 0:
             self.create_arc(cx-r, cy-r, cx+r, cy+r,
                             start=180, extent=-ext, style="arc",
                             outline=color, width=16)
-        angle = math.radians(180 - self._val * 180 / 100)
+        angle = math.radians(180 - visual_val * 180 / 100)
         nx = cx + int((r - 6) * math.cos(angle))
         ny = cy - int((r - 6) * math.sin(angle))
         self.create_line(cx, cy, nx, ny, fill=DARK, width=2)
@@ -428,8 +429,6 @@ class Gauge(tk.Canvas):
         self.create_text(cx, cy - r // 2,
                          text=f"TRS  {self._val:.0f}%",
                          font=("Arial", 14, "bold"), fill=color)
-        self.create_text(cx, cy - 6, text=f"a {self._time}",
-                         font=("Arial", 9), fill=GRAY)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -903,12 +902,6 @@ class App:
                         fg="#7a99c0", font=("Arial", 9))
         lbl.pack(side="left", padx=6)
         self._db_labels.append(lbl)
-        prod_ref_val = self.cfg.get("prod_ref", 0)
-        ref_color = GREEN if prod_ref_val and float(prod_ref_val or 0) > 0 else C_RED
-        tk.Button(f, text=f"Réf:{int(float(prod_ref_val or 0))}pcs",
-                  command=self._ask_prod_ref,
-                  bg=ref_color, fg=WHITE, font=("Arial", 9, "bold"),
-                  relief="flat", padx=6, pady=2, cursor="hand2").pack(side="left", padx=4)
         tk.Button(f, text="⚙", command=self._select_db,
                   bg=NAVY_L, fg=WHITE, font=("Arial", 14),
                   relief="flat", padx=10, pady=2, cursor="hand2").pack(side="left")
@@ -1603,7 +1596,10 @@ class App:
                  bg=WHITE, fg=LGRAY, font=("Arial", 8)).pack()
         self._main_gauge = Gauge(trs_inner, bg=WHITE,
                                   width=290, height=130, highlightthickness=0)
-        self._main_gauge.pack(padx=16, pady=(0, 10))
+        self._main_gauge.pack(padx=16, pady=(0, 4))
+        self._trs_calc_lbl = tk.Label(trs_inner, text="TRS non calculé",
+                                       bg=WHITE, fg=GRAY, font=("Arial", 9))
+        self._trs_calc_lbl.pack(pady=(0, 10))
         self._refresh_main_kpi()
 
         # Zone droite — remplit tout l'espace restant
@@ -1700,7 +1696,9 @@ class App:
             tree.column(c, width=widths.get(c, 70), anchor="center",
                         stretch=(c not in ("✏", "🗑")))
         style.configure("TRS.Treeview", font=("Arial", 10, "bold"))
-        tree.tag_configure("trs_hi", background="#e6f7ee", foreground=GREEN)
+        tree.tag_configure("trs_hi",   background="#e6f7ee", foreground=GREEN)
+        tree.tag_configure("trs_warn", background="#fff7e6", foreground=ORANGE)
+        tree.tag_configure("trs_low",  background="#fde8e8", foreground=C_RED)
 
         sb_v = ttk.Scrollbar(tbl_inner, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=sb_v.set)
@@ -1793,7 +1791,7 @@ class App:
             if prod_ref <= 0:
                 return -1
             expected = prod_ref * of_s / 28800.0
-            return min(200.0, equiv / expected * 100.0)
+            return equiv / expected * 100.0
         except Exception:
             return -1
 
@@ -1810,7 +1808,7 @@ class App:
 
     def _refresh_main_kpi(self):
         path = self.cfg.get("db_path", "")
-        last_time = "--:--"
+        last_dt_str = ""
         global_trs = 0.0
         if path and os.path.exists(path):
             try:
@@ -1822,8 +1820,11 @@ class App:
                         if any(r)]
                 wb.close()
                 if rows:
-                    last      = rows[-1]
-                    last_time = str(last[18])[:5] if last[18] else "--:--"
+                    last = rows[-1]
+                    d_s  = str(last[1] or "")[:10]
+                    t_s  = str(last[18] or "")[:5]
+                    if d_s and t_s:
+                        last_dt_str = f"{d_s} à {t_s}"
                 # TRS global : sum(equiv) / sum(expected) sur 12h
                 cutoff = datetime.datetime.now() - datetime.timedelta(hours=12)
                 total_equiv = 0.0
@@ -1846,10 +1847,14 @@ class App:
                         pass
                 if prod_ref > 0 and total_of_s > 0:
                     expected   = prod_ref * total_of_s / 28800.0
-                    global_trs = min(200.0, total_equiv / expected * 100.0) if expected > 0 else 0.0
+                    global_trs = (total_equiv / expected * 100.0) if expected > 0 else 0.0
             except Exception:
                 pass
-        self._main_gauge.update_gauge(global_trs, last_time)
+        self._main_gauge.update_gauge(global_trs)
+        calc_text = (f"TRS calculé le {last_dt_str}" if last_dt_str
+                     else "TRS non calculé")
+        if hasattr(self, "_trs_calc_lbl") and self._trs_calc_lbl.winfo_exists():
+            self._trs_calc_lbl.config(text=calc_text)
 
     def _load_table(self, tree):
         path = self.cfg.get("db_path", "")
@@ -1888,11 +1893,18 @@ class App:
             arr_s   = _sd(row, list(range(26, 31)) + list(range(31, 49)))
             prod_s  = max(0, of_s - arr_s)
             trs_str = ""
+            trs_tag = ()
             if of_s > 0:
                 trs_val = self._calc_trs_from_row(row)
-                trs_str = f"{trs_val:.0f}%" if trs_val >= 0 else ""
-            tags = ("trs_hi",) if trs_str else ()
-            tree.insert("", "end", iid=str(excel_row), tags=tags, values=(
+                if trs_val >= 0:
+                    trs_str = f"{trs_val:.0f}%"
+                    if trs_val >= 70:
+                        trs_tag = ("trs_hi",)
+                    elif trs_val >= 50:
+                        trs_tag = ("trs_warn",)
+                    else:
+                        trs_tag = ("trs_low",)
+            tree.insert("", "end", iid=str(excel_row), tags=trs_tag, values=(
                 str(row[1])[:10]      if row[1]  else "",
                 str(row[0])           if row[0]  else "",
                 str(row[3])           if row[3]  else "",
@@ -2209,11 +2221,53 @@ class App:
                     m = int((gap % 3600) // 60)
                     s = int(gap % 60)
                     ts = f"{h}h {m:02d}min" if h > 0 else f"{m}min {s:02d}s"
-                    do_changeof = messagebox.askyesno(
-                        "Changement d'OF",
-                        f"Le dernier OF a ete termine il y a {ts}.\n\n"
-                        "Voulez-vous declarer ce temps comme\n"
-                        "\"Changement d'OF\" ?")
+                    result = [False]
+                    OV_BG = WHITE
+                    ov = tk.Frame(self.root, bg=OV_BG)
+                    ov.place(relx=0, rely=0, relwidth=1, relheight=1)
+                    ov.lift()
+
+                    hdr_ov = tk.Frame(ov, bg=ORANGE, height=80)
+                    hdr_ov.pack(fill="x")
+                    hdr_ov.pack_propagate(False)
+                    tk.Frame(hdr_ov, bg=DARK, width=6).pack(side="left", fill="y")
+                    tk.Label(hdr_ov, text="CHANGEMENT D'OF",
+                             bg=ORANGE, fg=WHITE,
+                             font=("Arial", 22, "bold")).pack(
+                             side="left", padx=20, pady=20)
+
+                    body_ov = tk.Frame(ov, bg=OV_BG)
+                    body_ov.pack(fill="both", expand=True, padx=60, pady=40)
+
+                    tk.Label(body_ov,
+                             text=f"Le dernier OF a été terminé il y a  {ts}.",
+                             bg=OV_BG, fg=DARK,
+                             font=("Arial", 16)).pack(pady=(0, 12))
+                    tk.Label(body_ov,
+                             text="Voulez-vous déclarer ce temps comme « Changement d'OF » ?",
+                             bg=OV_BG, fg=DARK, font=("Arial", 15)).pack(pady=(0, 40))
+
+                    btn_row = tk.Frame(body_ov, bg=OV_BG)
+                    btn_row.pack()
+
+                    def _oui():
+                        result[0] = True
+                        ov.destroy()
+                    def _non():
+                        result[0] = False
+                        ov.destroy()
+
+                    tk.Button(btn_row, text="✔   OUI — Déclarer comme changement d'OF",
+                              command=_oui, bg=GREEN, fg=WHITE,
+                              font=("Arial", 14, "bold"), relief="flat",
+                              padx=20, pady=14, cursor="hand2").pack(pady=6, fill="x")
+                    tk.Button(btn_row, text="✕   NON — Ignorer cet intervalle",
+                              command=_non, bg=LGRAY, fg=DARK,
+                              font=("Arial", 13), relief="flat",
+                              padx=20, pady=12, cursor="hand2").pack(pady=6, fill="x")
+
+                    self.root.wait_window(ov)
+                    do_changeof = result[0]
                 if do_changeof:
                     self._write_changement_of_excel(self._last_of_end, now)
                     self._tl_events.append({
@@ -2436,15 +2490,42 @@ class App:
             if not path or not os.path.exists(path):
                 messagebox.showwarning("Attention", "Aucun fichier Excel chargé.")
                 return
-            try:
-                os.startfile(path)
-            except Exception:
-                import subprocess
-                subprocess.Popen(["xdg-open", path])
+            pw_win = tk.Toplevel(win)
+            pw_win.title("Mot de passe")
+            pw_win.geometry("340x180")
+            pw_win.configure(bg=WHITE)
+            pw_win.attributes("-topmost", True)
+            pw_win.grab_set()
+            tk.Label(pw_win, text="Mot de passe requis", bg=WHITE, fg=NAVY,
+                     font=("Arial", 13, "bold")).pack(pady=(20, 8))
+            pw_var = tk.StringVar()
+            pw_entry = tk.Entry(pw_win, textvariable=pw_var, show="*",
+                                font=("Arial", 13), width=14, justify="center",
+                                relief="solid", bd=1)
+            pw_entry.pack(pady=4)
+            pw_entry.focus()
+            err = tk.Label(pw_win, text="", bg=WHITE, fg=C_RED, font=("Arial", 10))
+            err.pack()
+            def _confirm_pw(event=None):
+                if pw_var.get() == PASSWORD:
+                    pw_win.destroy()
+                    try:
+                        os.startfile(path)
+                    except Exception:
+                        import subprocess
+                        subprocess.Popen(["xdg-open", path])
+                else:
+                    err.config(text="Mot de passe incorrect")
+                    pw_var.set("")
+            pw_entry.bind("<Return>", _confirm_pw)
+            tk.Button(pw_win, text="Ouvrir Excel", command=_confirm_pw,
+                      bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
+                      relief="flat", cursor="hand2", pady=6).pack(fill="x", padx=40, pady=8)
 
         tk.Button(hdr, text="📝  Modifier les listes", bg=GREEN, fg=WHITE,
                   font=("Arial", 11, "bold"), relief="flat", cursor="hand2",
-                  command=_open_listes).pack(side="right", padx=12)
+                  padx=10, pady=6,
+                  command=_open_listes).pack(side="right", padx=12, pady=8)
 
         nb = ttk.Notebook(win)
         nb.pack(fill="both", expand=True, padx=8, pady=8)
@@ -2936,7 +3017,7 @@ class App:
         trs_pct  = -1.0
         if prod_ref > 0 and of_s > 0:
             expected = prod_ref * of_s / 28800.0
-            trs_pct  = min(200.0, equiv / expected * 100.0) if expected > 0 else -1.0
+            trs_pct  = (equiv / expected * 100.0) if expected > 0 else -1.0
 
         def _ts(key):
             return fmt(self._t_get(key))
