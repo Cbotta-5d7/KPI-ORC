@@ -1352,6 +1352,36 @@ class App:
         cb.bind("<Return>", _connect)
         cb.focus()
 
+        # Bouton discret chargement fichier Excel
+        def _pick_excel():
+            p = filedialog.askopenfilename(
+                title="Charger la base de données Excel",
+                filetypes=[("Excel", "*.xlsx *.xlsm"), ("Tous", "*.*")])
+            if not p:
+                return
+            self.cfg["db_path"] = p
+            save_cfg(self.cfg)
+            self._prod_ref_cached = 0.0
+            self._invalidate_wb_cache()
+            self._load_lists()
+            self._load_history_from_excel()
+            # Rafraîchir la liste des pilotes
+            pilots2 = self._get_list("Pilotes")
+            cb.config(values=pilots2)
+            if pilots2:
+                cb.set(pilots2[0])
+            name = os.path.basename(p)
+            db_lbl.config(text=f"📂  {name}")
+
+        db_current = self.cfg.get("db_path", "")
+        db_name    = os.path.basename(db_current) if db_current else "Aucun fichier chargé"
+        db_lbl = tk.Label(ov, text=f"📂  {db_name}", bg=BG, fg=GRAY,
+                          font=("Arial", 9), cursor="hand2")
+        db_lbl.pack(pady=(14, 0))
+        db_lbl.bind("<Button-1>", lambda e: _pick_excel())
+        tk.Label(ov, text="Cliquer pour changer de fichier",
+                 bg=BG, fg=LGRAY, font=("Arial", 8)).pack()
+
     def _maybe_show_login(self):
         if not self._logged_in_pilot:
             self._show_login_overlay()
