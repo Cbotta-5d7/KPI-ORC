@@ -70,6 +70,9 @@ DATA_HEADERS = [
     "PB Tapeuse", "PB Table Rot/Twin", "PB Enfileuse H100",
     "PB Enfileuse Traversin", "PB Presse ORC", "PB Presse Housse ZIP",
     "PB Cercleuse", "PB Enrouleuse Traversin", "Commentaire",
+    "Changement de Serie", "Nb PP Cousue",
+    "Duree Arret Manquant MP", "Manquant Personnel/Reunion",
+    "Nettoyage Fin de Poste",
 ]
 
 EVT_HEADERS = [
@@ -682,6 +685,8 @@ class App:
         self._saved_form_data  = {}   # Mémoire formulaire entre onglets
         self._reset_form_next  = False  # True = ne pas restaurer au prochain _show_production
         self._logged_in_pilot  = None   # Pilote actuellement connecté
+        self._inter_of_s       = 0      # Durée inter-OF (changement de série)
+        self._of_count_this_shift = 0   # Nb déclarations complétées ce poste
         self._prod_ref_cached  = 0.0
         self._pilot_kpi_data   = {}
 
@@ -986,6 +991,8 @@ class App:
                 "of_changes":       changes_serial,
                 "form_data":        self._saved_form_data,
                 "logged_in_pilot":  self._logged_in_pilot,
+                "inter_of_s":       self._inter_of_s,
+                "of_count_shift":   self._of_count_this_shift,
             }
             with open(SESSION_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
