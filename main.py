@@ -4240,18 +4240,15 @@ class App:
         if self._of_count_this_shift == 0:
             mp_val = v.get("manquant_pers", "").strip()
             if mp_val in ("", "0", "00:00:00"):
-                reunion_ok = [False]
-                ov_r = tk.Toplevel(self.root)
-                ov_r.overrideredirect(True)
-                ov_r.attributes("-topmost", True)
-                ov_r.configure(bg=WHITE)
-                self._center_on_root(ov_r, 420, 200)
+                reunion_ok  = [False]
+                reunion_var = tk.BooleanVar(value=False)
+                ov_r = tk.Frame(self.root, bg=WHITE)
+                ov_r.place(relx=0, rely=0, relwidth=1, relheight=1)
                 ov_r.lift()
-                ov_r.grab_set()
                 tk.Frame(ov_r, bg=ORANGE, height=6).pack(fill="x")
                 tk.Label(ov_r, text="⚠  Réunion non déclarée",
                          bg=WHITE, fg=ORANGE,
-                         font=("Arial", 13, "bold")).pack(pady=(14, 4))
+                         font=("Arial", 13, "bold")).pack(pady=(60, 4))
                 tk.Label(ov_r,
                          text="Tu n'as pas déclaré de réunion.\nValider quand même ?",
                          bg=WHITE, fg=DARK,
@@ -4261,8 +4258,10 @@ class App:
                 def _r_ok():
                     reunion_ok[0] = True
                     ov_r.destroy()
+                    reunion_var.set(True)
                 def _r_cancel():
                     ov_r.destroy()
+                    reunion_var.set(True)
                 tk.Button(bf, text="Valider quand même", command=_r_ok,
                           bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
                           relief="flat", padx=14, pady=8, cursor="hand2").pack(
@@ -4271,24 +4270,20 @@ class App:
                           bg=LGRAY, fg=DARK, font=("Arial", 11),
                           relief="flat", padx=14, pady=8, cursor="hand2").pack(
                           side="left", padx=6)
-                self.root.wait_window(ov_r)
+                self.root.wait_variable(reunion_var)
                 if not reunion_ok[0]:
                     self._prod_active = True
                     self._after_id = self.root.after(1000, self._tick)
                     return
 
-        # ── Popup recap avant confirmation ────────────────────────────────────
-        confirmed = [False]
-        modified  = [False]
+        # ── Overlay plein écran recap avant confirmation ──────────────────────
+        confirmed   = [False]
+        modified    = [False]
+        recap_var   = tk.BooleanVar(value=False)
 
-        recap = tk.Toplevel(self.root)
-        recap.overrideredirect(True)
-        recap.attributes("-topmost", True)
-        recap.configure(bg=WHITE)
-        pw, ph = 900, 480
-        self._center_on_root(recap, pw, ph)
+        recap = tk.Frame(self.root, bg=WHITE)
+        recap.place(relx=0, rely=0, relwidth=1, relheight=1)
         recap.lift()
-        recap.grab_set()
 
         # Header
         hdr_r = tk.Frame(recap, bg=NAVY, height=56)
@@ -4298,12 +4293,15 @@ class App:
                  bg=NAVY, fg=WHITE, font=("Arial", 15, "bold")).pack(
                  side="left", padx=20, pady=14)
 
-        # Corps en 2 colonnes : infos à gauche, jauge TRS à droite
-        body_r = tk.Frame(recap, bg=WHITE)
-        body_r.pack(fill="both", expand=True, padx=16, pady=8)
+        # Corps centré avec largeur max 900
+        outer_r = tk.Frame(recap, bg=WHITE)
+        outer_r.pack(fill="both", expand=True)
+        body_r = tk.Frame(outer_r, bg=WHITE, width=900)
+        body_r.pack(expand=True, pady=16)
+
         left_r = tk.Frame(body_r, bg=WHITE)
-        left_r.pack(side="left", fill="both", expand=True)
-        right_r = tk.Frame(body_r, bg=WHITE, width=400)
+        left_r.pack(side="left", fill="both", expand=True, padx=(0, 16))
+        right_r = tk.Frame(body_r, bg=WHITE, width=380)
         right_r.pack(side="right", fill="y")
         right_r.pack_propagate(False)
 
@@ -4325,12 +4323,10 @@ class App:
         gauges_row = tk.Frame(right_r, bg=WHITE)
         gauges_row.pack(fill="x", pady=(8, 0))
 
-        # Jauge 1 : TRS de cette déclaration
         g1_frame = tk.Frame(gauges_row, bg=WHITE)
         g1_frame.pack(side="left", expand=True, fill="both")
         tk.Label(g1_frame, text="TRS de cette déclaration", bg=WHITE, fg=GRAY,
                  font=("Arial", 9, "bold"), wraplength=160, justify="center").pack(pady=(4, 0))
-        trs_col = GREEN if trs_pct >= 75 else C_RATT if trs_pct >= 55 else C_RED
         gauge_r = Gauge(g1_frame, bg=WHITE, width=160, height=110,
                         highlightthickness=0)
         gauge_r.pack()
@@ -4338,7 +4334,6 @@ class App:
         trs_label = f"{trs_disp:.1f}%" if trs_pct >= 0 else "—"
         gauge_r.update_gauge(trs_disp, trs_label)
 
-        # Jauge 2 : TRS poste entier du pilote
         g2_frame = tk.Frame(gauges_row, bg=WHITE)
         g2_frame.pack(side="left", expand=True, fill="both")
         _pilot_lbl = self._logged_in_pilot or v.get("pilote", "—")
@@ -4354,27 +4349,31 @@ class App:
         tk.Frame(left_r, bg=LGRAY, height=1).pack(fill="x", pady=8)
 
         btn_row_r = tk.Frame(recap, bg=WHITE)
-        btn_row_r.pack(fill="x", padx=24, pady=(0, 18))
+        btn_row_r.pack(fill="x", padx=24, pady=(0, 24))
 
         def _modifier():
             confirmed[0] = False
             modified[0]  = True
             recap.destroy()
+            recap_var.set(True)
 
         def _confirmer():
             confirmed[0] = True
             recap.destroy()
+            recap_var.set(True)
 
-        tk.Button(btn_row_r, text="✏  MODIFIER",
+        btn_inner = tk.Frame(btn_row_r, bg=WHITE, width=900)
+        btn_inner.pack()
+        tk.Button(btn_inner, text="✏  MODIFIER",
                   command=_modifier, bg=LGRAY, fg=DARK,
                   font=("Arial", 13, "bold"), relief="flat",
-                  padx=20, pady=10, cursor="hand2").pack(side="left", fill="x", expand=True, padx=(0, 8))
-        tk.Button(btn_row_r, text="✔  CONFIRMER",
+                  padx=20, pady=10, cursor="hand2").pack(side="left", padx=(0, 8))
+        tk.Button(btn_inner, text="✔  CONFIRMER",
                   command=_confirmer, bg=GREEN, fg=WHITE,
                   font=("Arial", 13, "bold"), relief="flat",
-                  padx=20, pady=10, cursor="hand2").pack(side="left", fill="x", expand=True)
+                  padx=20, pady=10, cursor="hand2").pack(side="left")
 
-        recap.wait_window()
+        self.root.wait_variable(recap_var)
 
         if modified[0]:
             # Retour a la vue production sans rien perdre
@@ -4576,7 +4575,7 @@ class App:
             return
         try:
             wb   = load_workbook(path)
-            ws_d = wb["Data"]
+            ws_d = self._ensure_data_sheet(wb)
             ws_d.append(payload["row"])
             self._format_row(ws_d, ws_d.max_row)
             ws_e = self._ensure_events_sheet(wb)
@@ -4689,12 +4688,18 @@ class App:
         return ""
 
     def _center_on_root(self, win, w, h):
-        rx = self.root.winfo_x()
-        ry = self.root.winfo_y()
+        self.root.update_idletasks()
         rw = self.root.winfo_width()
         rh = self.root.winfo_height()
-        x = rx + (rw - w) // 2
-        y = ry + (rh - h) // 2
+        if rw < 100:
+            rw = self.root.winfo_screenwidth()
+            rh = self.root.winfo_screenheight()
+            rx, ry = 0, 0
+        else:
+            rx = self.root.winfo_x()
+            ry = self.root.winfo_y()
+        x = max(0, rx + (rw - w) // 2)
+        y = max(0, ry + (rh - h) // 2)
         win.geometry(f"{w}x{h}+{x}+{y}")
 
     def _get_wb(self, path):
@@ -4759,7 +4764,7 @@ class App:
                     if wb is None:
                         self.root.after(0, self._schedule_pending_retry)
                         return
-                    ws_d = wb["Data"]
+                    ws_d = self._ensure_data_sheet(wb)
                     ws_d.append(row)
                     self._format_row(ws_d, ws_d.max_row)
                     self._write_rows_to_events_sheet(wb, events_rows)
@@ -4792,6 +4797,13 @@ class App:
         if "Evenements" not in wb.sheetnames:
             wb.create_sheet("Evenements")
         return wb["Evenements"]
+
+    def _ensure_data_sheet(self, wb):
+        if "Data" not in wb.sheetnames:
+            ws = wb.create_sheet("Data", 0)
+            for i, h in enumerate(DATA_HEADERS, start=1):
+                ws.cell(1, i).value = h
+        return wb["Data"]
 
     def _write_events_to_wb(self, wb, v):
         ws       = self._ensure_events_sheet(wb)
