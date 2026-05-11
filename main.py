@@ -4778,20 +4778,17 @@ class App:
         win.geometry(f"{w}x{h}+{x}+{y}")
 
     def _get_wb(self, path):
-        """Retourne le workbook mis en cache ou le recharge si le fichier a changé."""
+        """Charge le workbook pour écriture (sans cache — évite la corruption)."""
         try:
-            mtime = os.path.getmtime(path)
-        except OSError:
+            if not os.path.exists(path):
+                return None
+            wb = load_workbook(path)
+            self._wb_cache       = wb
+            self._wb_path_cache  = path
+            self._wb_mtime_cache = os.path.getmtime(path)
+            return wb
+        except Exception:
             return None
-        if (self._wb_cache is not None
-                and self._wb_path_cache == path
-                and abs(mtime - self._wb_mtime_cache) < 2.0):
-            return self._wb_cache
-        wb = load_workbook(path, keep_links=False)
-        self._wb_cache       = wb
-        self._wb_path_cache  = path
-        self._wb_mtime_cache = mtime
-        return wb
 
     def _invalidate_wb_cache(self):
         self._wb_cache = None
