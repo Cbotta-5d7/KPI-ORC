@@ -1055,6 +1055,9 @@ class App:
             if pilot:
                 self._logged_in_pilot = pilot
 
+            self._inter_of_s          = float(data.get("inter_of_s", 0))
+            self._of_count_this_shift = int(data.get("of_count_shift", 0))
+
             return True
         except Exception:
             return False
@@ -1319,6 +1322,8 @@ class App:
                     err_lbl.config(text="Pilote introuvable.")
                     return
             self._logged_in_pilot = name
+            self._of_count_this_shift = 0
+            self._inter_of_s = 0
             ov.destroy()
             if on_success:
                 on_success()
@@ -1637,6 +1642,16 @@ class App:
                         _ts("pb_h100"), _ts("pb_traversin"), _ts("pb_presse_orc"),
                         _ts("pb_presse_zip2"), _ts("pb_cercleuse"), _ts("pb_enrouleuse"),
                         v.get("comment",""),
+                        fmt(self._inter_of_s),
+                        _n("nb_pp_cousue"),
+                        v.get("duree_mq_mp", ""),
+                        v.get("manquant_pers", ""),
+                        fmt(sum(
+                            (ev["end"] - ev["start"]).total_seconds()
+                            for ev in self._tl_events
+                            if ev.get("key") == "nettoyage"
+                               and ev.get("start") and ev.get("end")
+                        )),
                     ]
                     ok = self._write_excel(row, v)
                     if not ok:
@@ -2993,9 +3008,11 @@ class App:
             self._show_login_overlay(on_success=self._start_production)
             return
         now = datetime.datetime.now()
+        self._inter_of_s = 0
         if self._last_of_end is not None:
             gap = (now - self._last_of_end).total_seconds()
             if 30 < gap <= 28800:   # > 30s et <= 8h
+                self._inter_of_s = gap
                 do_changeof = False
                 if gap < 300:  # Moins de 5 min → automatique
                     do_changeof = True
@@ -3302,6 +3319,12 @@ class App:
              "Mq. taie",        "mq_taie",    "entry", None,
              "Mq. housse (nb)", "mq_housse",  "entry", None)
         fld("Mq. encart (nb)", "mq_encart", "entry", None, col=0, adv=False)
+
+        # ── Informations complémentaires ──
+        sec("Informations", NAVY_L)
+        row3("Nb PP Cousue",             "nb_pp_cousue",   "entry", None,
+             "Durée arrêt manquant MP",  "duree_mq_mp",    "entry", None,
+             "Manquant personnel/réunion", "manquant_pers", "entry", None)
 
         # ── Commentaire ──
         sec("Commentaire", GRAY)
@@ -3951,7 +3974,58 @@ class App:
             _ts("pb_presse_orc"),   _ts("pb_presse_zip2"),
             _ts("pb_cercleuse"),    _ts("pb_enrouleuse"),
             v.get("comment",""),
+            fmt(self._inter_of_s),
+            _n("nb_pp_cousue"),
+            v.get("duree_mq_mp", ""),
+            v.get("manquant_pers", ""),
+            fmt(sum(
+                (ev["end"] - ev["start"]).total_seconds()
+                for ev in self._tl_events
+                if ev.get("key") == "nettoyage"
+                   and ev.get("start") and ev.get("end")
+            )),
         ]
+
+        # ── Alerte réunion non déclarée (1ère déclaration du poste) ──────────
+        if self._of_count_this_shift == 0:
+            mp_val = v.get("manquant_pers", "").strip()
+            if mp_val in ("", "0", "00:00:00"):
+                reunion_ok = [False]
+                ov_r = tk.Toplevel(self.root)
+                ov_r.overrideredirect(True)
+                ov_r.attributes("-topmost", True)
+                ov_r.configure(bg=WHITE)
+                sw2 = self.root.winfo_screenwidth()
+                sh2 = self.root.winfo_screenheight()
+                ov_r.geometry(f"420x200+{(sw2-420)//2}+{(sh2-200)//2}")
+                tk.Frame(ov_r, bg=ORANGE, height=6).pack(fill="x")
+                tk.Label(ov_r, text="⚠  Réunion non déclarée",
+                         bg=WHITE, fg=ORANGE,
+                         font=("Arial", 13, "bold")).pack(pady=(14, 4))
+                tk.Label(ov_r,
+                         text="Tu n'as pas déclaré de réunion.\nValider quand même ?",
+                         bg=WHITE, fg=DARK,
+                         font=("Arial", 11), justify="center").pack(pady=4)
+                bf = tk.Frame(ov_r, bg=WHITE)
+                bf.pack(pady=12)
+                def _r_ok():
+                    reunion_ok[0] = True
+                    ov_r.destroy()
+                def _r_cancel():
+                    ov_r.destroy()
+                tk.Button(bf, text="Valider quand même", command=_r_ok,
+                          bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
+                          relief="flat", padx=14, pady=8, cursor="hand2").pack(
+                          side="left", padx=6)
+                tk.Button(bf, text="Annuler", command=_r_cancel,
+                          bg=LGRAY, fg=DARK, font=("Arial", 11),
+                          relief="flat", padx=14, pady=8, cursor="hand2").pack(
+                          side="left", padx=6)
+                self.root.wait_window(ov_r)
+                if not reunion_ok[0]:
+                    self._prod_active = True
+                    self._after_id = self.root.after(1000, self._tick)
+                    return
 
         # ── Popup recap avant confirmation ────────────────────────────────────
         confirmed = [False]
@@ -4067,6 +4141,8 @@ class App:
         # ── Ecriture Excel ────────────────────────────────────────────────────
         self._prod_active = False
         self._last_of_end = end_dt
+        self._of_count_this_shift += 1
+        self._inter_of_s = 0
         if self._of_periods:
             self._of_periods[-1]["end"]    = end_dt
             self._of_periods[-1]["of_num"] = v.get("of_num", "")
