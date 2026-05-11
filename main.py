@@ -59,20 +59,21 @@ DATA_HEADERS = [
     "OF", "Date", "Poste", "Pilote", "Co-Pilote", "Nb Personnes",
     "Taille", "Code Produit", "Type Produit", "Poids Garnissage", "Fibre",
     "OF Taie", "Traca Fibre", "Qte Fabriquee", "Qte Emballee", "Equivalence",
-    "Duree OF", "Heure Debut", "Heure Fin", "Cadence/min", "Cadence par heure",
+    "Duree OF", "Heure Debut", "Heure Fin", "Cadence/heure", "Cadence/h/pers",
     "Kit", "Ref Taie", "Qte Initiale Taie", "Nb Taie 2nd Choix",
     "Nb Defaut Couture", "Mq Taie", "Mq Housse/Encart",
+    "Nb PP Cousue", "Changement de Serie",
+    "Temps Arret Manquant MP", "Temps Arret Manquant Personnel/Reunion",
+    "Nettoyage Fin de Poste",
     "Ratt Pochon/Fibre", "Ratt Couture", "Ratt Emballage",
     "Ratt Presse Souder", "Ratt Presse ZIP",
     "PB Chargeuse", "PB Carde", "PB Etaleur/Tour", "PB Coupe/Circ",
     "PB Tapis Bascule", "PB Enrouleur Pochon", "PB Pesee/Tapis 2",
     "PB Deviation/Table", "PB Enfileur Pochon", "PB Kinna/Stroebel",
-    "PB Tapeuse", "PB Table Rot/Twin", "PB Enfileuse H100",
+    "PB Tapeuse", "PB Table Rot/Twin", "PB Enfileuse H1",
     "PB Enfileuse Traversin", "PB Presse ORC", "PB Presse Housse ZIP",
-    "PB Cercleuse", "PB Enrouleuse Traversin", "Commentaire",
-    "Changement de Serie", "Nb PP Cousue",
-    "Duree Arret Manquant MP", "Manquant Personnel/Reunion",
-    "Nettoyage Fin de Poste",
+    "PB Cercleuse", "PB Enrouleuse Traversin",
+    "Commentaire",
 ]
 
 EVT_HEADERS = [
@@ -631,19 +632,7 @@ class App:
         except Exception:
             self.root.attributes("-fullscreen", True)
 
-        # ── Scaling proportionnel à la résolution écran ───────────────────────
-        sw = root.winfo_screenwidth()
-        sh = root.winfo_screenheight()
-        raw_sc = min(sw / 1920.0, sh / 1080.0)
-        self._sc = max(0.55, min(1.0, raw_sc))   # clamp 55%–100%
-        try:
-            base = float(root.tk.call("tk", "scaling"))
-            root.tk.call("tk", "scaling", base * self._sc)
-        except Exception:
-            pass
-
-        def _px(n): return max(1, int(n * self._sc))
-        self._px = _px
+        self._px = lambda n: n   # pas de scaling
 
         self.cfg          = load_cfg()
         self.lists        = {}
@@ -687,6 +676,9 @@ class App:
         self._logged_in_pilot  = None   # Pilote actuellement connecté
         self._inter_of_s       = 0      # Durée inter-OF (changement de série)
         self._of_count_this_shift = 0   # Nb déclarations complétées ce poste
+        self._wb_cache        = None    # Workbook mis en cache pour écriture rapide
+        self._wb_path_cache   = ""
+        self._wb_mtime_cache  = 0.0
         self._prod_ref_cached  = 0.0
         self._pilot_kpi_data   = {}
 
@@ -1510,6 +1502,7 @@ class App:
 
     def _refresh_all(self):
         """Recharge le fichier Excel (listes + historique + tableau) sans toucher à la prod en cours."""
+        self._invalidate_wb_cache()
         self._load_lists()
         self._load_history_from_excel()
         if self._mode == "main":
@@ -1633,6 +1626,16 @@ class App:
                         _n("qte_init_taie"), _n("nb_taie2_choix"),
                         _n("nb_def_cout"), _n("mq_taie"),
                         _n("mq_housse") + _n("mq_encart"),
+                        _n("nb_pp_cousue"),
+                        fmt(self._inter_of_s),
+                        v.get("duree_mq_mp", ""),
+                        v.get("manquant_pers", ""),
+                        fmt(sum(
+                            (ev["end"] - ev["start"]).total_seconds()
+                            for ev in self._tl_events
+                            if ev.get("key") == "nettoyage"
+                               and ev.get("start") and ev.get("end")
+                        )),
                         _ts("ratt_pochon"), _ts("ratt_couture"), _ts("ratt_emb"),
                         _ts("ratt_presse_soud"), _ts("ratt_presse_zip"),
                         _ts("pb_chargeuse"), _ts("pb_carde"), _ts("pb_etaleur"),
@@ -1642,16 +1645,6 @@ class App:
                         _ts("pb_h100"), _ts("pb_traversin"), _ts("pb_presse_orc"),
                         _ts("pb_presse_zip2"), _ts("pb_cercleuse"), _ts("pb_enrouleuse"),
                         v.get("comment",""),
-                        fmt(self._inter_of_s),
-                        _n("nb_pp_cousue"),
-                        v.get("duree_mq_mp", ""),
-                        v.get("manquant_pers", ""),
-                        fmt(sum(
-                            (ev["end"] - ev["start"]).total_seconds()
-                            for ev in self._tl_events
-                            if ev.get("key") == "nettoyage"
-                               and ev.get("start") and ev.get("end")
-                        )),
                     ]
                     ok = self._write_excel(row, v)
                     if not ok:
@@ -2791,14 +2784,14 @@ class App:
                 evt_tree.delete(item)
             # Reset stop columns in field_vars then recompute from evt_data
             _EVT_KEY_TO_COL = {
-                "ratt_pochon": 28, "ratt_couture": 29, "ratt_emb": 30,
-                "ratt_presse_soud": 31, "ratt_presse_zip": 32,
-                "pb_chargeuse": 33, "pb_carde": 34, "pb_etaleur": 35,
-                "pb_coupe": 36, "pb_tapis1": 37, "pb_enrouleur": 38,
-                "pb_pesee": 39, "pb_deviation": 40, "pb_enfileur": 41,
-                "pb_kinna": 42, "pb_tapeuse": 43, "pb_table_rot": 44,
-                "pb_h100": 45, "pb_traversin": 46, "pb_presse_orc": 47,
-                "pb_presse_zip2": 48, "pb_cercleuse": 49, "pb_enrouleuse": 50,
+                "ratt_pochon": 33, "ratt_couture": 34, "ratt_emb": 35,
+                "ratt_presse_soud": 36, "ratt_presse_zip": 37,
+                "pb_chargeuse": 38, "pb_carde": 39, "pb_etaleur": 40,
+                "pb_coupe": 41, "pb_tapis1": 42, "pb_enrouleur": 43,
+                "pb_pesee": 44, "pb_deviation": 45, "pb_enfileur": 46,
+                "pb_kinna": 47, "pb_tapeuse": 48, "pb_table_rot": 49,
+                "pb_h100": 50, "pb_traversin": 51, "pb_presse_orc": 52,
+                "pb_presse_zip2": 53, "pb_cercleuse": 54, "pb_enrouleuse": 55,
             }
             for col_idx in _EVT_KEY_TO_COL.values():
                 if col_idx < len(field_vars):
@@ -3474,15 +3467,17 @@ class App:
         make_tab("Onglet Evenements", EVT_HEADERS)
 
         listes_info = [
-            ("A", "Pilotes  (liste déroulante)"),
-            ("B", "Co-pilotes  (liste déroulante)"),
-            ("C", "Postes  (liste déroulante)"),
-            ("D", "Taille produit  (liste déroulante)"),
-            ("E", "Type produit  (liste déroulante)"),
-            ("F", "Fibre  (liste déroulante)"),
-            ("G", "Nb personnes  (liste déroulante)"),
-            ("H", "Equivalence coef  (coef par type produit)"),
-            ("I2", "Référence production 8h  ← valeur lue pour le TRS"),
+            ("Col A", "Pilotes  (liste déroulante pilote)"),
+            ("Col B", "Co-pilotes  (liste déroulante co-pilote)"),
+            ("Col C", "Postes  (liste déroulante poste)"),
+            ("Col D", "Taille produit  (liste déroulante taille)"),
+            ("Col E", "Type produit  (liste déroulante type produit)"),
+            ("Col F", "Fibre  (liste déroulante fibre)"),
+            ("Col G", "Nb personnes  (liste déroulante nb personnes)"),
+            ("Col H", "Code produit  (liste déroulante code produit)"),
+            ("Col I", "Equivalence coef  (coef par type produit, ligne 1 = en-tête)"),
+            ("I2", "★  Référence production 8h  ← valeur lue pour le calcul TRS"),
+            ("Col J", "Mots de passe pilotes  (même ordre que col A)"),
         ]
         frame = tk.Frame(nb, bg=WHITE)
         nb.add(frame, text="  Onglet Listes  ")
@@ -3934,56 +3929,56 @@ class App:
         def _ts(key):
             return fmt(self._t_get(key))
 
+        _nett_s = sum(
+            (ev["end"] - ev["start"]).total_seconds()
+            for ev in self._tl_events
+            if ev.get("key") == "nettoyage" and ev.get("start") and ev.get("end")
+        )
         row = [
-            v.get("of_num",""),
-            datetime.date.today().strftime("%d/%m/%Y"),
-            v.get("poste",""),
-            v.get("pilote",""),
-            v.get("copilote",""),
-            v.get("nb_pers",""),
-            v.get("taille",""),
-            v.get("code_prod",""),
-            v.get("type_prod",""),
-            v.get("poids",""),
-            v.get("fibre",""),
-            v.get("of_taie",""),
-            v.get("traca",""),
-            qte_fab,
-            _n("qte_emb"),
-            equiv,
-            fmt(of_s),
-            self._of_start.strftime("%H:%M:%S"),
-            end_dt.strftime("%H:%M:%S"),
-            c1, c2, kit,
-            v.get("ref_taie",""),
-            _n("qte_init_taie"),
-            _n("nb_taie2_choix"),
-            _n("nb_def_cout"),
-            _n("mq_taie"),
-            _n("mq_housse") + _n("mq_encart"),
-            _ts("ratt_pochon"),     _ts("ratt_couture"),
-            _ts("ratt_emb"),        _ts("ratt_presse_soud"),
-            _ts("ratt_presse_zip"),
-            _ts("pb_chargeuse"),    _ts("pb_carde"),
-            _ts("pb_etaleur"),      _ts("pb_coupe"),
-            _ts("pb_tapis1"),       _ts("pb_enrouleur"),
-            _ts("pb_pesee"),        _ts("pb_deviation"),
-            _ts("pb_enfileur"),     _ts("pb_kinna"),
-            _ts("pb_tapeuse"),      _ts("pb_table_rot"),
-            _ts("pb_h100"),         _ts("pb_traversin"),
-            _ts("pb_presse_orc"),   _ts("pb_presse_zip2"),
-            _ts("pb_cercleuse"),    _ts("pb_enrouleuse"),
-            v.get("comment",""),
-            fmt(self._inter_of_s),
-            _n("nb_pp_cousue"),
-            v.get("duree_mq_mp", ""),
-            v.get("manquant_pers", ""),
-            fmt(sum(
-                (ev["end"] - ev["start"]).total_seconds()
-                for ev in self._tl_events
-                if ev.get("key") == "nettoyage"
-                   and ev.get("start") and ev.get("end")
-            )),
+            v.get("of_num",""),                             # A
+            datetime.date.today().strftime("%d/%m/%Y"),     # B
+            v.get("poste",""),                              # C
+            v.get("pilote",""),                             # D
+            v.get("copilote",""),                           # E
+            v.get("nb_pers",""),                            # F
+            v.get("taille",""),                             # G
+            v.get("code_prod",""),                          # H
+            v.get("type_prod",""),                          # I
+            v.get("poids",""),                              # J
+            v.get("fibre",""),                              # K
+            v.get("of_taie",""),                            # L
+            v.get("traca",""),                              # M
+            qte_fab,                                        # N
+            _n("qte_emb"),                                  # O
+            equiv,                                          # P
+            fmt(of_s),                                      # Q
+            self._of_start.strftime("%H:%M:%S"),            # R
+            end_dt.strftime("%H:%M:%S"),                    # S
+            c1, c2, kit,                                    # T, U, V
+            v.get("ref_taie",""),                           # W
+            _n("qte_init_taie"),                            # X
+            _n("nb_taie2_choix"),                           # Y
+            _n("nb_def_cout"),                              # Z
+            _n("mq_taie"),                                  # AA
+            _n("mq_housse") + _n("mq_encart"),              # AB
+            _n("nb_pp_cousue"),                             # AC
+            fmt(self._inter_of_s),                          # AD
+            v.get("duree_mq_mp", ""),                       # AE
+            v.get("manquant_pers", ""),                     # AF
+            fmt(_nett_s),                                   # AG
+            _ts("ratt_pochon"),   _ts("ratt_couture"),      # AH, AI
+            _ts("ratt_emb"),      _ts("ratt_presse_soud"),  # AJ, AK
+            _ts("ratt_presse_zip"),                         # AL
+            _ts("pb_chargeuse"),  _ts("pb_carde"),          # AM, AN
+            _ts("pb_etaleur"),    _ts("pb_coupe"),           # AO, AP
+            _ts("pb_tapis1"),     _ts("pb_enrouleur"),      # AQ, AR
+            _ts("pb_pesee"),      _ts("pb_deviation"),      # AS, AT
+            _ts("pb_enfileur"),   _ts("pb_kinna"),           # AU, AV
+            _ts("pb_tapeuse"),    _ts("pb_table_rot"),      # AW, AX
+            _ts("pb_h100"),       _ts("pb_traversin"),      # AY, AZ
+            _ts("pb_presse_orc"), _ts("pb_presse_zip2"),    # BA, BB
+            _ts("pb_cercleuse"),  _ts("pb_enrouleuse"),     # BC, BD
+            v.get("comment",""),                            # BE
         ]
 
         # ── Alerte réunion non déclarée (1ère déclaration du poste) ──────────
@@ -4214,7 +4209,8 @@ class App:
         if not path or not os.path.exists(path):
             return
         try:
-            wb      = load_workbook(path)
+            self._invalidate_wb_cache()
+            wb      = load_workbook(path, keep_links=False)
             changed = False
             # Data sheet
             if "Data" in wb.sheetnames:
@@ -4335,23 +4331,48 @@ class App:
             cell.alignment = align
             cell.border    = border
 
+    def _get_wb(self, path):
+        """Retourne le workbook mis en cache ou le recharge si le fichier a changé."""
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            return None
+        if (self._wb_cache is not None
+                and self._wb_path_cache == path
+                and abs(mtime - self._wb_mtime_cache) < 2.0):
+            return self._wb_cache
+        wb = load_workbook(path, keep_links=False)
+        self._wb_cache       = wb
+        self._wb_path_cache  = path
+        self._wb_mtime_cache = mtime
+        return wb
+
+    def _invalidate_wb_cache(self):
+        self._wb_cache = None
+        self._wb_path_cache  = ""
+        self._wb_mtime_cache = 0.0
+
     def _write_excel(self, row, v):
         path = self.cfg.get("db_path", "")
         if not path:
-            messagebox.showwarning("Attention", "Aucune base de donnees !")
+            messagebox.showwarning("Attention", "Aucune base de données !")
             return False
         try:
-            wb = load_workbook(path)
+            wb = self._get_wb(path)
+            if wb is None:
+                return False
             ws_d = wb["Data"]
             ws_d.append(row)
             self._format_row(ws_d, ws_d.max_row)
             self._write_events_to_wb(wb, v)
             wb.save(path)
-            wb.close()
+            self._wb_mtime_cache = os.path.getmtime(path)
             return True
         except PermissionError:
+            self._invalidate_wb_cache()
             return False
         except Exception as e:
+            self._invalidate_wb_cache()
             messagebox.showerror("Erreur", f"Erreur Excel :\n{e}")
             return False
 
