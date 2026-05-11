@@ -2524,7 +2524,7 @@ class App:
             max_dur = max(d["dur"] for d in stops.values()) or 1
 
             for lbl, data in sorted_stops[:6]:  # Max 6 lignes
-                c = C_RATT if data["cat"] == "ratt" else C_RED
+                c = C_RATT if data["cat"] == "ratt" else (NAVY_L if data["cat"] == "pause" else C_RED)
                 rf = tk.Frame(body_col, bg=WHITE)
                 rf.pack(fill="x", padx=4, pady=1)
                 tk.Frame(rf, bg=c, width=4).pack(side="left", fill="y")
