@@ -699,6 +699,10 @@ class App:
         self._excel_lock      = threading.Lock()
         self._prod_ref_cached  = 0.0
         self._pilot_kpi_data   = {}
+        self._pause_start      = None   # Début de la pause en cours
+        self._pause_total_s    = 0.0    # Cumul des pauses de l'OF
+        self._is_paused        = False
+        self._pause_overlay    = None
 
         self._load_lists()
         self._load_history_from_excel()
@@ -2291,6 +2295,8 @@ class App:
         for k, v in self._saved_form_data.items():
             if k.startswith("_"):
                 continue
+            if k == "pilote" and self._logged_in_pilot:
+                continue  # Ne pas écraser le pilote connecté
             if k in self.fv:
                 try:
                     self.fv[k].set(v)
@@ -2668,6 +2674,22 @@ class App:
         path = self.cfg.get("db_path", "")
         if not path or not os.path.exists(path):
             return
+        # Retrouver la vraie ligne Excel par contenu
+        actual_idx, wb_found = self._find_excel_row_by_content(excel_row)
+        if wb_found is not None:
+            try:
+                wb_found.close()
+            except Exception:
+                pass
+        if not actual_idx:
+            messagebox.showwarning("Introuvable",
+                                   "Ligne introuvable dans le fichier Excel.\n"
+                                   "Elle a peut-être déjà été supprimée.")
+            return
+        # Retirer du cache
+        self._data_rows_cache = [(i, r) for i, r in self._data_rows_cache
+                                  if i != excel_row]
+        self._refresh_table()
         _toast(self.root, "⏳  Suppression en cours…", bg=NAVY_L, duration=5000)
         def _bg():
             try:
@@ -2675,13 +2697,13 @@ class App:
                     wb = self._get_wb(path)
                     if wb is None:
                         return
-                    wb["Data"].delete_rows(excel_row)
+                    wb["Data"].delete_rows(actual_idx)
                     wb.save(path)
                     self._wb_mtime_cache = os.path.getmtime(path)
+                    self._invalidate_wb_cache()
                 self.root.after(0, lambda: _toast(
                     self.root, "✔  Déclaration supprimée", bg=GREEN, duration=2500))
-                self.root.after(0, self._refresh_table)
-                self.root.after(0, self._refresh_main_kpi)
+                self.root.after(0, self._write_tampon_bg)
             except Exception as e:
                 self._invalidate_wb_cache()
                 err_msg = str(e)
@@ -2690,32 +2712,67 @@ class App:
         threading.Thread(target=_bg, daemon=True).start()
 
     # ── Edition declaration ───────────────────────────────────────────────────
+    def _find_excel_row_by_content(self, cache_idx):
+        """Retrouve l'index réel dans le fichier Excel en cherchant par OF+Date+H.Début."""
+        cached = next((r for idx, r in self._data_rows_cache if idx == cache_idx), None)
+        if cached is None:
+            return None, None
+        path = self.cfg.get("db_path", "")
+        if not path or not os.path.exists(path):
+            return None, cached
+        of_val = str(cached[0] or "").strip()
+        dt_val = str(cached[1] or "").strip()[:10]
+        hs_val = str(cached[17] or "").strip()[:8]
+        try:
+            wb = load_workbook(path, data_only=True)
+            ws = wb["Data"]
+            for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+                if (str(r[0] or "").strip() == of_val
+                        and str(r[1] or "").strip()[:10] == dt_val
+                        and str(r[17] or "").strip()[:8] == hs_val):
+                    return i, wb
+            wb.close()
+        except Exception:
+            pass
+        return None, None
+
     def _edit_declaration(self, excel_row):
         if not self._check_password("Modifier la declaration"):
             return
         path = self.cfg.get("db_path", "")
-        if not path or not os.path.exists(path):
-            messagebox.showwarning("Attention", "Base de donnees non connectee.")
-            return
-        try:
-            wb       = load_workbook(path, data_only=True)
-            ws       = wb["Data"]
-            row_data = [ws.cell(row=excel_row, column=i).value
-                        for i in range(1, len(DATA_HEADERS) + 1)]
-            row_data += [None] * max(0, len(DATA_HEADERS) - len(row_data))
-            of_num   = str(row_data[0] or "")
-            of_date  = str(row_data[1] or "")
-            evt_rows = []
-            if "Evenements" in wb.sheetnames:
-                for r in wb["Evenements"].iter_rows(min_row=2, values_only=True):
-                    if r and str(r[1] or "") == of_num and str(r[2] or "") == of_date:
-                        evt_rows.append(list(r))
-            wb.close()
-        except Exception as e:
-            messagebox.showerror("Erreur", f"Lecture Excel:\n{e}")
+
+        # Récupérer la ligne du cache
+        cached = next((r for idx, r in self._data_rows_cache if idx == excel_row), None)
+
+        # Chercher la vraie ligne dans Excel par contenu
+        actual_row = None
+        row_data   = cached or []
+        evt_rows   = []
+        if path and os.path.exists(path):
+            try:
+                actual_idx, wb = self._find_excel_row_by_content(excel_row)
+                if wb is not None:
+                    if actual_idx:
+                        actual_row = actual_idx
+                        ws = wb["Data"]
+                        row_data = [ws.cell(row=actual_idx, column=i).value
+                                    for i in range(1, len(DATA_HEADERS) + 1)]
+                        row_data += [None] * max(0, len(DATA_HEADERS) - len(row_data))
+                    of_num  = str(row_data[0] or "")
+                    of_date = str(row_data[1] or "")[:10]
+                    if "Evenements" in wb.sheetnames:
+                        for r in wb["Evenements"].iter_rows(min_row=2, values_only=True):
+                            if r and str(r[1] or "") == of_num and str(r[2] or "")[:10] == of_date:
+                                evt_rows.append(list(r))
+                    wb.close()
+            except Exception as e:
+                messagebox.showerror("Erreur", f"Lecture Excel:\n{e}")
+                return
+        elif not row_data:
+            messagebox.showwarning("Introuvable", "Déclaration introuvable.")
             return
 
-        self._open_edit_dialog(excel_row, row_data, evt_rows)
+        self._open_edit_dialog(actual_row or excel_row, row_data, evt_rows)
 
     def _open_edit_dialog(self, excel_row, row_data, evt_rows):
         of_lbl = str(row_data[0] or "?")
@@ -3144,9 +3201,37 @@ class App:
         self._of_start    = now
         self._prod_active = True
         self._cells       = []
+        self._pause_start    = None
+        self._pause_total_s  = 0.0
+        self._is_paused      = False
+        self._pause_overlay  = None
         if self._of_periods:
             self._of_changes.append(now)
         self._of_periods.append({"start": now, "end": None, "of_num": ""})
+
+        # Vider le formulaire pour chaque nouveau lancement
+        self._saved_form_data = {}
+
+        # Pré-remplir réunion (5 min) si 1ère déclaration du pilote depuis >12h
+        pilot = self._logged_in_pilot or ""
+        if pilot:
+            cutoff = now - datetime.timedelta(hours=12)
+            has_recent = False
+            for _, r in self._data_rows_cache:
+                if str(r[3] or "").strip() != pilot:
+                    continue
+                try:
+                    dt_r = datetime.datetime.strptime(
+                        f"{str(r[1] or '').strip()[:10]} {str(r[17] or '').strip()}",
+                        "%d/%m/%Y %H:%M:%S")
+                    if dt_r >= cutoff:
+                        has_recent = True
+                        break
+                except Exception:
+                    pass
+            if not has_recent:
+                self._saved_form_data["manquant_pers"] = "5"
+
         self._save_session()
         self._show_production()
 
@@ -3430,15 +3515,28 @@ class App:
                     except Exception:
                         pass
                     try:
+                        import subprocess as _sp
                         if sys.platform == "win32":
                             os.startfile(path)
                         elif sys.platform == "darwin":
-                            import subprocess
-                            subprocess.Popen(["open", path])
+                            _sp.Popen(["open", path])
                         else:
-                            import subprocess
-                            subprocess.Popen(["xdg-open", path])
-                    except Exception as e:
+                            # Linux : essayer plusieurs lanceurs
+                            launched = False
+                            for cmd in ["xdg-open", "libreoffice", "soffice",
+                                        "gnome-open", "kde-open"]:
+                                try:
+                                    _sp.Popen([cmd, path])
+                                    launched = True
+                                    break
+                                except FileNotFoundError:
+                                    continue
+                            if not launched:
+                                messagebox.showinfo(
+                                    "Ouvrez manuellement",
+                                    f"Aucun programme trouvé pour ouvrir Excel.\n\n"
+                                    f"Chemin du fichier :\n{path}")
+                    except Exception:
                         messagebox.showinfo("Chemin", f"Ouvrez manuellement :\n{path}")
                 else:
                     err.config(text="Mot de passe incorrect")
@@ -3584,6 +3682,8 @@ class App:
                      self._show_stop_selector)
         _make_cv_btn("🧹  DÉCLARER UN ARRÊT NETTOYAGE", "#f87171",
                      lambda: self._start_nettoyage())
+        _make_cv_btn("☕  JE VAIS EN PAUSE", NAVY_L,
+                     self._toggle_pause)
         _make_cv_btn("⏹   DÉCLARER LA FIN DE PRODUCTION", GREEN,
                      self._end_production)
 
@@ -3714,6 +3814,54 @@ class App:
             self._t_start(key)
             self._tl_open(key, "ratt")
             self._refresh_active_stops()
+
+    # ── Pause pilote ─────────────────────────────────────────────────────────
+    def _toggle_pause(self):
+        if self._is_paused:
+            # Fin de pause
+            if self._pause_start:
+                self._pause_total_s += (datetime.datetime.now() - self._pause_start).total_seconds()
+                self._pause_start = None
+            self._is_paused = False
+            if self._pause_overlay:
+                try:
+                    self._pause_overlay.destroy()
+                except Exception:
+                    pass
+                self._pause_overlay = None
+        else:
+            # Début de pause
+            self._pause_start = datetime.datetime.now()
+            self._is_paused = True
+            self._show_pause_overlay()
+
+    def _show_pause_overlay(self):
+        ov = tk.Frame(self.root, bg=NAVY)
+        ov.place(relx=0, rely=0, relwidth=1, relheight=1)
+        ov.lift()
+        self._pause_overlay = ov
+
+        tk.Label(ov, text="☕  EN PAUSE",
+                 bg=NAVY, fg=WHITE, font=("Arial", 54, "bold")).pack(expand=False, pady=(80, 6))
+        self._pause_timer_lbl = tk.Label(ov, text="00:00:00",
+                                          bg=NAVY, fg=ORANGE, font=("Arial", 36, "bold"))
+        self._pause_timer_lbl.pack(pady=(0, 40))
+        tk.Button(ov, text="✔  JE SUIS REVENU", command=self._toggle_pause,
+                  bg=GREEN, fg=WHITE, font=("Arial", 20, "bold"),
+                  relief="flat", padx=60, pady=20, cursor="hand2").pack()
+        self._update_pause_timer()
+
+    def _update_pause_timer(self):
+        if not self._is_paused or not self._pause_start:
+            return
+        elapsed = (datetime.datetime.now() - self._pause_start).total_seconds()
+        lbl = getattr(self, "_pause_timer_lbl", None)
+        if lbl:
+            try:
+                lbl.config(text=fmt(int(elapsed)))
+            except Exception:
+                return
+        self.root.after(1000, self._update_pause_timer)
 
     # ── Selecteur d'arret ─────────────────────────────────────────────────────
     def _show_stop_selector(self):
@@ -3883,6 +4031,10 @@ class App:
     #  FIN DE PRODUCTION
     # =========================================================================
     def _end_production(self):
+        # Terminer la pause si active
+        if self._is_paused:
+            self._toggle_pause()
+
         active = [k for k in self._timers if self._t_running(k)]
         if active:
             if not messagebox.askyesno(
@@ -3935,16 +4087,17 @@ class App:
         if not self._of_start:
             messagebox.showerror("Erreur", "Impossible de clôturer : heure de début inconnue.")
             return
-        of_s    = (end_dt - self._of_start).total_seconds()
-        stop_s  = self._t_wall_clock_stops()
-        qte_fab = _n("qte_fab")
-        nb_pers = max(1, _n("nb_pers") or 1)
-        of_min  = of_s / 60
-        of_hrs  = of_s / 3600
-        c1      = round(qte_fab / of_min, 2)  if of_min  > 0 else 0
-        c2      = round(qte_fab / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
-        equiv   = self._calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
-        kit     = 2 if self._v_kit.get() else 1
+        of_s_brut = (end_dt - self._of_start).total_seconds()
+        of_s      = max(1, of_s_brut - self._pause_total_s)  # exclure les pauses
+        stop_s    = self._t_wall_clock_stops()
+        qte_fab   = _n("qte_fab")
+        nb_pers   = max(1, _n("nb_pers") or 1)
+        of_min    = of_s / 60
+        of_hrs    = of_s / 3600
+        c1        = round(qte_fab / of_min, 2)  if of_min  > 0 else 0
+        c2        = round(qte_fab / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
+        equiv     = self._calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
+        kit       = 2 if self._v_kit.get() else 1
 
         prod_ref = self._get_prod_ref()
         trs_pct  = -1.0
@@ -4067,10 +4220,8 @@ class App:
         recap.overrideredirect(True)
         recap.attributes("-topmost", True)
         recap.configure(bg=WHITE)
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        pw, ph = min(900, sw - 60), 460
-        recap.geometry(f"{pw}x{ph}+{(sw-pw)//2}+{(sh-ph)//2}")
+        pw, ph = min(900, self.root.winfo_width() - 60), 460
+        self._center_on_root(recap, pw, ph)
 
         # Header
         hdr_r = tk.Frame(recap, bg=NAVY, height=56)
