@@ -701,6 +701,7 @@ class App:
         self._pilot_kpi_data   = {}
         self._pause_start      = None   # Début de la pause en cours
         self._pause_total_s    = 0.0    # Cumul des pauses de l'OF
+        self._pause_periods    = []     # [(start_dt, end_dt), ...]
         self._is_paused        = False
         self._pause_overlay    = None
 
@@ -3203,6 +3204,7 @@ class App:
         self._cells       = []
         self._pause_start    = None
         self._pause_total_s  = 0.0
+        self._pause_periods  = []
         self._is_paused      = False
         self._pause_overlay  = None
         if self._of_periods:
@@ -3778,7 +3780,13 @@ class App:
                 cumuls[key] = {"dur": 0.0, "cat": ev["cat"], "n": 0}
             cumuls[key]["dur"] += dur
             cumuls[key]["n"]   += 1
-        if not cumuls:
+        # Ajouter les pauses
+        pause_total = self._pause_total_s
+        if self._is_paused and self._pause_start:
+            pause_total += (now - self._pause_start).total_seconds()
+
+        has_any = bool(cumuls) or pause_total > 0
+        if not has_any:
             tk.Label(inner, text="Aucun arrêt", bg=WHITE, fg=LGRAY,
                      font=("Arial", 9, "italic")).pack(pady=12)
             return
@@ -3799,8 +3807,23 @@ class App:
             tk.Label(name_f, text=f"× {info['n']}  —  {dur_s}",
                      bg=WHITE, fg=color, font=("Arial", 8, "bold"),
                      anchor="w").pack(anchor="w")
+        if pause_total > 0:
+            pm = int(pause_total // 60)
+            ps = int(pause_total % 60)
+            pn = len(self._pause_periods) + (1 if self._is_paused else 0)
+            row_f = tk.Frame(inner, bg=WHITE)
+            row_f.pack(fill="x", pady=1, padx=2)
+            tk.Frame(row_f, bg=NAVY_L, width=4).pack(side="left", fill="y")
+            name_f = tk.Frame(row_f, bg=WHITE)
+            name_f.pack(side="left", fill="both", expand=True, padx=(4, 0))
+            tk.Label(name_f, text="☕ Pause pilote", bg=WHITE, fg=DARK,
+                     font=("Arial", 8), anchor="w").pack(anchor="w")
+            tk.Label(name_f,
+                     text=f"× {pn}  —  {pm}min {ps:02d}s",
+                     bg=WHITE, fg=NAVY_L, font=("Arial", 8, "bold"),
+                     anchor="w").pack(anchor="w")
         tk.Frame(inner, bg=LGRAY, height=1).pack(fill="x", pady=4)
-        total = sum(v["dur"] for v in cumuls.values())
+        total = sum(v["dur"] for v in cumuls.values()) + pause_total
         tm = int(total // 60)
         ts = int(total % 60)
         tk.Label(inner, text=f"Total : {tm}min {ts:02d}s",
@@ -3820,7 +3843,10 @@ class App:
         if self._is_paused:
             # Fin de pause
             if self._pause_start:
-                self._pause_total_s += (datetime.datetime.now() - self._pause_start).total_seconds()
+                end_p = datetime.datetime.now()
+                dur_p = (end_p - self._pause_start).total_seconds()
+                self._pause_total_s += dur_p
+                self._pause_periods.append((self._pause_start, end_p))
                 self._pause_start = None
             self._is_paused = False
             if self._pause_overlay:
@@ -3985,10 +4011,9 @@ class App:
         top.overrideredirect(True)
         top.attributes("-topmost", True)
         top.configure(bg=WHITE)
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        pw, ph = min(640, sw - 60), 360
-        top.geometry(f"{pw}x{ph}+{(sw-pw)//2}+{(sh-ph)//2}")
+        self._center_on_root(top, 640, 360)
+        top.lift()
+        top.grab_set()
 
         # Header coloré
         hdr_col = C_RATT if (ev_info and ev_info[2] == "ratt") else C_RED
@@ -4180,9 +4205,9 @@ class App:
                 ov_r.overrideredirect(True)
                 ov_r.attributes("-topmost", True)
                 ov_r.configure(bg=WHITE)
-                sw2 = self.root.winfo_screenwidth()
-                sh2 = self.root.winfo_screenheight()
-                ov_r.geometry(f"420x200+{(sw2-420)//2}+{(sh2-200)//2}")
+                self._center_on_root(ov_r, 420, 200)
+                ov_r.lift()
+                ov_r.grab_set()
                 tk.Frame(ov_r, bg=ORANGE, height=6).pack(fill="x")
                 tk.Label(ov_r, text="⚠  Réunion non déclarée",
                          bg=WHITE, fg=ORANGE,
@@ -4220,8 +4245,10 @@ class App:
         recap.overrideredirect(True)
         recap.attributes("-topmost", True)
         recap.configure(bg=WHITE)
-        pw, ph = min(900, self.root.winfo_width() - 60), 460
+        pw, ph = 900, 480
         self._center_on_root(recap, pw, ph)
+        recap.lift()
+        recap.grab_set()
 
         # Header
         hdr_r = tk.Frame(recap, bg=NAVY, height=56)
@@ -4423,21 +4450,15 @@ class App:
         """Retourne la liste de lignes à écrire dans Evenements (pour sérialisation)."""
         events_rows = []
         of_start = self._of_start
-        kit_val  = "Oui" if self._v_kit.get() else "Non"
-        for ev in self._tl_events:
-            if ev.get("cat") not in ("ratt", "pb"):
-                continue
-            if not ev.get("key") or ev["key"].startswith("_"):
-                continue
-            if ev["start"] < of_start:
-                continue
-            cat_name = "Rattrapage" if ev["cat"] == "ratt" else "PB Technique"
-            label    = next((e[0] for e in EVENTS if e[1] == ev["key"]), ev["key"])
-            start    = ev["start"]
-            end      = ev.get("end") or datetime.datetime.now()
-            dur      = (end - start).total_seconds()
-            events_rows.append([
-                f"{cat_name}: {label}",
+        try:
+            kit_val = "Oui" if self._v_kit.get() else "Non"
+        except Exception:
+            kit_val = "Non"
+
+        def _base_row(label, start, end):
+            dur = (end - start).total_seconds()
+            return [
+                label,
                 v.get("of_num", ""),
                 start.strftime("%d/%m/%Y"),
                 v.get("poste", ""),    v.get("pilote", ""),
@@ -4451,8 +4472,31 @@ class App:
                 start.strftime("%H:%M:%S"),
                 end.strftime("%H:%M:%S"),
                 fmt(dur),
-                ev.get("comment", ""),
-            ])
+                "",
+            ]
+
+        # Arrêts / rattrapages
+        for ev in self._tl_events:
+            if ev.get("cat") not in ("ratt", "pb"):
+                continue
+            if not ev.get("key") or ev["key"].startswith("_"):
+                continue
+            if of_start and ev["start"] < of_start:
+                continue
+            cat_name = "Rattrapage" if ev["cat"] == "ratt" else "PB Technique"
+            label    = next((e[0] for e in EVENTS if e[1] == ev["key"]), ev["key"])
+            start    = ev["start"]
+            end      = ev.get("end") or datetime.datetime.now()
+            row = _base_row(f"{cat_name}: {label}", start, end)
+            row[19] = ev.get("comment", "")
+            events_rows.append(row)
+
+        # Pauses pilote
+        for ps, pe in self._pause_periods:
+            if of_start and ps < of_start:
+                continue
+            events_rows.append(_base_row("Pause pilote", ps, pe))
+
         return events_rows
 
     def _save_pending_declaration(self, row, v):
