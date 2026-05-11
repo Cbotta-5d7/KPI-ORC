@@ -1,4 +1,4 @@
-"""KPI-ORC v5.22 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
+"""KPI-ORC v5.39 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json, os, sys, datetime, math, threading
@@ -74,6 +74,7 @@ DATA_HEADERS = [
     "PB Enfileuse Traversin", "PB Presse ORC", "PB Presse Housse ZIP",
     "PB Cercleuse", "PB Enrouleuse Traversin",
     "Commentaire",
+    "Temps Interposte",
 ]
 
 EVT_HEADERS = [
@@ -689,6 +690,9 @@ class App:
         self._logged_in_pilot  = None   # Pilote actuellement connecté
         self._inter_of_s       = 0      # Durée inter-OF (changement de série)
         self._of_count_this_shift = 0   # Nb déclarations complétées ce poste
+        self._data_rows_cache  = []   # (excel_row, row_data) — 50 dernières lignes
+        self._last_of_pilot    = ""   # Pilote du dernier OF terminé
+        self._interposte_s     = 0    # Temps interposte (changement pilote ≤ 1h)
         self._wb_cache        = None    # Workbook mis en cache pour écriture rapide
         self._wb_path_cache   = ""
         self._wb_mtime_cache  = 0.0
@@ -698,6 +702,7 @@ class App:
 
         self._load_lists()
         self._load_history_from_excel()
+        self._load_tampon()
         self._preload_wb_bg()   # Pré-charge le workbook en arrière-plan
 
         # ── Vérifier si une session était en cours ──────────────────────────
@@ -817,13 +822,10 @@ class App:
         # ── Étape 1 : mot de passe ─────────────────────────────────────────────
         top = tk.Toplevel(self.root)
         top.title("Acces base de donnees")
-        top.geometry("320x180")
         top.resizable(False, False)
         top.grab_set()
         top.update_idletasks()
-        x = self.root.winfo_x() + (self.root.winfo_width()  - 320) // 2
-        y = self.root.winfo_y() + (self.root.winfo_height() - 180) // 2
-        top.geometry(f"320x180+{x}+{y}")
+        self._center_on_root(top, 320, 180)
         allowed = tk.BooleanVar(value=False)
         tk.Label(top, text="Mot de passe base de donnees",
                  font=("Arial", 10, "bold"), fg=DARK).pack(pady=(18, 4))
@@ -871,6 +873,9 @@ class App:
                 lbl.config(text=f"DB: {name}")
             except Exception:
                 pass
+        tp = self._get_tampon_path()
+        if tp:
+            _toast(self.root, f"Tampon: {os.path.basename(tp)}", bg=NAVY_L, duration=3000)
 
         # ── Étape 3 : saisie / confirmation de la référence de production ──────
         self._ask_prod_ref()
@@ -880,13 +885,10 @@ class App:
         current = float(self.cfg.get("prod_ref", self._prod_ref_cached) or 0)
         dlg = tk.Toplevel(self.root)
         dlg.title("Référence de production")
-        dlg.geometry("380x230")
         dlg.resizable(False, False)
         dlg.grab_set()
         dlg.update_idletasks()
-        x = self.root.winfo_x() + (self.root.winfo_width()  - 380) // 2
-        y = self.root.winfo_y() + (self.root.winfo_height() - 230) // 2
-        dlg.geometry(f"380x230+{x}+{y}")
+        self._center_on_root(dlg, 380, 230)
         dlg.configure(bg=WHITE)
 
         tk.Frame(dlg, bg=NAVY, height=6).pack(fill="x")
@@ -1534,7 +1536,7 @@ class App:
         issues = []
 
         # 1. Production active non terminée
-        if self._prod_active:
+        if self._prod_active and self._of_start is not None:
             issues.append(("prod", "Une production est en cours et n'a pas été déclarée."))
 
         # 2. Arrêts encore ouverts
@@ -1548,15 +1550,21 @@ class App:
             issues.append(("pending", "Une déclaration est en attente d'écriture (Excel verrouillé)."))
 
         # 4. Nettoyage non déclaré aujourd'hui
-        today = datetime.date.today()
-        has_nettoyage = any(
-            ev.get("key") == "nettoyage"
-            and ev.get("start") is not None
-            and ev["start"].date() == today
-            for ev in self._tl_events
-        )
-        if not has_nettoyage:
-            issues.append(("nettoyage", "Aucun arrêt nettoyage déclaré aujourd'hui."))
+        if self._logged_in_pilot:
+            today = datetime.date.today()
+            has_activity_today = any(
+                ev.get("start") and ev["start"].date() == today
+                for ev in self._tl_events
+            )
+            if has_activity_today:
+                has_nettoyage = any(
+                    ev.get("key") == "nettoyage"
+                    and ev.get("start") is not None
+                    and ev["start"].date() == today
+                    for ev in self._tl_events
+                )
+                if not has_nettoyage:
+                    issues.append(("nettoyage", "Aucun arrêt nettoyage déclaré aujourd'hui."))
 
         if not issues:
             # Tout est OK → quitter directement
@@ -1662,6 +1670,7 @@ class App:
                         _ts("pb_h100"), _ts("pb_traversin"), _ts("pb_presse_orc"),
                         _ts("pb_presse_zip2"), _ts("pb_cercleuse"), _ts("pb_enrouleuse"),
                         v.get("comment",""),
+                        fmt(self._interposte_s) if self._interposte_s > 0 else "",  # BF
                     ]
                     ok = self._write_excel(row, v)
                     if not ok:
@@ -1982,29 +1991,16 @@ class App:
         self._last_activity = datetime.datetime.now()
 
     def _transition(self, fn):
-        overlay = tk.Frame(self.root, bg=NAVY_L)
-        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
-        self.root.update_idletasks()
-        def _go():
-            try:
-                overlay.destroy()
-            except Exception:
-                pass
-            fn()
-        self.root.after(120, _go)
+        fn()
 
     # ── Mot de passe ─────────────────────────────────────────────────────────
     def _check_password(self, action=""):
         top = tk.Toplevel(self.root)
         top.title("Mot de passe")
-        top.geometry("320x160")
         top.resizable(False, False)
         top.grab_set()
-        # Centrer
         top.update_idletasks()
-        x = self.root.winfo_x() + (self.root.winfo_width()  - 320) // 2
-        y = self.root.winfo_y() + (self.root.winfo_height() - 160) // 2
-        top.geometry(f"320x160+{x}+{y}")
+        self._center_on_root(top, 320, 160)
 
         result = tk.BooleanVar(value=False)
         tk.Label(top, text=action or "Entrez le mot de passe",
@@ -2226,7 +2222,7 @@ class App:
         # Tableau recap
         lbl_frame = tk.Frame(body, bg=BG)
         lbl_frame.pack(fill="x", pady=(0, 4))
-        tk.Label(lbl_frame, text="15 Dernieres Declarations",
+        tk.Label(lbl_frame, text="50 Dernieres Declarations",
                  bg=BG, fg=DARK, font=("Arial", 11, "bold")).pack(side="left")
 
         tbl_wrap, tbl_inner = shadow_frame(body, bg=WHITE)
@@ -2242,11 +2238,11 @@ class App:
                         font=("Arial", 10, "bold"), relief="flat")
         style.map("KPI.Treeview", background=[("selected", "#dbeafe")])
 
-        cols = ("Date", "OF", "Pilote", "Poste", "Qte Fab", "Qte Emb",
+        cols = ("Date", "H.Début", "H.Fin", "OF", "Pilote", "Poste", "Qte Fab", "Qte Emb",
                 "Equiv", "TRS %", "Duree OF", "Arrêts", "✏", "🗑")
         tree = ttk.Treeview(tbl_inner, columns=cols, show="headings",
-                            height=13, style="KPI.Treeview")
-        widths = {"Date": 85, "OF": 90, "Pilote": 130, "Poste": 80,
+                            height=15, style="KPI.Treeview")
+        widths = {"Date": 80, "H.Début": 65, "H.Fin": 65, "OF": 90, "Pilote": 130, "Poste": 80,
                   "Qte Fab": 60, "Qte Emb": 60, "Equiv": 60,
                   "TRS %": 65, "Duree OF": 75, "Arrêts": 75,
                   "✏": 52, "🗑": 52}
@@ -2436,59 +2432,47 @@ class App:
         _make_col(1, "Poste précédent",  prev_p, prev_t, prev_s)
 
     def _refresh_main_kpi(self):
-        path = self.cfg.get("db_path", "")
+        rows = [r for _, r in self._data_rows_cache]
+        today = datetime.date.today().strftime("%d/%m/%Y")
+        last_pilot  = ""
         last_dt_str = ""
         pilot_trs   = 0.0
-        last_pilot  = ""
-        if path and os.path.exists(path):
+
+        pilots_seen = []
+        for row in rows:
+            p = str(row[3] or "").strip()
+            d = str(row[1] or "").strip()[:10]
+            if d == today and p and p not in pilots_seen:
+                pilots_seen.append(p)
+        last_pilot = (self._logged_in_pilot if self._logged_in_pilot
+                      else (pilots_seen[-1] if pilots_seen else ""))
+
+        prod_ref = self._get_prod_ref()
+        tot_eq, tot_s = 0.0, 0.0
+        for row in rows:
+            d = str(row[1] or "").strip()[:10]
+            p = str(row[3] or "").strip()
+            if d != today or p != last_pilot:
+                continue
             try:
-                wb   = load_workbook(path, read_only=True, data_only=True)
-                ws_d = wb["Data"]
-                _mr  = 2 if str(ws_d.cell(1, 1).value or "").strip().upper() == "OF" else 1
-                rows = [list(r) + [None]*55
-                        for r in ws_d.iter_rows(min_row=_mr, values_only=True)
-                        if any(r)]
-                wb.close()
-                # Pilotes uniques dans l'ordre d'apparition (aujourd'hui)
-                today = datetime.date.today().strftime("%d/%m/%Y")
-                pilots_seen = []
-                for row in rows:
-                    p = str(row[3] or "").strip()
-                    d = str(row[1] or "").strip()[:10]
-                    if d == today and p and p not in pilots_seen:
-                        pilots_seen.append(p)
-                last_pilot = (self._logged_in_pilot
-                              if self._logged_in_pilot else
-                              (pilots_seen[-1] if pilots_seen else ""))
-                # TRS du dernier pilote
-                prod_ref   = self._get_prod_ref()
-                tot_eq, tot_s = 0.0, 0.0
-                for row in rows:
-                    d = str(row[1] or "").strip()[:10]
-                    p = str(row[3] or "").strip()
-                    if d != today or p != last_pilot:
-                        continue
-                    try:
-                        tot_eq += float(str(row[15] or 0).replace(",", "."))
-                        tot_s  += _hms_to_sec(str(row[16] or "00:00:00"))
-                    except Exception:
-                        pass
-                    try:
-                        d_s = str(row[1] or "")[:10]
-                        t_s = str(row[18] or "")[:5]
-                        if d_s and t_s:
-                            last_dt_str = f"{d_s} à {t_s}"
-                    except Exception:
-                        pass
-                if prod_ref > 0 and tot_s > 0:
-                    pilot_trs = tot_eq / (prod_ref * tot_s / 28800.0) * 100.0
-                # Charger le cache KPI pilotes (pour le panneau arrêts)
-                self._load_pilot_kpi(rows, today)
+                tot_eq += float(str(row[15] or 0).replace(",", "."))
+                tot_s  += _hms_to_sec(str(row[16] or "00:00:00"))
             except Exception:
                 pass
+            try:
+                d_s = str(row[1] or "")[:10]
+                t_s = str(row[18] or "")[:5]
+                if d_s and t_s:
+                    last_dt_str = f"{d_s} à {t_s}"
+            except Exception:
+                pass
+        if prod_ref > 0 and tot_s > 0:
+            pilot_trs = tot_eq / (prod_ref * tot_s / 28800.0) * 100.0
+
+        self._load_pilot_kpi(rows, today)
+
         self._main_gauge.update_gauge(pilot_trs)
-        calc_text = (f"TRS calculé le {last_dt_str}" if last_dt_str
-                     else "TRS non calculé")
+        calc_text = (f"TRS calculé le {last_dt_str}" if last_dt_str else "TRS non calculé")
         if hasattr(self, "_trs_calc_lbl") and self._trs_calc_lbl.winfo_exists():
             self._trs_calc_lbl.config(text=calc_text)
         kpi = getattr(self, "_pilot_kpi_data", {})
@@ -2499,13 +2483,15 @@ class App:
                 parts.append(f"Pilote : {last_pilot}")
             if cur_poste:
                 parts.append(cur_poste)
-            self._pilot_name_lbl.config(text="  |  ".join(parts) if parts else "Aucune déclaration")
-        # Jauge poste précédent
-        prev_trs   = kpi.get("prev_trs",   0.0)
+            self._pilot_name_lbl.config(text="  |  ".join(parts) if parts else "—")
+        prev_trs = kpi.get("prev_trs", 0.0)
+        if hasattr(self, "_prev_gauge") and self._prev_gauge:
+            try:
+                self._prev_gauge.update_gauge(prev_trs)
+            except Exception:
+                pass
         prev_pilot = kpi.get("prev_pilot", "")
         prev_poste = kpi.get("prev_poste", "")
-        if hasattr(self, "_prev_gauge") and self._prev_gauge.winfo_exists():
-            self._prev_gauge.update_gauge(prev_trs)
         if hasattr(self, "_prev_pilot_lbl") and self._prev_pilot_lbl.winfo_exists():
             parts2 = []
             if prev_pilot:
@@ -2513,6 +2499,11 @@ class App:
             if prev_poste:
                 parts2.append(prev_poste)
             self._prev_pilot_lbl.config(text="  |  ".join(parts2) if parts2 else "—")
+        if hasattr(self, "_stops_lbl") and self._stops_lbl:
+            try:
+                self._stops_lbl.config(text="")
+            except Exception:
+                pass
 
     def _load_pilot_kpi(self, rows, today):
         """Calcule les KPIs par pilote (connecté et précédent, 12 dernières heures)."""
@@ -2572,36 +2563,49 @@ class App:
                     if prod_ref > 0 and s > 0 else 0.0)
 
         last_stops, prev_stops = {}, {}
-        if path and os.path.exists(path):
-            try:
-                wb_e = load_workbook(path, read_only=True, data_only=True)
-                if "Evenements" in wb_e.sheetnames:
-                    for row in wb_e["Evenements"].iter_rows(min_row=2, values_only=True):
-                        if not row or not row[0]:
-                            continue
-                        p = str(row[4] or "").strip()
-                        try:
-                            dt_e = datetime.datetime.strptime(
-                                f"{str(row[2] or '').strip()[:10]} {str(row[16] or '').strip()}",
-                                "%d/%m/%Y %H:%M:%S")
-                            if dt_e < cutoff:
-                                continue
-                        except Exception:
-                            continue
-                        label = str(row[0] or "")
-                        cat   = "ratt" if "rattrapage" in label.lower() else "pb"
-                        dur_s = _hms_to_sec(str(row[18] or "00:00:00"))
-                        target = (last_stops if p == last_pilot
-                                  else (prev_stops if p == prev_pilot else None))
-                        if target is None:
-                            continue
+        # Read stop totals directly from Data rows (cols 33-55)
+        _stop_keys = [
+            ("ratt_pochon",    "Rattrapage: Pochon / Fibre",      "ratt"),
+            ("ratt_couture",   "Rattrapage: Couture",              "ratt"),
+            ("ratt_emb",       "Rattrapage: Emballage",            "ratt"),
+            ("ratt_presse_soud","Rattrapage: Presse Souder",       "ratt"),
+            ("ratt_presse_zip","Rattrapage: Presse ZIP",           "ratt"),
+            ("pb_chargeuse",   "PB Technique: Chargeuse",          "pb"),
+            ("pb_carde",       "PB Technique: Carde",              "pb"),
+            ("pb_etaleur",     "PB Technique: Etaleur / Tour",     "pb"),
+            ("pb_coupe",       "PB Technique: Coupe / Circ.",      "pb"),
+            ("pb_tapis1",      "PB Technique: Tapis Bascule",      "pb"),
+            ("pb_enrouleur",   "PB Technique: Enrouleur Pochon",   "pb"),
+            ("pb_pesee",       "PB Technique: Pesee / Tapis 2",    "pb"),
+            ("pb_deviation",   "PB Technique: Deviation / Table",  "pb"),
+            ("pb_enfileur",    "PB Technique: Enfileur Pochon",    "pb"),
+            ("pb_kinna",       "PB Technique: Kinna / Stroebel",   "pb"),
+            ("pb_tapeuse",     "PB Technique: Tapeuse",            "pb"),
+            ("pb_table_rot",   "PB Technique: Table Rot. / Twin",  "pb"),
+            ("pb_h100",        "PB Technique: Enfileuse H100",     "pb"),
+            ("pb_traversin",   "PB Technique: Enfileuse Traversin","pb"),
+            ("pb_presse_orc",  "PB Technique: Presse ORC",         "pb"),
+            ("pb_presse_zip2", "PB Technique: Presse Housse ZIP",  "pb"),
+            ("pb_cercleuse",   "PB Technique: Cercleuse",          "pb"),
+            ("pb_enrouleuse",  "PB Technique: Enrouleuse Traversin","pb"),
+        ]
+        for row in rows:
+            dt = _row_dt(row)
+            p  = str(row[3] or "").strip()
+            if not dt or dt < cutoff:
+                continue
+            target = (last_stops if p == last_pilot else (prev_stops if p == prev_pilot else None))
+            if target is None:
+                continue
+            for ki, (key, label, cat) in enumerate(_stop_keys):
+                col_idx = 33 + ki
+                if col_idx < len(row) and row[col_idx]:
+                    s = _hms_to_sec(str(row[col_idx]))
+                    if s > 0:
                         if label not in target:
                             target[label] = {"count": 0, "dur": 0.0, "cat": cat}
                         target[label]["count"] += 1
-                        target[label]["dur"]   += dur_s
-                wb_e.close()
-            except Exception:
-                pass
+                        target[label]["dur"]   += s
         self._pilot_kpi_data = {
             "last_pilot": last_pilot, "prev_pilot": prev_pilot,
             "last_trs": _trs(last_pilot), "prev_trs": _trs(prev_pilot),
@@ -2613,25 +2617,9 @@ class App:
         }
 
     def _load_table(self, tree):
-        path = self.cfg.get("db_path", "")
-        if not path or not os.path.exists(path):
+        indexed = self._data_rows_cache
+        if not indexed:
             return
-        try:
-            wb = load_workbook(path, read_only=True, data_only=True)
-            ws = wb["Data"]
-            first = ws.cell(1, 1).value
-            min_r = 2 if str(first or "").strip().upper() == "OF" else 1
-            rows_raw = list(ws.iter_rows(min_row=min_r, values_only=True))
-            wb.close()
-        except Exception:
-            return
-
-        # Conserver (excel_row, data) — 50 dernières lignes uniquement
-        indexed = []
-        for i, r in enumerate(rows_raw, start=min_r):
-            if any(r):
-                indexed.append((i, list(r) + [None] * 55))
-        indexed = indexed[-50:]  # 50 dernières déclarations
 
         def _sd(row, idx):
             t = 0
@@ -2643,26 +2631,24 @@ class App:
                         pass
             return t
 
-        for excel_row, row in list(reversed(indexed))[:15]:
+        stop_cols = list(range(33, 56))
+        for excel_row, row in list(reversed(indexed)):
             qte_fab = int(row[13]) if row[13] and str(row[13]).isdigit() else 0
             equiv   = float(str(row[15]).replace(",", ".")) if row[15] else 0.0
             of_s    = _hms_to_sec(str(row[16])) if row[16] else 0
-            arr_s   = _sd(row, list(range(26, 31)) + list(range(31, 49)))
-            prod_s  = max(0, of_s - arr_s)
+            arr_s   = _sd(row, stop_cols)
             trs_str = ""
             trs_tag = ()
             if of_s > 0:
                 trs_val = self._calc_trs_from_row(row)
                 if trs_val >= 0:
                     trs_str = f"{trs_val:.0f}%"
-                    if trs_val >= 70:
-                        trs_tag = ("trs_hi",)
-                    elif trs_val >= 50:
-                        trs_tag = ("trs_warn",)
-                    else:
-                        trs_tag = ("trs_low",)
+                    trs_tag = ("trs_hi",) if trs_val >= 70 else (("trs_warn",) if trs_val >= 50 else ("trs_low",))
+            date_str = str(row[1])[:10] if row[1] else ""
             tree.insert("", "end", iid=str(excel_row), tags=trs_tag, values=(
-                str(row[1])[:10]      if row[1]  else "",
+                date_str,
+                str(row[17])[:8]      if row[17] else "",
+                str(row[18])[:8]      if row[18] else "",
                 str(row[0])           if row[0]  else "",
                 str(row[3])           if row[3]  else "",
                 str(row[2])           if row[2]  else "",
@@ -2741,9 +2727,7 @@ class App:
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
         pw, ph = min(960, sw - 40), min(800, sh - 80)
-        x = self.root.winfo_x() + max(0, (self.root.winfo_width()  - pw) // 2)
-        y = self.root.winfo_y() + max(0, (self.root.winfo_height() - ph) // 2)
-        top.geometry(f"{pw}x{ph}+{x}+{y}")
+        self._center_on_root(top, pw, ph)
         top.minsize(760, 500)
 
         # Boutons toujours visibles en bas (créés AVANT le notebook)
@@ -2954,13 +2938,10 @@ class App:
         existing = evt_data[idx] if idx is not None else None
         dlg = tk.Toplevel(parent)
         dlg.title("Ajouter un evenement" if existing is None else "Modifier l'evenement")
-        dlg.geometry("480x230")
         dlg.resizable(False, False)
         dlg.grab_set()
         dlg.update_idletasks()
-        x = parent.winfo_x() + (parent.winfo_width()  - 480) // 2
-        y = parent.winfo_y() + (parent.winfo_height() - 230) // 2
-        dlg.geometry(f"480x230+{x}+{y}")
+        self._center_on_root(dlg, 480, 230)
 
         frm = tk.Frame(dlg, bg=WHITE)
         frm.pack(fill="both", expand=True, padx=16, pady=12)
@@ -3040,6 +3021,13 @@ class App:
             return
         now = datetime.datetime.now()
         self._inter_of_s = 0
+        self._interposte_s = 0
+        if (self._last_of_end is not None
+                and self._last_of_pilot
+                and self._last_of_pilot != (self._logged_in_pilot or "")):
+            gap_p = (now - self._last_of_end).total_seconds()
+            if 0 < gap_p <= 3600:
+                self._interposte_s = gap_p
         if self._last_of_end is not None:
             gap = (now - self._last_of_end).total_seconds()
             if 30 < gap <= 28800:   # > 30s et <= 8h
@@ -3271,7 +3259,7 @@ class App:
             cell.grid_propagate(False)
             cell.columnconfigure(0, weight=1)
             cell.rowconfigure(1, weight=1)
-            tk.Label(cell, text=lbl_txt, bg=WHITE, fg=GRAY,
+            tk.Label(cell, text=lbl_txt, bg=WHITE, fg="#374151",
                      font=LFONT, anchor="w").grid(row=0, column=0, columnspan=2,
                                                   sticky="w", pady=(2, 0))
             var = tk.StringVar()
@@ -3282,7 +3270,7 @@ class App:
                              insertbackground=DARK, width=1)
                 e.grid(row=1, column=0, sticky="nsew", padx=(0, 2), pady=(0, 3))
                 if suffix:
-                    tk.Label(cell, text=suffix, bg=WHITE, fg=GRAY,
+                    tk.Label(cell, text=suffix, bg=WHITE, fg="#374151",
                              font=LFONT).grid(row=1, column=1, sticky="sw",
                                               padx=(2, 0), pady=(0, 3))
             else:
@@ -3357,9 +3345,9 @@ class App:
 
         # ── Informations ──
         sec("Informations", NAVY_L)
-        row3("Nb PP Cousue",                       "nb_pp_cousue",  "entry", None,
-             "Durée arrêt manquant MP (en min)",   "duree_mq_mp",   "entry", None,
-             "Durée arrêt manquant pers. (en min)","manquant_pers", "entry", None)
+        row3("Nb PP Cousue",                            "nb_pp_cousue",  "entry", None,
+             "Durée arrêt manquant MP (en min)",        "duree_mq_mp",   "entry", None,
+             "Arrêt manquant personne/Réunion (min)",   "manquant_pers", "entry", None)
 
         # ── Commentaire ──
         sec("Commentaire", GRAY)
@@ -3442,10 +3430,16 @@ class App:
                     except Exception:
                         pass
                     try:
-                        os.startfile(path)
-                    except Exception:
-                        import subprocess
-                        subprocess.Popen(["xdg-open", path])
+                        if sys.platform == "win32":
+                            os.startfile(path)
+                        elif sys.platform == "darwin":
+                            import subprocess
+                            subprocess.Popen(["open", path])
+                        else:
+                            import subprocess
+                            subprocess.Popen(["xdg-open", path])
+                    except Exception as e:
+                        messagebox.showinfo("Chemin", f"Ouvrez manuellement :\n{path}")
                 else:
                     err.config(text="Mot de passe incorrect")
                     pw_var.set("")
@@ -4021,6 +4015,7 @@ class App:
             _ts("pb_presse_orc"), _ts("pb_presse_zip2"),    # BA, BB
             _ts("pb_cercleuse"),  _ts("pb_enrouleuse"),     # BC, BD
             v.get("comment",""),                            # BE
+            fmt(self._interposte_s) if self._interposte_s > 0 else "",  # BF
         ]
 
         # ── Alerte réunion non déclarée (1ère déclaration du poste) ──────────
@@ -4179,6 +4174,8 @@ class App:
         self._prod_active = False
         self._last_of_end = end_dt
         self._of_count_this_shift += 1
+        self._last_of_pilot = v.get("pilote", self._logged_in_pilot or "")
+        self._interposte_s = 0
         self._inter_of_s = 0
         if self._of_periods:
             self._of_periods[-1]["end"]    = end_dt
@@ -4373,6 +4370,66 @@ class App:
             cell.alignment = align
             cell.border    = border
 
+    def _load_tampon(self):
+        """Charge le cache depuis le tampon (ou DB si tampon absent)."""
+        tp = self._get_tampon_path()
+        if tp and os.path.exists(tp):
+            try:
+                wb = load_workbook(tp, read_only=True, data_only=True)
+                ws = wb["Data"]
+                min_r = 2 if str(ws.cell(1,1).value or "").strip().upper() == "OF" else 1
+                rows = []
+                for i, r in enumerate(ws.iter_rows(min_row=min_r, values_only=True), start=min_r):
+                    if any(r):
+                        rows.append((i, list(r) + [None]*60))
+                wb.close()
+                self._data_rows_cache = rows[-50:]
+                return
+            except Exception:
+                pass
+        # Fallback: charger depuis la DB principale en arrière-plan
+        def _bg():
+            path = self.cfg.get("db_path", "")
+            if not path or not os.path.exists(path):
+                return
+            try:
+                wb = load_workbook(path, read_only=True, data_only=True)
+                ws = wb["Data"]
+                min_r = 2 if str(ws.cell(1,1).value or "").strip().upper() == "OF" else 1
+                rows = []
+                for i, r in enumerate(ws.iter_rows(min_row=min_r, values_only=True), start=min_r):
+                    if any(r):
+                        rows.append((i, list(r) + [None]*60))
+                wb.close()
+                cache = rows[-50:]
+                self.root.after(0, lambda: setattr(self, '_data_rows_cache', cache))
+                self.root.after(0, self._write_tampon_bg)
+                self.root.after(0, self._refresh_table)
+                self.root.after(0, self._refresh_main_kpi)
+            except Exception:
+                pass
+        threading.Thread(target=_bg, daemon=True).start()
+
+    def _write_tampon_bg(self):
+        """Écrit le cache courant dans le fichier tampon (arrière-plan)."""
+        tp = self._get_tampon_path()
+        if not tp:
+            return
+        rows_snapshot = list(self._data_rows_cache)
+        def _bg():
+            try:
+                from openpyxl import Workbook as _WB
+                wb = _WB()
+                ws = wb.active
+                ws.title = "Data"
+                ws.append(DATA_HEADERS)
+                for _, row in rows_snapshot:
+                    ws.append(row[:len(DATA_HEADERS)])
+                wb.save(tp)
+            except Exception:
+                pass
+        threading.Thread(target=_bg, daemon=True).start()
+
     def _preload_wb_bg(self):
         """Pré-charge le workbook en arrière-plan pour accélérer la 1ère déclaration."""
         path = self.cfg.get("db_path", "")
@@ -4385,6 +4442,25 @@ class App:
             except Exception:
                 pass
         threading.Thread(target=_bg, daemon=True).start()
+
+    def _get_tampon_path(self):
+        tp = self.cfg.get("tampon_path", "")
+        if tp:
+            return tp
+        db = self.cfg.get("db_path", "")
+        if db:
+            base, _ = os.path.splitext(db)
+            return base + "_tampon.xlsx"
+        return ""
+
+    def _center_on_root(self, win, w, h):
+        rx = self.root.winfo_x()
+        ry = self.root.winfo_y()
+        rw = self.root.winfo_width()
+        rh = self.root.winfo_height()
+        x = rx + (rw - w) // 2
+        y = ry + (rh - h) // 2
+        win.geometry(f"{w}x{h}+{x}+{y}")
 
     def _get_wb(self, path):
         """Retourne le workbook mis en cache ou le recharge si le fichier a changé."""
@@ -4421,6 +4497,15 @@ class App:
             messagebox.showwarning("Attention", "Aucune base de données !")
             return False
 
+        # Mise à jour cache immédiate
+        next_idx = (self._data_rows_cache[-1][0] + 1) if self._data_rows_cache else 2
+        self._data_rows_cache.append((next_idx, list(row) + [None]*10))
+        if len(self._data_rows_cache) > 50:
+            self._data_rows_cache = self._data_rows_cache[-50:]
+        self._write_tampon_bg()
+        self._refresh_table()
+        self._refresh_main_kpi()
+
         # Construire les lignes événements dans le thread principal (thread-safe)
         events_rows = self._build_events_rows(v)
 
@@ -4449,6 +4534,7 @@ class App:
                         os.remove(PENDING_FILE)
                     except Exception:
                         pass
+                    self.root.after(0, self._write_tampon_bg)
                     self.root.after(0, lambda: _toast(
                         self.root, "✔  Déclaration enregistrée dans Excel",
                         bg=GREEN, duration=3000))
