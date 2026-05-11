@@ -60,7 +60,8 @@ DATA_HEADERS = [
     "Taille", "Code Produit", "Type Produit", "Poids Garnissage", "Fibre",
     "OF Taie", "Traca Fibre", "Qte Fabriquee", "Qte Emballee", "Equivalence",
     "Duree OF", "Heure Debut", "Heure Fin", "Cadence/min", "Cadence par heure",
-    "Kit", "Ref Taie", "Nb Defaut Couture", "Mq Taie", "Mq Housse/Encart",
+    "Kit", "Ref Taie", "Qte Initiale Taie", "Nb Taie 2nd Choix",
+    "Nb Defaut Couture", "Mq Taie", "Mq Housse/Encart",
     "Ratt Pochon/Fibre", "Ratt Couture", "Ratt Emballage",
     "Ratt Presse Souder", "Ratt Presse ZIP",
     "PB Chargeuse", "PB Carde", "PB Etaleur/Tour", "PB Coupe/Circ",
@@ -1617,6 +1618,7 @@ class App:
                         qte_fab, _n("qte_emb"), equiv, fmt(of_s),
                         self._of_start.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"),
                         c1, c2, kit, v.get("ref_taie",""),
+                        _n("qte_init_taie"), _n("nb_taie2_choix"),
                         _n("nb_def_cout"), _n("mq_taie"),
                         _n("mq_housse") + _n("mq_encart"),
                         _ts("ratt_pochon"), _ts("ratt_couture"), _ts("ratt_emb"),
@@ -2767,14 +2769,14 @@ class App:
                 evt_tree.delete(item)
             # Reset stop columns in field_vars then recompute from evt_data
             _EVT_KEY_TO_COL = {
-                "ratt_pochon": 26, "ratt_couture": 27, "ratt_emb": 28,
-                "ratt_presse_soud": 29, "ratt_presse_zip": 30,
-                "pb_chargeuse": 31, "pb_carde": 32, "pb_etaleur": 33,
-                "pb_coupe": 34, "pb_tapis1": 35, "pb_enrouleur": 36,
-                "pb_pesee": 37, "pb_deviation": 38, "pb_enfileur": 39,
-                "pb_kinna": 40, "pb_tapeuse": 41, "pb_table_rot": 42,
-                "pb_h100": 43, "pb_traversin": 44, "pb_presse_orc": 45,
-                "pb_presse_zip2": 46, "pb_cercleuse": 47, "pb_enrouleuse": 48,
+                "ratt_pochon": 28, "ratt_couture": 29, "ratt_emb": 30,
+                "ratt_presse_soud": 31, "ratt_presse_zip": 32,
+                "pb_chargeuse": 33, "pb_carde": 34, "pb_etaleur": 35,
+                "pb_coupe": 36, "pb_tapis1": 37, "pb_enrouleur": 38,
+                "pb_pesee": 39, "pb_deviation": 40, "pb_enfileur": 41,
+                "pb_kinna": 42, "pb_tapeuse": 43, "pb_table_rot": 44,
+                "pb_h100": 45, "pb_traversin": 46, "pb_presse_orc": 47,
+                "pb_presse_zip2": 48, "pb_cercleuse": 49, "pb_enrouleuse": 50,
             }
             for col_idx in _EVT_KEY_TO_COL.values():
                 if col_idx < len(field_vars):
@@ -3286,12 +3288,13 @@ class App:
         row3("Qte fabriquée *", "qte_fab",   "entry", None,
              "Qte emballée",    "qte_emb",   "entry", None,
              "Traca fibre",     "traca",      "entry", None)
-        row3("Ref. taie",       "ref_taie",   "entry", None,
-             "Nb déf. couture", "nb_def_cout","entry", None,
-             "Mq. taie",        "mq_taie",    "entry", None)
-        row3("Mq. housse (nb)", "mq_housse",  "entry", None,
-             "Mq. encart (nb)", "mq_encart",  "entry", None,
-             "Nb taie 2nd",     "nb_taie2",   "entry", None)
+        row3("Ref. taie",          "ref_taie",       "entry", None,
+             "Qte initiale taie",  "qte_init_taie",  "entry", None,
+             "Nb taie 2nd choix",  "nb_taie2_choix", "entry", None)
+        row3("Nb déf. couture", "nb_def_cout","entry", None,
+             "Mq. taie",        "mq_taie",    "entry", None,
+             "Mq. housse (nb)", "mq_housse",  "entry", None)
+        fld("Mq. encart (nb)", "mq_encart", "entry", None, col=0, adv=False)
 
         # ── Commentaire ──
         sec("Commentaire", GRAY)
@@ -3923,6 +3926,8 @@ class App:
             end_dt.strftime("%H:%M:%S"),
             c1, c2, kit,
             v.get("ref_taie",""),
+            _n("qte_init_taie"),
+            _n("nb_taie2_choix"),
             _n("nb_def_cout"),
             _n("mq_taie"),
             _n("mq_housse") + _n("mq_encart"),
