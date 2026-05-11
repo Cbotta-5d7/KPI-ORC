@@ -691,6 +691,7 @@ class App:
         self._inter_of_s       = 0      # Durée inter-OF (changement de série)
         self._of_count_this_shift = 0   # Nb déclarations complétées ce poste
         self._data_rows_cache  = []
+        self._events_cache     = []
         self._last_of_pilot    = ""
         self._interposte_s     = 0
         self._wb_cache         = None
@@ -1683,7 +1684,7 @@ class App:
                         c1, c2, kit, v.get("ref_taie",""),
                         _n("qte_init_taie"), _n("nb_taie2_choix"),
                         _n("nb_def_cout"), _n("mq_taie"),
-                        _n("mq_housse") + _n("mq_encart"),
+                        _n("mq_housse_encart"),
                         _n("nb_pp_cousue"),
                         fmt(self._inter_of_s),
                         _min_str_to_hms(v.get("duree_mq_mp", "")),
@@ -2124,6 +2125,7 @@ class App:
 
         def _bg():
             rows = []
+            events = []
             if path and os.path.exists(path):
                 try:
                     wb = load_workbook(path, read_only=True, data_only=True)
@@ -2133,16 +2135,22 @@ class App:
                         for i, r in enumerate(ws.iter_rows(min_row=min_r, values_only=True), start=min_r):
                             if any(r):
                                 rows.append((i, list(r) + [None] * 60))
+                    if "Evenements" in wb.sheetnames:
+                        ws_e = wb["Evenements"]
+                        for r in ws_e.iter_rows(min_row=2, values_only=True):
+                            if r and any(r):
+                                events.append(list(r))
                     wb.close()
                 except Exception:
                     pass
             final = rows[-50:] if len(rows) > 50 else rows
-            self.root.after(0, lambda: self._show_main_done(final))
+            self.root.after(0, lambda: self._show_main_done(final, events=events))
 
         threading.Thread(target=_bg, daemon=True).start()
 
-    def _show_main_done(self, rows, toast=None):
+    def _show_main_done(self, rows, toast=None, events=None):
         self._data_rows_cache = rows
+        self._events_cache    = events or []
         self._hide_loading()
         self._build_main_ui()
         if toast:
@@ -2159,6 +2167,7 @@ class App:
 
         def _bg():
             rows = []
+            events = []
             try:
                 wb = load_workbook(path, read_only=True, data_only=True)
                 if "Data" in wb.sheetnames:
@@ -2167,18 +2176,25 @@ class App:
                     for i, r in enumerate(ws.iter_rows(min_row=min_r, values_only=True), start=min_r):
                         if any(r):
                             rows.append((i, list(r) + [None] * 60))
+                if "Evenements" in wb.sheetnames:
+                    ws_e = wb["Evenements"]
+                    for r in ws_e.iter_rows(min_row=2, values_only=True):
+                        if r and any(r):
+                            events.append(list(r))
                 wb.close()
             except Exception:
                 pass
             final = rows[-50:] if len(rows) > 50 else rows
-            self.root.after(0, lambda: self._apply_fresh_data(final))
+            self.root.after(0, lambda: self._apply_fresh_data(final, events))
 
         threading.Thread(target=_bg, daemon=True).start()
 
-    def _apply_fresh_data(self, rows):
+    def _apply_fresh_data(self, rows, events=None):
         if self._mode != "main":
             return
         self._data_rows_cache = rows
+        if events is not None:
+            self._events_cache = events
         self._refresh_table()
         self._refresh_main_kpi()
 
@@ -2706,6 +2722,50 @@ class App:
                             target[label] = {"count": 0, "dur": 0.0, "cat": cat}
                         target[label]["count"] += 1
                         target[label]["dur"]   += s
+        # Nettoyage depuis col AG (index 32) du Data
+        for row in rows:
+            dt = _row_dt(row)
+            p  = str(row[3] or "").strip()
+            if not dt or dt < cutoff:
+                continue
+            target = (last_stops if p == last_pilot else (prev_stops if p == prev_pilot else None))
+            if target is None:
+                continue
+            if len(row) > 32 and row[32]:
+                s = _hms_to_sec(str(row[32]))
+                if s > 0:
+                    if "Nettoyage" not in target:
+                        target["Nettoyage"] = {"count": 0, "dur": 0.0, "cat": "ratt"}
+                    target["Nettoyage"]["count"] += 1
+                    target["Nettoyage"]["dur"]   += s
+
+        # Pauses depuis self._events_cache
+        for ev_row in getattr(self, "_events_cache", []):
+            if not ev_row or len(ev_row) < 19:
+                continue
+            evt_type = str(ev_row[0] or "").strip()
+            if "pause" not in evt_type.lower():
+                continue
+            ev_date  = str(ev_row[2] or "").strip()[:10]
+            ev_time  = str(ev_row[16] or "").strip()
+            p        = str(ev_row[4] or "").strip()
+            dur_s    = _hms_to_sec(str(ev_row[18] or ""))
+            if dur_s <= 0:
+                continue
+            try:
+                ev_dt = datetime.datetime.strptime(f"{ev_date} {ev_time}", "%d/%m/%Y %H:%M:%S")
+            except Exception:
+                continue
+            if ev_dt < cutoff:
+                continue
+            target = (last_stops if p == last_pilot else (prev_stops if p == prev_pilot else None))
+            if target is None:
+                continue
+            if "Pause pilote" not in target:
+                target["Pause pilote"] = {"count": 0, "dur": 0.0, "cat": "pause"}
+            target["Pause pilote"]["count"] += 1
+            target["Pause pilote"]["dur"]   += dur_s
+
         self._pilot_kpi_data = {
             "last_pilot": last_pilot, "prev_pilot": prev_pilot,
             "last_trs": _trs(last_pilot), "prev_trs": _trs(prev_pilot),
@@ -3186,11 +3246,11 @@ class App:
                 do_changeof = False
                 if gap < 300:  # Moins de 5 min → automatique
                     do_changeof = True
-                else:
+                elif self._last_of_pilot and self._last_of_pilot != (self._logged_in_pilot or ""):
                     h = int(gap // 3600)
                     m = int((gap % 3600) // 60)
                     ts = f"{h}h {m:02d}min" if h > 0 else f"{m}min"
-                    # ── Overlay inter-poste 3 questions ───────────────────────
+                    # ── Overlay inter-poste 3 questions (changement de pilote) ─
                     result = {"same_of": None, "interposte": None}
                     OV_BG = WHITE
                     ov = tk.Frame(self.root, bg=OV_BG)
@@ -3512,22 +3572,38 @@ class App:
 
         # ── Quantités & Qualité ──
         sec("Quantités & Qualité", GREEN)
-        row4("Qte fabriquée *",   "qte_fab",        "entry", None,
-             "Qte emballée",      "qte_emb",         "entry", None,
-             "Traca fibre",       "traca",            "entry", None,
-             "Ref. taie",         "ref_taie",         "entry", None)
+        # Qte fab + emb highlighted
+        for col_i, (lbl_txt, key_s) in enumerate([
+                ("Qte fabriquée *", "qte_fab"), ("Qte emballée", "qte_emb")]):
+            cell = tk.Frame(c, bg="#efffef", height=CELL_H)
+            cell.grid(row=ri[0], column=col_i, sticky="ew", padx=2, pady=1)
+            cell.grid_propagate(False)
+            cell.columnconfigure(0, weight=1)
+            cell.rowconfigure(1, weight=1)
+            tk.Label(cell, text=lbl_txt, bg="#efffef", fg=GREEN,
+                     font=("Arial", 8, "bold"), anchor="w").grid(
+                     row=0, column=0, sticky="w", pady=(2, 0))
+            var = tk.StringVar()
+            self.fv[key_s] = var
+            e = tk.Entry(cell, textvariable=var, bg="#efffef", fg=GREEN,
+                         font=("Arial", 12, "bold"), relief="solid", bd=2,
+                         insertbackground=GREEN, width=1,
+                         highlightthickness=1, highlightbackground=GREEN,
+                         highlightcolor=GREEN)
+            e.grid(row=1, column=0, sticky="nsew", padx=(0, 2), pady=(0, 3))
+        fld("Traca fibre",  "traca",    "entry", None, col=2, adv=False)
+        fld("Ref. taie",    "ref_taie", "entry", None, col=3, adv=True)
         row4("Qte initiale taie", "qte_init_taie",   "entry", None,
              "Nb taie 2nd choix", "nb_taie2_choix",  "entry", None,
              "Nb déf. couture",   "nb_def_cout",     "entry", None,
              "Mq. taie",          "mq_taie",         "entry", None)
-        row2("Mq. housse (nb)",   "mq_housse",       "entry", None,
-             "Mq. encart (nb)",   "mq_encart",       "entry", None)
+        row2("Mq. housse/encart (nb)", "mq_housse_encart", "entry", None,
+             "Nb PP Cousue",            "nb_pp_cousue",     "entry", None)
 
-        # ── Informations ──
-        sec("Informations", NAVY_L)
-        row3("Nb PP Cousue",                            "nb_pp_cousue",  "entry", None,
-             "Durée arrêt manquant MP (en min)",        "duree_mq_mp",   "entry", None,
-             "Arrêt manquant personne/Réunion (min)",   "manquant_pers", "entry", None)
+        # ── Autres arrêts ──
+        sec("Autres arrêts", NAVY_L)
+        row2("Durée arrêt manquant MP (en min)",      "duree_mq_mp",   "entry", None,
+             "Arrêt manquant personne/Réunion (min)", "manquant_pers", "entry", None)
 
         # ── Commentaire ──
         sec("Commentaire", GRAY)
@@ -3743,7 +3819,7 @@ class App:
         self._active_stops_container = stops_frame
         self._refresh_active_stops()
 
-        BTN_H    = 66
+        BTN_H    = 52
         BTN_FONT = ("Arial", 14, "bold")
 
         def _make_cv_btn(text, color, cmd):
@@ -4304,7 +4380,7 @@ class App:
             _n("nb_taie2_choix"),                           # Y
             _n("nb_def_cout"),                              # Z
             _n("mq_taie"),                                  # AA
-            _n("mq_housse") + _n("mq_encart"),              # AB
+            _n("mq_housse_encart"),                          # AB
             _n("nb_pp_cousue"),                             # AC
             fmt(self._inter_of_s),                          # AD
             _min_str_to_hms(v.get("duree_mq_mp", "")),         # AE
@@ -4552,6 +4628,18 @@ class App:
                 except Exception:
                     pass
 
+            fresh_events = []
+            if path and os.path.exists(path):
+                try:
+                    wb3 = load_workbook(path, read_only=True, data_only=True)
+                    if "Evenements" in wb3.sheetnames:
+                        ws3 = wb3["Evenements"]
+                        for r in ws3.iter_rows(min_row=2, values_only=True):
+                            if r and any(r):
+                                fresh_events.append(list(r))
+                    wb3.close()
+                except Exception:
+                    pass
             final = fresh_rows[-50:] if len(fresh_rows) > 50 else fresh_rows
             if write_ok:
                 toast = "✔  Déclaration enregistrée dans Excel !"
@@ -4559,7 +4647,7 @@ class App:
                 toast = f"⚠  Erreur Excel : {write_err[:60]}"
             else:
                 toast = "⚠  Déclaration sauvegardée — Excel inaccessible"
-            self.root.after(0, lambda: self._show_main_done(final, toast=toast))
+            self.root.after(0, lambda: self._show_main_done(final, toast=toast, events=fresh_events))
 
         threading.Thread(target=_bg_write_then_read, daemon=True).start()
 
@@ -4931,9 +5019,12 @@ class App:
         path = self.cfg.get("db_path", "")
         if not path or not os.path.exists(path):
             return
+        pilot = self._last_of_pilot or self._logged_in_pilot or ""
         row_evt = [
-            "Changement d'OF",
-            "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "Changement d'OF",    # A
+            "", "", "",           # B, C, D
+            pilot,                # E — pilote du dernier OF
+            "", "", "", "", "", "", "", "", "", "", "", "",  # F-P
             start_dt.strftime("%H:%M:%S"),
             end_dt.strftime("%H:%M:%S"),
             fmt((end_dt - start_dt).total_seconds()), "",
