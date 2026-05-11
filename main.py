@@ -627,6 +627,20 @@ class App:
         except Exception:
             self.root.attributes("-fullscreen", True)
 
+        # ── Scaling proportionnel à la résolution écran ───────────────────────
+        sw = root.winfo_screenwidth()
+        sh = root.winfo_screenheight()
+        raw_sc = min(sw / 1920.0, sh / 1080.0)
+        self._sc = max(0.55, min(1.0, raw_sc))   # clamp 55%–100%
+        try:
+            base = float(root.tk.call("tk", "scaling"))
+            root.tk.call("tk", "scaling", base * self._sc)
+        except Exception:
+            pass
+
+        def _px(n): return max(1, int(n * self._sc))
+        self._px = _px
+
         self.cfg          = load_cfg()
         self.lists        = {}
         self._timers      = {}
@@ -1203,7 +1217,10 @@ class App:
             if ev["end"] is None:
                 ev["end"] = now
         self._save_session()
-        self._refresh_stops_recap()
+        try:
+            self._refresh_stops_recap()
+        except Exception:
+            pass
 
     # ── Navigation ────────────────────────────────────────────────────────────
     def _clear(self):
@@ -1557,9 +1574,66 @@ class App:
         btn_frame.pack(pady=(32, 0), anchor="w")
 
         def _force_quit():
-            # Arrêter tous les timers ouverts proprement avant de quitter
             self._t_stop_all()
             self._tl_close_all()
+            # Si production active, écrire la déclaration dans Excel avant de quitter
+            if self._prod_active and self._of_start:
+                try:
+                    end_dt  = datetime.datetime.now()
+                    of_s    = (end_dt - self._of_start).total_seconds()
+                    stop_s  = self._t_wall_clock_stops()
+                    # Récupérer les valeurs du formulaire (si disponibles)
+                    v = {}
+                    if hasattr(self, "fv"):
+                        v = {k: var.get().strip() for k, var in self.fv.items()}
+                    if hasattr(self, "_comment_txt"):
+                        try:
+                            v["comment"] = self._comment_txt.get("1.0", "end").strip()
+                        except Exception:
+                            pass
+                    # Sinon, utiliser les données sauvegardées
+                    for k, val in self._saved_form_data.items():
+                        if k not in v:
+                            v[k] = str(val)
+                    def _n(k):
+                        try: return int(v.get(k, 0) or 0)
+                        except: return 0
+                    qte_fab = _n("qte_fab")
+                    nb_pers = max(1, _n("nb_pers") or 1)
+                    of_min  = of_s / 60
+                    of_hrs  = of_s / 3600
+                    c1 = round(qte_fab / of_min, 2)  if of_min > 0 else 0
+                    c2 = round(qte_fab / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
+                    equiv = self._calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
+                    prod_ref = self._get_prod_ref()
+                    kit = 2 if getattr(self, "_v_kit", None) and self._v_kit.get() else 1
+                    def _ts(key): return fmt(self._t_get(key))
+                    row = [
+                        v.get("of_num",""), datetime.date.today().strftime("%d/%m/%Y"),
+                        v.get("poste",""), v.get("pilote", self._logged_in_pilot or ""),
+                        v.get("copilote",""), v.get("nb_pers",""), v.get("taille",""),
+                        v.get("code_prod",""), v.get("type_prod",""), v.get("poids",""),
+                        v.get("fibre",""), v.get("of_taie",""), v.get("traca",""),
+                        qte_fab, _n("qte_emb"), equiv, fmt(of_s),
+                        self._of_start.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"),
+                        c1, c2, kit, v.get("ref_taie",""),
+                        _n("nb_def_cout"), _n("mq_taie"),
+                        _n("mq_housse") + _n("mq_encart"),
+                        _ts("ratt_pochon"), _ts("ratt_couture"), _ts("ratt_emb"),
+                        _ts("ratt_presse_soud"), _ts("ratt_presse_zip"),
+                        _ts("pb_chargeuse"), _ts("pb_carde"), _ts("pb_etaleur"),
+                        _ts("pb_coupe"), _ts("pb_tapis1"), _ts("pb_enrouleur"),
+                        _ts("pb_pesee"), _ts("pb_deviation"), _ts("pb_enfileur"),
+                        _ts("pb_kinna"), _ts("pb_tapeuse"), _ts("pb_table_rot"),
+                        _ts("pb_h100"), _ts("pb_traversin"), _ts("pb_presse_orc"),
+                        _ts("pb_presse_zip2"), _ts("pb_cercleuse"), _ts("pb_enrouleuse"),
+                        v.get("comment",""),
+                    ]
+                    ok = self._write_excel(row, v)
+                    if not ok:
+                        self._save_pending_declaration(row, v)
+                except Exception:
+                    pass
             self.root.destroy()
 
         tk.Button(btn_frame,
@@ -1576,7 +1650,7 @@ class App:
                   padx=20, pady=12, cursor="hand2").pack(side="left")
 
     def _make_header(self, parent, title, subtitle=""):
-        hdr = tk.Frame(parent, bg=NAVY, height=68)
+        hdr = tk.Frame(parent, bg=NAVY, height=self._px(68))
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         tk.Label(hdr, text=title, bg=NAVY, fg=WHITE,
@@ -2000,7 +2074,7 @@ class App:
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=20, pady=12)
 
-        top = tk.Frame(body, bg=BG, height=230)
+        top = tk.Frame(body, bg=BG, height=self._px(230))
         top.pack(fill="x", pady=(0, 8))
         top.pack_propagate(False)
 
@@ -2017,7 +2091,7 @@ class App:
         tk.Label(col_cur, text="Poste en cours", bg=WHITE, fg=NAVY,
                  font=("Arial", 9, "bold")).pack(pady=(6, 0))
         self._main_gauge = Gauge(col_cur, bg=WHITE,
-                                 width=200, height=100, highlightthickness=0)
+                                 width=self._px(200), height=self._px(100), highlightthickness=0)
         self._main_gauge.pack(pady=(0, 2))
         self._pilot_name_lbl = tk.Label(col_cur, text="",
                                         bg=WHITE, fg=DARK, font=("Arial", 9, "bold"))
@@ -2032,7 +2106,7 @@ class App:
         tk.Label(col_prev, text="Poste précédent", bg=WHITE, fg=GRAY,
                  font=("Arial", 9, "bold")).pack(pady=(6, 0))
         self._prev_gauge = Gauge(col_prev, bg=WHITE,
-                                 width=200, height=100, highlightthickness=0)
+                                 width=self._px(200), height=self._px(100), highlightthickness=0)
         self._prev_gauge.pack(pady=(0, 2))
         self._prev_pilot_lbl = tk.Label(col_prev, text="—",
                                         bg=WHITE, fg=GRAY, font=("Arial", 9))
@@ -2046,7 +2120,7 @@ class App:
         right_zone.pack(side="left", fill="both", expand=True)
 
         # Colonne gauche : bouton démarrer OU panneau prod en cours (largeur fixe)
-        btn_zone = tk.Frame(right_zone, bg=BG, width=260)
+        btn_zone = tk.Frame(right_zone, bg=BG, width=self._px(260))
         btn_zone.pack(side="left", fill="y", padx=(0, 8))
         btn_zone.pack_propagate(False)
 
@@ -3044,7 +3118,7 @@ class App:
         self._outer_frame = outer
 
         # ── En-tete fixe (blanc, style Dodo) ─────────────────────────────────
-        hdr = tk.Frame(outer, bg=WHITE, height=62)
+        hdr = tk.Frame(outer, bg=WHITE, height=self._px(62))
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         # Accent gauche coloré
@@ -3079,7 +3153,7 @@ class App:
                   ), **BTN_P).pack(side="right", padx=4)
 
         # ── Barre de statut Canvas (chrono + KPI, change couleur) ────────────
-        self._status_cv = tk.Canvas(outer, height=72, bg=BG, highlightthickness=0)
+        self._status_cv = tk.Canvas(outer, height=self._px(72), bg=BG, highlightthickness=0)
         self._status_cv.pack(fill="x", padx=8, pady=(4, 0))
         self._status_cv.bind("<Configure>",
                              lambda e: self._redraw_status(0, 0, False))
