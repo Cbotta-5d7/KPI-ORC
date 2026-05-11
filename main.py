@@ -1,7 +1,7 @@
 """KPI-ORC v5.22 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import json, os, sys, datetime, math
+import json, os, sys, datetime, math, threading
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Border, Side, PatternFill
 
@@ -128,6 +128,19 @@ def _hms_to_sec(s):
         return int(p[0]) * 3600 + int(p[1]) * 60 + int(p[2])
     except Exception:
         return 0
+
+
+def _min_str_to_hms(val):
+    """Convertit une valeur en minutes (saisie opérateur) vers HH:MM:SS pour Excel."""
+    if not val or str(val).strip() == "":
+        return ""
+    try:
+        total_s = int(float(str(val).replace(",", ".")) * 60)
+        h, r = divmod(total_s, 3600)
+        m, s = divmod(r, 60)
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    except Exception:
+        return str(val)
 
 
 def load_cfg():
@@ -679,11 +692,13 @@ class App:
         self._wb_cache        = None    # Workbook mis en cache pour écriture rapide
         self._wb_path_cache   = ""
         self._wb_mtime_cache  = 0.0
+        self._excel_lock      = threading.Lock()
         self._prod_ref_cached  = 0.0
         self._pilot_kpi_data   = {}
 
         self._load_lists()
         self._load_history_from_excel()
+        self._preload_wb_bg()   # Pré-charge le workbook en arrière-plan
 
         # ── Vérifier si une session était en cours ──────────────────────────
         if self._try_restore_session():
@@ -846,8 +861,10 @@ class App:
         self.cfg["db_path"] = p
         save_cfg(self.cfg)
         self._prod_ref_cached = 0.0
+        self._invalidate_wb_cache()
         self._load_lists()
         self._load_history_from_excel()
+        self._preload_wb_bg()
         name = os.path.basename(p)
         for lbl in self._db_labels:
             try:
@@ -1628,8 +1645,8 @@ class App:
                         _n("mq_housse") + _n("mq_encart"),
                         _n("nb_pp_cousue"),
                         fmt(self._inter_of_s),
-                        v.get("duree_mq_mp", ""),
-                        v.get("manquant_pers", ""),
+                        _min_str_to_hms(v.get("duree_mq_mp", "")),
+                        _min_str_to_hms(v.get("manquant_pers", "")),
                         fmt(sum(
                             (ev["end"] - ev["start"]).total_seconds()
                             for ev in self._tl_events
@@ -2665,16 +2682,26 @@ class App:
         path = self.cfg.get("db_path", "")
         if not path or not os.path.exists(path):
             return
-        try:
-            wb = load_workbook(path)
-            wb["Data"].delete_rows(excel_row)
-            wb.save(path)
-            wb.close()
-            self._refresh_table()
-            self._refresh_main_kpi()
-            messagebox.showinfo("Supprime", "Declaration supprimee.")
-        except Exception as e:
-            messagebox.showerror("Erreur", f"Suppression impossible:\n{e}")
+        _toast(self.root, "⏳  Suppression en cours…", bg=NAVY_L, duration=5000)
+        def _bg():
+            try:
+                with self._excel_lock:
+                    wb = self._get_wb(path)
+                    if wb is None:
+                        return
+                    wb["Data"].delete_rows(excel_row)
+                    wb.save(path)
+                    self._wb_mtime_cache = os.path.getmtime(path)
+                self.root.after(0, lambda: _toast(
+                    self.root, "✔  Déclaration supprimée", bg=GREEN, duration=2500))
+                self.root.after(0, self._refresh_table)
+                self.root.after(0, self._refresh_main_kpi)
+            except Exception as e:
+                self._invalidate_wb_cache()
+                err_msg = str(e)
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Erreur", f"Suppression impossible:\n{err_msg}"))
+        threading.Thread(target=_bg, daemon=True).start()
 
     # ── Edition declaration ───────────────────────────────────────────────────
     def _edit_declaration(self, excel_row):
@@ -2861,48 +2888,59 @@ class App:
             if not path2:
                 messagebox.showwarning("Attention", "Base de donnees non connectee.", parent=top)
                 return
+            # Recalculer equivalence avant de capturer les valeurs
+            vals = [v.get() for v in field_vars]
             try:
-                wb2 = load_workbook(path2)
-                ws2 = wb2["Data"]
-                # Recalculer equivalence et TRS avant sauvegarde
-                vals = [v.get() for v in field_vars]
+                qte_f     = int(str(vals[13] or 0))
+                new_equiv = self._calc_equiv(qte_f, str(vals[6] or ""), str(vals[8] or ""))
+                vals[15]  = str(new_equiv)
+                field_vars[15].set(str(new_equiv))
+            except Exception:
+                pass
+            of_num2  = str(row_data[0] or "")
+            of_date2 = str(row_data[1] or "")
+            evt_snapshot = list(evt_data)  # capture avant thread
+            # Fermer la fenêtre immédiatement
+            top.destroy()
+            _toast(self.root, "⏳  Enregistrement en cours…", bg=NAVY_L, duration=5000)
+
+            def _bg():
                 try:
-                    qte_f = int(str(vals[13] or 0))
-                    taille_v  = str(vals[6] or "")
-                    type_pv   = str(vals[8] or "")
-                    new_equiv = self._calc_equiv(qte_f, taille_v, type_pv)
-                    vals[15]  = str(new_equiv)
-                    field_vars[15].set(str(new_equiv))
-                except Exception:
-                    pass
-                for col_i, var in enumerate(field_vars, start=1):
-                    ws2.cell(row=excel_row, column=col_i).value = var.get()
-                self._format_row(ws2, excel_row)
-                # Mettre a jour onglet Evenements
-                of_num2 = str(row_data[0] or "")
-                of_date2 = str(row_data[1] or "")
-                ws_e = self._ensure_events_sheet(wb2)
-                keep = []
-                for r in ws_e.iter_rows(min_row=2, values_only=True):
-                    if r and not (str(r[1] or "") == of_num2 and
-                                  str(r[2] or "") == of_date2):
-                        keep.append(list(r))
-                for row_idx in range(ws_e.max_row, 1, -1):
-                    ws_e.delete_rows(row_idx)
-                for r in keep:
-                    ws_e.append(r)
-                    self._format_row(ws_e, ws_e.max_row)
-                for r in evt_data:
-                    ws_e.append(r)
-                    self._format_row(ws_e, ws_e.max_row)
-                wb2.save(path2)
-                wb2.close()
-                messagebox.showinfo("Succes", "Modifications sauvegardees !", parent=top)
-                top.destroy()
-                self._refresh_table()
-                self._refresh_main_kpi()
-            except Exception as e:
-                messagebox.showerror("Erreur", f"Sauvegarde impossible:\n{e}", parent=top)
+                    with self._excel_lock:
+                        wb2 = self._get_wb(path2)
+                        if wb2 is None:
+                            return
+                        ws2 = wb2["Data"]
+                        for col_i, val in enumerate(vals, start=1):
+                            ws2.cell(row=excel_row, column=col_i).value = val
+                        self._format_row(ws2, excel_row)
+                        ws_e = self._ensure_events_sheet(wb2)
+                        keep = []
+                        for r in ws_e.iter_rows(min_row=2, values_only=True):
+                            if r and not (str(r[1] or "") == of_num2 and
+                                          str(r[2] or "") == of_date2):
+                                keep.append(list(r))
+                        for row_idx in range(ws_e.max_row, 1, -1):
+                            ws_e.delete_rows(row_idx)
+                        for r in keep:
+                            ws_e.append(r)
+                            self._format_row(ws_e, ws_e.max_row)
+                        for r in evt_snapshot:
+                            ws_e.append(r)
+                            self._format_row(ws_e, ws_e.max_row)
+                        wb2.save(path2)
+                        self._wb_mtime_cache = os.path.getmtime(path2)
+                    self.root.after(0, lambda: _toast(
+                        self.root, "✔  Modifications enregistrées", bg=GREEN, duration=3000))
+                    self.root.after(0, self._refresh_table)
+                    self.root.after(0, self._refresh_main_kpi)
+                except Exception as e:
+                    self._invalidate_wb_cache()
+                    err_msg = str(e)
+                    self.root.after(0, lambda: messagebox.showerror(
+                        "Erreur", f"Sauvegarde impossible:\n{err_msg}"))
+
+            threading.Thread(target=_bg, daemon=True).start()
 
         tk.Button(btm, text="Annuler", command=top.destroy,
                   bg=SHAD, fg=DARK, font=("Arial", 11),
@@ -3206,31 +3244,30 @@ class App:
 
         self._after_id = self.root.after(1000, self._tick)
 
-    # ── Formulaire compact 3 colonnes (pas de scroll) ────────────────────────
+    # ── Formulaire compact 4 colonnes (pas de scroll) ────────────────────────
     def _build_form(self, parent):
         self.fv = {}
         c = tk.Frame(parent, bg=WHITE)
         c.pack(fill="both", expand=True, padx=4, pady=2)
-        c.columnconfigure(0, weight=1)
-        c.columnconfigure(1, weight=1)
-        c.columnconfigure(2, weight=1)
+        for col in range(4):
+            c.columnconfigure(col, weight=1)
         ri = [0]
 
-        LFONT  = ("Arial", 9)
-        EFONT  = ("Arial", 11, "bold")
-        CELL_H = 52   # hauteur fixe de chaque cellule (uniforme)
+        LFONT  = ("Arial", 8)
+        EFONT  = ("Arial", 10, "bold")
+        CELL_H = 48
 
-        def sec(txt, color=NAVY, ncols=3):
+        def sec(txt, color=NAVY):
             row = tk.Frame(c, bg=WHITE)
-            row.grid(row=ri[0], column=0, columnspan=ncols, sticky="ew", pady=(8, 2))
+            row.grid(row=ri[0], column=0, columnspan=4, sticky="ew", pady=(6, 1))
             tk.Frame(row, bg=color, width=5).pack(side="left", fill="y")
             tk.Label(row, text=f"  {txt}", bg=WHITE, fg=color,
-                     font=("Arial", 10, "bold"), pady=2).pack(side="left")
+                     font=("Arial", 9, "bold"), pady=2).pack(side="left")
             ri[0] += 1
 
         def fld(lbl_txt, key, ftype, lh=None, col=0, adv=True, suffix=None):
             cell = tk.Frame(c, bg=WHITE, height=CELL_H)
-            cell.grid(row=ri[0], column=col, sticky="ew", padx=3, pady=2)
+            cell.grid(row=ri[0], column=col, sticky="ew", padx=2, pady=1)
             cell.grid_propagate(False)
             cell.columnconfigure(0, weight=1)
             cell.rowconfigure(1, weight=1)
@@ -3259,37 +3296,42 @@ class App:
             if adv:
                 ri[0] += 1
 
-        def row3(l1, k1, t1, h1, l2, k2, t2, h2, l3, k3, t3, h3,
+        def row4(l1,k1,t1,h1, l2,k2,t2,h2, l3,k3,t3,h3, l4,k4,t4,h4,
+                 s1=None, s2=None, s3=None, s4=None):
+            fld(l1,k1,t1,h1, col=0, adv=False, suffix=s1)
+            fld(l2,k2,t2,h2, col=1, adv=False, suffix=s2)
+            fld(l3,k3,t3,h3, col=2, adv=False, suffix=s3)
+            fld(l4,k4,t4,h4, col=3, adv=True,  suffix=s4)
+
+        def row3(l1,k1,t1,h1, l2,k2,t2,h2, l3,k3,t3,h3,
                  s1=None, s2=None, s3=None):
-            fld(l1, k1, t1, h1, col=0, adv=False, suffix=s1)
-            fld(l2, k2, t2, h2, col=1, adv=False, suffix=s2)
-            fld(l3, k3, t3, h3, col=2, adv=True,  suffix=s3)
+            fld(l1,k1,t1,h1, col=0, adv=False, suffix=s1)
+            fld(l2,k2,t2,h2, col=1, adv=False, suffix=s2)
+            fld(l3,k3,t3,h3, col=2, adv=True,  suffix=s3)
 
-        def row2(l1, k1, t1, h1, l2, k2, t2, h2, s1=None, s2=None):
-            fld(l1, k1, t1, h1, col=0, adv=False, suffix=s1)
-            fld(l2, k2, t2, h2, col=1, adv=True,  suffix=s2)
+        def row2(l1,k1,t1,h1, l2,k2,t2,h2, s1=None, s2=None):
+            fld(l1,k1,t1,h1, col=0, adv=False, suffix=s1)
+            fld(l2,k2,t2,h2, col=1, adv=True,  suffix=s2)
 
-        # ── Identification (3 colonnes) ──
+        # ── Identification ──
         sec("Identification", NAVY)
-        row3("N° OF *",    "of_num",  "entry", None,
+        row4("N° OF *",    "of_num",  "entry", None,
              "Poste *",    "poste",   "combo", "Postes",
-             "Pilote *",   "pilote",  "combo", "Pilotes")
-        row3("Co-Pilote",  "copilote","combo", "Co-pilotes",
-             "Nb personnes","nb_pers","combo", "Nb personnes",
-             "Fibre",      "fibre",   "combo", "Fibre")
+             "Pilote *",   "pilote",  "combo", "Pilotes",
+             "Co-Pilote",  "copilote","combo", "Co-pilotes")
+        row2("Nb personnes", "nb_pers", "combo", "Nb personnes",
+             "Fibre",        "fibre",   "combo", "Fibre")
 
         # ── Produit ──
         sec("Produit", NAVY_L)
-        row3("Taille",         "taille",    "combo", "Taille produit",
+        row4("Taille",         "taille",    "combo", "Taille produit",
              "Type produit",   "type_prod", "combo", "Type produit",
-             "Code produit *", "code_prod", "entry", None)
-
-        # Poids | OF taie | Kit (inline, même ligne)
+             "Code produit *", "code_prod", "entry", None,
+             "Poids garnissage","poids",    "entry", None, s4="gr")
         self._v_kit = tk.BooleanVar()
-        fld("Poids garnissage", "poids",   "entry", None, col=0, adv=False, suffix="gr")
-        fld("OF taie",          "of_taie", "entry", None, col=1, adv=False)
+        fld("OF taie", "of_taie", "entry", None, col=0, adv=False)
         kit_cell = tk.Frame(c, bg=WHITE, height=CELL_H)
-        kit_cell.grid(row=ri[0], column=2, sticky="ew", padx=3, pady=2)
+        kit_cell.grid(row=ri[0], column=1, sticky="ew", padx=2, pady=1)
         kit_cell.grid_propagate(False)
         kit_cell.rowconfigure(1, weight=1)
         tk.Label(kit_cell, text="Options", bg=WHITE, fg=GRAY,
@@ -3300,31 +3342,31 @@ class App:
                        row=1, column=0, sticky="w", padx=4)
         ri[0] += 1
 
-        # ── Quantités / Qualité ──
+        # ── Quantités & Qualité ──
         sec("Quantités & Qualité", GREEN)
-        row3("Qte fabriquée *", "qte_fab",   "entry", None,
-             "Qte emballée",    "qte_emb",   "entry", None,
-             "Traca fibre",     "traca",      "entry", None)
-        row3("Ref. taie",          "ref_taie",       "entry", None,
-             "Qte initiale taie",  "qte_init_taie",  "entry", None,
-             "Nb taie 2nd choix",  "nb_taie2_choix", "entry", None)
-        row3("Nb déf. couture", "nb_def_cout","entry", None,
-             "Mq. taie",        "mq_taie",    "entry", None,
-             "Mq. housse (nb)", "mq_housse",  "entry", None)
-        fld("Mq. encart (nb)", "mq_encart", "entry", None, col=0, adv=False)
+        row4("Qte fabriquée *",   "qte_fab",        "entry", None,
+             "Qte emballée",      "qte_emb",         "entry", None,
+             "Traca fibre",       "traca",            "entry", None,
+             "Ref. taie",         "ref_taie",         "entry", None)
+        row4("Qte initiale taie", "qte_init_taie",   "entry", None,
+             "Nb taie 2nd choix", "nb_taie2_choix",  "entry", None,
+             "Nb déf. couture",   "nb_def_cout",     "entry", None,
+             "Mq. taie",          "mq_taie",         "entry", None)
+        row2("Mq. housse (nb)",   "mq_housse",       "entry", None,
+             "Mq. encart (nb)",   "mq_encart",       "entry", None)
 
-        # ── Informations complémentaires ──
+        # ── Informations ──
         sec("Informations", NAVY_L)
-        row3("Nb PP Cousue",             "nb_pp_cousue",   "entry", None,
-             "Durée arrêt manquant MP",  "duree_mq_mp",    "entry", None,
-             "Manquant personnel/réunion", "manquant_pers", "entry", None)
+        row3("Nb PP Cousue",                       "nb_pp_cousue",  "entry", None,
+             "Durée arrêt manquant MP (en min)",   "duree_mq_mp",   "entry", None,
+             "Durée arrêt manquant pers. (en min)","manquant_pers", "entry", None)
 
         # ── Commentaire ──
         sec("Commentaire", GRAY)
         txt_f = tk.Frame(c, bg=WHITE)
-        txt_f.grid(row=ri[0], column=0, columnspan=3, sticky="ew", padx=2, pady=2)
+        txt_f.grid(row=ri[0], column=0, columnspan=4, sticky="ew", padx=2, pady=2)
         ri[0] += 1
-        self._comment_txt = tk.Text(txt_f, height=3, bg=WHITE, fg=DARK,
+        self._comment_txt = tk.Text(txt_f, height=2, bg=WHITE, fg=DARK,
                                      font=("Arial", 10), relief="solid", bd=1,
                                      wrap="word", insertbackground=DARK)
         self._comment_txt.pack(fill="x")
@@ -3963,8 +4005,8 @@ class App:
             _n("mq_housse") + _n("mq_encart"),              # AB
             _n("nb_pp_cousue"),                             # AC
             fmt(self._inter_of_s),                          # AD
-            v.get("duree_mq_mp", ""),                       # AE
-            v.get("manquant_pers", ""),                     # AF
+            _min_str_to_hms(v.get("duree_mq_mp", "")),         # AE
+            _min_str_to_hms(v.get("manquant_pers", "")),   # AF
             fmt(_nett_s),                                   # AG
             _ts("ratt_pochon"),   _ts("ratt_couture"),      # AH, AI
             _ts("ratt_emb"),      _ts("ratt_presse_soud"),  # AJ, AK
@@ -4331,6 +4373,19 @@ class App:
             cell.alignment = align
             cell.border    = border
 
+    def _preload_wb_bg(self):
+        """Pré-charge le workbook en arrière-plan pour accélérer la 1ère déclaration."""
+        path = self.cfg.get("db_path", "")
+        if not path or not os.path.exists(path):
+            return
+        def _bg():
+            try:
+                with self._excel_lock:
+                    self._get_wb(path)
+            except Exception:
+                pass
+        threading.Thread(target=_bg, daemon=True).start()
+
     def _get_wb(self, path):
         """Retourne le workbook mis en cache ou le recharge si le fichier a changé."""
         try:
@@ -4352,29 +4407,65 @@ class App:
         self._wb_path_cache  = ""
         self._wb_mtime_cache = 0.0
 
+    def _write_rows_to_events_sheet(self, wb, events_rows):
+        """Écrit des lignes pré-construites dans l'onglet Evenements."""
+        ws = self._ensure_events_sheet(wb)
+        for ev_row in events_rows:
+            ws.append(ev_row)
+            self._format_row(ws, ws.max_row)
+
     def _write_excel(self, row, v):
+        """Lance l'écriture Excel en arrière-plan. Retourne True immédiatement."""
         path = self.cfg.get("db_path", "")
         if not path:
             messagebox.showwarning("Attention", "Aucune base de données !")
             return False
+
+        # Construire les lignes événements dans le thread principal (thread-safe)
+        events_rows = self._build_events_rows(v)
+
+        # Sauvegarder en pending immédiatement (backup instantané)
+        payload = {"db_path": path, "row": row, "events_rows": events_rows}
         try:
-            wb = self._get_wb(path)
-            if wb is None:
-                return False
-            ws_d = wb["Data"]
-            ws_d.append(row)
-            self._format_row(ws_d, ws_d.max_row)
-            self._write_events_to_wb(wb, v)
-            wb.save(path)
-            self._wb_mtime_cache = os.path.getmtime(path)
-            return True
-        except PermissionError:
-            self._invalidate_wb_cache()
-            return False
-        except Exception as e:
-            self._invalidate_wb_cache()
-            messagebox.showerror("Erreur", f"Erreur Excel :\n{e}")
-            return False
+            with open(PENDING_FILE, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, default=str)
+        except Exception:
+            pass
+
+        def _bg():
+            try:
+                with self._excel_lock:
+                    wb = self._get_wb(path)
+                    if wb is None:
+                        self.root.after(0, self._schedule_pending_retry)
+                        return
+                    ws_d = wb["Data"]
+                    ws_d.append(row)
+                    self._format_row(ws_d, ws_d.max_row)
+                    self._write_rows_to_events_sheet(wb, events_rows)
+                    wb.save(path)
+                    self._wb_mtime_cache = os.path.getmtime(path)
+                    try:
+                        os.remove(PENDING_FILE)
+                    except Exception:
+                        pass
+                    self.root.after(0, lambda: _toast(
+                        self.root, "✔  Déclaration enregistrée dans Excel",
+                        bg=GREEN, duration=3000))
+            except PermissionError:
+                self._invalidate_wb_cache()
+                self.root.after(0, self._schedule_pending_retry)
+                self.root.after(0, lambda: _toast(
+                    self.root, "⚠  Excel occupé — déclaration sauvegardée en attente",
+                    bg=C_RATT, duration=5000))
+            except Exception as e:
+                self._invalidate_wb_cache()
+                err_msg = str(e)
+                self.root.after(0, self._schedule_pending_retry)
+                self.root.after(0, lambda: messagebox.showerror("Erreur Excel", err_msg))
+
+        threading.Thread(target=_bg, daemon=True).start()
+        return True  # Toujours True : les données sont déjà dans pending
 
     def _ensure_events_sheet(self, wb):
         if "Evenements" not in wb.sheetnames:
@@ -4420,27 +4511,27 @@ class App:
         path = self.cfg.get("db_path", "")
         if not path or not os.path.exists(path):
             return
-        try:
-            wb  = load_workbook(path)
-            ws  = self._ensure_events_sheet(wb)
-            dur = (end_dt - start_dt).total_seconds()
-            # Même structure que _write_events_to_wb (EVT_HEADERS)
-            # "Evenement","OF","Date","Poste","Pilote","Co-Pilote","Nb Personnes",
-            # "Taille","Type Produit","Code Produit","Fibre","Poids Garnissage",
-            # "OF Taie","Traca Fibre","Ref Taie","Kit",
-            # "Heure Debut","Heure Fin","Duree","Commentaire"
-            ws.append([
-                "Changement d'OF",
-                "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
-                start_dt.strftime("%H:%M:%S"),
-                end_dt.strftime("%H:%M:%S"),
-                fmt(dur), "",
-            ])
-            self._format_row(ws, ws.max_row)
-            wb.save(path)
-            wb.close()
-        except Exception:
-            pass
+        row_evt = [
+            "Changement d'OF",
+            "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            start_dt.strftime("%H:%M:%S"),
+            end_dt.strftime("%H:%M:%S"),
+            fmt((end_dt - start_dt).total_seconds()), "",
+        ]
+        def _bg():
+            try:
+                with self._excel_lock:
+                    wb = self._get_wb(path)
+                    if wb is None:
+                        return
+                    ws = self._ensure_events_sheet(wb)
+                    ws.append(row_evt)
+                    self._format_row(ws, ws.max_row)
+                    wb.save(path)
+                    self._wb_mtime_cache = os.path.getmtime(path)
+            except Exception:
+                self._invalidate_wb_cache()
+        threading.Thread(target=_bg, daemon=True).start()
 
 
 if __name__ == "__main__":
