@@ -690,25 +690,27 @@ class App:
         self._logged_in_pilot  = None   # Pilote actuellement connecté
         self._inter_of_s       = 0      # Durée inter-OF (changement de série)
         self._of_count_this_shift = 0   # Nb déclarations complétées ce poste
-        self._data_rows_cache  = []   # (excel_row, row_data) — 50 dernières lignes
-        self._last_of_pilot    = ""   # Pilote du dernier OF terminé
-        self._interposte_s     = 0    # Temps interposte (changement pilote ≤ 1h)
-        self._wb_cache        = None    # Workbook mis en cache pour écriture rapide
-        self._wb_path_cache   = ""
-        self._wb_mtime_cache  = 0.0
-        self._excel_lock      = threading.Lock()
+        self._data_rows_cache  = []
+        self._last_of_pilot    = ""
+        self._interposte_s     = 0
+        self._wb_cache         = None
+        self._wb_path_cache    = ""
+        self._wb_mtime_cache   = 0.0
+        self._excel_lock       = threading.Lock()
         self._prod_ref_cached  = 0.0
         self._pilot_kpi_data   = {}
-        self._pause_start      = None   # Début de la pause en cours
-        self._pause_total_s    = 0.0    # Cumul des pauses de l'OF
-        self._pause_periods    = []     # [(start_dt, end_dt), ...]
+        self._pause_start      = None
+        self._pause_total_s    = 0.0
+        self._pause_periods    = []
         self._is_paused        = False
         self._pause_overlay    = None
+        self._loading_overlay  = None
+        self._loading_canvas   = None
+        self._loading_anim_id  = None
+        self._loading_msg_lbl  = None
 
         self._load_lists()
         self._load_history_from_excel()
-        self._load_tampon()
-        self._preload_wb_bg()   # Pré-charge le workbook en arrière-plan
 
         # ── Vérifier si une session était en cours ──────────────────────────
         if self._try_restore_session():
@@ -871,16 +873,12 @@ class App:
         self._invalidate_wb_cache()
         self._load_lists()
         self._load_history_from_excel()
-        self._preload_wb_bg()
         name = os.path.basename(p)
         for lbl in self._db_labels:
             try:
                 lbl.config(text=f"DB: {name}")
             except Exception:
                 pass
-        tp = self._get_tampon_path()
-        if tp:
-            _toast(self.root, f"Tampon: {os.path.basename(tp)}", bg=NAVY_L, duration=3000)
 
         # ── Étape 3 : saisie / confirmation de la référence de production ──────
         self._ask_prod_ref()
@@ -2089,21 +2087,83 @@ class App:
         if not self._reset_form_next:
             self._save_form_data()
         self._reset_form_next = False
-        self._cells = []
-        self._clear()
-        self._db_labels.clear()
         self._mode = "main"
+        self._clear()
+        self._show_loading("Chargement du tableau de bord…")
+        path = self.cfg.get("db_path", "")
+
+        def _bg():
+            rows = []
+            if path and os.path.exists(path):
+                try:
+                    wb = load_workbook(path, read_only=True, data_only=True)
+                    if "Data" in wb.sheetnames:
+                        ws = wb["Data"]
+                        min_r = 2 if str(ws.cell(1, 1).value or "").strip().upper() == "OF" else 1
+                        for i, r in enumerate(ws.iter_rows(min_row=min_r, values_only=True), start=min_r):
+                            if any(r):
+                                rows.append((i, list(r) + [None] * 60))
+                    wb.close()
+                except Exception:
+                    pass
+            final = rows[-50:] if len(rows) > 50 else rows
+            self.root.after(0, lambda: self._show_main_done(final))
+
+        threading.Thread(target=_bg, daemon=True).start()
+
+    def _show_main_done(self, rows, toast=None):
+        self._data_rows_cache = rows
+        self._hide_loading()
+        self._build_main_ui()
+        if toast:
+            _toast(self.root, toast,
+                   bg=GREEN if "✔" in toast else C_RATT, duration=3500)
+
+    def _reload_and_refresh(self):
+        """Relit Excel et rafraîchit le dashboard si on est sur le tableau de bord."""
+        if self._mode != "main":
+            return
+        path = self.cfg.get("db_path", "")
+        if not path or not os.path.exists(path):
+            return
+
+        def _bg():
+            rows = []
+            try:
+                wb = load_workbook(path, read_only=True, data_only=True)
+                if "Data" in wb.sheetnames:
+                    ws = wb["Data"]
+                    min_r = 2 if str(ws.cell(1, 1).value or "").strip().upper() == "OF" else 1
+                    for i, r in enumerate(ws.iter_rows(min_row=min_r, values_only=True), start=min_r):
+                        if any(r):
+                            rows.append((i, list(r) + [None] * 60))
+                wb.close()
+            except Exception:
+                pass
+            final = rows[-50:] if len(rows) > 50 else rows
+            self.root.after(0, lambda: self._apply_fresh_data(final))
+
+        threading.Thread(target=_bg, daemon=True).start()
+
+    def _apply_fresh_data(self, rows):
+        if self._mode != "main":
+            return
+        self._data_rows_cache = rows
+        self._refresh_table()
+        self._refresh_main_kpi()
+
+    def _build_main_ui(self):
+        self._cells = []
+        self._db_labels.clear()
         self._last_activity = datetime.datetime.now()
 
         outer = tk.Frame(self.root, bg=BG)
         outer.pack(fill="both", expand=True)
         self._outer_frame = outer
-        # Suivi d'activite pour l'auto-retour
         outer.bind("<Motion>",  self._reset_activity)
         outer.bind("<Button-1>", self._reset_activity)
 
         self._make_header(outer, "KPI-ORC", "Ligne ORC1")
-        # Vérifier la DB après rendu de la fenêtre principale
         self.root.after(200, self._check_db_on_startup)
         self.root.after(3000, self._check_pending)
         self._make_tabs(outer, "main")
@@ -2707,7 +2767,7 @@ class App:
                     self._invalidate_wb_cache()
                 self.root.after(0, lambda: _toast(
                     self.root, "✔  Déclaration supprimée", bg=GREEN, duration=2500))
-                self.root.after(0, self._write_tampon_bg)
+                self.root.after(0, self._reload_and_refresh)
             except Exception as e:
                 self._invalidate_wb_cache()
                 err_msg = str(e)
@@ -4387,7 +4447,7 @@ class App:
             self._after_id = self.root.after(1000, self._tick)
             return
 
-        # ── Ecriture Excel ────────────────────────────────────────────────────
+        # ── Enregistrement + retour tableau de bord ───────────────────────────
         self._prod_active = False
         self._last_of_end = end_dt
         self._of_count_this_shift += 1
@@ -4397,52 +4457,81 @@ class App:
         if self._of_periods:
             self._of_periods[-1]["end"]    = end_dt
             self._of_periods[-1]["of_num"] = v.get("of_num", "")
+        self._delete_session()
+        self._saved_form_data = {}
+        self._reset_form_next = True
 
-        ok = self._write_excel(row, v)
-        if ok:
-            self._delete_session()
-            self._saved_form_data = {}
-            self._reset_form_next = True   # Formulaire vide au prochain OF
-            self._show_main()
-            _toast(self.root, "✔  Production declaree avec succes !", bg=GREEN)
-        else:
-            # Fichier Excel ouvert → sauvegarde temporaire + overlay avertissement
-            self._save_pending_declaration(row, v)
-            self._prod_active = False
-            self._delete_session()
-            self._saved_form_data = {}
-            self._reset_form_next = True
-            self._show_main()
-            # Overlay plein écran d'alerte fichier ouvert
-            ov = tk.Frame(self.root, bg=WHITE)
-            ov.place(relx=0, rely=0, relwidth=1, relheight=1)
-            ov.lift()
-            hdr_ov = tk.Frame(ov, bg=C_RED, height=90)
-            hdr_ov.pack(fill="x")
-            hdr_ov.pack_propagate(False)
-            tk.Frame(hdr_ov, bg=DARK, width=6).pack(side="left", fill="y")
-            tk.Label(hdr_ov, text="⚠  FICHIER EXCEL OUVERT",
-                     bg=C_RED, fg=WHITE,
-                     font=("Arial", 24, "bold")).pack(
-                     side="left", padx=24, pady=24)
-            bdy = tk.Frame(ov, bg=WHITE)
-            bdy.pack(fill="both", expand=True, padx=80, pady=40)
-            tk.Label(bdy,
-                     text="Appelez l'encadrant !",
-                     bg=WHITE, fg=C_RED,
-                     font=("Arial", 20, "bold")).pack(pady=(0, 16))
-            tk.Label(bdy,
-                     text="La déclaration est sauvegardée temporairement.\n"
-                          "Elle sera enregistrée automatiquement\n"
-                          "dès que le fichier Excel sera fermé.",
-                     bg=WHITE, fg=DARK,
-                     font=("Arial", 14), justify="center").pack(pady=(0, 32))
-            def _close_ov():
-                ov.destroy()
-            tk.Button(bdy, text="✕  Fermer cet avertissement",
-                      command=_close_ov, bg=LGRAY, fg=DARK,
-                      font=("Arial", 13), relief="flat",
-                      padx=20, pady=10, cursor="hand2").pack()
+        # Afficher loading immédiatement (efface la vue production)
+        self._clear()
+        self._show_loading("Enregistrement de la déclaration…")
+
+        path        = self.cfg.get("db_path", "")
+        events_rows = self._build_events_rows(v)
+
+        # Sauvegarde pending immédiate (backup si Excel planté)
+        if path:
+            payload = {"db_path": path, "row": row, "events_rows": events_rows}
+            try:
+                with open(PENDING_FILE, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, ensure_ascii=False, default=str)
+            except Exception:
+                pass
+
+        def _bg_write_then_read():
+            write_ok  = False
+            write_err = ""
+            if path:
+                try:
+                    with self._excel_lock:
+                        wb = self._get_wb(path)
+                        if wb is not None:
+                            ws_d = self._ensure_data_sheet(wb)
+                            ws_d.append(row)
+                            self._format_row(ws_d, ws_d.max_row)
+                            self._write_rows_to_events_sheet(wb, events_rows)
+                            wb.save(path)
+                            self._wb_mtime_cache = os.path.getmtime(path)
+                            try:
+                                os.remove(PENDING_FILE)
+                            except Exception:
+                                pass
+                            write_ok = True
+                except PermissionError:
+                    self._invalidate_wb_cache()
+                    self.root.after(0, self._schedule_pending_retry)
+                except Exception as e:
+                    self._invalidate_wb_cache()
+                    write_err = str(e)
+                    self.root.after(0, self._schedule_pending_retry)
+            else:
+                self.root.after(0, self._schedule_pending_retry)
+
+            # Relire Excel pour le dashboard
+            self.root.after(0, lambda: self._loading_set_msg("Mise à jour du tableau…"))
+            fresh_rows = []
+            if path and os.path.exists(path):
+                try:
+                    wb2 = load_workbook(path, read_only=True, data_only=True)
+                    if "Data" in wb2.sheetnames:
+                        ws2 = wb2["Data"]
+                        min_r = 2 if str(ws2.cell(1, 1).value or "").strip().upper() == "OF" else 1
+                        for i, r in enumerate(ws2.iter_rows(min_row=min_r, values_only=True), start=min_r):
+                            if any(r):
+                                fresh_rows.append((i, list(r) + [None] * 60))
+                    wb2.close()
+                except Exception:
+                    pass
+
+            final = fresh_rows[-50:] if len(fresh_rows) > 50 else fresh_rows
+            if write_ok:
+                toast = "✔  Déclaration enregistrée dans Excel !"
+            elif write_err:
+                toast = f"⚠  Erreur Excel : {write_err[:60]}"
+            else:
+                toast = "⚠  Déclaration sauvegardée — Excel inaccessible"
+            self.root.after(0, lambda: self._show_main_done(final, toast=toast))
+
+        threading.Thread(target=_bg_write_then_read, daemon=True).start()
 
     def _calc_equiv(self, qte, taille, type_prod):
         """Cherche le coef d'equivalence pour type_prod dans la colonne Equivalence coef."""
@@ -4586,9 +4675,7 @@ class App:
             wb.close()
             os.remove(PENDING_FILE)
             _toast(self.root, "✔  Déclaration enregistrée dans Excel !", bg=GREEN)
-            if self._mode == "main":
-                self._refresh_table()
-                self._refresh_main_kpi()
+            self.root.after(0, self._reload_and_refresh)
         except PermissionError:
             self._schedule_pending_retry()
         except Exception:
@@ -4604,88 +4691,76 @@ class App:
             cell.alignment = align
             cell.border    = border
 
-    def _load_tampon(self):
-        """Charge le cache depuis le tampon (ou DB si tampon absent)."""
-        tp = self._get_tampon_path()
-        if tp and os.path.exists(tp):
-            try:
-                wb = load_workbook(tp, read_only=True, data_only=True)
-                ws = wb["Data"]
-                min_r = 2 if str(ws.cell(1,1).value or "").strip().upper() == "OF" else 1
-                rows = []
-                for i, r in enumerate(ws.iter_rows(min_row=min_r, values_only=True), start=min_r):
-                    if any(r):
-                        rows.append((i, list(r) + [None]*60))
-                wb.close()
-                self._data_rows_cache = rows[-50:]
-                return
-            except Exception:
-                pass
-        # Fallback: charger depuis la DB principale en arrière-plan
-        def _bg():
-            path = self.cfg.get("db_path", "")
-            if not path or not os.path.exists(path):
-                return
-            try:
-                wb = load_workbook(path, read_only=True, data_only=True)
-                ws = wb["Data"]
-                min_r = 2 if str(ws.cell(1,1).value or "").strip().upper() == "OF" else 1
-                rows = []
-                for i, r in enumerate(ws.iter_rows(min_row=min_r, values_only=True), start=min_r):
-                    if any(r):
-                        rows.append((i, list(r) + [None]*60))
-                wb.close()
-                cache = rows[-50:]
-                self.root.after(0, lambda: setattr(self, '_data_rows_cache', cache))
-                self.root.after(0, self._write_tampon_bg)
-                self.root.after(0, self._refresh_table)
-                self.root.after(0, self._refresh_main_kpi)
-            except Exception:
-                pass
-        threading.Thread(target=_bg, daemon=True).start()
 
-    def _write_tampon_bg(self):
-        """Écrit le cache courant dans le fichier tampon (arrière-plan)."""
-        tp = self._get_tampon_path()
-        if not tp:
+    # ── Loading overlay ───────────────────────────────────────────────────────
+    def _show_loading(self, msg="Chargement…"):
+        if self._loading_anim_id:
+            try:
+                self.root.after_cancel(self._loading_anim_id)
+            except Exception:
+                pass
+            self._loading_anim_id = None
+        if self._loading_overlay:
+            try:
+                self._loading_overlay.destroy()
+            except Exception:
+                pass
+        ov = tk.Frame(self.root, bg=NAVY)
+        ov.place(relx=0, rely=0, relwidth=1, relheight=1)
+        ov.lift()
+        center = tk.Frame(ov, bg=NAVY)
+        center.place(relx=0.5, rely=0.45, anchor="center")
+        cv = tk.Canvas(center, width=90, height=90, bg=NAVY, highlightthickness=0)
+        cv.pack()
+        lbl = tk.Label(center, text=msg, bg=NAVY, fg=WHITE,
+                       font=("Arial", 17, "bold"))
+        lbl.pack(pady=(18, 0))
+        tk.Label(center, text="Veuillez patienter…", bg=NAVY, fg=NAVY_L,
+                 font=("Arial", 11)).pack(pady=(4, 0))
+        self._loading_overlay  = ov
+        self._loading_canvas   = cv
+        self._loading_msg_lbl  = lbl
+        self._loading_angle    = 0
+        self._animate_spinner()
+
+    def _loading_set_msg(self, msg):
+        if self._loading_msg_lbl:
+            try:
+                self._loading_msg_lbl.config(text=msg)
+            except Exception:
+                pass
+
+    def _animate_spinner(self):
+        if not self._loading_canvas:
             return
-        rows_snapshot = list(self._data_rows_cache)
-        def _bg():
+        try:
+            cv = self._loading_canvas
+            cv.delete("arc")
+            a = self._loading_angle
+            cv.create_arc(8, 8, 82, 82, start=a, extent=280,
+                          style="arc", outline=GREEN, width=7, tags="arc")
+            cv.create_arc(8, 8, 82, 82, start=a + 280, extent=80,
+                          style="arc", outline=NAVY_L, width=7, tags="arc")
+            self._loading_angle = (a + 9) % 360
+            self._loading_anim_id = self.root.after(28, self._animate_spinner)
+        except Exception:
+            self._loading_anim_id = None
+
+    def _hide_loading(self):
+        if self._loading_anim_id:
             try:
-                from openpyxl import Workbook as _WB
-                wb = _WB()
-                ws = wb.active
-                ws.title = "Data"
-                ws.append(DATA_HEADERS)
-                for _, row in rows_snapshot:
-                    ws.append(row[:len(DATA_HEADERS)])
-                wb.save(tp)
+                self.root.after_cancel(self._loading_anim_id)
             except Exception:
                 pass
-        threading.Thread(target=_bg, daemon=True).start()
-
-    def _preload_wb_bg(self):
-        """Pré-charge le workbook en arrière-plan pour accélérer la 1ère déclaration."""
-        path = self.cfg.get("db_path", "")
-        if not path or not os.path.exists(path):
-            return
-        def _bg():
+            self._loading_anim_id = None
+        self._loading_canvas  = None
+        self._loading_msg_lbl = None
+        if self._loading_overlay:
             try:
-                with self._excel_lock:
-                    self._get_wb(path)
+                self._loading_overlay.destroy()
             except Exception:
                 pass
-        threading.Thread(target=_bg, daemon=True).start()
-
-    def _get_tampon_path(self):
-        tp = self.cfg.get("tampon_path", "")
-        if tp:
-            return tp
-        db = self.cfg.get("db_path", "")
-        if db:
-            base, _ = os.path.splitext(db)
-            return base + "_tampon.xlsx"
-        return ""
+            self._loading_overlay = None
 
     def _center_on_root(self, win, w, h):
         self.root.update_idletasks()
@@ -4731,25 +4806,13 @@ class App:
             self._format_row(ws, ws.max_row)
 
     def _write_excel(self, row, v):
-        """Lance l'écriture Excel en arrière-plan. Retourne True immédiatement."""
+        """Écriture Excel arrière-plan (pour les appels hors fin-de-prod)."""
         path = self.cfg.get("db_path", "")
         if not path:
             messagebox.showwarning("Attention", "Aucune base de données !")
             return False
 
-        # Mise à jour cache immédiate
-        next_idx = (self._data_rows_cache[-1][0] + 1) if self._data_rows_cache else 2
-        self._data_rows_cache.append((next_idx, list(row) + [None]*10))
-        if len(self._data_rows_cache) > 50:
-            self._data_rows_cache = self._data_rows_cache[-50:]
-        self._write_tampon_bg()
-        self._refresh_table()
-        self._refresh_main_kpi()
-
-        # Construire les lignes événements dans le thread principal (thread-safe)
         events_rows = self._build_events_rows(v)
-
-        # Sauvegarder en pending immédiatement (backup instantané)
         payload = {"db_path": path, "row": row, "events_rows": events_rows}
         try:
             with open(PENDING_FILE, "w", encoding="utf-8") as f:
@@ -4774,16 +4837,13 @@ class App:
                         os.remove(PENDING_FILE)
                     except Exception:
                         pass
-                    self.root.after(0, self._write_tampon_bg)
+                    self.root.after(0, self._reload_and_refresh)
                     self.root.after(0, lambda: _toast(
                         self.root, "✔  Déclaration enregistrée dans Excel",
                         bg=GREEN, duration=3000))
             except PermissionError:
                 self._invalidate_wb_cache()
                 self.root.after(0, self._schedule_pending_retry)
-                self.root.after(0, lambda: _toast(
-                    self.root, "⚠  Excel occupé — déclaration sauvegardée en attente",
-                    bg=C_RATT, duration=5000))
             except Exception as e:
                 self._invalidate_wb_cache()
                 err_msg = str(e)
@@ -4791,7 +4851,7 @@ class App:
                 self.root.after(0, lambda: messagebox.showerror("Erreur Excel", err_msg))
 
         threading.Thread(target=_bg, daemon=True).start()
-        return True  # Toujours True : les données sont déjà dans pending
+        return True
 
     def _ensure_events_sheet(self, wb):
         if "Evenements" not in wb.sheetnames:
