@@ -1712,6 +1712,9 @@ class App:
         # Quitter
         tk.Button(right_bar, text="⏻  Quitter", bg=C_RED, fg=WHITE,
                   command=self._confirm_quit, **BTN).pack(side="right", padx=4)
+        # Pause (accessible hors production)
+        tk.Button(right_bar, text="☕  Pause", bg=NAVY_L, fg=WHITE,
+                  command=self._toggle_pause, **BTN).pack(side="right", padx=4)
         # Actualiser
         tk.Button(right_bar, text="🔄  Actualiser", bg=NAVY_L, fg=WHITE,
                   command=self._refresh_all, **BTN).pack(side="right", padx=4)
@@ -3847,6 +3850,9 @@ class App:
                 dur_p = (end_p - self._pause_start).total_seconds()
                 self._pause_total_s += dur_p
                 self._pause_periods.append((self._pause_start, end_p))
+                # Hors production : écrire directement dans Evenements
+                if not self._prod_active:
+                    self._write_pause_event(self._pause_start, end_p)
                 self._pause_start = None
             self._is_paused = False
             if self._pause_overlay:
@@ -3860,6 +3866,40 @@ class App:
             self._pause_start = datetime.datetime.now()
             self._is_paused = True
             self._show_pause_overlay()
+
+    def _write_pause_event(self, start_dt, end_dt):
+        """Écrit une pause pilote dans l'onglet Evenements (mode hors production)."""
+        path = self.cfg.get("db_path", "")
+        if not path or not os.path.exists(path):
+            return
+        dur = (end_dt - start_dt).total_seconds()
+        pilot = self._logged_in_pilot or ""
+        row_evt = [
+            "Pause pilote",
+            "",                                   # OF
+            start_dt.strftime("%d/%m/%Y"),        # Date
+            "", pilot, "", "", "", "", "", "", "", "", "", "", "",
+            start_dt.strftime("%H:%M:%S"),
+            end_dt.strftime("%H:%M:%S"),
+            fmt(dur),
+            "",
+        ]
+        def _bg():
+            try:
+                with self._excel_lock:
+                    wb = self._get_wb(path)
+                    if wb is None:
+                        return
+                    ws = self._ensure_events_sheet(wb)
+                    ws.append(row_evt)
+                    self._format_row(ws, ws.max_row)
+                    wb.save(path)
+                    self._wb_mtime_cache = os.path.getmtime(path)
+                self.root.after(0, lambda: _toast(
+                    self.root, f"☕  Pause enregistrée ({int(dur//60)}min)", bg=NAVY_L))
+            except Exception:
+                self._invalidate_wb_cache()
+        threading.Thread(target=_bg, daemon=True).start()
 
     def _show_pause_overlay(self):
         ov = tk.Frame(self.root, bg=NAVY)
