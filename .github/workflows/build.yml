@@ -1,9 +1,7 @@
-name: Compiler KPI-ORC.exe
+name: Build KPI-ORC EXE
 
 on:
   push:
-    branches:
-      - CLAUDE/python-api-compiler-8H0AR
 
 jobs:
   build:
@@ -18,23 +16,22 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Installer PyInstaller + dependances
+      - name: Installer dependances
         run: |
           pip install pyinstaller
           pip install openpyxl
 
-      - name: Lister les fichiers (debug)
+      - name: Lister fichiers (debug)
         run: dir
 
-      # 👇 ICI tu changes juste le fichier si besoin
-      - name: Compiler le .exe
+      - name: Compiler EXE
         run: pyinstaller --onefile --windowed --clean --name "KPI-ORC" main.py
 
-      - name: Verifier le dossier dist
+      - name: Verifier dist
         run: dir dist
 
       - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
           name: KPI-ORC-exe
-          path: dist/KPI-ORC.exe
+          path: dist/*.exe
