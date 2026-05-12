@@ -28,7 +28,7 @@ jobs:
 
       # 👇 ICI tu changes juste le fichier si besoin
       - name: Compiler le .exe
-        run: pyinstaller --onefile --windowed --clean --name "KPI-ORC" TON_FICHIER.py
+        run: pyinstaller --onefile --windowed --clean --name "KPI-ORC" main.py
 
       - name: Verifier le dossier dist
         run: dir dist
