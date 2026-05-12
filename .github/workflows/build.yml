@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Recuperer les fichiers
+      - name: Recuperer le repo
         uses: actions/checkout@v4
 
       - name: Installer Python
@@ -18,21 +18,22 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Installer les dependances
+      - name: Installer PyInstaller + dependances
         run: |
           pip install pyinstaller
           pip install openpyxl
 
-      - name: Afficher les fichiers du repo
+      - name: Lister les fichiers (debug)
         run: dir
 
+      # 👇 ICI tu changes juste le fichier si besoin
       - name: Compiler le .exe
-        run: pyinstaller --onefile --windowed --clean --name "KPI-ORC" main.py
+        run: pyinstaller --onefile --windowed --clean --name "KPI-ORC" TON_FICHIER.py
 
-      - name: Verifier le contenu du dossier dist
+      - name: Verifier le dossier dist
         run: dir dist
 
-      - name: Publier le .exe
+      - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
           name: KPI-ORC-exe
