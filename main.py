@@ -1387,6 +1387,15 @@ class App:
         if not self._logged_in_pilot:
             self._show_login_overlay()
 
+    def _do_logout_to_main(self):
+        """Déconnecte le pilote courant et réaffiche l'écran principal (sans relogin auto)."""
+        self._logged_in_pilot = None
+        try:
+            self._save_session()
+        except Exception:
+            pass
+        self._show_main()
+
     def _check_nettoyage_before_logout(self, on_confirmed):
         """Vérifie si le pilote courant a déclaré un nettoyage aujourd'hui.
         Si oui, appelle on_confirmed() directement.
@@ -1737,7 +1746,7 @@ class App:
                      font=("Arial", 11)).pack(side="left", padx=4)
         right_bar = tk.Frame(hdr, bg=NAVY)
         right_bar.pack(side="right", padx=12)
-        BTN = dict(font=("Arial", 10, "bold"), relief="flat", padx=12, pady=4, cursor="hand2")
+        BTN = dict(font=("Arial", 11, "bold"), relief="flat", padx=12, pady=4, cursor="hand2")
         # Quitter
         tk.Button(right_bar, text="⏻  Quitter", bg=C_RED, fg=WHITE,
                   command=self._confirm_quit, **BTN).pack(side="right", padx=4)
@@ -1756,10 +1765,17 @@ class App:
         # Pilote (shows name)
         pilot_name = self._logged_in_pilot or "Non connecté"
         pilot_bg   = GREEN if self._logged_in_pilot else C_RED
+        # Pilote (nom)
         tk.Button(right_bar, text=f"👤  {pilot_name}", bg=pilot_bg, fg=WHITE,
                   command=lambda: self._check_nettoyage_before_logout(
                       lambda: self._show_login_overlay(on_success=self._show_main)
-                  ), **BTN).pack(side="right", padx=4)
+                  ), **BTN).pack(side="right", padx=(4, 0))
+        # Bouton déconnexion dédié (n'apparait que si connecté)
+        if self._logged_in_pilot:
+            tk.Button(right_bar, text="⏻", bg="#dc2626", fg=WHITE,
+                      command=lambda: self._check_nettoyage_before_logout(
+                          lambda: self._do_logout_to_main()
+                      ), **BTN).pack(side="right", padx=(0, 4))
         return hdr
 
     def _make_timeline(self, parent):
@@ -3416,7 +3432,7 @@ class App:
                  bg=WHITE, fg=GRAY, font=("Arial", 11)).pack(side="left")
         right_bar = tk.Frame(hdr, bg=WHITE)
         right_bar.pack(side="right", padx=12)
-        BTN_P = dict(font=("Arial", 10, "bold"), relief="flat", padx=12, pady=4, cursor="hand2")
+        BTN_P = dict(font=("Arial", 11, "bold"), relief="flat", padx=12, pady=4, cursor="hand2")
         # Quitter
         tk.Button(right_bar, text="⏻  Quitter", bg=C_RED, fg=WHITE,
                   command=self._confirm_quit, **BTN_P).pack(side="right", padx=4)
@@ -3435,7 +3451,13 @@ class App:
         tk.Button(right_bar, text=f"👤  {pilot_name_p}", bg=pilot_bg_p, fg=WHITE,
                   command=lambda: self._check_nettoyage_before_logout(
                       lambda: self._show_login_overlay(on_success=self._show_main)
-                  ), **BTN_P).pack(side="right", padx=4)
+                  ), **BTN_P).pack(side="right", padx=(4, 0))
+        # Bouton déconnexion dédié
+        if self._logged_in_pilot:
+            tk.Button(right_bar, text="⏻", bg="#dc2626", fg=WHITE,
+                      command=lambda: self._check_nettoyage_before_logout(
+                          lambda: self._do_logout_to_main()
+                      ), **BTN_P).pack(side="right", padx=(0, 4))
 
         # ── Barre de statut Canvas (chrono + KPI, change couleur) ────────────
         self._status_cv = tk.Canvas(outer, height=self._px(72), bg=BG, highlightthickness=0)
@@ -3570,6 +3592,11 @@ class App:
                        row=1, column=0, sticky="w", padx=4)
         ri[0] += 1
 
+        # ── Autres arrêts (placé avant Quantités) ──
+        sec("Autres arrêts", "#d97706")
+        row2("Durée arrêt manquant MP (en min)",      "duree_mq_mp",   "entry", None,
+             "Arrêt manquant personne/Réunion (min)", "manquant_pers", "entry", None)
+
         # ── Quantités & Qualité ──
         sec("Quantités & Qualité", GREEN)
         # Qte fab + emb highlighted
@@ -3599,11 +3626,6 @@ class App:
              "Mq. taie",          "mq_taie",         "entry", None)
         row2("Mq. housse/encart (nb)", "mq_housse_encart", "entry", None,
              "Nb PP Cousue",            "nb_pp_cousue",     "entry", None)
-
-        # ── Autres arrêts ──
-        sec("Autres arrêts", NAVY_L)
-        row2("Durée arrêt manquant MP (en min)",      "duree_mq_mp",   "entry", None,
-             "Arrêt manquant personne/Réunion (min)", "manquant_pers", "entry", None)
 
         # ── Commentaire ──
         sec("Commentaire", GRAY)
@@ -3849,13 +3871,14 @@ class App:
             cv.config(cursor="hand2")
             return cv
 
-        _make_cv_btn("⚠   DÉCLARER UN ARRÊT / RATTRAPAGE", "#ef4444",
+        # Couleurs modernisées : rouge / ambre / gris ardoise / vert
+        _make_cv_btn("⚠   DÉCLARER UN ARRÊT / RATTRAPAGE", "#dc2626",
                      self._show_stop_selector)
-        _make_cv_btn("🧹  DÉCLARER UN ARRÊT NETTOYAGE", "#f87171",
+        _make_cv_btn("🧹  DÉCLARER UN ARRÊT NETTOYAGE", "#f59e0b",
                      lambda: self._start_nettoyage())
-        _make_cv_btn("☕  JE VAIS EN PAUSE", NAVY_L,
+        _make_cv_btn("☕  JE VAIS EN PAUSE", "#64748b",
                      self._toggle_pause)
-        _make_cv_btn("⏹   DÉCLARER LA FIN DE PRODUCTION", GREEN,
+        _make_cv_btn("⏹   DÉCLARER LA FIN DE PRODUCTION", "#16a34a",
                      self._end_production)
 
     # ── Arrets actifs ─────────────────────────────────────────────────────────
@@ -3971,10 +3994,10 @@ class App:
             name_f = tk.Frame(row_f, bg=WHITE)
             name_f.pack(side="left", fill="both", expand=True, padx=(4, 0))
             tk.Label(name_f, text=label, bg=WHITE, fg=DARK,
-                     font=("Arial", 8), anchor="w",
-                     wraplength=120).pack(anchor="w")
+                     font=("Arial", 11), anchor="w",
+                     wraplength=150).pack(anchor="w")
             tk.Label(name_f, text=f"× {info['n']}  —  {dur_s}",
-                     bg=WHITE, fg=color, font=("Arial", 8, "bold"),
+                     bg=WHITE, fg=color, font=("Arial", 11, "bold"),
                      anchor="w").pack(anchor="w")
         if pause_total > 0:
             pm = int(pause_total // 60)
@@ -3986,17 +4009,17 @@ class App:
             name_f = tk.Frame(row_f, bg=WHITE)
             name_f.pack(side="left", fill="both", expand=True, padx=(4, 0))
             tk.Label(name_f, text="☕ Pause pilote", bg=WHITE, fg=DARK,
-                     font=("Arial", 8), anchor="w").pack(anchor="w")
+                     font=("Arial", 11), anchor="w").pack(anchor="w")
             tk.Label(name_f,
                      text=f"× {pn}  —  {pm}min {ps:02d}s",
-                     bg=WHITE, fg=NAVY_L, font=("Arial", 8, "bold"),
+                     bg=WHITE, fg=NAVY_L, font=("Arial", 11, "bold"),
                      anchor="w").pack(anchor="w")
         tk.Frame(inner, bg=LGRAY, height=1).pack(fill="x", pady=4)
         total = sum(v["dur"] for v in cumuls.values()) + pause_total
         tm = int(total // 60)
         ts = int(total % 60)
         tk.Label(inner, text=f"Total : {tm}min {ts:02d}s",
-                 bg=WHITE, fg=DARK, font=("Arial", 8, "bold")).pack(anchor="w", padx=6)
+                 bg=WHITE, fg=DARK, font=("Arial", 12, "bold")).pack(anchor="w", padx=6, pady=(2, 0))
 
     def _start_nettoyage(self):
         key = "nettoyage"
