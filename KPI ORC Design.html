@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<title>KPI-ORC — Design actuel v5.39</title>
+<style>
+  /* ---- TOKENS (copiés du main.py) ---------------------------- */
+  :root{
+    --navy:#1a1f5e;
+    --navy-l:#2d3490;
+    --orange:#e31e24;
+    --white:#ffffff;
+    --bg:#f0f4fb;
+    --form-bg:#e8eef8;
+    --shad:#c2cce0;
+    --green:#1a8c4e;
+    --red:#e31e24;
+    --ratt:#d97706;
+    --pb:#1a1f5e;
+    --gray:#64748b;
+    --lgray:#dde4ef;
+    --dark:#0f172a;
+    --tab-inact:#dce4f0;
+    --tab-bar:#d0d8e8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{font-family:Arial,Helvetica,sans-serif;background:#222;color:var(--dark)}
+  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:32px 12px 64px;gap:14px}
+
+  .top{color:#cbd5e1;font:600 13px/1.3 Arial;letter-spacing:.04em;text-align:center}
+  .top small{display:block;font-weight:400;color:#94a3b8;margin-top:4px}
+
+  .switcher{display:flex;gap:8px;background:#0f172a;padding:6px;border-radius:10px;border:1px solid #1e293b}
+  .switcher button{background:transparent;color:#94a3b8;border:0;padding:8px 18px;border-radius:6px;font:700 12px Arial;cursor:pointer;letter-spacing:.06em}
+  .switcher button.on{background:#1e293b;color:#fff}
+
+  /* ---- Fenêtre app -------------------------------------------- */
+  .app{
+    width:1440px;height:900px;background:var(--bg);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);
+    display:none;flex-direction:column;overflow:hidden;
+    border:1px solid #000;
+  }
+  .app.on{display:flex}
+
+  /* ---- Header dashboard (NAVY) -------------------------------- */
+  .hdr-main{background:var(--navy);height:68px;display:flex;align-items:center;padding:0 22px;color:#fff;flex-shrink:0}
+  .hdr-main .ttl{font:700 18px Arial}
+  .hdr-main .sub{font:11px Arial;color:#7a99c0;margin-left:8px}
+  .hdr-main .right{margin-left:auto;display:flex;gap:8px}
+  .btn{font:700 10px Arial;color:#fff;background:var(--navy-l);border:0;padding:6px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;border-radius:0}
+  .btn.danger{background:var(--red)}
+  .btn.success{background:var(--green)}
+
+  /* Groupe pilote = bouton 3D "Se déconnecter" (gauche) + badge nom (droite) */
+  .pilot-group{display:inline-flex;align-items:center;gap:8px;margin-right:4px}
+  .btn.logout{
+    background:linear-gradient(180deg,#fb7878 0%,#ef4444 60%,#b91c1c 100%);
+    color:#fff;border:0;border-radius:8px;
+    font:800 10px Arial;letter-spacing:.05em;
+    padding:6px 12px;
+    display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+    box-shadow:0 3px 0 #7f1d1d, 0 5px 8px rgba(0,0,0,.18);
+    text-shadow:0 1px 0 rgba(0,0,0,.25);
+    transform:translateY(0);
+    transition:transform .05s, box-shadow .05s;
+  }
+  .btn.logout:hover{filter:brightness(1.05)}
+  .btn.logout:active{transform:translateY(2px);box-shadow:0 1px 0 #7f1d1d, 0 2px 3px rgba(0,0,0,.18)}
+
+  /* ---- Header production (WHITE with accent stripe) ----------- */
+  .hdr-prod{background:#fff;height:62px;display:flex;align-items:center;padding:0;flex-shrink:0;border-bottom:1px solid var(--lgray)}
+  .hdr-prod .accent{width:6px;height:100%;background:var(--green)}
+  .hdr-prod .ttl{font:700 15px Arial;color:var(--navy);padding:0 16px}
+  .hdr-prod .meta{font:11px Arial;color:var(--gray)}
+  .hdr-prod .right{margin-left:auto;display:flex;gap:8px;padding-right:12px}
+
+  /* ---- Tabs --------------------------------------------------- */
+  .tabs{background:var(--tab-bar);display:flex;border-bottom:2px solid var(--navy);flex-shrink:0;padding-top:3px}
+  .tab{margin-right:2px;border:1px solid #b9c3d6;border-bottom:0;display:flex;flex-direction:column;background:var(--tab-inact);cursor:pointer}
+  .tab .accent{height:4px;background:var(--tab-inact)}
+  .tab .lbl{padding:8px 20px;font:11px Arial;color:var(--gray);white-space:nowrap}
+  .tab.active{background:#fff;border-color:#9aa9c4}
+  .tab.active.dash .accent{background:var(--green)}
+  .tab.active.prod .accent{background:var(--red)}
+  .tab.active .lbl{color:var(--navy);font-weight:700}
+  .tab.prod-on{background:#fff0f0}
+  .tab.prod-on .accent{background:var(--red)}
+  .tab.prod-on .lbl{color:var(--red);font-weight:700}
+  .tab.prod-on .dot{color:var(--red);margin-right:4px;animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.25}}
+
+  /* ---- Timeline ---------------------------------------------- */
+  .timeline-zone{background:#fff;padding:4px 6px 5px}
+  .timeline{position:relative;height:78px;background:#fff}
+  .tl-bar{position:absolute;left:0;right:0;top:44px;height:30px;background:#cfdaeb}
+  .tl-seg{position:absolute;top:44px;height:30px}
+  .tl-tick{position:absolute;top:40px;bottom:36px;width:1px;background:#ccd6e4}
+  .tl-tick.hour{background:#aab8cc;width:2px;top:38px;bottom:34px}
+  .tl-time{position:absolute;top:6px;font:9px Arial;color:#64748b;transform:translateX(-50%)}
+  .tl-time.hour{font-weight:700;color:#334155}
+  .tl-now{position:absolute;top:36px;bottom:32px;width:2px;background:var(--orange);box-shadow:0 0 4px rgba(227,30,36,.6)}
+  .tl-now::before{content:"";position:absolute;top:-6px;left:-5px;width:12px;height:12px;background:var(--orange);border-radius:50%}
+  .of-bar{position:relative;height:30px;background:#fff;margin-top:0}
+  .of-bar .bg{position:absolute;left:0;right:0;top:6px;height:18px;background:#e8eef8}
+  .of-bar .lbl{position:absolute;left:4px;top:9px;font:9px Arial;color:#64748b;font-weight:700}
+  .of-bar .of{position:absolute;top:6px;height:18px;background:#ccd6e4;border:1px solid #fff;font:9px Arial;font-weight:700;color:var(--dark);display:flex;align-items:center;justify-content:center}
+  .legend{display:flex;gap:14px;padding:0 10px 5px;font:700 8px Arial;color:var(--gray);align-items:center}
+  .legend i{width:14px;height:14px;display:inline-block;margin-right:4px;vertical-align:middle}
+
+  /* ---- Body grid --------------------------------------------- */
+  .body{flex:1;padding:12px 20px;overflow:hidden;display:flex;flex-direction:column;gap:8px}
+
+  /* card with raised shadow (shadow_frame) */
+  .card{background:#fff;position:relative}
+  .card::after{content:"";position:absolute;left:4px;top:4px;right:-4px;bottom:-4px;background:var(--shad);z-index:-1}
+  .cardw{position:relative;z-index:1}
+
+  /* ---- Dashboard top row ------------------------------------- */
+  .dash-top{display:flex;gap:14px;height:230px;flex-shrink:0}
+
+  .trs-card{display:grid;grid-template-columns:1fr 1px 1fr;background:#fff;padding:8px;gap:8px;width:430px}
+  .trs-col{display:flex;flex-direction:column;align-items:center;padding:6px 4px}
+  .trs-col h4{font:700 9px Arial;color:var(--navy);letter-spacing:.04em}
+  .trs-col.prev h4{color:var(--gray)}
+  .trs-sep{background:var(--lgray)}
+  .gauge{position:relative;width:200px;height:110px;margin-top:2px}
+  .gauge svg{display:block}
+  .gauge .label{position:absolute;top:34px;left:0;right:0;text-align:center;font:700 14px Arial}
+  .pilot-name{font:700 9px Arial;color:var(--dark);margin-top:2px}
+  .trs-meta{font:8px Arial;color:var(--gray);margin-top:2px}
+
+  .start-btn{
+    width:260px;flex-shrink:0;
+    background:linear-gradient(180deg,#33b56b 0%,#1a8c4e 60%,#0e6d3a 100%);
+    color:#fff;border:0;cursor:pointer;border-radius:16px;
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    font:800 18px Arial;letter-spacing:.04em;line-height:1.2;
+    box-shadow:0 6px 0 #0a4d28,0 10px 18px rgba(0,0,0,.15);
+    padding:14px;
+    margin:6px 2px;
+  }
+
+  .prod-panel{
+    width:260px;flex-shrink:0;background:var(--navy);color:#fff;
+    padding:12px 14px;display:flex;flex-direction:column;justify-content:space-between;
+    position:relative
+  }
+  .prod-panel .top-row{display:flex;align-items:center;gap:6px;font:700 13px Arial}
+  .prod-panel .top-row .dot{color:var(--red);animation:blink 1s infinite}
+  .prod-panel .start{font:10px Arial;color:#7a99c0;margin-top:2px}
+  .prod-panel .chrono{font:800 32px Arial;color:#4ade80;text-align:center;letter-spacing:.04em}
+  .prod-panel .warn{font:700 10px Arial;color:#7a99c0;text-align:center}
+
+  /* Wrapper: prod-panel + bouton pause en dessous */
+  .prod-stack{width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:6px}
+  .pause-dash{
+    height:44px;border:0;border-radius:10px;cursor:pointer;
+    background:linear-gradient(180deg,#fda4af 0%,#f87171 60%,#dc2626 100%);
+    color:#fff;font:800 13px Arial;letter-spacing:.04em;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    box-shadow:0 4px 0 #991b1b, 0 6px 10px rgba(0,0,0,.18);
+    text-shadow:0 1px 0 rgba(0,0,0,.25);
+    transition:transform .05s, box-shadow .05s;
+  }
+  .pause-dash:hover{filter:brightness(1.05)}
+  .pause-dash:active{transform:translateY(2px);box-shadow:0 2px 0 #991b1b}
+
+  .stops-kpi{flex:1;background:#fff;display:grid;grid-template-rows:36px 1fr;grid-template-columns:1fr 1fr}
+  .stops-kpi .hh{background:var(--navy);color:#fff;display:flex;align-items:center;padding:0 12px;font:700 11px Arial;border-right:1px solid #fff;letter-spacing:.04em}
+  .stops-kpi .hh:last-of-type{border-right:0}
+  .stops-kpi .accent{height:3px;width:100%;position:absolute;top:36px}
+  .stops-kpi .col{padding:10px 14px;display:flex;flex-direction:column;gap:6px;border-right:1px solid var(--lgray)}
+  .stops-kpi .col:last-child{border-right:0}
+  .stops-kpi .kpi-row{display:flex;justify-content:space-between;font:11px Arial;color:var(--dark)}
+  .stops-kpi .kpi-row b{font-size:13px}
+  .stops-kpi .big-trs{font:800 28px Arial;color:var(--green)}
+  .stops-kpi .col.warn .big-trs{color:var(--ratt)}
+  .stops-kpi .col.low .big-trs{color:var(--red)}
+  .stops-kpi .top-stop{font:11px Arial;color:var(--gray);margin-top:auto}
+  .stops-kpi .top-stop b{color:var(--red)}
+
+  /* ---- Table ------------------------------------------------- */
+  .tbl-title{font:700 11px Arial;color:var(--dark);margin-bottom:2px}
+  .tbl{flex:1;overflow:auto;background:#fff;border:1px solid #e2e8f0;min-height:0}
+  table{width:100%;border-collapse:collapse;font:10px Arial}
+  th{background:var(--lgray);color:var(--dark);font:700 10px Arial;padding:8px 6px;text-align:center;border-bottom:1px solid #b9c3d6;position:sticky;top:0}
+  td{padding:8px 6px;text-align:center;border-bottom:1px solid #f1f5f9;color:var(--dark);height:32px}
+  tr:hover td{background:#f8fafc}
+  td.trs-hi{background:#e6f7ee;color:var(--green);font-weight:700}
+  td.trs-warn{background:#fff7e6;color:var(--orange);font-weight:700}
+  td.trs-low{background:#fde8e8;color:var(--red);font-weight:700}
+  td.act{color:var(--navy-l);cursor:pointer;font-size:30px;line-height:1;padding:4px 6px}
+
+  /* ---- Production view -------------------------------------- */
+  .status-bar{margin:4px 8px 0;height:72px;background:#1a8c4e;border-radius:6px;color:#fff;display:flex;align-items:center;padding:0 20px;gap:18px;position:relative;flex-shrink:0;
+    box-shadow:0 4px 0 #0a4d28}
+  .status-bar.warning{background:linear-gradient(180deg,#ff2020,#cc0000);box-shadow:0 4px 0 #5a0000;animation:warn 1s infinite}
+  @keyframes warn{50%{filter:brightness(1.1)}}
+  .status-bar .of{font:700 20px Arial}
+  .status-bar .timer{font:800 32px Arial;color:#ffff44;flex:1;text-align:center;letter-spacing:.04em}
+  .status-bar.warning .timer{color:#ffff44}
+  .status-bar .right{font:13px Arial;color:#ffcccc;text-align:right}
+  .status-bar.normal .right{color:#d4f5d4}
+  .status-bar .obj{font:700 13px Arial}
+  .progbar{flex:0 0 220px;height:30px;background:#991b1b;border-radius:4px;position:relative;overflow:hidden;display:flex;align-items:center;font:700 12px Arial;color:#fff}
+  .status-bar.normal .progbar{background:linear-gradient(180deg,#1a8c4e,#0a4d28);box-shadow:inset 0 -3px 0 #064523}
+  .progbar .filled{position:absolute;left:0;top:0;bottom:0;width:78%;background:linear-gradient(180deg,#22c55e,#166534)}
+  .progbar .lbl-l{position:relative;padding-left:10px;color:#003300;text-shadow:1px 1px #4ade80}
+  .progbar .lbl-r{margin-left:auto;padding-right:10px;color:#330000;text-shadow:1px 1px #ef4444;position:relative}
+
+  .prod-body{flex:1;display:grid;grid-template-columns:3fr 2fr 1fr;gap:4px;padding:4px 6px 6px;min-height:0;overflow:hidden}
+
+  /* Form */
+  .form{background:#eef2f8;padding:8px 8px 10px;overflow:hidden;display:flex;flex-direction:column;gap:6px}
+  .block{background:#fff;border:1px solid #d8e0ec;border-radius:8px;padding:6px 10px 8px;box-shadow:0 1px 0 rgba(15,23,42,.03)}
+  .block.b-ident{background:#e3edfa;border-color:#b8cce8}
+  .block.b-prod{background:#ede8f7;border-color:#cdc4e6}
+  .block.green{background:#dff1e6;border-color:#a8d4ba}
+  .block.b-other{background:#fbecd2;border-color:#e8c688}
+  .block.gray{background:#e6e9ee;border-color:#c8cfda}
+  .form .sec{display:flex;align-items:center;gap:8px;margin:0 0 6px;padding-bottom:5px;border-bottom:1px solid #e2e8f0}
+  .form .sec b{font:700 10px Arial;color:var(--navy);text-transform:uppercase;letter-spacing:.08em}
+  .form .sec .bar{width:4px;height:12px;background:var(--navy);border-radius:2px}
+  .form .sec.alt b{color:var(--navy-l)}
+  .form .sec.alt .bar{background:var(--navy-l)}
+  .form .sec.green b{color:var(--green)}
+  .form .sec.green .bar{background:var(--green)}
+  .form .sec.gray b{color:var(--gray)}
+  .form .sec.gray .bar{background:var(--gray)}
+  .form .grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px 8px}
+  .form .grid.c2{grid-template-columns:1fr 1fr}
+  .fld{display:flex;flex-direction:column;gap:2px}
+  .fld label{font:600 8px Arial;color:#64748b;text-transform:uppercase;letter-spacing:.05em}
+  .fld input,.fld select{
+    font:600 10px Arial;color:var(--dark);background:#fff;
+    border:1px solid #d0d7e2;border-radius:5px;padding:4px 7px;width:100%;
+    transition:border-color .12s, box-shadow .12s, background-color .12s;
+  }
+  .fld input:hover,.fld select:hover{border-color:#94a3b8}
+  .fld input:focus,.fld select:focus{outline:0;border-color:var(--navy-l);box-shadow:0 0 0 3px rgba(45,52,144,.12);background:#fff}
+  .fld input:disabled{background:#f1f5f9;color:#64748b;cursor:not-allowed}
+  .fld.highlight{background:#ecfdf5;padding:3px 6px;border-radius:6px;border:1px solid #a7f3d0}
+  .fld.highlight label{color:#047857;font-weight:700}
+  .fld.highlight input{border-color:var(--green);color:#065f46;font-size:11px;font-weight:700;background:#fff}
+  .fld.highlight input:focus{box-shadow:0 0 0 3px rgba(16,134,80,.18)}
+  .form textarea{width:100%;font:10px Arial;border:1px solid #d0d7e2;border-radius:5px;padding:5px 8px;resize:none;transition:border-color .12s, box-shadow .12s}
+  .form textarea:focus{outline:0;border-color:var(--navy-l);box-shadow:0 0 0 3px rgba(45,52,144,.12)}
+  .form .opt{display:flex;align-items:center;gap:6px;font:10px Arial;color:var(--dark);padding:4px 2px}
+  .form .opt input[type=checkbox]{width:14px;height:14px;accent-color:var(--green)}
+
+  /* Mid : active stops + buttons */
+  .mid{display:flex;flex-direction:column;gap:4px}
+  .active-stops{flex:1;display:flex;flex-direction:column;gap:8px;padding:6px;overflow:auto}
+  .stop-card{background:var(--red);color:#fff;position:relative}
+  .stop-card.ratt{background:var(--ratt)}
+  .stop-card .head{display:flex;justify-content:space-between;align-items:start;padding:10px 14px 2px}
+  .stop-card .head .tinytype{font:700 8px Arial;opacity:.85;letter-spacing:.06em}
+  .stop-card .head .lbl{font:700 13px Arial;margin-top:2px}
+  .stop-card .stop-btn{background:#fff;color:var(--red);border:0;font:700 11px Arial;padding:6px 12px;cursor:pointer}
+  .stop-card.ratt .stop-btn{color:var(--ratt)}
+  .stop-card .time{font:800 28px Arial;text-align:center;padding:2px 0 10px;letter-spacing:.04em}
+  .no-stops{flex:1;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--green)}
+  .no-stops .e{font-size:48px}
+  .no-stops .t{font:700 14px Arial;margin-top:6px}
+
+  .act-btn{
+    height:54px;border:0;color:#fff;
+    font:700 13px Arial;letter-spacing:.06em;text-transform:uppercase;
+    cursor:pointer;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;gap:10px;margin:0 6px;
+    box-shadow:0 1px 2px rgba(15,23,42,.08), 0 4px 10px rgba(15,23,42,.06);
+    transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
+    position:relative;
+  }
+  .act-btn::before{
+    content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 3px 3px 0;background:rgba(255,255,255,.55);
+  }
+  .act-btn:hover{transform:translateY(-1px);box-shadow:0 2px 4px rgba(15,23,42,.1),0 8px 18px rgba(15,23,42,.10);filter:brightness(1.04)}
+  .act-btn:active{transform:translateY(0);box-shadow:0 1px 2px rgba(15,23,42,.08),0 2px 6px rgba(15,23,42,.06);filter:brightness(.98)}
+  .act-btn.danger{background:#dc2626}
+  .act-btn.clean{background:#f59e0b}
+  .act-btn.pause{background:#64748b}
+  .act-btn.end{background:#16a34a}
+
+  /* Recap */
+  .recap{background:#fff;display:flex;flex-direction:column;overflow:hidden}
+  .recap .hh{background:#c0392b;padding:6px;font:700 9px Arial;color:#fff;border-top:3px solid #e74c3c;letter-spacing:.04em}
+  .recap-inner{padding:4px;flex:1;overflow:auto}
+  .recap-row{display:flex;gap:4px;padding:2px 0;border-bottom:1px solid #f1f5f9}
+  .recap-row .ll{width:4px;align-self:stretch}
+  .recap-row .nm{font:11px Arial;color:var(--dark);line-height:1.3}
+  .recap-row .dur{font:700 11px Arial;color:var(--red);line-height:1.3}
+  .recap-row.ratt .ll{background:var(--ratt)}
+  .recap-row.ratt .dur{color:var(--ratt)}
+  .recap-row.pb .ll{background:var(--red)}
+  .recap-row.pause .ll{background:var(--navy-l)}
+  .recap-row.pause .dur{color:var(--navy-l)}
+  .recap-total{padding:8px 4px 4px;border-top:1px solid var(--lgray);font:700 11px Arial;color:var(--dark)}
+
+  /* ---- Stop selector overlay -------------------------------- */
+  .selector{position:absolute;inset:0;background:#fff;z-index:10;display:none;flex-direction:column}
+  .selector.on{display:flex}
+  .sel-hdr{height:68px;display:flex;align-items:center;padding:0;border-bottom:1px solid var(--lgray)}
+  .sel-hdr .accent{width:6px;height:100%;background:var(--navy)}
+  .sel-hdr .ttl{font:700 18px Arial;color:var(--navy);padding:0 16px}
+  .sel-hdr .close{margin-left:auto;margin-right:16px;background:var(--lgray);color:var(--dark);border:0;border-radius:10px;font:700 12px Arial;padding:10px 22px;cursor:pointer}
+  .sel-body{flex:1;padding:14px 16px;overflow:auto;display:flex;flex-direction:column;gap:12px}
+  .sel-section{display:flex;align-items:center;gap:6px;margin-top:4px}
+  .sel-section .bar{width:5px;height:20px}
+  .sel-section.r .bar{background:var(--ratt)}
+  .sel-section.p .bar{background:var(--red)}
+  .sel-section b{font:700 12px Arial}
+  .sel-section.r b{color:var(--ratt)}
+  .sel-section.p b{color:var(--red)}
+  .sel-grid{display:grid;gap:6px}
+  .sel-grid.r{grid-template-columns:repeat(5,1fr)}
+  .sel-grid.p{grid-template-columns:repeat(6,1fr)}
+  .sel-btn{background:linear-gradient(180deg,#5562d9,#2d3490);color:#fff;border:0;border-radius:10px;font:700 10px Arial;cursor:pointer;padding:18px 8px;text-align:center;line-height:1.3;box-shadow:0 3px 0 #1a1f5e;min-height:72px}
+  .sel-btn.running.ratt{background:linear-gradient(180deg,#f59e0b,#d97706);box-shadow:0 3px 0 #92400e}
+  .sel-btn.running.pb{background:linear-gradient(180deg,#f87171,#e31e24);box-shadow:0 3px 0 #7f1d1d}
+  .sel-btn .t{font:700 11px Arial;color:#ffff44;margin-top:4px;display:block}
+  .sel-btn .on{font:700 8px Arial;display:block;margin-top:2px;letter-spacing:.06em}
+
+  /* Icônes des boutons doublées */
+  .ico{font-size:2em;line-height:1;vertical-align:-0.15em;display:inline-block}
+
+  /* responsive: scale the 1440 frame down if needed */
+  @media (max-width:1500px){
+    .app{transform:scale(.92);transform-origin:top center}
+  }
+  @media (max-width:1350px){
+    .app{transform:scale(.82);transform-origin:top center}
+  }
+  @media (max-width:1200px){
+    .app{transform:scale(.72);transform-origin:top center}
+  }
+</style>
+</head>
+<body>
+
+<div class="top">
+  KPI-ORC v5.39 — Reproduction de l'UI actuelle (Tkinter, style « Dodo »)
+  <small>Bleu marine <code>#1a1f5e</code> · Rouge <code>#e31e24</code> · Vert <code>#1a8c4e</code> · Arial · 1440×900</small>
+</div>
+
+<div class="switcher">
+  <button id="b-main" class="on" data-target="main">📊 Tableau de bord</button>
+  <button id="b-prod" data-target="prod">⚡ Production en cours</button>
+  <button id="b-sel"  data-target="sel">⚠ Sélecteur d'arrêt</button>
+</div>
+
+<!-- ============ DASHBOARD ============================================ -->
+<div class="app on" data-screen-label="01 Tableau de bord" id="screen-main">
+  <div class="hdr-main">
+    <div class="ttl">KPI-ORC</div>
+    <div class="sub">Ligne ORC1</div>
+    <div class="right">
+      <div class="pilot-group">
+        <button class="btn logout" title="Se déconnecter du poste">⏻ Se déconnecter</button>
+        <button class="btn success pilot" style="width: 300.359px">👤  Marie Dupont</button>
+      </div>
+      <button class="btn">⚙  Listes</button>
+      <button class="btn">⚙  Base</button>
+      <button class="btn">🔄  Actualiser</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active dash"><div class="accent"></div><div class="lbl">📊  Tableau de bord</div></div>
+    <div class="tab prod-on"><div class="accent"></div><div class="lbl"><span class="dot">●</span>⚡  Production en cours</div></div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline-zone">
+    <div class="timeline" id="tl-main"></div>
+    <div class="of-bar" id="ofbar-main"></div>
+    <div class="legend">
+      <span><i style="background:var(--green)"></i>Production</span>
+      <span><i style="background:var(--ratt)"></i>Rattrapage</span>
+      <span><i style="background:var(--red)"></i>PB Technique</span>
+      <span><i style="background:#94a3b8"></i>Changement OF</span>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="body">
+    <div class="dash-top">
+      <!-- TRS card -->
+      <div class="card" style="width:430px"><div class="cardw trs-card">
+        <div class="trs-col">
+          <h4>POSTE EN COURS</h4>
+          <div class="gauge">
+            <svg viewBox="0 0 200 110" width="200" height="110">
+              <path d="M 14 100 A 86 86 0 0 1 186 100" stroke="#eef2f7" stroke-width="16" fill="none" stroke-linecap="butt"/>
+              <path d="M 14 100 A 86 86 0 0 1 167 50" stroke="#1a8c4e" stroke-width="16" fill="none"/>
+              <circle cx="100" cy="100" r="6" fill="#1a8c4e"/>
+              <line x1="100" y1="100" x2="158" y2="55" stroke="#1a8c4e" stroke-width="3"/>
+            </svg>
+            <div class="label" style="color:#1a8c4e">TRS  78%</div>
+          </div>
+          <div class="pilot-name">Marie Dupont</div>
+          <div class="trs-meta">Calculé sur 6h12 d'OF</div>
+        </div>
+        <div class="trs-sep"></div>
+        <div class="trs-col prev">
+          <h4>POSTE PRÉCÉDENT</h4>
+          <div class="gauge">
+            <svg viewBox="0 0 200 110" width="200" height="110">
+              <path d="M 14 100 A 86 86 0 0 1 186 100" stroke="#eef2f7" stroke-width="16" fill="none"/>
+              <path d="M 14 100 A 86 86 0 0 1 130 32" stroke="#d97706" stroke-width="16" fill="none"/>
+              <circle cx="100" cy="100" r="6" fill="#d97706"/>
+              <line x1="100" y1="100" x2="143" y2="40" stroke="#d97706" stroke-width="3"/>
+            </svg>
+            <div class="label" style="color:#d97706">TRS  64%</div>
+          </div>
+          <div class="pilot-name" style="color:#64748b">J. Bertrand</div>
+          <div class="trs-meta">Poste 14:00 → 22:00</div>
+        </div>
+      </div></div>
+
+      <!-- Production panel (en cours) + bouton Pause -->
+      <div class="prod-stack">
+        <div class="card" style="flex:1;min-height:0"><div class="cardw prod-panel" style="background-color: rgb(85, 155, 47); border-radius: 3px">
+          <div>
+            <div class="top-row" style="font-size: 20px"><span class="dot">●</span>EN COURS</div>
+            <div class="start" style="color: rgb(255, 255, 255); font-size: 12px">Début : 06:42:18</div>
+          </div>
+          <div class="chrono" style="color: rgb(40, 40, 40)">06:23:47</div>
+          <div class="warn" style="color: rgb(188, 2, 8); font-size: 13px">⚠  1 arrêt(s)  |  00:12:34</div>
+        </div></div>
+        <button class="pause-dash">☕ Je vais en pause</button>
+      </div>
+
+      <!-- Stops KPI panel -->
+      <div class="card" style="flex:1"><div class="cardw stops-kpi" style="position:relative">
+        <div class="hh" style="background-color: rgb(102, 103, 120)">Poste en cours  —  Marie Dupont</div>
+        <div class="hh" style="background: var(--gray); background-color: rgb(161, 181, 208)">Poste précédent  —  J. Bertrand</div>
+        <div class="col">
+          <div class="big-trs">78%</div>
+          <div class="kpi-row"><span>Pièces fabriquées</span><b>1 248</b></div>
+          <div class="kpi-row"><span>Arrêts cumulés</span><b style="color:var(--red)">42 min</b></div>
+          <div class="kpi-row"><span>Nb d'arrêts</span><b>7</b></div>
+          <div class="top-stop">Top arrêt : <b>Pochon / Fibre</b> (18 min)</div>
+        </div>
+        <div class="col warn">
+          <div class="big-trs">64%</div>
+          <div class="kpi-row"><span>Pièces fabriquées</span><b>1 060</b></div>
+          <div class="kpi-row"><span>Arrêts cumulés</span><b style="color:var(--ratt)">1h08</b></div>
+          <div class="kpi-row"><span>Nb d'arrêts</span><b>11</b></div>
+          <div class="top-stop">Top arrêt : <b style="color:var(--ratt)">Coupe / Circ.</b> (26 min)</div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="tbl-title">50 Dernières Déclarations</div>
+    <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column"><div class="cardw tbl">
+      <table>
+        <thead><tr>
+          <th>Date</th><th>H.Début</th><th>H.Fin</th><th>OF</th><th>Pilote</th><th>Poste</th>
+          <th>Qte Fab</th><th>Qte Emb</th><th>Equiv</th><th>TRS %</th><th>Durée OF</th><th>Arrêts</th>
+          <th>✏</th><th>🗑</th>
+        </tr></thead>
+        <tbody id="tbody-main"></tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+
+<!-- ============ PRODUCTION ========================================== -->
+<div class="app" data-screen-label="02 Production" id="screen-prod">
+  <div class="hdr-prod">
+    <div class="accent"></div>
+    <div class="ttl">KPI-ORC  |  ORC1</div>
+    <div class="meta">Début : 06:42:18</div>
+    <div class="right">
+      <div class="pilot-group">
+        <button class="btn logout" title="Se déconnecter du poste">⏻ Se déconnecter</button>
+        <button class="btn success pilot" style="width: 300.359px">👤  Marie Dupont</button>
+      </div>
+      <button class="btn">⚙  Listes</button>
+      <button class="btn">⚙  Base</button>
+      <button class="btn">🔄  Actualiser</button>
+    </div>
+  </div>
+
+  <!-- Status bar (vert prod / rouge arrêt) -->
+  <div class="status-bar warning" id="stbar">
+    <div class="of">⏱  06:23:47</div>
+    <div class="timer">00:12:34</div>
+    <div class="progbar">
+      <span class="lbl-l">PROD 78%</span>
+      <div class="filled" style="width:78%"></div>
+      <span class="lbl-r" style="color: rgb(255, 255, 255)">ARRÊT 22%</span>
+    </div>
+    <div class="right">
+      <div style="opacity:.85;font-size:11px">Objectif instantané</div>
+      <div class="obj">≥ 1 600 pcs</div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab dash"><div class="accent"></div><div class="lbl">📊  Tableau de bord</div></div>
+    <div class="tab active prod"><div class="accent"></div><div class="lbl">⚡  Production en cours</div></div>
+  </div>
+
+  <div class="timeline-zone">
+    <div class="timeline" id="tl-prod"></div>
+    <div class="of-bar" id="ofbar-prod"></div>
+    <div class="legend">
+      <span><i style="background:var(--green)"></i>Production</span>
+      <span><i style="background:var(--ratt)"></i>Rattrapage</span>
+      <span><i style="background:var(--red)"></i>PB Technique</span>
+      <span><i style="background:#94a3b8"></i>Changement OF</span>
+    </div>
+  </div>
+
+  <div class="prod-body">
+    <!-- FORM -->
+    <div class="form">
+      <div class="block b-ident">
+      <div class="sec"><div class="bar"></div><b>Identification</b></div>
+      <div class="grid">
+        <div class="fld"><label>N° OF *</label><input value="OF-248-A" /></div>
+        <div class="fld"><label>Poste *</label><select><option>Matin (06:00–14:00)</option></select></div>
+        <div class="fld"><label>Pilote *</label><input value="Marie Dupont" disabled /></div>
+        <div class="fld"><label>Co-Pilote</label><select><option>L. Faure</option></select></div>
+      </div>
+      <div class="grid c2">
+        <div class="fld"><label>Nb personnes</label><select><option>2</option></select></div>
+        <div class="fld"><label>Fibre</label><select><option>Polyester siliconé</option></select></div>
+      </div>
+      </div>
+
+      <div class="block b-prod">
+      <div class="sec alt"><div class="bar"></div><b>Produit</b></div>
+      <div class="grid">
+        <div class="fld"><label>Taille</label><select><option>60×60</option></select></div>
+        <div class="fld"><label>Type produit</label><select><option>Oreiller confort</option></select></div>
+        <div class="fld"><label>Code produit *</label><input value="ORC-60-CFT" /></div>
+        <div class="fld"><label>Poids garnissage <span style="color:#374151">(gr)</span></label><input value="850" /></div>
+      </div>
+      <div class="grid c2">
+        <div class="fld"><label>OF taie</label><input value="OF-T-118" /></div>
+        <div class="opt"><input type="checkbox" id="k2p" checked /><label for="k2p">Kit 2 pièces</label></div>
+      </div>
+      </div>
+
+      <div class="block b-other">
+      <div class="sec alt"><div class="bar"></div><b>Autres arrêts</b></div>
+      <div class="grid c2">
+        <div class="fld"><label>Durée arrêt manquant MP (min)</label><input value="0" /></div>
+        <div class="fld"><label>Manquant personne / Réunion (min)</label><input value="0" /></div>
+      </div>
+      </div>
+
+      <div class="block green">
+      <div class="sec green"><div class="bar"></div><b>Quantités & Qualité</b></div>
+      <div class="grid">
+        <div class="fld highlight"><label>Qte fabriquée *</label><input value="1 248" /></div>
+        <div class="fld highlight"><label>Qte emballée</label><input value="1 220" /></div>
+        <div class="fld"><label>Traça fibre</label><input value="LOT-A-2406" /></div>
+        <div class="fld"><label>Réf. taie</label><input value="TAIE-60" /></div>
+      </div>
+      <div class="grid">
+        <div class="fld"><label>Qte initiale taie</label><input value="1 300" /></div>
+        <div class="fld"><label>Nb taie 2nd choix</label><input value="4" /></div>
+        <div class="fld"><label>Nb déf. couture</label><input value="2" /></div>
+        <div class="fld"><label>Mq. taie</label><input value="0" /></div>
+      </div>
+      <div class="grid c2">
+        <div class="fld"><label>Mq. housse/encart (nb)</label><input value="1" /></div>
+        <div class="fld"><label>Nb PP Cousue</label><input value="0" /></div>
+      </div>
+      </div>
+
+      <div class="block gray">
+      <div class="sec gray"><div class="bar"></div><b>Commentaire</b></div>
+      <textarea rows="2" placeholder="Commentaire sur l'OF…">Coupure tapis bascule entre 09:14 et 09:26 — pièce remplacée.</textarea>
+      </div>
+    </div>
+
+    <!-- MID -->
+    <div class="mid">
+      <div class="active-stops">
+        <div class="stop-card">
+          <div class="head">
+            <div>
+              <div class="tinytype">PROBLÈME TECHNIQUE</div>
+              <div class="lbl">⚠  Tapis Bascule</div>
+            </div>
+            <button class="stop-btn">ARRÊTER  ✓</button>
+          </div>
+          <div class="time">00:12:34</div>
+        </div>
+        <div class="stop-card ratt">
+          <div class="head">
+            <div>
+              <div class="tinytype">RATTRAPAGE</div>
+              <div class="lbl">▶  Pochon / Fibre</div>
+            </div>
+            <button class="stop-btn">ARRÊTER  ✓</button>
+          </div>
+          <div class="time">00:03:18</div>
+        </div>
+      </div>
+      <button class="act-btn danger" style="height: 35px">⚠   DÉCLARER UN ARRÊT / RATTRAPAGE</button>
+      <button class="act-btn clean" style="height: 35px">🧹  DÉCLARER UN ARRÊT NETTOYAGE</button>
+      <button class="act-btn pause" style="height: 35px; color: rgb(255, 255, 255)">☕  JE VAIS EN PAUSE</button>
+      <button class="act-btn end" style="height: 35px">⏹   DÉCLARER LA FIN DE PRODUCTION</button>
+    </div>
+
+    <!-- RECAP -->
+    <div class="recap">
+      <div class="hh">RÉCAP ARRÊTS OF</div>
+      <div class="recap-inner">
+        <div class="recap-row pb"><div class="ll"></div><div style="flex:1"><div class="nm">Tapis Bascule</div><div class="dur">× 1 — 12min 34s</div></div></div>
+        <div class="recap-row ratt"><div class="ll"></div><div style="flex:1"><div class="nm">Pochon / Fibre</div><div class="dur">× 3 — 18min 12s</div></div></div>
+        <div class="recap-row pb"><div class="ll"></div><div style="flex:1"><div class="nm">Coupe / Circ.</div><div class="dur">× 2 — 6min 41s</div></div></div>
+        <div class="recap-row ratt"><div class="ll"></div><div style="flex:1"><div class="nm">Emballage</div><div class="dur">× 1 — 4min 22s</div></div></div>
+        <div class="recap-row pb"><div class="ll"></div><div style="flex:1"><div class="nm">Presse ORC</div><div class="dur">× 1 — 2min 08s</div></div></div>
+        <div class="recap-row pause"><div class="ll"></div><div style="flex:1"><div class="nm">☕ Pause pilote</div><div class="dur">× 2 — 20min 00s</div></div></div>
+        <div class="recap-total">Total : 63min 57s</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ STOP SELECTOR ======================================= -->
+<div class="app" data-screen-label="03 Sélecteur d'arrêt" id="screen-sel">
+  <div class="selector on">
+    <div class="sel-hdr">
+      <div class="accent"></div>
+      <div class="ttl">CHOISIR UN ARRÊT</div>
+      <button class="close">✕  RETOUR</button>
+    </div>
+    <div class="sel-body">
+      <div class="sel-section r"><div class="bar"></div><b>  ARRÊTS RATTRAPAGE</b></div>
+      <div class="sel-grid r">
+        <button class="sel-btn">Pochon / Fibre</button>
+        <button class="sel-btn running ratt">Couture<span class="t">00:01:48</span><span class="on">● EN COURS</span></button>
+        <button class="sel-btn">Emballage</button>
+        <button class="sel-btn">Presse Souder</button>
+        <button class="sel-btn">Presse ZIP</button>
+      </div>
+
+      <div class="sel-section p"><div class="bar"></div><b>  PROBLÈMES TECHNIQUES</b></div>
+      <div class="sel-grid p" id="pb-grid"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ---------- Switcher ----------
+  const screens = {main:'screen-main', prod:'screen-prod', sel:'screen-sel'};
+  document.querySelectorAll('.switcher button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.switcher button').forEach(b=>b.classList.remove('on'));
+      btn.classList.add('on');
+      Object.values(screens).forEach(id=>document.getElementById(id).classList.remove('on'));
+      document.getElementById(screens[btn.dataset.target]).classList.add('on');
+    });
+  });
+
+  // ---------- Timeline rendering ----------
+  function renderTL(rootId, ofRootId){
+    const tl = document.getElementById(rootId);
+    const ofR = document.getElementById(ofRootId);
+    tl.innerHTML = '<div class="tl-bar"></div>';
+    // ticks every 30min over 480 min window; "now" sits ~ 75% of width
+    for (let i = 0; i <= 16; i++){
+      const x = i / 16 * 100;
+      const isHour = (i % 2) === 0;
+      const t = document.createElement('div');
+      t.className = 'tl-tick' + (isHour ? ' hour' : '');
+      t.style.left = x + '%';
+      tl.appendChild(t);
+      if (isHour){
+        const lab = document.createElement('div');
+        lab.className = 'tl-time hour';
+        lab.style.left = x + '%';
+        const h = 6 + Math.floor(i/2);
+        lab.textContent = (h<10?'0':'') + h + ':00';
+        tl.appendChild(lab);
+      }
+    }
+    // segments (left→right)
+    const segs = [
+      {l:0,   w:18,   c:'#1a8c4e'},          // prod
+      {l:18,  w:6,    c:'#d97706'},          // rattrapage
+      {l:24,  w:14,   c:'#1a8c4e'},          // prod
+      {l:38,  w:4,    c:'#e31e24'},          // pb tech
+      {l:42,  w:18,   c:'#1a8c4e'},          // prod
+      {l:60,  w:7,    c:'#d97706'},          // rattrapage
+      {l:67,  w:8,    c:'#1a8c4e'},          // prod
+    ];
+    for (const s of segs){
+      const d = document.createElement('div');
+      d.className = 'tl-seg';
+      d.style.left = s.l + '%';
+      d.style.width = s.w + '%';
+      d.style.background = s.c;
+      tl.appendChild(d);
+    }
+    // "now" cursor
+    const now = document.createElement('div');
+    now.className = 'tl-now';
+    now.style.left = '75%';
+    tl.appendChild(now);
+
+    // OF bar
+    ofR.innerHTML = '<div class="bg"></div><div class="lbl">N° OF</div>';
+    const ofs = [
+      {l:5,  w:30, n:'OF-247'},
+      {l:35, w:32, n:'OF-248-A'},
+      {l:67, w:8,  n:'OF-248-B'},
+    ];
+    for (const o of ofs){
+      const d = document.createElement('div');
+      d.className = 'of';
+      d.style.left = o.l + '%';
+      d.style.width = o.w + '%';
+      d.textContent = o.n;
+      ofR.appendChild(d);
+    }
+  }
+  renderTL('tl-main','ofbar-main');
+  renderTL('tl-prod','ofbar-prod');
+
+  // ---------- Table rows ----------
+  const rows = [
+    ['12/05','06:00','06:48','OF-247',  'M. Dupont','Matin', 192,188, 188, 82,'00:48','00:08',92],
+    ['12/05','06:48','08:14','OF-248-A','M. Dupont','Matin', 412,408, 408, 78,'01:26','00:14',73],
+    ['11/05','22:00','06:00','OF-246',  'J. Bertrand','Nuit', 1860,1840,1840,71,'08:00','01:08',62],
+    ['11/05','14:00','22:00','OF-245',  'C. Morel',  'Aprem',2010,1995,1995,84,'08:00','00:52',85],
+    ['11/05','06:00','14:00','OF-244',  'M. Dupont','Matin', 1920,1910,1910,76,'08:00','01:02',75],
+    ['10/05','22:00','06:00','OF-243',  'A. Lopez',  'Nuit',  1450,1430,1430,58,'08:00','02:18',45],
+    ['10/05','14:00','22:00','OF-242',  'C. Morel',  'Aprem',1840,1820,1820,72,'08:00','01:14',68],
+    ['10/05','06:00','14:00','OF-241',  'M. Dupont','Matin', 1980,1965,1965,79,'08:00','00:48',80],
+    ['09/05','22:00','06:00','OF-240',  'J. Bertrand','Nuit',1780,1755,1755,69,'08:00','01:34',65],
+    ['09/05','14:00','22:00','OF-239',  'C. Morel',  'Aprem',1620,1595,1595,63,'08:00','01:48',55],
+    ['09/05','06:00','14:00','OF-238',  'A. Lopez',  'Matin',1340,1310,1310,52,'08:00','02:42',40],
+    ['08/05','22:00','06:00','OF-237',  'J. Bertrand','Nuit',1955,1940,1940,77,'08:00','00:58',78],
+  ];
+  const tcls = (v)=> v>=70?'trs-hi':(v>=50?'trs-warn':'trs-low');
+  const tb = document.getElementById('tbody-main');
+  tb.innerHTML = rows.map(r=>{
+    return '<tr>' +
+      `<td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td>` +
+      `<td style="text-align:left;padding-left:14px">${r[4]}</td><td>${r[5]}</td>` +
+      `<td>${r[6]}</td><td>${r[7]}</td><td>${r[8]}</td>` +
+      `<td class="${tcls(r[9])}">${r[9]}%</td>` +
+      `<td>${r[10]}</td><td>${r[11]}</td>` +
+      `<td class="act">✏</td><td class="act">🗑</td>` +
+      '</tr>';
+  }).join('');
+
+  // ---------- Stop selector grid ----------
+  const PB_EVENTS = [
+    "Chargeuse","Carde","Etaleur / Tour","Coupe / Circ.","Tapis Bascule","Enrouleur Pochon",
+    "Pesée / Tapis 2","Déviation / Table","Enfileur Pochon","Kinna / Stroebel","Tapeuse","Table Rot. / Twin",
+    "Enfileuse H100","Enfileuse Traversin","Presse ORC","Presse Housse ZIP","Cercleuse","Enrouleuse Traversin"
+  ];
+  const grid = document.getElementById('pb-grid');
+  grid.innerHTML = PB_EVENTS.map((nm,i)=>{
+    const run = nm === 'Tapis Bascule';
+    return `<button class="sel-btn ${run?'running pb':''}">${nm}${run?'<span class="t">00:12:34</span><span class="on">● EN COURS</span>':''}</button>`;
+  }).join('');
+
+  // Double la taille de l'icône en tête de chaque bouton/onglet
+  const ICO_RE = /^(\s*)([\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{25A0}-\u{25FF}\u{2B00}-\u{2BFF}](?:\uFE0F)?)/u;
+  document.querySelectorAll('.btn, .act-btn, .sel-btn, .stop-btn, .start-btn, .tab .lbl, .switcher button').forEach(el=>{
+    const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let n;
+    while((n = tw.nextNode())){
+      const v = n.nodeValue;
+      const m = v.match(ICO_RE);
+      if(m && m[2]){
+        const span = document.createElement('span');
+        span.className = 'ico';
+        span.textContent = m[2];
+        const frag = document.createDocumentFragment();
+        if(m[1]) frag.appendChild(document.createTextNode(m[1]));
+        frag.appendChild(span);
+        const rest = v.slice(m[0].length);
+        if(rest) frag.appendChild(document.createTextNode(rest));
+        n.parentNode.replaceChild(frag, n);
+        break;
+      }
+    }
+  });
+</script>
+
+</body>
+</html>
+
+<style id="__om-edit-overrides">
+#screen-prod textarea { height: 4px !important }
+#screen-prod textarea { height: 4px !important }
+#screen-prod textarea { height: 55px !important }
+#screen-prod textarea { height: 24px !important }
+#screen-prod textarea { height: 55px !important }
+</style>

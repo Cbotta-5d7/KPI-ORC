@@ -1,16 +1,14 @@
-name: Compiler KPI-ORC.exe
+name: Build KPI-ORC EXE
 
 on:
   push:
-    branches:
-      - claude/python-exe-files-EF09j
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      - name: Recuperer les fichiers
+      - name: Recuperer le repo
         uses: actions/checkout@v4
 
       - name: Installer Python
@@ -18,14 +16,22 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Installer les dependances
-        run: pip install pyinstaller openpyxl
+      - name: Installer dependances
+        run: |
+          pip install pyinstaller
+          pip install openpyxl
 
-      - name: Compiler le .exe
-        run: pyinstaller --onefile --windowed --name "KPI-ORC" main.py
+      - name: Lister fichiers (debug)
+        run: dir
 
-      - name: Publier le .exe
+      - name: Compiler EXE
+        run: pyinstaller --onefile --windowed --clean --name "KPI-ORC" main.py
+
+      - name: Verifier dist
+        run: dir dist
+
+      - name: Upload EXE
         uses: actions/upload-artifact@v4
         with:
           name: KPI-ORC-exe
-          path: dist/KPI-ORC.exe
+          path: dist/*.exe
