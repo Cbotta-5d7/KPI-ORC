@@ -849,10 +849,16 @@ class App:
                 err2.config(text="Mot de passe incorrect")
                 pv.set("")
         pe.bind("<Return>", _confirm_db)
-        tk.Button(top, text="Valider", command=_confirm_db,
+        btn_row_db = tk.Frame(top, bg=top.cget("bg"))
+        btn_row_db.pack(pady=6)
+        tk.Button(btn_row_db, text="Valider", command=_confirm_db,
                   bg=NAVY, fg=WHITE, font=("Arial", 10, "bold"),
                   relief="flat", padx=16, pady=4,
-                  cursor="hand2").pack(pady=6)
+                  cursor="hand2").pack(side="left", padx=(0, 8))
+        tk.Button(btn_row_db, text="Annuler", command=top.destroy,
+                  bg=LGRAY, fg=DARK, font=("Arial", 10),
+                  relief="flat", padx=12, pady=4,
+                  cursor="hand2").pack(side="left")
         top.wait_window()
         if not allowed.get():
             return
@@ -1878,7 +1884,7 @@ Arrêts imputés au TRS (temps perdu) :
         allowed = [False]
 
         def _confirm_pw(ev=None):
-            if pv.get() == self.cfg.get("settings_password", "2026"):
+            if pv.get() == str(self.cfg.get("settings_password", "2026")):
                 allowed[0] = True
                 top_pw.destroy()
             else:
@@ -1886,12 +1892,14 @@ Arrêts imputés au TRS (temps perdu) :
                 pv.set("")
 
         pe.bind("<Return>", _confirm_pw)
-        tk.Button(top_pw, text="✔  Valider", command=_confirm_pw,
+        btn_row_pw = tk.Frame(top_pw, bg=NAVY)
+        btn_row_pw.pack(pady=8)
+        tk.Button(btn_row_pw, text="✔  Valider", command=_confirm_pw,
                   bg=GREEN, fg=WHITE, font=("Arial", 12, "bold"),
-                  relief="flat", padx=16, pady=6, cursor="hand2").pack(pady=8)
-        tk.Button(top_pw, text="Annuler", command=top_pw.destroy,
+                  relief="flat", padx=16, pady=6, cursor="hand2").pack(side="left", padx=(0, 8))
+        tk.Button(btn_row_pw, text="Annuler", command=top_pw.destroy,
                   bg=LGRAY, fg=DARK, font=("Arial", 10),
-                  relief="flat", padx=12, pady=4, cursor="hand2").pack()
+                  relief="flat", padx=12, pady=6, cursor="hand2").pack(side="left")
         top_pw.wait_window()
         if not allowed[0]:
             return
@@ -2118,12 +2126,16 @@ Arrêts imputés au TRS (temps perdu) :
         def _save_settings():
             # Appliquer les éditions en cours dans le tableau pilotes
             _apply_pil_edits()
+            _pw_keys = {"app_password", "db_password", "settings_password"}
             for key, var in gen_vars.items():
                 val2 = var.get().strip()
-                try:
-                    self.cfg[key] = int(val2)
-                except (ValueError, TypeError):
-                    self.cfg[key] = val2
+                if key in _pw_keys:
+                    self.cfg[key] = val2  # toujours string pour les mots de passe
+                else:
+                    try:
+                        self.cfg[key] = int(val2)
+                    except (ValueError, TypeError):
+                        self.cfg[key] = val2
             save_cfg(self.cfg)
             # Mettre à jour self.lists
             self.lists["Pilotes"] = list(pil_names_ref)
@@ -2483,10 +2495,16 @@ Arrêts imputés au TRS (temps perdu) :
                 var.set("")
 
         e.bind("<Return>", confirm)
-        tk.Button(top, text="Valider", command=confirm,
+        btn_row_chk = tk.Frame(top, bg=top.cget("bg"))
+        btn_row_chk.pack(pady=6)
+        tk.Button(btn_row_chk, text="Valider", command=confirm,
                   bg=NAVY, fg=WHITE, font=("Arial", 10, "bold"),
                   relief="flat", padx=16, pady=4,
-                  cursor="hand2").pack(pady=6)
+                  cursor="hand2").pack(side="left", padx=(0, 8))
+        tk.Button(btn_row_chk, text="Annuler", command=top.destroy,
+                  bg=LGRAY, fg=DARK, font=("Arial", 10),
+                  relief="flat", padx=12, pady=4,
+                  cursor="hand2").pack(side="left")
         top.wait_window()
         return result.get()
 
