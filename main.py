@@ -5689,6 +5689,261 @@ Arrêts imputés au TRS (temps perdu) :
 
         threading.Thread(target=_bg_write_then_read, daemon=True).start()
 
+    def _show_fin_de_poste(self):
+        """Affiche le récapitulatif complet du poste en cours."""
+        now = datetime.datetime.now()
+
+        # Calcul durée théorique du poste depuis cfg
+        poste_nom = ""
+        if hasattr(self, "fv") and self.fv:
+            poste_nom = self.fv.get("poste", tk.StringVar()).get()
+        if not poste_nom:
+            poste_nom = self._saved_form_data.get("poste", "")
+
+        durees_cfg = self.cfg.get("postes_durees", {})
+        duree_theorique_min = durees_cfg.get(poste_nom, 480)  # défaut 8h
+
+        pilot = self._logged_in_pilot or ""
+        today = datetime.date.today().strftime("%d/%m/%Y")
+
+        total_prod_s   = 0.0
+        total_panne_s  = 0.0
+        total_ratt_s   = 0.0
+        total_pause_s  = 0.0
+        total_reunion_s = 0.0
+        nb_of          = 0
+        total_equiv    = 0.0
+        total_qte      = 0
+
+        for _, row in self._data_rows_cache:
+            row_date  = str(row[1] or "")[:10]
+            row_pilot = str(row[3] or "")
+            if row_date != today and row_pilot != pilot:
+                continue
+            try:
+                total_prod_s  += _hms_to_sec(str(row[16] or ""))
+                total_equiv   += float(str(row[15] or 0).replace(",", ".") or 0)
+                total_qte     += int(float(str(row[13] or 0)))
+                nb_of         += 1
+                panne_cols = range(38, 57)
+                for ci in panne_cols:
+                    if ci < len(row) and row[ci]:
+                        total_panne_s += _hms_to_sec(str(row[ci]))
+                ratt_cols = range(33, 38)
+                for ci in ratt_cols:
+                    if ci < len(row) and row[ci]:
+                        total_ratt_s += _hms_to_sec(str(row[ci]))
+                if len(row) > 31 and row[31]:
+                    total_reunion_s += _hms_to_sec(str(row[31]))
+            except Exception:
+                pass
+
+        # Ajouter prod en cours si active
+        if self._prod_active and self._of_start:
+            of_elapsed = (now - self._of_start).total_seconds()
+            total_prod_s += of_elapsed
+            nb_of += 1
+
+        # Pauses depuis _events_cache aujourd'hui
+        for ev_row in self._events_cache:
+            try:
+                if "pause" in str(ev_row[0] or "").lower():
+                    ev_date = str(ev_row[2] or "")[:10]
+                    ev_pil  = str(ev_row[4] or "")
+                    if ev_date == today and (not pilot or ev_pil == pilot):
+                        total_pause_s += _hms_to_sec(str(ev_row[18] or ""))
+            except Exception:
+                pass
+        total_pause_s += self._pause_total_s
+
+        total_declare_s = total_prod_s + total_panne_s + total_ratt_s + total_pause_s + total_reunion_s
+        duree_theorique_s = duree_theorique_min * 60
+        non_declare_s = max(0.0, duree_theorique_s - total_declare_s)
+
+        # Calcul TRS poste
+        prod_ref = self._get_prod_ref()
+        _pause_max_s2 = int(self.cfg.get("pause_max_min", 20)) * 60
+        _meeting_tol_s2 = int(self.cfg.get("meeting_tol_min", 5)) * 60
+        _planned_s2 = min(total_pause_s, _pause_max_s2) + min(total_reunion_s, _meeting_tol_s2)
+        _ouverture_s2 = max(1.0, duree_theorique_s - _planned_s2)
+        trs_poste = -1.0
+        if prod_ref > 0 and total_equiv > 0:
+            expected2 = prod_ref * _ouverture_s2 / 28800.0
+            trs_poste = total_equiv / expected2 * 100.0 if expected2 > 0 else -1.0
+
+        # ── Overlay récap poste
+        ov = tk.Frame(self.root, bg="#f0f4fb")
+        ov.place(relx=0, rely=0, relwidth=1, relheight=1)
+        ov.lift()
+
+        hdr = tk.Frame(ov, bg=NAVY, height=46)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="🏁  FIN DE POSTE — Récapitulatif",
+                 bg=NAVY, fg=WHITE, font=("Arial", 13, "bold")).pack(side="left", padx=16, pady=12)
+        tk.Button(hdr, text="✕  Fermer", command=ov.destroy,
+                  bg=NAVY, fg=WHITE, font=("Arial", 10), relief="flat",
+                  cursor="hand2", padx=10).pack(side="right", padx=12, pady=8)
+
+        body = tk.Frame(ov, bg="#f0f4fb")
+        body.pack(fill="both", expand=True, padx=20, pady=10)
+        body.columnconfigure(0, weight=1)
+        body.columnconfigure(1, weight=1)
+        body.rowconfigure(0, weight=1)
+
+        # Colonne gauche : infos
+        left_c = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground=LGRAY)
+        left_c.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        tk.Frame(left_c, bg=NAVY, height=3).pack(fill="x")
+        li = tk.Frame(left_c, bg=WHITE)
+        li.pack(fill="both", expand=True, padx=16, pady=12)
+
+        def _ri(lbl, val, vc=DARK, bold=False, sep=False):
+            if sep:
+                tk.Frame(li, bg=LGRAY, height=1).pack(fill="x", pady=(6, 4))
+                return
+            f = tk.Frame(li, bg=WHITE)
+            f.pack(fill="x", pady=2)
+            tk.Label(f, text=lbl, bg=WHITE, fg=GRAY,
+                     font=("Arial", 10), width=24, anchor="w").pack(side="left")
+            tk.Label(f, text=str(val), bg=WHITE, fg=vc,
+                     font=("Arial", 11, "bold" if bold else "normal")).pack(side="left")
+
+        _ri("Pilote",                pilot or "—",                   NAVY, bold=True)
+        _ri("Poste",                 poste_nom or "—",               NAVY_L)
+        _ri("Durée théorique",       fmt(duree_theorique_s),         DARK)
+        _ri(None, None, sep=True)
+        _ri("Nbre d'OF déclarés",    nb_of,                          NAVY, bold=True)
+        _ri("Qté fabriquée (réel)",  total_qte,                      GREEN, bold=True)
+        _ri("Équivalence totale",    f"{total_equiv:.0f}",           GREEN)
+        _ri(None, None, sep=True)
+        _ri("Total production",      fmt(total_prod_s),              GREEN)
+        _ri("Total arrêts panne",    fmt(total_panne_s),             C_RED if total_panne_s > 0 else DARK, bold=(total_panne_s > 0))
+        _ri("Total rattrapages",     fmt(total_ratt_s),              C_RATT if total_ratt_s > 0 else DARK)
+        _ri("Total pauses",          fmt(total_pause_s),             GRAY)
+        _ri("Total réunions",        fmt(total_reunion_s),           GRAY)
+        _ri("Total déclaré",         fmt(total_declare_s),           DARK, bold=True)
+        nc_col = C_RED if non_declare_s > 60 else DARK
+        _ri("Durée non déclarée",    fmt(non_declare_s),             nc_col, bold=(non_declare_s > 60))
+        _ri(None, None, sep=True)
+        trs_col = GREEN if trs_poste >= 75 else (C_RATT if trs_poste >= 55 else C_RED)
+        _ri("TRS du poste",          f"{trs_poste:.1f}%" if trs_poste >= 0 else "—",
+            trs_col, bold=True)
+
+        # Alerte durée
+        delta_s = total_declare_s - duree_theorique_s
+        if abs(delta_s) > 300:
+            sign = "+" if delta_s > 0 else "-"
+            msg_alert = (f"⚠  Attention : votre poste devrait durer "
+                         f"{duree_theorique_min//60}h{duree_theorique_min%60:02d}min\n"
+                         f"   Vous avez déclaré {sign}{fmt(abs(delta_s))} par rapport au poste théorique.")
+            alrt = tk.Frame(li, bg="#fff3cd",
+                            highlightthickness=1, highlightbackground="#f5a623")
+            alrt.pack(fill="x", pady=(8, 0))
+            tk.Label(alrt, text=msg_alert, bg="#fff3cd", fg="#92400e",
+                     font=("Arial", 9, "bold"), justify="left", padx=8, pady=6).pack(anchor="w")
+
+        # Colonne droite : jauge TRS + options
+        right_c = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground=LGRAY)
+        right_c.grid(row=0, column=1, sticky="nsew")
+        tk.Frame(right_c, bg=NAVY_L, height=3).pack(fill="x")
+        ri2 = tk.Frame(right_c, bg=WHITE)
+        ri2.pack(fill="both", expand=True, padx=16, pady=12)
+
+        tk.Label(ri2, text="TRS du poste", bg=WHITE, fg=GRAY,
+                 font=("Arial", 11, "bold")).pack(pady=(4, 0))
+        g_poste = Gauge(ri2, bg=WHITE, width=260, height=200, highlightthickness=0)
+        g_poste.pack(pady=4)
+        g_poste.update_gauge(max(0.0, trs_poste) if trs_poste >= 0 else 0.0,
+                             f"{trs_poste:.1f}%" if trs_poste >= 0 else "—")
+
+        tk.Frame(ri2, bg=LGRAY, height=1).pack(fill="x", pady=8)
+
+        def _modifier_duree():
+            dlg = tk.Toplevel(self.root)
+            dlg.title("Durée du poste")
+            dlg.resizable(False, False)
+            dlg.grab_set()
+            self._center_on_root(dlg, 360, 200)
+            dlg.configure(bg=WHITE)
+            tk.Label(dlg, text="Modifier la durée de votre poste :", bg=WHITE, fg=NAVY,
+                     font=("Arial", 12, "bold")).pack(pady=(20, 8))
+            hv = tk.StringVar(value=str(duree_theorique_min // 60))
+            mv = tk.StringVar(value=str(duree_theorique_min % 60))
+            rf = tk.Frame(dlg, bg=WHITE)
+            rf.pack(pady=4)
+            tk.Entry(rf, textvariable=hv, width=4, font=("Arial", 14),
+                     relief="solid", bd=1, justify="center").pack(side="left", padx=4)
+            tk.Label(rf, text="h", bg=WHITE, font=("Arial", 12)).pack(side="left")
+            tk.Entry(rf, textvariable=mv, width=4, font=("Arial", 14),
+                     relief="solid", bd=1, justify="center").pack(side="left", padx=4)
+            tk.Label(rf, text="min", bg=WHITE, font=("Arial", 12)).pack(side="left")
+            def _apply_duree():
+                try:
+                    new_min = int(hv.get() or 0) * 60 + int(mv.get() or 0)
+                    if new_min <= 0:
+                        return
+                    durees_cfg2 = self.cfg.get("postes_durees", {})
+                    durees_cfg2[poste_nom] = new_min
+                    self.cfg["postes_durees"] = durees_cfg2
+                    save_cfg(self.cfg)
+                    dlg.destroy()
+                    ov.destroy()
+                    self._show_fin_de_poste()
+                except Exception:
+                    pass
+            btnf = tk.Frame(dlg, bg=WHITE)
+            btnf.pack(pady=10)
+            tk.Button(btnf, text="✔  Appliquer", command=_apply_duree,
+                      bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
+                      relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left", padx=4)
+            tk.Button(btnf, text="Annuler", command=dlg.destroy,
+                      bg=LGRAY, fg=DARK, font=("Arial", 10),
+                      relief="flat", padx=10, pady=6, cursor="hand2").pack(side="left")
+
+        tk.Button(ri2, text="✏  Modifier la durée du poste",
+                  command=_modifier_duree, bg=NAVY_L, fg=WHITE,
+                  font=("Arial", 11, "bold"), relief="flat",
+                  padx=14, pady=8, cursor="hand2").pack(fill="x", pady=4)
+
+        if non_declare_s > 60:
+            def _declarer_non_declare():
+                path = self.cfg.get("db_path", "")
+                if not path or not os.path.exists(path):
+                    _toast(self.root, "Aucun fichier Excel", bg=C_RED, duration=2000)
+                    return
+                try:
+                    with self._excel_lock:
+                        wb = self._get_wb(path)
+                        if wb is None:
+                            return
+                        if "Evenements" not in wb.sheetnames:
+                            wb.create_sheet("Evenements")
+                        ws_e = wb["Evenements"]
+                        nd_row = ["Durée non déclarée"] + [""] * 19
+                        nd_row[2] = today
+                        nd_row[4] = pilot
+                        nd_row[16] = ""
+                        nd_row[17] = ""
+                        nd_row[18] = fmt(int(non_declare_s))
+                        nd_row[19] = f"Poste {poste_nom} — durée théorique {fmt(duree_theorique_s)}"
+                        ws_e.append(nd_row)
+                        wb.save(path)
+                    _toast(self.root, "✔  Durée non déclarée enregistrée", bg=GREEN, duration=2500)
+                except Exception as ex:
+                    _toast(self.root, f"Erreur : {ex}", bg=C_RED, duration=3000)
+
+            tk.Button(ri2, text="📝  Déclarer la durée non déclarée",
+                      command=_declarer_non_declare, bg=C_RATT, fg=WHITE,
+                      font=("Arial", 10, "bold"), relief="flat",
+                      padx=14, pady=8, cursor="hand2").pack(fill="x", pady=4)
+
+        tk.Button(ri2, text="📊  Tableau de bord",
+                  command=lambda: [ov.destroy(), self._show_main()],
+                  bg=NAVY, fg=WHITE,
+                  font=("Arial", 11, "bold"), relief="flat",
+                  padx=14, pady=8, cursor="hand2").pack(fill="x", pady=(20, 4))
+
     def _write_trs_sheet(self, wb, today_str, poste_nom, pilot_name, copilot_name,
                           nb_pers, total_prod_s, total_panne_s, total_ratt_s,
                           total_pause_s, total_reunion_s, nb_of, total_qte,
