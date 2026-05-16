@@ -3716,9 +3716,22 @@ Arrêts imputés au TRS (temps perdu) :
                         row_data += [None] * max(0, len(DATA_HEADERS) - len(row_data))
                     of_num  = str(row_data[0] or "")
                     of_date = str(row_data[1] or "")[:10]
+                    # Normaliser la date en dd/mm/yyyy si openpyxl retourne un objet date
+                    _d_raw = row_data[1]
+                    if hasattr(_d_raw, 'strftime'):
+                        of_date = _d_raw.strftime("%d/%m/%Y")
+                    elif of_date.count('-') == 2:  # format ISO yyyy-mm-dd
+                        _p = of_date.split('-')
+                        of_date = f"{_p[2]}/{_p[1]}/{_p[0]}"
                     if "Evenements" in wb.sheetnames:
                         for r in wb["Evenements"].iter_rows(min_row=2, values_only=True):
-                            if r and str(r[1] or "") == of_num and str(r[2] or "")[:10] == of_date:
+                            if not r:
+                                continue
+                            _etype = str(r[0] or "").strip()
+                            # Exclure "Changement d'OF" — événement inter-OF sans OF spécifique
+                            if _etype.lower().startswith("changement d"):
+                                continue
+                            if str(r[1] or "") == of_num and str(r[2] or "")[:10] == of_date:
                                 evt_rows.append(list(r))
                     wb.close()
             except Exception as e:
@@ -3895,7 +3908,17 @@ Arrêts imputés au TRS (temps perdu) :
             except Exception:
                 pass
             of_num2  = str(row_data[0] or "")
-            of_date2 = str(row_data[1] or "")
+            # Normaliser la date OF en dd/mm/yyyy pour comparaison cohérente avec Evenements
+            _d2_raw = row_data[1]
+            if hasattr(_d2_raw, 'strftime'):
+                of_date2 = _d2_raw.strftime("%d/%m/%Y")
+            else:
+                _d2_str = str(_d2_raw or "")[:10]
+                if _d2_str.count('-') == 2:  # ISO yyyy-mm-dd → dd/mm/yyyy
+                    _p2 = _d2_str.split('-')
+                    of_date2 = f"{_p2[2]}/{_p2[1]}/{_p2[0]}"
+                else:
+                    of_date2 = _d2_str
             evt_snapshot = list(evt_data)  # capture avant thread
             # Fermer la fenêtre immédiatement
             top.destroy()
@@ -3914,9 +3937,19 @@ Arrêts imputés au TRS (temps perdu) :
                         ws_e = self._ensure_events_sheet(wb2)
                         keep = []
                         for r in ws_e.iter_rows(min_row=2, values_only=True):
-                            if r and not (str(r[1] or "") == of_num2 and
-                                          str(r[2] or "") == of_date2):
+                            if not r:
+                                continue
+                            _etype = str(r[0] or "").strip().lower()
+                            # Toujours garder "Changement d'OF" — pas lié à un OF spécifique
+                            if _etype.startswith("changement d"):
                                 keep.append(list(r))
+                                continue
+                            # Supprimer les événements de cet OF+date (remplacés par evt_snapshot)
+                            _r_of   = str(r[1] or "")
+                            _r_date = str(r[2] or "")[:10]
+                            if _r_of == of_num2 and _r_date == of_date2:
+                                continue  # supprimé — sera remplacé par evt_snapshot
+                            keep.append(list(r))
                         for row_idx in range(ws_e.max_row, 1, -1):
                             ws_e.delete_rows(row_idx)
                         for r in keep:
