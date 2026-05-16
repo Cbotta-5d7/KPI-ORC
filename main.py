@@ -1,4 +1,4 @@
-"""KPI-ORC v5.39 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
+"""KPI-ORC v5.49 - Style Dodo (bleu marine #1a1f5e + rouge #e31e24)"""
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json, os, sys, datetime, math, threading
@@ -390,8 +390,8 @@ class OFBar(tk.Canvas):
             of_num = p.get("of_num", "")
             fill = NAVY_L if of_num else LGRAY
             self.create_rectangle(x1, BY, x2, BY + BH, fill=fill, outline=WHITE, width=1)
-            label = of_num if of_num else "En cours"
-            if x2 - x1 > 40:
+            label = of_num if of_num else ""
+            if x2 - x1 > 40 and label:
                 self.create_text((x1 + x2) / 2, BY + BH // 2,
                                  text=label, fill=WHITE,
                                  font=("Arial", 8, "bold"), anchor="center")
@@ -403,10 +403,6 @@ class OFBar(tk.Canvas):
                 if gx2 - gx1 > 2:
                     self.create_rectangle(gx1, BY, gx2, BY + BH,
                                           fill="#ccd6e4", outline=WHITE, width=1)
-                    if gx2 - gx1 > 40:
-                        self.create_text((gx1 + gx2) / 2, BY + BH // 2,
-                                         text="— Entre OF —", fill=GRAY,
-                                         font=("Arial", 7), anchor="center")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1750,9 +1746,6 @@ class App:
         # Quitter
         tk.Button(right_bar, text="⏻  Quitter", bg=C_RED, fg=WHITE,
                   command=self._confirm_quit, **BTN).pack(side="right", padx=4)
-        # Pause (accessible hors production)
-        tk.Button(right_bar, text="☕  Pause", bg=NAVY_L, fg=WHITE,
-                  command=self._toggle_pause, **BTN).pack(side="right", padx=4)
         # Actualiser
         tk.Button(right_bar, text="🔄  Actualiser", bg=NAVY_L, fg=WHITE,
                   command=self._refresh_all, **BTN).pack(side="right", padx=4)
@@ -1762,6 +1755,10 @@ class App:
         # Listes Excel
         tk.Button(right_bar, text="⚙  Listes", bg=NAVY_L, fg=WHITE,
                   command=self._show_excel_info, **BTN).pack(side="right", padx=4)
+        # Paramètres
+        tk.Button(right_bar, text="⚙  Paramètres", bg=NAVY_L, fg=WHITE,
+                  font=("Arial", 11, "bold"), relief="flat", cursor="hand2",
+                  command=self._show_settings).pack(side="right", padx=4)
         # Pilote (shows name)
         pilot_name = self._logged_in_pilot or "Non connecté"
         pilot_bg   = GREEN if self._logged_in_pilot else C_RED
@@ -1777,6 +1774,279 @@ class App:
                           lambda: self._do_logout_to_main()
                       ), **BTN).pack(side="right", padx=(0, 4))
         return hdr
+
+    # ── Paramètres ───────────────────────────────────────────────────────────
+    RULES_TEXT = """\
+RÈGLES DE FONCTIONNEMENT KPI-ORC
+
+═══ DURÉES & CALCUL TRS ═══
+
+TRS = (Temps productif net) / (Temps d'ouverture)
+Temps d'ouverture = Durée totale du poste - Arrêts planifiés
+
+Arrêts planifiés (exclus du TRS) :
+  • Pauses opérateur (100% exclues)
+  • Nettoyage court ≤ durée configurée (défaut 10 min)
+  • Nettoyage long ≤ durée configurée (défaut 30 min)
+  • Grand nettoyage ≤ durée configurée (défaut 60 min)
+  • Réunion/manquant personnel ≤ tolérance (défaut 5 min/poste)
+
+Arrêts imputés au TRS (temps perdu) :
+  • Pannes techniques (100%)
+  • Rattrapages (100%)
+  • Nettoyage dépassant la durée planifiée (excédent seulement)
+  • Réunion/manquant personnel dépassant la tolérance (excédent seulement)
+  • Manquant matière première (100%)
+
+═══ INTERVALLE ENTRE OF ═══
+  • Si l'intervalle entre deux OF est ≤ 5 min (configurable), il est
+    automatiquement déclaré comme "Changement d'OF" dans les événements
+    et n'est PAS imputé au TRS.
+  • Si l'intervalle est > 5 min, le temps est déclaré dans la colonne
+    "Temps inter-poste" et PEUT impacter le TRS selon les règles.
+
+═══ CHANGEMENT D'OF ═══
+  • Un changement d'OF crée automatiquement un événement dans l'onglet
+    Événements de l'Excel (colonne A = "Changement d'OF", col C = date,
+    col Q = heure début, col R = heure fin, col S = durée, col T = commentaire).
+  • Le nom du pilote qui a effectué le dernier OF est écrit en colonne E.
+
+═══ PAUSES ═══
+  • Les pauses sont déclarées via "Aller en pause" et enregistrées dans
+    l'onglet Événements.
+  • Les pauses sont exclues du calcul TRS (arrêt planifié).
+  • Le temps de pause total est affiché dans le récapitulatif de fin de poste.
+
+═══ POSTE EN COURS vs POSTE PRÉCÉDENT ═══
+  • Le KPI "Poste en cours" est calculé sur toutes les déclarations du
+    pilote connecté depuis 00:00 du jour courant.
+  • Le KPI "Poste précédent" est calculé sur le dernier poste clôturé
+    avant le poste en cours.
+
+═══ NETTOYAGE ═══
+  • Court (fin de poste) : tolérance configurable (défaut 10 min)
+  • Long (ex: mercredi) : tolérance configurable (défaut 30 min)
+  • Grand nettoyage : tolérance configurable (défaut 60 min)
+  • Seul le temps dépassant la tolérance est imputé au TRS.
+
+═══ MOT DE PASSE ═══
+  • Application : configurable (défaut 0000)
+  • Base de données : configurable (défaut 4594)
+  • Paramètres : configurable (défaut 2026)
+  • Pilotes : mot de passe individuel stocké dans Excel (onglet Listes)
+"""
+
+    def _show_settings(self):
+        """Fenêtre paramètres protégée par mot de passe."""
+        # Étape 1 : mot de passe
+        settings_pw = self.cfg.get("settings_password", "2026")
+        top_pw = tk.Toplevel(self.root)
+        top_pw.overrideredirect(True)
+        top_pw.attributes("-topmost", True)
+        top_pw.configure(bg=NAVY)
+        self._center_on_root(top_pw, 380, 200)
+        top_pw.grab_set()
+
+        tk.Label(top_pw, text="⚙  PARAMÈTRES", bg=NAVY, fg=WHITE,
+                 font=("Arial", 16, "bold")).pack(pady=(24, 4))
+        tk.Label(top_pw, text="Mot de passe paramètres :", bg=NAVY, fg="#7a99c0",
+                 font=("Arial", 11)).pack()
+        err_lbl = tk.Label(top_pw, text="", bg=NAVY, fg=C_RED, font=("Arial", 10))
+        err_lbl.pack()
+        pv = tk.StringVar()
+        pe = tk.Entry(top_pw, textvariable=pv, show="*",
+                      font=("Arial", 18), width=10, justify="center",
+                      relief="solid", bd=2, bg=WHITE)
+        pe.pack(pady=4)
+        pe.focus()
+        allowed = [False]
+
+        def _confirm_pw(ev=None):
+            if pv.get() == self.cfg.get("settings_password", "2026"):
+                allowed[0] = True
+                top_pw.destroy()
+            else:
+                err_lbl.config(text="Mot de passe incorrect")
+                pv.set("")
+
+        pe.bind("<Return>", _confirm_pw)
+        tk.Button(top_pw, text="✔  Valider", command=_confirm_pw,
+                  bg=GREEN, fg=WHITE, font=("Arial", 12, "bold"),
+                  relief="flat", padx=16, pady=6, cursor="hand2").pack(pady=8)
+        tk.Button(top_pw, text="Annuler", command=top_pw.destroy,
+                  bg=LGRAY, fg=DARK, font=("Arial", 10),
+                  relief="flat", padx=12, pady=4, cursor="hand2").pack()
+        top_pw.wait_window()
+        if not allowed[0]:
+            return
+
+        # Étape 2 : fenêtre paramètres
+        win = tk.Toplevel(self.root)
+        win.title("Paramètres KPI-ORC")
+        win.grab_set()
+        win.configure(bg=BG)
+        win.resizable(True, True)
+        self._center_on_root(win, 820, 620)
+
+        tk.Frame(win, bg=NAVY, height=6).pack(fill="x")
+        hdr_s = tk.Frame(win, bg=NAVY, height=50)
+        hdr_s.pack(fill="x")
+        hdr_s.pack_propagate(False)
+        tk.Label(hdr_s, text="⚙  Paramètres KPI-ORC", bg=NAVY, fg=WHITE,
+                 font=("Arial", 15, "bold")).pack(side="left", padx=20, pady=10)
+        tk.Button(hdr_s, text="✕", bg=NAVY, fg=WHITE, font=("Arial", 12, "bold"),
+                  relief="flat", cursor="hand2",
+                  command=win.destroy).pack(side="right", padx=12)
+
+        nb_s = ttk.Notebook(win)
+        nb_s.pack(fill="both", expand=True, padx=8, pady=8)
+
+        # ── Tab Général ───────────────────────────────────────────────────────
+        tab_gen = tk.Frame(nb_s, bg=WHITE)
+        nb_s.add(tab_gen, text="  Général  ")
+        cv_gen = tk.Canvas(tab_gen, bg=WHITE, highlightthickness=0)
+        sb_gen = ttk.Scrollbar(tab_gen, orient="vertical", command=cv_gen.yview)
+        cv_gen.configure(yscrollcommand=sb_gen.set)
+        sb_gen.pack(side="right", fill="y")
+        cv_gen.pack(fill="both", expand=True)
+        gen_inner = tk.Frame(cv_gen, bg=WHITE)
+        gen_win = cv_gen.create_window((0, 0), window=gen_inner, anchor="nw")
+        gen_inner.bind("<Configure>", lambda e: cv_gen.configure(scrollregion=cv_gen.bbox("all")))
+        cv_gen.bind("<Configure>", lambda e: cv_gen.itemconfig(gen_win, width=e.width))
+
+        gen_fields = [
+            ("Nettoyage court poste (minutes)",        "clean_short_min",   10),
+            ("Nettoyage long ex: mercredi (minutes)",  "clean_long_min",    30),
+            ("Grand nettoyage (minutes)",              "clean_grand_min",   60),
+            ("Réunion tolérée par poste (minutes)",    "meeting_tol_min",    5),
+            ("Intervalle inter-OF ignoré (minutes)",   "inter_of_tol_min",   5),
+            ("Mot de passe application",               "app_password",    "0000"),
+            ("Mot de passe base de données",           "db_password",     "4594"),
+            ("Mot de passe paramètres",                "settings_password","2026"),
+        ]
+        gen_vars = {}
+        for i, (label, key, default) in enumerate(gen_fields):
+            row_f = tk.Frame(gen_inner, bg=WHITE)
+            row_f.pack(fill="x", padx=20, pady=6)
+            tk.Label(row_f, text=label, bg=WHITE, fg=DARK,
+                     font=("Arial", 11), width=38, anchor="w").pack(side="left")
+            val = self.cfg.get(key, default)
+            var = tk.StringVar(value=str(val))
+            gen_vars[key] = var
+            show = "*" if "password" in key else ""
+            tk.Entry(row_f, textvariable=var, font=("Arial", 12, "bold"),
+                     width=12, relief="solid", bd=1, show=show).pack(side="left", padx=8)
+
+        # ── Tab Pilotes ───────────────────────────────────────────────────────
+        tab_pil = tk.Frame(nb_s, bg=WHITE)
+        nb_s.add(tab_pil, text="  Pilotes  ")
+
+        def _make_list_tab(tab_frame, list_name):
+            """Onglet générique gestion de liste (pilotes/copilotes)."""
+            frm = tk.Frame(tab_frame, bg=WHITE)
+            frm.pack(fill="both", expand=True, padx=16, pady=12)
+            frm.columnconfigure(0, weight=1)
+            frm.rowconfigure(1, weight=1)
+
+            tk.Label(frm, text=f"Liste : {list_name}", bg=WHITE, fg=NAVY,
+                     font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2,
+                                                       sticky="w", pady=(0, 6))
+            lb = tk.Listbox(frm, font=("Arial", 11), bg=WHITE, fg=DARK,
+                            relief="solid", bd=1, selectmode="single")
+            lb.grid(row=1, column=0, sticky="nsew", padx=(0, 8), pady=(0, 8))
+            sb_lb = ttk.Scrollbar(frm, orient="vertical", command=lb.yview)
+            sb_lb.grid(row=1, column=1, sticky="ns", pady=(0, 8))
+            lb.configure(yscrollcommand=sb_lb.set)
+
+            items = self._get_list(list_name)[:]
+            for it in items:
+                lb.insert("end", it)
+
+            def _reload():
+                lb.delete(0, "end")
+                for it2 in items:
+                    lb.insert("end", it2)
+
+            add_f = tk.Frame(frm, bg=WHITE)
+            add_f.grid(row=2, column=0, columnspan=2, sticky="ew")
+            add_var = tk.StringVar()
+            tk.Entry(add_f, textvariable=add_var, font=("Arial", 11),
+                     relief="solid", bd=1, width=24).pack(side="left", padx=(0, 6))
+
+            def _add():
+                val2 = add_var.get().strip()
+                if val2 and val2 not in items:
+                    items.append(val2)
+                    _reload()
+                    add_var.set("")
+
+            def _del():
+                sel = lb.curselection()
+                if sel:
+                    items.pop(sel[0])
+                    _reload()
+
+            tk.Button(add_f, text="+ Ajouter", command=_add,
+                      bg=GREEN, fg=WHITE, font=("Arial", 10, "bold"),
+                      relief="flat", padx=10, pady=4, cursor="hand2").pack(side="left", padx=4)
+            tk.Button(add_f, text="✕ Supprimer", command=_del,
+                      bg=C_RED, fg=WHITE, font=("Arial", 10, "bold"),
+                      relief="flat", padx=10, pady=4, cursor="hand2").pack(side="left")
+            return items
+
+        pil_items_ref = _make_list_tab(tab_pil, "Pilotes")
+
+        # ── Tab Copilotes ─────────────────────────────────────────────────────
+        tab_cop = tk.Frame(nb_s, bg=WHITE)
+        nb_s.add(tab_cop, text="  Copilotes  ")
+        cop_items_ref = _make_list_tab(tab_cop, "Co-Pilotes")
+
+        # ── Tab Règles de calcul ──────────────────────────────────────────────
+        tab_rules = tk.Frame(nb_s, bg=WHITE)
+        nb_s.add(tab_rules, text="  Règles de calcul  ")
+        rules_txt = tk.Text(tab_rules, font=("Courier", 10), bg="#f8f8f8", fg=DARK,
+                            relief="flat", padx=12, pady=10, wrap="word",
+                            state="normal")
+        rules_txt.pack(fill="both", expand=True, padx=8, pady=8)
+        rules_txt.insert("1.0", self.RULES_TEXT)
+        rules_txt.config(state="disabled")
+
+        # ── Barre de sauvegarde ───────────────────────────────────────────────
+        btm_s = tk.Frame(win, bg=BG)
+        btm_s.pack(fill="x", padx=8, pady=8)
+
+        def _save_settings():
+            for key, var in gen_vars.items():
+                val2 = var.get().strip()
+                try:
+                    self.cfg[key] = int(val2)
+                except (ValueError, TypeError):
+                    self.cfg[key] = val2
+            save_cfg(self.cfg)
+            # Écrire les pilotes/copilotes dans Excel
+            path = self.cfg.get("db_path", "")
+            if path and os.path.exists(path):
+                try:
+                    wb_s = load_workbook(path)
+                    if "Listes" not in wb_s.sheetnames:
+                        wb_s.create_sheet("Listes")
+                    ws_l = wb_s["Listes"]
+                    # Recharger les listes dans self.lists
+                    self.lists["Pilotes"] = list(pil_items_ref)
+                    self.lists["Co-Pilotes"] = list(cop_items_ref)
+                    wb_s.save(path)
+                    wb_s.close()
+                except Exception:
+                    pass
+            _toast(self.root, "✔  Paramètres enregistrés", bg=GREEN, duration=2500)
+            win.destroy()
+
+        tk.Button(btm_s, text="Annuler", command=win.destroy,
+                  bg=SHAD, fg=DARK, font=("Arial", 11),
+                  relief="flat", padx=14, pady=5, cursor="hand2").pack(side="right", padx=4)
+        tk.Button(btm_s, text="💾  Enregistrer", command=_save_settings,
+                  bg=NAVY, fg=WHITE, font=("Arial", 12, "bold"),
+                  relief="flat", padx=20, pady=6, cursor="hand2").pack(side="right", padx=4)
 
     def _make_timeline(self, parent):
         zone = tk.Frame(parent, bg=WHITE)
@@ -2343,6 +2613,42 @@ class App:
             btn_canvas.bind("<Configure>", _draw_btn)
             btn_canvas.bind("<Button-1>",  lambda e: self._start_production())
             btn_canvas.config(cursor="hand2")
+
+        # Colonne centre : Se déconnecter + Aller en pause (même style que Démarrer)
+        action_zone = tk.Frame(right_zone, bg=BG, width=self._px(240))
+        action_zone.pack(side="left", fill="y", padx=(0, 8))
+        action_zone.pack_propagate(False)
+
+        def _make_dash_btn(text, color, cmd):
+            cv = tk.Canvas(action_zone, highlightthickness=0, bg=BG)
+            cv.pack(fill="both", expand=True, padx=2, pady=4)
+            pressed = [False]
+            def _draw(e=None):
+                cv.delete("all")
+                bw, bh = cv.winfo_width(), cv.winfo_height()
+                if bw < 10 or bh < 10:
+                    return
+                c = _off(color, -60) if pressed[0] else color
+                _rrect(cv, 4, 5, bw-1, bh, 16, fill=_off(c, -40))
+                _rrect(cv, 0, 0, bw-5, bh-5, 16, fill=c)
+                _rrect(cv, 2, 2, bw-7, bh//3, 16, fill=_off(c, +45))
+                cv.create_text(bw//2-2, bh//2-2, text=text, fill=WHITE,
+                               font=("Arial", 13, "bold"), justify="center")
+            def _press(e):
+                pressed[0] = True; _draw()
+            def _release(e):
+                pressed[0] = False; _draw(); cmd()
+            cv.bind("<Configure>", _draw)
+            cv.bind("<ButtonPress-1>",  _press)
+            cv.bind("<ButtonRelease-1>", _release)
+            cv.config(cursor="hand2")
+
+        def _do_logout():
+            self._check_nettoyage_before_logout(
+                lambda: self._show_login_overlay(on_success=self._show_main))
+
+        _make_dash_btn("👤  SE\nDÉCONNECTER", ORANGE, _do_logout)
+        _make_dash_btn("☕  ALLER\nEN PAUSE",   NAVY_L, self._toggle_pause)
 
         # Colonne droite : panneau KPI arrêts
         kpi_stops = tk.Frame(right_zone, bg=BG)
@@ -4050,6 +4356,12 @@ class App:
                 except Exception:
                     pass
                 self._pause_overlay = None
+            # Refresh stops recap after pause ends
+            if hasattr(self, '_recap_panel') and self._recap_panel:
+                try:
+                    self._build_stops_recap(self._recap_panel)
+                except Exception:
+                    pass
         else:
             # Début de pause
             self._pause_start = datetime.datetime.now()
@@ -4482,43 +4794,43 @@ class App:
                  bg=NAVY, fg=WHITE, font=("Arial", 15, "bold")).pack(
                  side="left", padx=20, pady=14)
 
-        # Corps centré avec largeur max 900
-        outer_r = tk.Frame(recap, bg=WHITE)
-        outer_r.pack(fill="both", expand=True)
-        body_r = tk.Frame(outer_r, bg=WHITE, width=900)
-        body_r.pack(expand=True, pady=16)
+        # Corps plein écran 2 colonnes
+        body_r = tk.Frame(recap, bg=WHITE)
+        body_r.pack(fill="both", expand=True, padx=60, pady=20)
+        body_r.columnconfigure(0, weight=1)
+        body_r.columnconfigure(1, weight=1)
+        body_r.rowconfigure(0, weight=1)
 
         left_r = tk.Frame(body_r, bg=WHITE)
-        left_r.pack(side="left", fill="both", expand=True, padx=(0, 16))
-        right_r = tk.Frame(body_r, bg=WHITE, width=380)
-        right_r.pack(side="right", fill="y")
-        right_r.pack_propagate(False)
+        left_r.grid(row=0, column=0, sticky="nsew", padx=(0, 30))
+        right_r = tk.Frame(body_r, bg=WHITE)
+        right_r.grid(row=0, column=1, sticky="nsew")
 
         def _row_info(lbl, val, color=DARK, bold=False):
             f = tk.Frame(left_r, bg=WHITE)
-            f.pack(fill="x", pady=2)
+            f.pack(fill="x", pady=6)
             tk.Label(f, text=lbl, bg=WHITE, fg=GRAY,
-                     font=("Arial", 10), width=22, anchor="w").pack(side="left")
+                     font=("Arial", 13), width=22, anchor="w").pack(side="left")
             tk.Label(f, text=str(val), bg=WHITE, fg=color,
-                     font=("Arial", 10, "bold" if bold else "normal")).pack(side="left")
+                     font=("Arial", 16, "bold" if bold else "normal")).pack(side="left")
 
-        _row_info("N° OF",              v.get("of_num","—"))
-        _row_info("Quantité fabriquée", f"{qte_fab}")
-        _row_info("Equivalence",         f"{int(round(equiv))}")
-        _row_info("Durée production",    fmt(of_s))
-        _row_info("Durée arrêts",         fmt(stop_s))
+        _row_info("N° OF",               v.get("of_num", "—"), bold=True)
+        _row_info("Pilote",               self._logged_in_pilot or v.get("pilote", "—"), color=NAVY)
+        _row_info("Quantité fabriquée",   f"{qte_fab}", color=GREEN, bold=True)
+        _row_info("Equivalence",          f"{int(round(equiv))}", color=GREEN)
+        _row_info("Durée production",     fmt(of_s))
+        _row_info("Durée arrêts",         fmt(stop_s), color=C_RED if stop_s > 0 else DARK)
 
-        # ── Deux jauges côte à côte ───────────────────────────────────────────
+        # ── Deux jauges côte à côte (grandes) ────────────────────────────────
         gauges_row = tk.Frame(right_r, bg=WHITE)
-        gauges_row.pack(fill="x", pady=(8, 0))
+        gauges_row.pack(fill="both", expand=True)
 
         g1_frame = tk.Frame(gauges_row, bg=WHITE)
         g1_frame.pack(side="left", expand=True, fill="both")
-        tk.Label(g1_frame, text="TRS de cette déclaration", bg=WHITE, fg=GRAY,
-                 font=("Arial", 9, "bold"), wraplength=160, justify="center").pack(pady=(4, 0))
-        gauge_r = Gauge(g1_frame, bg=WHITE, width=160, height=110,
-                        highlightthickness=0)
-        gauge_r.pack()
+        tk.Label(g1_frame, text="TRS — cette déclaration", bg=WHITE, fg=GRAY,
+                 font=("Arial", 12, "bold"), wraplength=240, justify="center").pack(pady=(8, 0))
+        gauge_r = Gauge(g1_frame, bg=WHITE, width=240, height=180, highlightthickness=0)
+        gauge_r.pack(pady=4)
         trs_disp  = max(0.0, trs_pct) if trs_pct >= 0 else 0.0
         trs_label = f"{trs_disp:.1f}%" if trs_pct >= 0 else "—"
         gauge_r.update_gauge(trs_disp, trs_label)
@@ -4527,18 +4839,17 @@ class App:
         g2_frame.pack(side="left", expand=True, fill="both")
         _pilot_lbl = self._logged_in_pilot or v.get("pilote", "—")
         tk.Label(g2_frame, text=f"TRS poste — {_pilot_lbl}", bg=WHITE, fg=GRAY,
-                 font=("Arial", 9, "bold"), wraplength=160, justify="center").pack(pady=(4, 0))
+                 font=("Arial", 12, "bold"), wraplength=240, justify="center").pack(pady=(8, 0))
         trs12_disp = max(0.0, pilot_trs_12h) if pilot_trs_12h >= 0 else 0.0
         trs12_lbl  = f"{trs12_disp:.1f}%" if pilot_trs_12h >= 0 else "—"
-        gauge_r2 = Gauge(g2_frame, bg=WHITE, width=160, height=110,
-                         highlightthickness=0)
-        gauge_r2.pack()
+        gauge_r2 = Gauge(g2_frame, bg=WHITE, width=240, height=180, highlightthickness=0)
+        gauge_r2.pack(pady=4)
         gauge_r2.update_gauge(trs12_disp, trs12_lbl)
 
-        tk.Frame(left_r, bg=LGRAY, height=1).pack(fill="x", pady=8)
+        tk.Frame(recap, bg=LGRAY, height=1).pack(fill="x", padx=40)
 
         btn_row_r = tk.Frame(recap, bg=WHITE)
-        btn_row_r.pack(fill="x", padx=24, pady=(0, 24))
+        btn_row_r.pack(fill="x", padx=60, pady=20)
 
         def _modifier():
             confirmed[0] = False
@@ -4551,16 +4862,14 @@ class App:
             recap.destroy()
             recap_var.set(True)
 
-        btn_inner = tk.Frame(btn_row_r, bg=WHITE, width=900)
-        btn_inner.pack()
-        tk.Button(btn_inner, text="✏  MODIFIER",
+        tk.Button(btn_row_r, text="✏  MODIFIER",
                   command=_modifier, bg=LGRAY, fg=DARK,
-                  font=("Arial", 13, "bold"), relief="flat",
-                  padx=20, pady=10, cursor="hand2").pack(side="left", padx=(0, 8))
-        tk.Button(btn_inner, text="✔  CONFIRMER",
+                  font=("Arial", 15, "bold"), relief="flat",
+                  padx=30, pady=14, cursor="hand2").pack(side="left", padx=(0, 12))
+        tk.Button(btn_row_r, text="✔  CONFIRMER LA DÉCLARATION",
                   command=_confirmer, bg=GREEN, fg=WHITE,
-                  font=("Arial", 13, "bold"), relief="flat",
-                  padx=20, pady=10, cursor="hand2").pack(side="left")
+                  font=("Arial", 15, "bold"), relief="flat",
+                  padx=30, pady=14, cursor="hand2").pack(side="left")
 
         self.root.wait_variable(recap_var)
 
