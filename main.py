@@ -6022,6 +6022,8 @@ Arrêts imputés au TRS (temps perdu) :
             tk.Label(f, text=str(val), bg=WHITE, fg=vc,
                      font=("Arial", 11, "bold" if bold else "normal")).pack(side="left")
 
+        _date_display = today_str if login_date_str == today_str else f"{login_date_str} → {today_str}"
+        _ri("Date",                  _date_display,                  DARK)
         _ri("Pilote",                pilot or "—",                   NAVY, bold=True)
         _ri("Poste",                 poste_nom or "—",               NAVY_L)
         _ri("Durée théorique",       fmt(duree_theorique_s),         DARK)
@@ -6190,6 +6192,9 @@ Arrêts imputés au TRS (temps perdu) :
                         ws_e.append(nd_row)
                         wb.save(path)
                     _toast(self.root, "✔  Validé — durée enregistrée comme « Non défini »", bg=GREEN, duration=2500)
+                    self._logged_in_pilot = None
+                    self._logged_in_poste = None
+                    self._login_time      = None
                     ov.destroy()
                     self._show_main()
                 except Exception as ex:
@@ -6202,8 +6207,15 @@ Arrêts imputés au TRS (temps perdu) :
                       padx=14, pady=10, cursor="hand2",
                       wraplength=260, justify="center").pack(fill="x", pady=4)
 
+        def _retour_accueil():
+            self._logged_in_pilot = None
+            self._logged_in_poste = None
+            self._login_time      = None
+            ov.destroy()
+            self._show_main()
+
         tk.Button(ri2, text="↩  Revenir à l'écran d'accueil\n(modifier les déclarations)",
-                  command=lambda: [ov.destroy(), self._show_main()],
+                  command=_retour_accueil,
                   bg=NAVY_L, fg=WHITE,
                   font=("Arial", 10, "bold"), relief="flat",
                   padx=14, pady=10, cursor="hand2",
