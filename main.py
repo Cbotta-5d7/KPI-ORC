@@ -713,6 +713,7 @@ class App:
         self._data_rows_cache  = []
         self._events_cache     = []
         self._last_of_pilot    = ""
+        self._last_of_num      = ""   # N° OF de la dernière déclaration (tous pilotes)
         self._interposte_s     = 0
         self._wb_cache         = None
         self._wb_path_cache    = ""
@@ -5744,6 +5745,7 @@ Arrêts imputés au TRS (temps perdu) :
         self._last_of_end = end_dt
         self._of_count_this_shift += 1
         self._last_of_pilot = v.get("pilote", self._logged_in_pilot or "")
+        self._last_of_num   = v.get("of_num", "")
         self._interposte_s = 0
         self._inter_of_s = 0
         if self._of_periods:
@@ -5759,6 +5761,27 @@ Arrêts imputés au TRS (temps perdu) :
 
         path        = self.cfg.get("db_path", "")
         events_rows = self._build_events_rows(v)
+
+        # Inter-poste : même OF, pilote différent → événement à écrire
+        _cur_of_num    = v.get("of_num", "")
+        _cur_pilot     = v.get("pilote", self._logged_in_pilot or "")
+        _prev_of_num   = self._last_of_num
+        _prev_pilot    = self._last_of_pilot
+        _of_start_snap = self._of_start
+        _last_end_snap = self._last_of_end
+        _interposte_ev_row = None
+        if (_cur_of_num and _cur_of_num == _prev_of_num
+                and _prev_pilot and _prev_pilot != _cur_pilot
+                and _of_start_snap and _last_end_snap
+                and _of_start_snap > _last_end_snap):
+            _gap_s = (_of_start_snap - _last_end_snap).total_seconds()
+            if _gap_s > 0:
+                _ip_row = ["Inter poste"] + [""] * 19
+                _ip_row[2]  = datetime.date.today().strftime("%d/%m/%Y")
+                _ip_row[4]  = _prev_pilot
+                _ip_row[18] = fmt(int(_gap_s))
+                _ip_row[19] = f"OF {_cur_of_num} — de {_prev_pilot} à {_cur_pilot}"
+                _interposte_ev_row = _ip_row
 
         # Sauvegarde pending immédiate (backup si Excel planté)
         if path:
@@ -5781,6 +5804,9 @@ Arrêts imputés au TRS (temps perdu) :
                             ws_d.append(row)
                             self._format_row(ws_d, ws_d.max_row)
                             self._write_rows_to_events_sheet(wb, events_rows)
+                            # Événement inter-poste si même OF, pilote différent
+                            if _interposte_ev_row is not None:
+                                self._write_rows_to_events_sheet(wb, [_interposte_ev_row])
                             # Write TRS sheet summary
                             try:
                                 _today_str = datetime.date.today().strftime("%d/%m/%Y")
