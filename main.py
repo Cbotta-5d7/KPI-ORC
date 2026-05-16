@@ -2655,13 +2655,46 @@ Arrêts imputés au TRS (temps perdu) :
         kpi_stops.pack(side="left", fill="both", expand=True)
         self._build_stops_kpi_panel(kpi_stops)
 
-        # Tableau recap
-        lbl_frame = tk.Frame(body, bg=BG)
-        lbl_frame.pack(fill="x", pady=(0, 4))
-        tk.Label(lbl_frame, text="50 Dernieres Declarations",
-                 bg=BG, fg=DARK, font=("Arial", 11, "bold")).pack(side="left")
+        # ── Onglets Déclarations / Événements ──────────────────────────────────
+        tab_bar = tk.Frame(body, bg=BG)
+        tab_bar.pack(fill="x", pady=(0, 0))
 
-        tbl_wrap, tbl_inner = shadow_frame(body, bg=WHITE)
+        _active_tab = [0]   # 0 = Déclarations, 1 = Événements
+        tab_frames  = [None, None]
+
+        def _switch_tab(idx):
+            _active_tab[0] = idx
+            for i, btn in enumerate(tab_btns):
+                if i == idx:
+                    btn.config(bg=NAVY, fg=WHITE, relief="flat")
+                else:
+                    btn.config(bg=LGRAY, fg=DARK, relief="flat")
+            for i, frm in enumerate(tab_frames):
+                if frm:
+                    if i == idx:
+                        frm.pack(fill="both", expand=True)
+                    else:
+                        frm.pack_forget()
+
+        tab_btns = []
+        for i, lbl in enumerate(["📋  Déclarations", "📊  Événements"]):
+            btn = tk.Button(tab_bar, text=lbl, bg=NAVY if i == 0 else LGRAY,
+                            fg=WHITE if i == 0 else DARK,
+                            font=("Arial", 10, "bold"), relief="flat",
+                            padx=18, pady=5, cursor="hand2",
+                            command=lambda i2=i: _switch_tab(i2))
+            btn.pack(side="left", padx=(0, 2))
+            tab_btns.append(btn)
+
+        # Container for both tab panels
+        tab_container = tk.Frame(body, bg=BG)
+        tab_container.pack(fill="both", expand=True)
+
+        # ── Tab 0: Déclarations ──────────────────────────────────────────────
+        decl_frame = tk.Frame(tab_container, bg=BG)
+        tab_frames[0] = decl_frame
+
+        tbl_wrap, tbl_inner = shadow_frame(decl_frame, bg=WHITE)
         tbl_wrap.pack(fill="both", expand=True)
 
         style = ttk.Style()
@@ -2701,6 +2734,47 @@ Arrêts imputés au TRS (temps perdu) :
         self._load_table(tree)
 
         tree.bind("<Button-1>", self._on_tree_click)
+
+        # Show decl_frame initially
+        decl_frame.pack(fill="both", expand=True)
+
+        # ── Tab 1: Événements ────────────────────────────────────────────────
+        evt_frame = tk.Frame(tab_container, bg=BG)
+        tab_frames[1] = evt_frame
+
+        evt_wrap, evt_inner = shadow_frame(evt_frame, bg=WHITE)
+        evt_wrap.pack(fill="both", expand=True)
+
+        evt_cols2 = ("Type d'événement", "Pilote", "OF", "Date",
+                     "Heure début", "Heure fin", "Durée", "Commentaire")
+        evt_tree2 = ttk.Treeview(evt_inner, columns=evt_cols2, show="headings",
+                                  height=15, style="KPI.Treeview")
+        evt_widths2 = {"Type d'événement": 200, "Pilote": 120, "OF": 90, "Date": 80,
+                       "Heure début": 80, "Heure fin": 80, "Durée": 70, "Commentaire": 200}
+        for c2 in evt_cols2:
+            evt_tree2.heading(c2, text=c2)
+            evt_tree2.column(c2, width=evt_widths2.get(c2, 80), anchor="center",
+                             stretch=(c2 == "Commentaire"))
+        sb_evt = ttk.Scrollbar(evt_inner, orient="vertical", command=evt_tree2.yview)
+        evt_tree2.configure(yscrollcommand=sb_evt.set)
+        evt_tree2.pack(side="left", fill="both", expand=True)
+        sb_evt.pack(side="right", fill="y")
+
+        # Populate events tree
+        for ev_row in reversed(self._events_cache[-100:]):
+            try:
+                ev_type = str(ev_row[0] or "")
+                ev_of   = str(ev_row[1] or "")
+                ev_date = str(ev_row[2] or "")[:10]
+                ev_pil  = str(ev_row[4] or "")
+                ev_hd   = str(ev_row[16] or "")[:8]
+                ev_hf   = str(ev_row[17] or "")[:8]
+                ev_dur  = str(ev_row[18] or "")
+                ev_cmt  = str(ev_row[19] or "")
+                evt_tree2.insert("", "end", values=(
+                    ev_type, ev_pil, ev_of, ev_date, ev_hd, ev_hf, ev_dur, ev_cmt))
+            except Exception:
+                pass
 
         self._after_id = self.root.after(1000, self._tick)
 
@@ -4181,7 +4255,7 @@ Arrêts imputés au TRS (temps perdu) :
         _make_cv_btn("⚠   DÉCLARER UN ARRÊT / RATTRAPAGE", "#dc2626",
                      self._show_stop_selector)
         _make_cv_btn("🧹  DÉCLARER UN ARRÊT NETTOYAGE", "#f59e0b",
-                     lambda: self._start_nettoyage())
+                     self._show_nettoyage_selector)
         _make_cv_btn("☕  JE VAIS EN PAUSE", "#64748b",
                      self._toggle_pause)
         _make_cv_btn("⏹   DÉCLARER LA FIN DE PRODUCTION", "#16a34a",
@@ -4327,14 +4401,79 @@ Arrêts imputés au TRS (temps perdu) :
         tk.Label(inner, text=f"Total : {tm}min {ts:02d}s",
                  bg=WHITE, fg=DARK, font=("Arial", 12, "bold")).pack(anchor="w", padx=6, pady=(2, 0))
 
-    def _start_nettoyage(self):
+    def _show_nettoyage_selector(self):
+        """Popup de sélection du type de nettoyage."""
         key = "nettoyage"
         if self._t_running(key):
             self._ask_stop_description(key)
-        else:
-            self._t_start(key)
-            self._tl_open(key, "ratt")
-            self._refresh_active_stops()
+            return
+        clean_s = int(self.cfg.get("clean_short_min", 10))
+        clean_l = int(self.cfg.get("clean_long_min", 30))
+        clean_g = int(self.cfg.get("clean_grand_min", 60))
+
+        top = tk.Toplevel(self.root)
+        top.overrideredirect(True)
+        top.attributes("-topmost", True)
+        top.configure(bg=WHITE)
+        self._center_on_root(top, 480, 300)
+        top.lift()
+        top.grab_set()
+
+        hdr = tk.Frame(top, bg="#f59e0b", height=56)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="🧹  TYPE DE NETTOYAGE",
+                 bg="#f59e0b", fg=WHITE, font=("Arial", 15, "bold")).pack(
+                 side="left", padx=20, pady=14)
+        tk.Button(hdr, text="✕", bg="#f59e0b", fg=WHITE, font=("Arial", 12, "bold"),
+                  relief="flat", cursor="hand2",
+                  command=top.destroy).pack(side="right", padx=12)
+
+        body = tk.Frame(top, bg=WHITE)
+        body.pack(fill="both", expand=True, padx=20, pady=16)
+
+        def _choose(ntype):
+            top.destroy()
+            self._declare_nettoyage(ntype)
+
+        options = [
+            ("🧹 Nettoyage court (poste)", "court", f"{clean_s} min toléré", "#f59e0b"),
+            ("🧽 Nettoyage long (ex: mercredi)", "long", f"{clean_l} min toléré", "#d97706"),
+            ("✨ Grand nettoyage", "grand", f"{clean_g} min toléré", "#92400e"),
+        ]
+        for txt, ntype, sub, col in options:
+            btn_f = tk.Frame(body, bg=col, cursor="hand2")
+            btn_f.pack(fill="x", pady=4)
+            btn_f.bind("<Button-1>", lambda e, t=ntype: _choose(t))
+            inner_b = tk.Frame(btn_f, bg=col)
+            inner_b.pack(fill="x", padx=12, pady=10)
+            inner_b.bind("<Button-1>", lambda e, t=ntype: _choose(t))
+            tk.Label(inner_b, text=txt, bg=col, fg=WHITE,
+                     font=("Arial", 13, "bold"), anchor="w").pack(anchor="w")
+            tk.Label(inner_b, text=sub, bg=col, fg="#fffde7",
+                     font=("Arial", 10), anchor="w").pack(anchor="w")
+            for w in inner_b.winfo_children():
+                w.bind("<Button-1>", lambda e, t=ntype: _choose(t))
+
+    def _declare_nettoyage(self, ntype="court"):
+        """Démarre un timer nettoyage du type spécifié."""
+        key = "nettoyage"
+        self._t_start(key)
+        ev = {
+            "key": key,
+            "cat": "ratt",
+            "start": datetime.datetime.now(),
+            "end": None,
+            "nettoyage_type": ntype,
+        }
+        self._tl_events.append(ev)
+        self._save_session()
+        self._refresh_stops_recap()
+        self._refresh_active_stops()
+
+    def _start_nettoyage(self):
+        """Compatibilité — délègue au sélecteur."""
+        self._show_nettoyage_selector()
 
     # ── Pause pilote ─────────────────────────────────────────────────────────
     def _toggle_pause(self):
@@ -4794,57 +4933,126 @@ Arrêts imputés au TRS (temps perdu) :
                  bg=NAVY, fg=WHITE, font=("Arial", 15, "bold")).pack(
                  side="left", padx=20, pady=14)
 
-        # Corps plein écran 2 colonnes
+        # Corps plein écran 3 colonnes
         body_r = tk.Frame(recap, bg=WHITE)
-        body_r.pack(fill="both", expand=True, padx=60, pady=20)
+        body_r.pack(fill="both", expand=True, padx=30, pady=10)
         body_r.columnconfigure(0, weight=1)
         body_r.columnconfigure(1, weight=1)
+        body_r.columnconfigure(2, weight=1)
         body_r.rowconfigure(0, weight=1)
 
         left_r = tk.Frame(body_r, bg=WHITE)
-        left_r.grid(row=0, column=0, sticky="nsew", padx=(0, 30))
+        left_r.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        mid_r = tk.Frame(body_r, bg=WHITE)
+        mid_r.grid(row=0, column=1, sticky="nsew", padx=5)
         right_r = tk.Frame(body_r, bg=WHITE)
-        right_r.grid(row=0, column=1, sticky="nsew")
+        right_r.grid(row=0, column=2, sticky="nsew", padx=(10, 0))
 
-        def _row_info(lbl, val, color=DARK, bold=False):
-            f = tk.Frame(left_r, bg=WHITE)
-            f.pack(fill="x", pady=6)
+        # ── Calculs étendus pour l'affichage ──────────────────────────────────
+        total_brut_s = of_s_brut  # total incl pauses
+        pause_s      = self._pause_total_s
+        # Nettoyage planifié vs dépassé
+        _nett_type = None
+        for _ev in self._tl_events:
+            if _ev.get("key") == "nettoyage" and _ev.get("start") and _ev.get("end"):
+                _nett_type = _ev.get("nettoyage_type", "court")
+                break
+        _tol_key_map = {"court": "clean_short_min", "long": "clean_long_min", "grand": "clean_grand_min"}
+        _tol_key     = _tol_key_map.get(_nett_type or "court", "clean_short_min")
+        _tol_s       = int(self.cfg.get(_tol_key, 10)) * 60
+        _nett_planned = min(_nett_s, _tol_s)
+        _nett_counted = max(0.0, _nett_s - _tol_s)
+        # Réunion planifiée vs dépassée
+        _mtol_s      = int(self.cfg.get("meeting_tol_min", 5)) * 60
+        _reunion_s   = _hms_to_sec(_min_str_to_hms(v.get("manquant_pers", "")))
+        _reunion_planned = min(_reunion_s, _mtol_s)
+        _reunion_counted = max(0.0, _reunion_s - _mtol_s)
+
+        def _row_info(parent, lbl, val, color=DARK, bold=False):
+            f = tk.Frame(parent, bg=WHITE)
+            f.pack(fill="x", pady=3)
             tk.Label(f, text=lbl, bg=WHITE, fg=GRAY,
-                     font=("Arial", 13), width=22, anchor="w").pack(side="left")
+                     font=("Arial", 11), width=26, anchor="w").pack(side="left")
             tk.Label(f, text=str(val), bg=WHITE, fg=color,
-                     font=("Arial", 16, "bold" if bold else "normal")).pack(side="left")
+                     font=("Arial", 13, "bold" if bold else "normal")).pack(side="left")
 
-        _row_info("N° OF",               v.get("of_num", "—"), bold=True)
-        _row_info("Pilote",               self._logged_in_pilot or v.get("pilote", "—"), color=NAVY)
-        _row_info("Quantité fabriquée",   f"{qte_fab}", color=GREEN, bold=True)
-        _row_info("Equivalence",          f"{int(round(equiv))}", color=GREEN)
-        _row_info("Durée production",     fmt(of_s))
-        _row_info("Durée arrêts",         fmt(stop_s), color=C_RED if stop_s > 0 else DARK)
+        _row_info(left_r, "N° OF",               v.get("of_num", "—"), bold=True)
+        _row_info(left_r, "Pilote",               self._logged_in_pilot or v.get("pilote", "—"), color=NAVY)
+        _row_info(left_r, "Quantité fabriquée",   f"{qte_fab}", color=GREEN, bold=True)
+        _row_info(left_r, "Équivalence",          f"{int(round(equiv))}", color=GREEN)
+        _row_info(left_r, "Durée totale (brut)",  fmt(total_brut_s))
+        _row_info(left_r, "Durée production comptée", fmt(of_s))
+        _row_info(left_r, "Durée arrêts",         fmt(stop_s), color=C_RED if stop_s > 0 else DARK, bold=(stop_s > 0))
+        _row_info(left_r, "Pauses (exclues TRS)", fmt(pause_s))
+        if _nett_s > 0:
+            _row_info(left_r, "Nettoyage planifié",  fmt(_nett_planned))
+            if _nett_counted > 0:
+                _row_info(left_r, "Nettoyage en excès", fmt(_nett_counted), color=C_RED)
+        if _reunion_s > 0:
+            _row_info(left_r, "Réunion tolérée",     fmt(_reunion_planned))
+            if _reunion_counted > 0:
+                _row_info(left_r, "Réunion en excès",   fmt(_reunion_counted), color=C_RED)
 
         # ── Deux jauges côte à côte (grandes) ────────────────────────────────
-        gauges_row = tk.Frame(right_r, bg=WHITE)
-        gauges_row.pack(fill="both", expand=True)
-
-        g1_frame = tk.Frame(gauges_row, bg=WHITE)
-        g1_frame.pack(side="left", expand=True, fill="both")
-        tk.Label(g1_frame, text="TRS — cette déclaration", bg=WHITE, fg=GRAY,
-                 font=("Arial", 12, "bold"), wraplength=240, justify="center").pack(pady=(8, 0))
-        gauge_r = Gauge(g1_frame, bg=WHITE, width=240, height=180, highlightthickness=0)
-        gauge_r.pack(pady=4)
+        tk.Label(mid_r, text="TRS — cette déclaration", bg=WHITE, fg=GRAY,
+                 font=("Arial", 11, "bold"), wraplength=220, justify="center").pack(pady=(4, 0))
+        gauge_r = Gauge(mid_r, bg=WHITE, width=280, height=220, highlightthickness=0)
+        gauge_r.pack(pady=2)
         trs_disp  = max(0.0, trs_pct) if trs_pct >= 0 else 0.0
         trs_label = f"{trs_disp:.1f}%" if trs_pct >= 0 else "—"
         gauge_r.update_gauge(trs_disp, trs_label)
 
-        g2_frame = tk.Frame(gauges_row, bg=WHITE)
-        g2_frame.pack(side="left", expand=True, fill="both")
         _pilot_lbl = self._logged_in_pilot or v.get("pilote", "—")
-        tk.Label(g2_frame, text=f"TRS poste — {_pilot_lbl}", bg=WHITE, fg=GRAY,
-                 font=("Arial", 12, "bold"), wraplength=240, justify="center").pack(pady=(8, 0))
+        tk.Label(mid_r, text=f"TRS poste — {_pilot_lbl}", bg=WHITE, fg=GRAY,
+                 font=("Arial", 11, "bold"), wraplength=220, justify="center").pack(pady=(4, 0))
         trs12_disp = max(0.0, pilot_trs_12h) if pilot_trs_12h >= 0 else 0.0
         trs12_lbl  = f"{trs12_disp:.1f}%" if pilot_trs_12h >= 0 else "—"
-        gauge_r2 = Gauge(g2_frame, bg=WHITE, width=240, height=180, highlightthickness=0)
-        gauge_r2.pack(pady=4)
+        gauge_r2 = Gauge(mid_r, bg=WHITE, width=280, height=220, highlightthickness=0)
+        gauge_r2.pack(pady=2)
         gauge_r2.update_gauge(trs12_disp, trs12_lbl)
+
+        # ── Graphique camembert ───────────────────────────────────────────────
+        pie_cv = tk.Canvas(right_r, width=300, height=300, bg=WHITE, highlightthickness=0)
+        pie_cv.pack(pady=(10, 4))
+
+        def _draw_pie():
+            pie_cv.delete("all")
+            cx, cy, r = 150, 140, 100
+            # Segments: (label, seconds, color)
+            prod_eff_s = max(0.0, of_s - stop_s)
+            segments = [
+                ("Prod. effective", prod_eff_s, "#1a8c4e"),
+                ("Arrêts",         stop_s,     "#e31e24"),
+                ("Pauses",         pause_s,    "#94a3b8"),
+                ("Nettoyage plan.",_nett_planned, "#60a5fa"),
+                ("Réunion planif.",_reunion_planned, "#fbbf24"),
+            ]
+            total_pie = sum(s for _, s, _ in segments)
+            if total_pie <= 0:
+                pie_cv.create_text(cx, cy, text="Aucune donnée",
+                                   fill=GRAY, font=("Arial", 11))
+                return
+            start_ang = 90.0
+            legend_y  = 265
+            for seg_lbl, seg_s, seg_col in segments:
+                if seg_s <= 0:
+                    continue
+                extent = seg_s / total_pie * 360.0
+                pie_cv.create_arc(cx - r, cy - r, cx + r, cy + r,
+                                  start=start_ang, extent=-extent,
+                                  fill=seg_col, outline=WHITE, width=1)
+                # Légende
+                pie_cv.create_rectangle(10, legend_y, 22, legend_y + 10,
+                                        fill=seg_col, outline="")
+                pct_v = seg_s / total_pie * 100
+                pie_cv.create_text(26, legend_y + 5,
+                                   text=f"{seg_lbl}: {pct_v:.0f}%",
+                                   anchor="w", fill=DARK, font=("Arial", 8))
+                legend_y += 14
+                start_ang -= extent
+
+        pie_cv.bind("<Configure>", lambda e: _draw_pie())
+        _draw_pie()
 
         tk.Frame(recap, bg=LGRAY, height=1).pack(fill="x", padx=40)
 
@@ -5353,13 +5561,16 @@ Arrêts imputés au TRS (temps perdu) :
             return
         pilot = self._last_of_pilot or self._logged_in_pilot or ""
         row_evt = [
-            "Changement d'OF",    # A
-            "", "", "",           # B, C, D
-            pilot,                # E — pilote du dernier OF
-            "", "", "", "", "", "", "", "", "", "", "", "",  # F-P
-            start_dt.strftime("%H:%M:%S"),
-            end_dt.strftime("%H:%M:%S"),
-            fmt((end_dt - start_dt).total_seconds()), "",
+            "Changement d'OF",                       # A col 1
+            "",                                       # B col 2 OF
+            start_dt.strftime("%d/%m/%Y"),            # C col 3 Date
+            "",                                       # D col 4 Poste
+            pilot,                                    # E col 5 pilote du dernier OF
+            "", "", "", "", "", "", "", "", "", "", "", # F-P (cols 6-16)
+            start_dt.strftime("%H:%M:%S"),            # Q col 17 Heure Début
+            end_dt.strftime("%H:%M:%S"),              # R col 18 Heure Fin
+            fmt((end_dt - start_dt).total_seconds()), # S col 19 Durée
+            "",                                       # T col 20 Commentaire
         ]
         def _bg():
             try:
