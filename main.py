@@ -6166,6 +6166,13 @@ Arrêts imputés au TRS (temps perdu) :
                   font=("Arial", 11, "bold"), relief="flat",
                   padx=14, pady=8, cursor="hand2").pack(fill="x", pady=4)
 
+        def _deconnecter_et_quitter():
+            self._logged_in_pilot = None
+            self._logged_in_poste = None
+            self._login_time      = None
+            ov.destroy()
+            self._show_main()
+
         if non_declare_s > 60:
             _nd_h = int(non_declare_s) // 3600
             _nd_m = (int(non_declare_s) % 3600) // 60
@@ -6173,32 +6180,25 @@ Arrêts imputés au TRS (temps perdu) :
 
             def _valider_etat():
                 path = self.cfg.get("db_path", "")
-                if not path or not os.path.exists(path):
-                    _toast(self.root, "Aucun fichier Excel", bg=C_RED, duration=2000)
-                    return
-                try:
-                    with self._excel_lock:
-                        wb = self._get_wb(path)
-                        if wb is None:
-                            return
-                        if "Evenements" not in wb.sheetnames:
-                            wb.create_sheet("Evenements")
-                        ws_e = wb["Evenements"]
-                        nd_row = ["Non défini"] + [""] * 19
-                        nd_row[2] = today
-                        nd_row[4] = pilot
-                        nd_row[18] = fmt(int(non_declare_s))
-                        nd_row[19] = f"Poste {poste_nom} — durée théorique {fmt(duree_theorique_s)}"
-                        ws_e.append(nd_row)
-                        wb.save(path)
-                    _toast(self.root, "✔  Validé — durée enregistrée comme « Non défini »", bg=GREEN, duration=2500)
-                    self._logged_in_pilot = None
-                    self._logged_in_poste = None
-                    self._login_time      = None
-                    ov.destroy()
-                    self._show_main()
-                except Exception as ex:
-                    _toast(self.root, f"Erreur : {ex}", bg=C_RED, duration=3000)
+                if path and os.path.exists(path):
+                    try:
+                        with self._excel_lock:
+                            wb = self._get_wb(path)
+                            if wb is not None:
+                                if "Evenements" not in wb.sheetnames:
+                                    wb.create_sheet("Evenements")
+                                ws_e = wb["Evenements"]
+                                nd_row = ["Non défini"] + [""] * 19
+                                nd_row[2] = today
+                                nd_row[4] = pilot
+                                nd_row[18] = fmt(int(non_declare_s))
+                                nd_row[19] = f"Poste {poste_nom} — durée théorique {fmt(duree_theorique_s)}"
+                                ws_e.append(nd_row)
+                                wb.save(path)
+                    except Exception as ex:
+                        _toast(self.root, f"Erreur Excel : {ex}", bg=C_RED, duration=3000)
+                # Déconnexion dans tous les cas
+                _deconnecter_et_quitter()
 
             tk.Button(ri2,
                       text=f"✔  Valider en l'état\n({_nd_label} déclaré comme « Non défini »)",
@@ -6206,20 +6206,18 @@ Arrêts imputés au TRS (temps perdu) :
                       font=("Arial", 10, "bold"), relief="flat",
                       padx=14, pady=10, cursor="hand2",
                       wraplength=260, justify="center").pack(fill="x", pady=4)
+        else:
+            tk.Button(ri2, text="✔  Valider et clôturer le poste",
+                      command=_deconnecter_et_quitter, bg=GREEN, fg=WHITE,
+                      font=("Arial", 10, "bold"), relief="flat",
+                      padx=14, pady=10, cursor="hand2").pack(fill="x", pady=4)
 
-        def _retour_accueil():
-            self._logged_in_pilot = None
-            self._logged_in_poste = None
-            self._login_time      = None
-            ov.destroy()
-            self._show_main()
-
-        tk.Button(ri2, text="↩  Revenir à l'écran d'accueil\n(modifier les déclarations)",
-                  command=_retour_accueil,
-                  bg=NAVY_L, fg=WHITE,
-                  font=("Arial", 10, "bold"), relief="flat",
-                  padx=14, pady=10, cursor="hand2",
-                  wraplength=260, justify="center").pack(fill="x", pady=(16, 4))
+        tk.Button(ri2, text="↩  Retour sans clôturer\n(modifier les déclarations)",
+                  command=lambda: ov.destroy(),
+                  bg=LGRAY, fg=DARK,
+                  font=("Arial", 10), relief="flat",
+                  padx=14, pady=8, cursor="hand2",
+                  wraplength=260, justify="center").pack(fill="x", pady=(8, 4))
 
     def _write_trs_sheet(self, wb, today_str, poste_nom, pilot_name, copilot_name,
                           nb_pers, total_prod_s, total_panne_s, total_ratt_s,
