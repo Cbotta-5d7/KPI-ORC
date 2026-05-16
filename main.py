@@ -940,7 +940,20 @@ class App:
         return f
 
     def _get_list(self, h):
-        return self.lists.get(h, [])
+        # Aliases pour compatibilité avec les anciens et nouveaux noms de colonnes Excel
+        _aliases = {
+            "Mots de passe":    "Mots de passe pilote",
+            "Co-Pilotes":       "Co-pilotes",
+            "Type produit":     "Type de produit",
+            "Fibre":            "Fibres",
+            "Equivalence coef": "Equivalence Coef",
+            "Equivalence":      "Equivalence Coef",
+            "Nb Personnes":     "Nb personnes",
+        }
+        result = self.lists.get(h, [])
+        if not result:
+            result = self.lists.get(_aliases.get(h, h), [])
+        return result
 
     # ── Persistance session ───────────────────────────────────────────────────
     @staticmethod
@@ -1297,7 +1310,7 @@ class App:
         if pilots:
             cb.set(pilots[0])
 
-        passwords = self._get_list("Mots de passe")
+        passwords = self._get_list("Mots de passe pilote") or self._get_list("Mots de passe")
         need_pw = bool(passwords)
 
         if need_pw:
@@ -1396,6 +1409,9 @@ class App:
         """Vérifie si le pilote courant a déclaré un nettoyage aujourd'hui.
         Si oui, appelle on_confirmed() directement.
         Sinon, affiche un overlay d'avertissement."""
+        if not self._logged_in_pilot:
+            on_confirmed()
+            return
         if self._prod_active:
             ov_p = tk.Frame(self.root, bg=WHITE)
             ov_p.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -1937,17 +1953,112 @@ Arrêts imputés au TRS (temps perdu) :
             tk.Entry(row_f, textvariable=var, font=("Arial", 12, "bold"),
                      width=12, relief="solid", bd=1, show=show).pack(side="left", padx=8)
 
-        # ── Tab Pilotes ───────────────────────────────────────────────────────
+        # ── Tab Pilotes (avec mots de passe) ─────────────────────────────────
         tab_pil = tk.Frame(nb_s, bg=WHITE)
         nb_s.add(tab_pil, text="  Pilotes  ")
 
+        pil_names_ref = self._get_list("Pilotes")[:]
+        pil_pws_ref   = self._get_list("Mots de passe pilote")[:]
+        # Aligner longueurs
+        while len(pil_pws_ref) < len(pil_names_ref):
+            pil_pws_ref.append("")
+
+        pil_frm = tk.Frame(tab_pil, bg=WHITE)
+        pil_frm.pack(fill="both", expand=True, padx=16, pady=12)
+        pil_frm.columnconfigure(0, weight=2)
+        pil_frm.columnconfigure(1, weight=1)
+        pil_frm.rowconfigure(1, weight=1)
+
+        tk.Label(pil_frm, text="Pilotes — Noms et mots de passe",
+                 bg=WHITE, fg=NAVY,
+                 font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=3,
+                                                   sticky="w", pady=(0, 4))
+        tk.Label(pil_frm, text="Nom", bg=WHITE, fg=GRAY,
+                 font=("Arial", 10, "bold")).grid(row=1, column=0, sticky="w")
+        tk.Label(pil_frm, text="Mot de passe", bg=WHITE, fg=GRAY,
+                 font=("Arial", 10, "bold")).grid(row=1, column=1, sticky="w", padx=(8, 0))
+
+        pil_scroll_frame = tk.Frame(pil_frm, bg=WHITE)
+        pil_scroll_frame.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(4, 8))
+        pil_frm.rowconfigure(2, weight=1)
+
+        pil_canvas = tk.Canvas(pil_scroll_frame, bg=WHITE, highlightthickness=0)
+        pil_sb = ttk.Scrollbar(pil_scroll_frame, orient="vertical", command=pil_canvas.yview)
+        pil_canvas.configure(yscrollcommand=pil_sb.set)
+        pil_sb.pack(side="right", fill="y")
+        pil_canvas.pack(side="left", fill="both", expand=True)
+
+        pil_inner_frm = tk.Frame(pil_canvas, bg=WHITE)
+        pil_win_id    = pil_canvas.create_window((0, 0), window=pil_inner_frm, anchor="nw")
+        pil_inner_frm.bind("<Configure>",
+                           lambda e: pil_canvas.configure(scrollregion=pil_canvas.bbox("all")))
+        pil_canvas.bind("<Configure>",
+                        lambda e: pil_canvas.itemconfig(pil_win_id, width=e.width))
+
+        pil_row_widgets = []  # list of (name_var, pw_var, row_frame)
+
+        def _rebuild_pil_rows():
+            for w in pil_inner_frm.winfo_children():
+                w.destroy()
+            pil_row_widgets.clear()
+            for i, (name, pw) in enumerate(zip(pil_names_ref, pil_pws_ref)):
+                rf = tk.Frame(pil_inner_frm, bg=WHITE if i % 2 == 0 else "#f8f9fc")
+                rf.pack(fill="x", pady=1)
+                nv = tk.StringVar(value=name)
+                pv = tk.StringVar(value=pw)
+                tk.Entry(rf, textvariable=nv, font=("Arial", 11),
+                         relief="solid", bd=1, width=22).pack(side="left", padx=(0, 6), pady=2)
+                tk.Entry(rf, textvariable=pv, font=("Arial", 11),
+                         relief="solid", bd=1, width=14).pack(side="left", padx=(0, 6), pady=2)
+                def _del_row(idx=i):
+                    if 0 <= idx < len(pil_names_ref):
+                        pil_names_ref.pop(idx)
+                        pil_pws_ref.pop(idx)
+                        _rebuild_pil_rows()
+                tk.Button(rf, text="✕", command=_del_row,
+                          bg=C_RED, fg=WHITE, font=("Arial", 9, "bold"),
+                          relief="flat", padx=4, pady=1, cursor="hand2").pack(side="left")
+                pil_row_widgets.append((nv, pv))
+
+        _rebuild_pil_rows()
+
+        def _apply_pil_edits():
+            pil_names_ref.clear()
+            pil_pws_ref.clear()
+            for nv, pv in pil_row_widgets:
+                n = nv.get().strip()
+                p = pv.get().strip()
+                if n:
+                    pil_names_ref.append(n)
+                    pil_pws_ref.append(p)
+            _rebuild_pil_rows()
+
+        def _add_pil():
+            _apply_pil_edits()
+            pil_names_ref.append("Nouveau pilote")
+            pil_pws_ref.append("")
+            _rebuild_pil_rows()
+
+        pil_add_f = tk.Frame(pil_frm, bg=WHITE)
+        pil_add_f.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        tk.Button(pil_add_f, text="+ Ajouter un pilote", command=_add_pil,
+                  bg=GREEN, fg=WHITE, font=("Arial", 10, "bold"),
+                  relief="flat", padx=10, pady=4, cursor="hand2").pack(side="left", padx=(0, 8))
+        tk.Button(pil_add_f, text="↺ Appliquer les modifications",
+                  command=_apply_pil_edits,
+                  bg=NAVY_L, fg=WHITE, font=("Arial", 10, "bold"),
+                  relief="flat", padx=10, pady=4, cursor="hand2").pack(side="left")
+
+        # ── Tab Copilotes ─────────────────────────────────────────────────────
+        tab_cop = tk.Frame(nb_s, bg=WHITE)
+        nb_s.add(tab_cop, text="  Copilotes  ")
+
         def _make_list_tab(tab_frame, list_name):
-            """Onglet générique gestion de liste (pilotes/copilotes)."""
+            """Onglet générique gestion de liste simple."""
             frm = tk.Frame(tab_frame, bg=WHITE)
             frm.pack(fill="both", expand=True, padx=16, pady=12)
             frm.columnconfigure(0, weight=1)
             frm.rowconfigure(1, weight=1)
-
             tk.Label(frm, text=f"Liste : {list_name}", bg=WHITE, fg=NAVY,
                      font=("Arial", 12, "bold")).grid(row=0, column=0, columnspan=2,
                                                        sticky="w", pady=(0, 6))
@@ -1957,35 +2068,29 @@ Arrêts imputés au TRS (temps perdu) :
             sb_lb = ttk.Scrollbar(frm, orient="vertical", command=lb.yview)
             sb_lb.grid(row=1, column=1, sticky="ns", pady=(0, 8))
             lb.configure(yscrollcommand=sb_lb.set)
-
             items = self._get_list(list_name)[:]
             for it in items:
                 lb.insert("end", it)
-
             def _reload():
                 lb.delete(0, "end")
                 for it2 in items:
                     lb.insert("end", it2)
-
             add_f = tk.Frame(frm, bg=WHITE)
             add_f.grid(row=2, column=0, columnspan=2, sticky="ew")
             add_var = tk.StringVar()
             tk.Entry(add_f, textvariable=add_var, font=("Arial", 11),
                      relief="solid", bd=1, width=24).pack(side="left", padx=(0, 6))
-
             def _add():
                 val2 = add_var.get().strip()
                 if val2 and val2 not in items:
                     items.append(val2)
                     _reload()
                     add_var.set("")
-
             def _del():
                 sel = lb.curselection()
                 if sel:
                     items.pop(sel[0])
                     _reload()
-
             tk.Button(add_f, text="+ Ajouter", command=_add,
                       bg=GREEN, fg=WHITE, font=("Arial", 10, "bold"),
                       relief="flat", padx=10, pady=4, cursor="hand2").pack(side="left", padx=4)
@@ -1994,12 +2099,7 @@ Arrêts imputés au TRS (temps perdu) :
                       relief="flat", padx=10, pady=4, cursor="hand2").pack(side="left")
             return items
 
-        pil_items_ref = _make_list_tab(tab_pil, "Pilotes")
-
-        # ── Tab Copilotes ─────────────────────────────────────────────────────
-        tab_cop = tk.Frame(nb_s, bg=WHITE)
-        nb_s.add(tab_cop, text="  Copilotes  ")
-        cop_items_ref = _make_list_tab(tab_cop, "Co-Pilotes")
+        cop_items_ref = _make_list_tab(tab_cop, "Co-pilotes")
 
         # ── Tab Règles de calcul ──────────────────────────────────────────────
         tab_rules = tk.Frame(nb_s, bg=WHITE)
@@ -2016,6 +2116,8 @@ Arrêts imputés au TRS (temps perdu) :
         btm_s.pack(fill="x", padx=8, pady=8)
 
         def _save_settings():
+            # Appliquer les éditions en cours dans le tableau pilotes
+            _apply_pil_edits()
             for key, var in gen_vars.items():
                 val2 = var.get().strip()
                 try:
@@ -2023,7 +2125,11 @@ Arrêts imputés au TRS (temps perdu) :
                 except (ValueError, TypeError):
                     self.cfg[key] = val2
             save_cfg(self.cfg)
-            # Écrire les pilotes/copilotes dans Excel
+            # Mettre à jour self.lists
+            self.lists["Pilotes"] = list(pil_names_ref)
+            self.lists["Mots de passe pilote"] = list(pil_pws_ref)
+            self.lists["Co-pilotes"] = list(cop_items_ref)
+            # Écrire dans Excel (nouvelle structure colonnes A-J)
             path = self.cfg.get("db_path", "")
             if path and os.path.exists(path):
                 try:
@@ -2031,11 +2137,42 @@ Arrêts imputés au TRS (temps perdu) :
                     if "Listes" not in wb_s.sheetnames:
                         wb_s.create_sheet("Listes")
                     ws_l = wb_s["Listes"]
-                    # Recharger les listes dans self.lists
-                    self.lists["Pilotes"] = list(pil_items_ref)
-                    self.lists["Co-Pilotes"] = list(cop_items_ref)
+                    # Lire les valeurs existantes pour les colonnes D-J
+                    existing_rows = list(ws_l.iter_rows(min_row=2, values_only=True))
+                    def _col(rows, ci):
+                        return [r[ci] if r and len(r) > ci else None for r in rows]
+                    taille_vals  = _col(existing_rows, 3)
+                    type_vals    = _col(existing_rows, 4)
+                    equiv_vals   = _col(existing_rows, 5)
+                    postes_vals  = _col(existing_rows, 6)
+                    nbpers_vals  = _col(existing_rows, 7)
+                    prodref_vals = _col(existing_rows, 8)
+                    fibres_vals  = _col(existing_rows, 9)
+                    # Effacer et réécrire
+                    ws_l.delete_rows(1, ws_l.max_row)
+                    headers = ["Pilotes", "Mots de passe pilote", "Co-pilotes",
+                               "Taille produit", "Type de produit", "Equivalence Coef",
+                               "Postes", "Nb personnes", "Prod de reference", "Fibres"]
+                    ws_l.append(headers)
+                    max_r = max(len(pil_names_ref), len(cop_items_ref),
+                                len(taille_vals) if taille_vals else 0, 1)
+                    for i in range(max_r):
+                        row_data = [
+                            pil_names_ref[i] if i < len(pil_names_ref) else None,
+                            pil_pws_ref[i]   if i < len(pil_pws_ref)   else None,
+                            cop_items_ref[i] if i < len(cop_items_ref)  else None,
+                            taille_vals[i]   if i < len(taille_vals)    else None,
+                            type_vals[i]     if i < len(type_vals)      else None,
+                            equiv_vals[i]    if i < len(equiv_vals)     else None,
+                            postes_vals[i]   if i < len(postes_vals)    else None,
+                            nbpers_vals[i]   if i < len(nbpers_vals)    else None,
+                            prodref_vals[i]  if i < len(prodref_vals)   else None,
+                            fibres_vals[i]   if i < len(fibres_vals)    else None,
+                        ]
+                        ws_l.append(row_data)
                     wb_s.save(path)
                     wb_s.close()
+                    self._load_lists()  # Recharger
                 except Exception:
                     pass
             _toast(self.root, "✔  Paramètres enregistrés", bg=GREEN, duration=2500)
@@ -2549,18 +2686,42 @@ Arrêts imputés au TRS (temps perdu) :
         right_zone = tk.Frame(top, bg=BG)
         right_zone.pack(side="left", fill="both", expand=True)
 
-        # Colonne gauche : bouton démarrer OU panneau prod en cours (largeur fixe)
+        # Colonne gauche : bouton démarrer OU panneau prod en cours + pause (largeur fixe)
         btn_zone = tk.Frame(right_zone, bg=BG, width=self._px(260))
         btn_zone.pack(side="left", fill="y", padx=(0, 8))
         btn_zone.pack_propagate(False)
 
+        def _make_canvas_btn(parent, text, color, cmd, expand=True, pady=4, height=None):
+            """Bouton canvas arrondi style Dodo."""
+            cv = tk.Canvas(parent, highlightthickness=0, bg=BG,
+                           **({"height": height} if height else {}))
+            cv.pack(fill="x" if height else "both", expand=expand, padx=2, pady=pady)
+            pressed = [False]
+            def _draw(e=None):
+                cv.delete("all")
+                bw, bh = cv.winfo_width(), cv.winfo_height()
+                if bw < 10 or bh < 10:
+                    return
+                c = _off(color, -60) if pressed[0] else color
+                _rrect(cv, 4, 5, bw-1, bh, 14, fill=_off(c, -40))
+                _rrect(cv, 0, 0, bw-5, bh-5, 14, fill=c)
+                _rrect(cv, 2, 2, bw-7, bh//3, 14, fill=_off(c, +45))
+                cv.create_text(bw//2-2, bh//2-2, text=text, fill=WHITE,
+                               font=("Arial", 12, "bold"), justify="center")
+            def _press(e): pressed[0] = True; _draw()
+            def _release(e): pressed[0] = False; _draw(); cmd()
+            cv.bind("<Configure>", _draw)
+            cv.bind("<ButtonPress-1>",  _press)
+            cv.bind("<ButtonRelease-1>", _release)
+            cv.config(cursor="hand2")
+            return cv
+
         if self._prod_active:
-            # Grand panneau "Production en cours"
+            # Grand panneau "Production en cours" (70% de la hauteur)
             prod_wrap, prod_inner = shadow_frame(btn_zone, bg=NAVY)
             prod_wrap.pack(fill="both", expand=True)
             self._main_prod_panel = prod_wrap
 
-            # Ligne titre avec point clignotant
             dot_row = tk.Frame(prod_inner, bg=NAVY)
             dot_row.pack(fill="x", padx=14, pady=(12, 2))
             self._blink_dot = tk.Label(dot_row, text="●", bg=NAVY,
@@ -2570,14 +2731,11 @@ Arrêts imputés au TRS (temps perdu) :
                      bg=NAVY, fg=WHITE,
                      font=("Arial", 13, "bold")).pack(side="left")
 
-            # Heure de debut
             debut_str2 = self._of_start.strftime('%H:%M:%S') if self._of_start else "--:--:--"
-            tk.Label(prod_inner,
-                     text=f"Début : {debut_str2}",
+            tk.Label(prod_inner, text=f"Début : {debut_str2}",
                      bg=NAVY, fg="#7a99c0",
                      font=("Arial", 10)).pack(anchor="w", padx=14, pady=(0, 2))
 
-            # Chrono elapsed (mis a jour par _tick)
             of_s_now = (datetime.datetime.now() - self._of_start).total_seconds() if self._of_start else 0.0
             self._elapsed_lbl = tk.Label(prod_inner,
                                           text=f"⏱  {fmt(of_s_now)}",
@@ -2585,15 +2743,18 @@ Arrêts imputés au TRS (temps perdu) :
                                           font=("Arial", 24, "bold"))
             self._elapsed_lbl.pack(anchor="center", pady=(6, 4))
 
-            # Arrets actifs + cumul
             n_actifs = sum(1 for k in self._timers if self._t_running(k))
             col_arr = C_RED if n_actifs > 0 else "#7a99c0"
             self._stops_lbl = tk.Label(prod_inner,
                 text=f"⚠  {n_actifs} arrêt(s)  |  {fmt(self._t_total_stops())}",
                 bg=NAVY, fg=col_arr, font=("Arial", 10, "bold"))
             self._stops_lbl.pack(anchor="center", padx=10, pady=(0, 10))
+
+            # Bouton "Aller en pause" JAUNE sous le panneau EN COURS
+            _make_canvas_btn(btn_zone, "☕  ALLER EN PAUSE", "#d4a017",
+                             self._toggle_pause, expand=False, pady=(4, 2), height=52)
         else:
-            # Bouton vert "Démarrer" (plus étroit)
+            # Bouton vert "Démarrer"
             btn_canvas = tk.Canvas(btn_zone, bg=BG, highlightthickness=0)
             btn_canvas.pack(fill="both", expand=True, padx=2, pady=6)
 
@@ -2614,41 +2775,22 @@ Arrêts imputés au TRS (temps perdu) :
             btn_canvas.bind("<Button-1>",  lambda e: self._start_production())
             btn_canvas.config(cursor="hand2")
 
-        # Colonne centre : Se déconnecter + Aller en pause (même style que Démarrer)
-        action_zone = tk.Frame(right_zone, bg=BG, width=self._px(240))
+        # Colonne centre : Se déconnecter / Se connecter
+        action_zone = tk.Frame(right_zone, bg=BG, width=self._px(200))
         action_zone.pack(side="left", fill="y", padx=(0, 8))
         action_zone.pack_propagate(False)
-
-        def _make_dash_btn(text, color, cmd):
-            cv = tk.Canvas(action_zone, highlightthickness=0, bg=BG)
-            cv.pack(fill="both", expand=True, padx=2, pady=4)
-            pressed = [False]
-            def _draw(e=None):
-                cv.delete("all")
-                bw, bh = cv.winfo_width(), cv.winfo_height()
-                if bw < 10 or bh < 10:
-                    return
-                c = _off(color, -60) if pressed[0] else color
-                _rrect(cv, 4, 5, bw-1, bh, 16, fill=_off(c, -40))
-                _rrect(cv, 0, 0, bw-5, bh-5, 16, fill=c)
-                _rrect(cv, 2, 2, bw-7, bh//3, 16, fill=_off(c, +45))
-                cv.create_text(bw//2-2, bh//2-2, text=text, fill=WHITE,
-                               font=("Arial", 13, "bold"), justify="center")
-            def _press(e):
-                pressed[0] = True; _draw()
-            def _release(e):
-                pressed[0] = False; _draw(); cmd()
-            cv.bind("<Configure>", _draw)
-            cv.bind("<ButtonPress-1>",  _press)
-            cv.bind("<ButtonRelease-1>", _release)
-            cv.config(cursor="hand2")
 
         def _do_logout():
             self._check_nettoyage_before_logout(
                 lambda: self._show_login_overlay(on_success=self._show_main))
 
-        _make_dash_btn("👤  SE\nDÉCONNECTER", ORANGE, _do_logout)
-        _make_dash_btn("☕  ALLER\nEN PAUSE",   NAVY_L, self._toggle_pause)
+        def _do_connect():
+            self._show_login_overlay(on_success=self._show_main)
+
+        if self._logged_in_pilot:
+            _make_canvas_btn(action_zone, "👤  SE\nDÉCONNECTER", ORANGE, _do_logout)
+        else:
+            _make_canvas_btn(action_zone, "🔑  SE\nCONNECTER", GREEN, _do_connect)
 
         # Colonne droite : panneau KPI arrêts
         kpi_stops = tk.Frame(right_zone, bg=BG)
@@ -3640,8 +3782,41 @@ Arrêts imputés au TRS (temps perdu) :
             if 30 < gap <= 28800:   # > 30s et <= 8h
                 self._inter_of_s = gap
                 do_changeof = False
-                if gap < 300:  # Moins de 5 min → automatique
-                    do_changeof = True
+                _inter_of_tol = int(self.cfg.get("inter_of_tol_min", 5)) * 60
+                if gap < _inter_of_tol:
+                    # Intervalle court : proposer de le classer en "Changement de série"
+                    h2 = int(gap // 3600); m2 = int((gap % 3600) // 60); s2 = int(gap % 60)
+                    ts_short = f"{h2}h {m2:02d}min {s2:02d}s" if h2 else f"{m2}min {s2:02d}s"
+                    _alert_res = [False]
+                    _alert_var = tk.BooleanVar(value=False)
+                    ov_a = tk.Frame(self.root, bg=WHITE)
+                    ov_a.place(relx=0, rely=0, relwidth=1, relheight=1)
+                    ov_a.lift()
+                    tk.Frame(ov_a, bg=NAVY_L, height=6).pack(fill="x")
+                    tk.Label(ov_a, text="⏱  Intervalle inter-OF court",
+                             bg=WHITE, fg=NAVY, font=("Arial", 16, "bold")).pack(pady=(40, 4))
+                    tk.Label(ov_a,
+                             text=f"Durée depuis la fin de l'OF précédent : {ts_short}\n"
+                                  f"Ce temps impacte toujours le TRS.\n"
+                                  f"Voulez-vous le classer comme « Changement de série » ?",
+                             bg=WHITE, fg=DARK, font=("Arial", 12),
+                             justify="center").pack(pady=(0, 24))
+                    bf_a = tk.Frame(ov_a, bg=WHITE)
+                    bf_a.pack()
+                    def _a_oui():
+                        _alert_res[0] = True; ov_a.destroy(); _alert_var.set(True)
+                    def _a_non():
+                        _alert_res[0] = False; ov_a.destroy(); _alert_var.set(True)
+                    tk.Button(bf_a, text="✔  Oui — Changement de série",
+                              command=_a_oui, bg=GREEN, fg=WHITE,
+                              font=("Arial", 12, "bold"), relief="flat",
+                              padx=18, pady=10, cursor="hand2").pack(side="left", padx=8)
+                    tk.Button(bf_a, text="✕  Non — Ignorer",
+                              command=_a_non, bg=LGRAY, fg=DARK,
+                              font=("Arial", 12), relief="flat",
+                              padx=18, pady=10, cursor="hand2").pack(side="left", padx=8)
+                    self.root.wait_variable(_alert_var)
+                    do_changeof = _alert_res[0]
                 elif self._last_of_pilot and self._last_of_pilot != (self._logged_in_pilot or ""):
                     h = int(gap // 3600)
                     m = int((gap % 3600) // 60)
@@ -3877,31 +4052,47 @@ Arrêts imputés au TRS (temps perdu) :
     # ── Formulaire compact 4 colonnes (pas de scroll) ────────────────────────
     def _build_form(self, parent):
         self.fv = {}
-        c = tk.Frame(parent, bg=WHITE)
-        c.pack(fill="both", expand=True, padx=4, pady=2)
-        for col in range(4):
-            c.columnconfigure(col, weight=1)
-        ri = [0]
+        # Couleurs de fond par section
+        BG_IDENT  = "#eef2fb"   # Bleu très clair — Identification
+        BG_PROD   = "#f0f7f0"   # Vert très clair — Produit
+        BG_ARRETS = "#fff8ee"   # Ambre très clair — Autres arrêts
+        BG_QTE    = "#f5f0fb"   # Violet très clair — Quantités
+        BG_CMT    = "#f7f7f7"   # Gris clair — Commentaire
+
+        outer = tk.Frame(parent, bg=WHITE)
+        outer.pack(fill="both", expand=True, padx=2, pady=2)
+
+        def _make_section(bg_color, title, fg_color):
+            """Crée un bloc section avec titre et fond coloré."""
+            wrap = tk.Frame(outer, bg=bg_color,
+                            highlightthickness=1, highlightbackground=_off(bg_color, -20))
+            wrap.pack(fill="x", padx=4, pady=(4, 0))
+            hdr_row = tk.Frame(wrap, bg=bg_color)
+            hdr_row.pack(fill="x")
+            tk.Frame(hdr_row, bg=fg_color, width=4).pack(side="left", fill="y")
+            tk.Label(hdr_row, text=f"  {title}", bg=bg_color, fg=fg_color,
+                     font=("Arial", 9, "bold"), pady=3).pack(side="left")
+            body = tk.Frame(wrap, bg=bg_color)
+            body.pack(fill="x", padx=4, pady=(0, 4))
+            for col in range(4):
+                body.columnconfigure(col, weight=1)
+            return body
 
         LFONT  = ("Arial", 8)
         EFONT  = ("Arial", 10, "bold")
         CELL_H = 48
+        ri     = [0]
+        _cur_c = [None]  # frame courant pour placer les champs
 
-        def sec(txt, color=NAVY):
-            row = tk.Frame(c, bg=WHITE)
-            row.grid(row=ri[0], column=0, columnspan=4, sticky="ew", pady=(6, 1))
-            tk.Frame(row, bg=color, width=5).pack(side="left", fill="y")
-            tk.Label(row, text=f"  {txt}", bg=WHITE, fg=color,
-                     font=("Arial", 9, "bold"), pady=2).pack(side="left")
-            ri[0] += 1
-
-        def fld(lbl_txt, key, ftype, lh=None, col=0, adv=True, suffix=None):
-            cell = tk.Frame(c, bg=WHITE, height=CELL_H)
+        def fld(lbl_txt, key, ftype, lh=None, col=0, adv=True, suffix=None, bg=None):
+            c   = _cur_c[0]
+            cbg = bg or c.cget("bg")
+            cell = tk.Frame(c, bg=cbg, height=CELL_H)
             cell.grid(row=ri[0], column=col, sticky="ew", padx=2, pady=1)
             cell.grid_propagate(False)
             cell.columnconfigure(0, weight=1)
             cell.rowconfigure(1, weight=1)
-            tk.Label(cell, text=lbl_txt, bg=WHITE, fg="#374151",
+            tk.Label(cell, text=lbl_txt, bg=cbg, fg="#374151",
                      font=LFONT, anchor="w").grid(row=0, column=0, columnspan=2,
                                                   sticky="w", pady=(2, 0))
             var = tk.StringVar()
@@ -3912,7 +4103,7 @@ Arrêts imputés au TRS (temps perdu) :
                              insertbackground=DARK, width=1)
                 e.grid(row=1, column=0, sticky="nsew", padx=(0, 2), pady=(0, 3))
                 if suffix:
-                    tk.Label(cell, text=suffix, bg=WHITE, fg="#374151",
+                    tk.Label(cell, text=suffix, bg=cbg, fg="#374151",
                              font=LFONT).grid(row=1, column=1, sticky="sw",
                                               padx=(2, 0), pady=(0, 3))
             else:
@@ -3943,8 +4134,9 @@ Arrêts imputés au TRS (temps perdu) :
             fld(l1,k1,t1,h1, col=0, adv=False, suffix=s1)
             fld(l2,k2,t2,h2, col=1, adv=True,  suffix=s2)
 
-        # ── Identification ──
-        sec("Identification", NAVY)
+        # ── IDENTIFICATION ────────────────────────────────────────────────────
+        _cur_c[0] = _make_section(BG_IDENT, "Identification", NAVY)
+        ri[0] = 0
         row4("N° OF *",    "of_num",  "entry", None,
              "Poste *",    "poste",   "combo", "Postes",
              "Pilote *",   "pilote",  "combo", "Pilotes",
@@ -3952,37 +4144,42 @@ Arrêts imputés au TRS (temps perdu) :
         row2("Nb personnes", "nb_pers", "combo", "Nb personnes",
              "Fibre",        "fibre",   "combo", "Fibre")
 
-        # ── Produit ──
-        sec("Produit", NAVY_L)
+        # ── PRODUIT ───────────────────────────────────────────────────────────
+        _cur_c[0] = _make_section(BG_PROD, "Produit", NAVY_L)
+        ri[0] = 0
         row4("Taille",         "taille",    "combo", "Taille produit",
              "Type produit",   "type_prod", "combo", "Type produit",
              "Code produit *", "code_prod", "entry", None,
              "Poids garnissage","poids",    "entry", None, s4="gr")
+        c_prod = _cur_c[0]
         self._v_kit = tk.BooleanVar()
         fld("OF taie", "of_taie", "entry", None, col=0, adv=False)
-        kit_cell = tk.Frame(c, bg=WHITE, height=CELL_H)
+        kit_cell = tk.Frame(c_prod, bg=BG_PROD, height=CELL_H)
         kit_cell.grid(row=ri[0], column=1, sticky="ew", padx=2, pady=1)
         kit_cell.grid_propagate(False)
         kit_cell.rowconfigure(1, weight=1)
-        tk.Label(kit_cell, text="Options", bg=WHITE, fg=GRAY,
+        tk.Label(kit_cell, text="Options", bg=BG_PROD, fg=GRAY,
                  font=LFONT, anchor="w").grid(row=0, column=0, sticky="w", pady=(2, 0))
         tk.Checkbutton(kit_cell, text="Kit 2 pièces", variable=self._v_kit,
-                       bg=WHITE, fg=DARK, font=("Arial", 9),
-                       activebackground=WHITE, selectcolor=WHITE).grid(
+                       bg=BG_PROD, fg=DARK, font=("Arial", 9),
+                       activebackground=BG_PROD, selectcolor=BG_PROD).grid(
                        row=1, column=0, sticky="w", padx=4)
         ri[0] += 1
 
-        # ── Autres arrêts (placé avant Quantités) ──
-        sec("Autres arrêts", "#d97706")
-        row2("Durée arrêt manquant MP (en min)",      "duree_mq_mp",   "entry", None,
-             "Arrêt manquant personne/Réunion (min)", "manquant_pers", "entry", None)
+        # ── AUTRES ARRÊTS ─────────────────────────────────────────────────────
+        _cur_c[0] = _make_section(BG_ARRETS, "Autres arrêts", "#d97706")
+        ri[0] = 0
+        row2("Durée arrêt manquant MP (min)",         "duree_mq_mp",   "entry", None,
+             "Arrêt manquant personne / Réunion (min)", "manquant_pers", "entry", None)
 
-        # ── Quantités & Qualité ──
-        sec("Quantités & Qualité", GREEN)
-        # Qte fab + emb highlighted
+        # ── QUANTITÉS & QUALITÉ ───────────────────────────────────────────────
+        _cur_c[0] = _make_section(BG_QTE, "Quantités & Qualité", GREEN)
+        ri[0] = 0
+        c_qte = _cur_c[0]
+        # Qte fab + emb mis en valeur (vert)
         for col_i, (lbl_txt, key_s) in enumerate([
                 ("Qte fabriquée *", "qte_fab"), ("Qte emballée", "qte_emb")]):
-            cell = tk.Frame(c, bg="#efffef", height=CELL_H)
+            cell = tk.Frame(c_qte, bg="#efffef", height=CELL_H)
             cell.grid(row=ri[0], column=col_i, sticky="ew", padx=2, pady=1)
             cell.grid_propagate(False)
             cell.columnconfigure(0, weight=1)
@@ -3998,24 +4195,28 @@ Arrêts imputés au TRS (temps perdu) :
                          highlightthickness=1, highlightbackground=GREEN,
                          highlightcolor=GREEN)
             e.grid(row=1, column=0, sticky="nsew", padx=(0, 2), pady=(0, 3))
-        fld("Traca fibre",  "traca",    "entry", None, col=2, adv=False)
-        fld("Ref. taie",    "ref_taie", "entry", None, col=3, adv=True)
+        fld("Traça fibre",  "traca",    "entry", None, col=2, adv=False)
+        fld("Réf. taie",    "ref_taie", "entry", None, col=3, adv=True)
         row4("Qte initiale taie", "qte_init_taie",   "entry", None,
              "Nb taie 2nd choix", "nb_taie2_choix",  "entry", None,
              "Nb déf. couture",   "nb_def_cout",     "entry", None,
              "Mq. taie",          "mq_taie",         "entry", None)
         row2("Mq. housse/encart (nb)", "mq_housse_encart", "entry", None,
-             "Nb PP Cousue",            "nb_pp_cousue",     "entry", None)
+             "Nb PP cousue",            "nb_pp_cousue",     "entry", None)
 
-        # ── Commentaire ──
-        sec("Commentaire", GRAY)
-        txt_f = tk.Frame(c, bg=WHITE)
-        txt_f.grid(row=ri[0], column=0, columnspan=4, sticky="ew", padx=2, pady=2)
-        ri[0] += 1
-        self._comment_txt = tk.Text(txt_f, height=2, bg=WHITE, fg=DARK,
+        # ── COMMENTAIRE ───────────────────────────────────────────────────────
+        cmt_wrap = tk.Frame(outer, bg=BG_CMT,
+                            highlightthickness=1, highlightbackground=_off(BG_CMT, -20))
+        cmt_wrap.pack(fill="x", padx=4, pady=(4, 0))
+        hdr_cmt = tk.Frame(cmt_wrap, bg=BG_CMT)
+        hdr_cmt.pack(fill="x")
+        tk.Frame(hdr_cmt, bg=GRAY, width=4).pack(side="left", fill="y")
+        tk.Label(hdr_cmt, text="  Commentaire", bg=BG_CMT, fg=GRAY,
+                 font=("Arial", 9, "bold"), pady=3).pack(side="left")
+        self._comment_txt = tk.Text(cmt_wrap, height=2, bg=WHITE, fg=DARK,
                                      font=("Arial", 10), relief="solid", bd=1,
                                      wrap="word", insertbackground=DARK)
-        self._comment_txt.pack(fill="x")
+        self._comment_txt.pack(fill="x", padx=4, pady=(0, 4))
         # Restaurer les valeurs sauvegardées si disponibles
         self.root.after(50, self._restore_form_data)
         # Actualiser le compteur pièces quand taille/type_prod change
@@ -4793,7 +4994,8 @@ Arrêts imputés au TRS (temps perdu) :
             messagebox.showerror("Erreur", "Impossible de clôturer : heure de début inconnue.")
             return
         of_s_brut = (end_dt - self._of_start).total_seconds()
-        of_s      = max(1, of_s_brut - self._pause_total_s)  # exclure les pauses
+        # L'intervalle inter-OF impute toujours le TRS de l'OF suivant
+        of_s      = max(1, of_s_brut + self._inter_of_s - self._pause_total_s)
         stop_s    = self._t_wall_clock_stops()
         qte_fab   = _n("qte_fab")
         nb_pers   = max(1, _n("nb_pers") or 1)
