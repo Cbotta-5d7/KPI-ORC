@@ -1585,14 +1585,47 @@ class App:
         self._show_main() if not self._prod_active else None
 
     def _refresh_all(self):
-        """Recharge le fichier Excel (listes + historique + tableau) sans toucher à la prod en cours."""
+        """Relit tout le fichier Excel en arrière-plan et met à jour tous les onglets."""
+        path = self.cfg.get("db_path", "")
+        if not path or not os.path.exists(path):
+            self._load_lists()
+            _toast(self.root, "⚠  Fichier Excel introuvable", bg=C_RATT, duration=2500)
+            return
         self._invalidate_wb_cache()
         self._load_lists()
-        self._load_history_from_excel()
-        if self._mode == "main":
-            self._refresh_table()
-            self._refresh_main_kpi()
-        elif self._mode == "production":
+
+        def _bg():
+            rows, events, trs_data = [], [], []
+            try:
+                wb = load_workbook(path, read_only=True, data_only=True)
+                if "Data" in wb.sheetnames:
+                    ws = wb["Data"]
+                    min_r = 2 if str(ws.cell(1, 1).value or "").strip().upper() == "OF" else 1
+                    for i, r in enumerate(ws.iter_rows(min_row=min_r, values_only=True), start=min_r):
+                        if any(r):
+                            rows.append((i, list(r) + [None] * 60))
+                if "Evenements" in wb.sheetnames:
+                    ws_e = wb["Evenements"]
+                    for r in ws_e.iter_rows(min_row=2, values_only=True):
+                        if r and any(r):
+                            events.append(list(r))
+                if "TRS" in wb.sheetnames:
+                    ws_t = wb["TRS"]
+                    for r in ws_t.iter_rows(min_row=2, values_only=True):
+                        if r and any(r):
+                            trs_data.append(list(r))
+                wb.close()
+            except Exception:
+                pass
+            final = rows[-50:] if len(rows) > 50 else rows
+            self.root.after(0, lambda: self._on_refresh_done(final, events, trs_data))
+
+        threading.Thread(target=_bg, daemon=True).start()
+
+    def _on_refresh_done(self, rows, events, trs_data):
+        """Appelé depuis le thread principal après relecture complète du fichier Excel."""
+        self._apply_fresh_data(rows, events=events, trs_data=trs_data)
+        if self._mode == "production":
             self._refresh_stops_recap()
         _toast(self.root, "✔  Données Excel actualisées", bg=GREEN, duration=2000)
 
@@ -2659,7 +2692,7 @@ Arrêts imputés au TRS (temps perdu) :
                    bg=GREEN if "✔" in toast else C_RATT, duration=3500)
 
     def _reload_and_refresh(self):
-        """Relit Excel et rafraîchit le dashboard si on est sur le tableau de bord."""
+        """Relit Excel et rafraîchit tous les onglets du dashboard."""
         if self._mode != "main":
             return
         path = self.cfg.get("db_path", "")
@@ -2667,8 +2700,7 @@ Arrêts imputés au TRS (temps perdu) :
             return
 
         def _bg():
-            rows = []
-            events = []
+            rows, events, trs_data = [], [], []
             try:
                 wb = load_workbook(path, read_only=True, data_only=True)
                 if "Data" in wb.sheetnames:
@@ -2682,22 +2714,31 @@ Arrêts imputés au TRS (temps perdu) :
                     for r in ws_e.iter_rows(min_row=2, values_only=True):
                         if r and any(r):
                             events.append(list(r))
+                if "TRS" in wb.sheetnames:
+                    ws_t = wb["TRS"]
+                    for r in ws_t.iter_rows(min_row=2, values_only=True):
+                        if r and any(r):
+                            trs_data.append(list(r))
                 wb.close()
             except Exception:
                 pass
             final = rows[-50:] if len(rows) > 50 else rows
-            self.root.after(0, lambda: self._apply_fresh_data(final, events))
+            self.root.after(0, lambda: self._apply_fresh_data(final, events, trs_data=trs_data))
 
         threading.Thread(target=_bg, daemon=True).start()
 
-    def _apply_fresh_data(self, rows, events=None):
+    def _apply_fresh_data(self, rows, events=None, trs_data=None):
         if self._mode != "main":
             return
         self._data_rows_cache = rows
         if events is not None:
             self._events_cache = events
+        if trs_data is not None:
+            self._trs_cache = trs_data
         self._refresh_table()
         self._refresh_main_kpi()
+        self._refresh_events_tab()
+        self._refresh_postes_tab()
 
     def _build_main_ui(self):
         self._cells = []
@@ -2977,6 +3018,7 @@ Arrêts imputés au TRS (temps perdu) :
                      "Heure début", "Heure fin", "Durée", "Commentaire")
         evt_tree2 = ttk.Treeview(evt_inner, columns=evt_cols2, show="headings",
                                   height=15, style="KPI.Treeview")
+        self._evt_tree2 = evt_tree2
         evt_widths2 = {"Type d'événement": 200, "Pilote": 120, "OF": 90, "Date": 80,
                        "Heure début": 80, "Heure fin": 80, "Durée": 70, "Commentaire": 200}
         for c2 in evt_cols2:
@@ -3036,6 +3078,7 @@ Arrêts imputés au TRS (temps perdu) :
                     "Équivalence", "Total prod", "Total panne", "Total ratt")
         pos_tree = ttk.Treeview(pos_inner, columns=pos_cols, show="headings",
                                 height=15, style="KPI.Treeview")
+        self._pos_tree = pos_tree
         pos_widths = {"Date": 80, "Poste": 80, "Pilote": 130, "TRS": 70,
                       "Qté produite": 90, "Équivalence": 90,
                       "Total prod": 90, "Total panne": 90, "Total ratt": 90}
@@ -3313,6 +3356,71 @@ Arrêts imputés au TRS (temps perdu) :
         if hasattr(self, "_stops_lbl") and self._stops_lbl:
             try:
                 self._stops_lbl.config(text="")
+            except Exception:
+                pass
+
+    def _refresh_postes_tab(self):
+        """Vide et repeuple l'onglet Postes depuis _trs_cache."""
+        tree = getattr(self, "_pos_tree", None)
+        if not tree or not tree.winfo_exists():
+            return
+        for item in tree.get_children():
+            tree.delete(item)
+        for trs_row in reversed(self._trs_cache[-100:]):
+            try:
+                t_date  = str(trs_row[0] or "")[:10]
+                t_poste = str(trs_row[1] or "")
+                t_pilot = str(trs_row[2] or "")
+                t_trs   = str(trs_row[14] or "")
+                t_qte   = str(trs_row[11] or "")
+                t_equiv = str(trs_row[12] or "")
+                t_prod  = str(trs_row[5] or "")
+                t_panne = str(trs_row[6] or "")
+                t_ratt  = str(trs_row[7] or "")
+                try:
+                    trs_num = float(str(t_trs).replace("%", "").replace(",", "."))
+                    pos_tag = ("trs_hi",) if trs_num >= 75 else (("trs_warn",) if trs_num >= 55 else ("trs_low",))
+                except Exception:
+                    pos_tag = ()
+                tree.insert("", "end", values=(
+                    t_date, t_poste, t_pilot, t_trs, t_qte,
+                    t_equiv, t_prod, t_panne, t_ratt), tags=pos_tag)
+            except Exception:
+                pass
+
+    def _refresh_events_tab(self):
+        """Vide et repeuple l'onglet Événements depuis _events_cache."""
+        tree = getattr(self, "_evt_tree2", None)
+        if not tree or not tree.winfo_exists():
+            return
+        for item in tree.get_children():
+            tree.delete(item)
+        for ev_row in reversed(self._events_cache[-100:]):
+            try:
+                ev_type     = str(ev_row[0] or "")
+                ev_of       = str(ev_row[1] or "")
+                ev_date     = str(ev_row[2] or "")[:10]
+                ev_pil      = str(ev_row[4] or "")
+                ev_hd       = str(ev_row[16] or "")[:8]
+                ev_hf       = str(ev_row[17] or "")[:8]
+                ev_dur      = str(ev_row[18] or "")
+                ev_cmt      = str(ev_row[19] or "")
+                ev_type_low = ev_type.lower()
+                if "pause" in ev_type_low:
+                    tag = "evt_pause"
+                elif "panne" in ev_type_low or "pb" in ev_type_low or "problème" in ev_type_low:
+                    tag = "evt_panne"
+                elif "ratt" in ev_type_low:
+                    tag = "evt_ratt"
+                elif "changement" in ev_type_low:
+                    tag = "evt_chg"
+                elif "nettoyage" in ev_type_low:
+                    tag = "evt_nett"
+                else:
+                    tag = ""
+                tree.insert("", "end", values=(
+                    ev_type, ev_pil, ev_of, ev_date, ev_hd, ev_hf, ev_dur, ev_cmt),
+                    tags=(tag,) if tag else ())
             except Exception:
                 pass
 
@@ -5981,10 +6089,6 @@ Arrêts imputés au TRS (temps perdu) :
                 ws_trs.cell(existing_row_idx, ci).value = val
         else:
             ws_trs.append(trs_row)
-
-    def _show_fin_de_poste(self):
-        """Récap fin de poste — à implémenter."""
-        _toast(self.root, "Fin de poste — fonctionnalité à venir", bg=NAVY_L, duration=2500)
 
     def _calc_equiv(self, qte, taille, type_prod):
         """Cherche le coef d'equivalence pour type_prod dans la colonne Equivalence coef."""
