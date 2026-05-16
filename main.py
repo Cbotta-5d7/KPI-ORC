@@ -2775,7 +2775,7 @@ Arrêts imputés au TRS (temps perdu) :
             btn_canvas.bind("<Button-1>",  lambda e: self._start_production())
             btn_canvas.config(cursor="hand2")
 
-        # Colonne centre : Se déconnecter / Se connecter
+        # Colonne centre : Se déconnecter / Se connecter + Pause
         action_zone = tk.Frame(right_zone, bg=BG, width=self._px(200))
         action_zone.pack(side="left", fill="y", padx=(0, 8))
         action_zone.pack_propagate(False)
@@ -2791,6 +2791,11 @@ Arrêts imputés au TRS (temps perdu) :
             _make_canvas_btn(action_zone, "👤  SE\nDÉCONNECTER", ORANGE, _do_logout)
         else:
             _make_canvas_btn(action_zone, "🔑  SE\nCONNECTER", GREEN, _do_connect)
+
+        # Bouton Pause — toujours visible, jaune si prod active, gris sinon
+        _pause_color = "#d4a017" if self._prod_active else "#b0b8c8"
+        _pause_cmd   = self._toggle_pause if self._prod_active else lambda: None
+        _make_canvas_btn(action_zone, "☕  JE VAIS\nEN PAUSE", _pause_color, _pause_cmd)
 
         # Colonne droite : panneau KPI arrêts
         kpi_stops = tk.Frame(right_zone, bg=BG)
@@ -5139,42 +5144,9 @@ Arrêts imputés au TRS (temps perdu) :
                     self._after_id = self.root.after(1000, self._tick)
                     return
 
-        # ── Overlay plein écran recap avant confirmation ──────────────────────
-        confirmed   = [False]
-        modified    = [False]
-        recap_var   = tk.BooleanVar(value=False)
-
-        recap = tk.Frame(self.root, bg=WHITE)
-        recap.place(relx=0, rely=0, relwidth=1, relheight=1)
-        recap.lift()
-
-        # Header
-        hdr_r = tk.Frame(recap, bg=NAVY, height=56)
-        hdr_r.pack(fill="x")
-        hdr_r.pack_propagate(False)
-        tk.Label(hdr_r, text="RÉCAPITULATIF DE L'OF",
-                 bg=NAVY, fg=WHITE, font=("Arial", 15, "bold")).pack(
-                 side="left", padx=20, pady=14)
-
-        # Corps plein écran 3 colonnes
-        body_r = tk.Frame(recap, bg=WHITE)
-        body_r.pack(fill="both", expand=True, padx=30, pady=10)
-        body_r.columnconfigure(0, weight=1)
-        body_r.columnconfigure(1, weight=1)
-        body_r.columnconfigure(2, weight=1)
-        body_r.rowconfigure(0, weight=1)
-
-        left_r = tk.Frame(body_r, bg=WHITE)
-        left_r.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        mid_r = tk.Frame(body_r, bg=WHITE)
-        mid_r.grid(row=0, column=1, sticky="nsew", padx=5)
-        right_r = tk.Frame(body_r, bg=WHITE)
-        right_r.grid(row=0, column=2, sticky="nsew", padx=(10, 0))
-
         # ── Calculs étendus pour l'affichage ──────────────────────────────────
-        total_brut_s = of_s_brut  # total incl pauses
+        total_brut_s = of_s_brut
         pause_s      = self._pause_total_s
-        # Nettoyage planifié vs dépassé
         _nett_type = None
         for _ev in self._tl_events:
             if _ev.get("key") == "nettoyage" and _ev.get("start") and _ev.get("end"):
@@ -5185,78 +5157,159 @@ Arrêts imputés au TRS (temps perdu) :
         _tol_s       = int(self.cfg.get(_tol_key, 10)) * 60
         _nett_planned = min(_nett_s, _tol_s)
         _nett_counted = max(0.0, _nett_s - _tol_s)
-        # Réunion planifiée vs dépassée
         _mtol_s      = int(self.cfg.get("meeting_tol_min", 5)) * 60
         _reunion_s   = _hms_to_sec(_min_str_to_hms(v.get("manquant_pers", "")))
         _reunion_planned = min(_reunion_s, _mtol_s)
         _reunion_counted = max(0.0, _reunion_s - _mtol_s)
 
-        def _row_info(parent, lbl, val, color=DARK, bold=False):
-            f = tk.Frame(parent, bg=WHITE)
-            f.pack(fill="x", pady=3)
-            tk.Label(f, text=lbl, bg=WHITE, fg=GRAY,
-                     font=("Arial", 11), width=26, anchor="w").pack(side="left")
-            tk.Label(f, text=str(val), bg=WHITE, fg=color,
-                     font=("Arial", 13, "bold" if bold else "normal")).pack(side="left")
+        # ── Overlay plein écran recap avant confirmation ──────────────────────
+        confirmed = [False]
+        modified  = [False]
+        recap_var = tk.BooleanVar(value=False)
 
-        _row_info(left_r, "N° OF",               v.get("of_num", "—"), bold=True)
-        _row_info(left_r, "Pilote",               self._logged_in_pilot or v.get("pilote", "—"), color=NAVY)
-        _row_info(left_r, "Quantité fabriquée",   f"{qte_fab}", color=GREEN, bold=True)
-        _row_info(left_r, "Équivalence",          f"{int(round(equiv))}", color=GREEN)
-        _row_info(left_r, "Durée totale (brut)",  fmt(total_brut_s))
-        _row_info(left_r, "Durée production comptée", fmt(of_s))
-        _row_info(left_r, "Durée arrêts",         fmt(stop_s), color=C_RED if stop_s > 0 else DARK, bold=(stop_s > 0))
-        _row_info(left_r, "Pauses (exclues TRS)", fmt(pause_s))
+        recap = tk.Frame(self.root, bg="#f0f4fb")
+        recap.place(relx=0, rely=0, relwidth=1, relheight=1)
+        recap.lift()
+
+        # ── Header compact ────────────────────────────────────────────────────
+        hdr_r = tk.Frame(recap, bg=NAVY, height=46)
+        hdr_r.pack(fill="x")
+        hdr_r.pack_propagate(False)
+        tk.Label(hdr_r, text="📋  RÉCAPITULATIF DE L'OF",
+                 bg=NAVY, fg=WHITE, font=("Arial", 13, "bold")).pack(
+                 side="left", padx=16, pady=12)
+        of_tag = v.get("of_num", "")
+        if of_tag:
+            tk.Label(hdr_r, text=f"  {of_tag}", bg=NAVY, fg="#7ab8f5",
+                     font=("Arial", 13, "bold")).pack(side="left")
+
+        # ── Corps : 2 colonnes ────────────────────────────────────────────────
+        body_r = tk.Frame(recap, bg="#f0f4fb")
+        body_r.pack(fill="both", expand=True, padx=16, pady=8)
+        body_r.columnconfigure(0, weight=2)   # infos texte (40%)
+        body_r.columnconfigure(1, weight=3)   # visuels (60%)
+        body_r.rowconfigure(0, weight=1)
+
+        # ── Colonne gauche : infos ─────────────────────────────────────────────
+        info_card = tk.Frame(body_r, bg=WHITE,
+                             highlightthickness=1, highlightbackground=LGRAY)
+        info_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        tk.Frame(info_card, bg=NAVY, height=3).pack(fill="x")
+        info_inner = tk.Frame(info_card, bg=WHITE)
+        info_inner.pack(fill="both", expand=True, padx=16, pady=10)
+
+        def _row(lbl, val, val_color=DARK, lbl_color=GRAY, bold=False, sep=False):
+            if sep:
+                tk.Frame(info_inner, bg=LGRAY, height=1).pack(fill="x", pady=(6, 4))
+                return
+            f = tk.Frame(info_inner, bg=WHITE)
+            f.pack(fill="x", pady=2)
+            tk.Label(f, text=lbl, bg=WHITE, fg=lbl_color,
+                     font=("Arial", 9), width=22, anchor="w").pack(side="left")
+            tk.Label(f, text=str(val), bg=WHITE, fg=val_color,
+                     font=("Arial", 10, "bold" if bold else "normal")).pack(side="left")
+
+        _row("N° OF",                 v.get("of_num", "—"),        NAVY,  bold=True)
+        _row("Pilote",                self._logged_in_pilot or v.get("pilote","—"), NAVY_L)
+        _row("Poste",                 v.get("poste", "—"),          DARK)
+        _row(None, None, sep=True)
+        _row("Qté fabriquée",         f"{qte_fab}",                 GREEN, bold=True)
+        _row("Qté emballée",          f"{int(_n('qte_emb'))}",      GREEN)
+        _row("Équivalence",           f"{int(round(equiv))}",       GREEN)
+        _row(None, None, sep=True)
+        _row("Durée brute",           fmt(total_brut_s),            DARK)
+        _row("Durée comptée (TRS)",   fmt(of_s),                    NAVY_L, bold=True)
+        if self._inter_of_s > 0:
+            _row("Chgmt. de série",   fmt(self._inter_of_s),        C_RATT, bold=True)
+        _row("Arrêts cumulés",        fmt(stop_s),
+             C_RED if stop_s > 0 else DARK,                         bold=(stop_s > 0))
+        _row("Pauses",                fmt(pause_s),                 GRAY)
+        _row(None, None, sep=True)
         if _nett_s > 0:
-            _row_info(left_r, "Nettoyage planifié",  fmt(_nett_planned))
+            _row("Nettoyage planifié",fmt(_nett_planned),           "#60a5fa")
             if _nett_counted > 0:
-                _row_info(left_r, "Nettoyage en excès", fmt(_nett_counted), color=C_RED)
+                _row("Nettoyage excès",fmt(_nett_counted),          C_RED, bold=True)
         if _reunion_s > 0:
-            _row_info(left_r, "Réunion tolérée",     fmt(_reunion_planned))
+            _row("Réunion tolérée",   fmt(_reunion_planned),        "#fbbf24")
             if _reunion_counted > 0:
-                _row_info(left_r, "Réunion en excès",   fmt(_reunion_counted), color=C_RED)
+                _row("Réunion excès", fmt(_reunion_counted),        C_RED, bold=True)
+        _row("Commentaire",           v.get("comment","")[:60] or "—", GRAY)
 
-        # ── Deux jauges côte à côte (grandes) ────────────────────────────────
-        tk.Label(mid_r, text="TRS — cette déclaration", bg=WHITE, fg=GRAY,
-                 font=("Arial", 11, "bold"), wraplength=220, justify="center").pack(pady=(4, 0))
-        gauge_r = Gauge(mid_r, bg=WHITE, width=280, height=220, highlightthickness=0)
-        gauge_r.pack(pady=2)
+        # ── Colonne droite : visuels ───────────────────────────────────────────
+        vis_zone = tk.Frame(body_r, bg="#f0f4fb")
+        vis_zone.grid(row=0, column=1, sticky="nsew")
+        vis_zone.columnconfigure(0, weight=1)
+        vis_zone.columnconfigure(1, weight=1)
+        vis_zone.rowconfigure(0, weight=1)
+        vis_zone.rowconfigure(1, weight=1)
+
+        # Jauge 1 : TRS cet OF
+        g1_card = tk.Frame(vis_zone, bg=WHITE,
+                           highlightthickness=1, highlightbackground=LGRAY)
+        g1_card.grid(row=0, column=0, sticky="nsew", padx=(0, 4), pady=(0, 4))
+        tk.Frame(g1_card, bg=GREEN, height=3).pack(fill="x")
+        tk.Label(g1_card, text="TRS — cet OF", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold")).pack(pady=(6, 0))
         trs_disp  = max(0.0, trs_pct) if trs_pct >= 0 else 0.0
         trs_label = f"{trs_disp:.1f}%" if trs_pct >= 0 else "—"
+        gauge_r   = Gauge(g1_card, bg=WHITE, width=210, height=160, highlightthickness=0)
+        gauge_r.pack(fill="both", expand=True, padx=4, pady=4)
         gauge_r.update_gauge(trs_disp, trs_label)
 
+        # Jauge 2 : TRS du poste
+        g2_card = tk.Frame(vis_zone, bg=WHITE,
+                           highlightthickness=1, highlightbackground=LGRAY)
+        g2_card.grid(row=0, column=1, sticky="nsew", padx=(4, 0), pady=(0, 4))
+        tk.Frame(g2_card, bg=NAVY_L, height=3).pack(fill="x")
         _pilot_lbl = self._logged_in_pilot or v.get("pilote", "—")
-        tk.Label(mid_r, text=f"TRS poste — {_pilot_lbl}", bg=WHITE, fg=GRAY,
-                 font=("Arial", 11, "bold"), wraplength=220, justify="center").pack(pady=(4, 0))
+        tk.Label(g2_card, text=f"TRS poste — {_pilot_lbl}",
+                 bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold"), wraplength=200).pack(pady=(6, 0))
         trs12_disp = max(0.0, pilot_trs_12h) if pilot_trs_12h >= 0 else 0.0
         trs12_lbl  = f"{trs12_disp:.1f}%" if pilot_trs_12h >= 0 else "—"
-        gauge_r2 = Gauge(mid_r, bg=WHITE, width=280, height=220, highlightthickness=0)
-        gauge_r2.pack(pady=2)
+        gauge_r2   = Gauge(g2_card, bg=WHITE, width=210, height=160, highlightthickness=0)
+        gauge_r2.pack(fill="both", expand=True, padx=4, pady=4)
         gauge_r2.update_gauge(trs12_disp, trs12_lbl)
 
-        # ── Graphique camembert ───────────────────────────────────────────────
-        pie_cv = tk.Canvas(right_r, width=300, height=300, bg=WHITE, highlightthickness=0)
-        pie_cv.pack(pady=(10, 4))
+        # Camembert — ligne du bas (pleine largeur)
+        pie_card = tk.Frame(vis_zone, bg=WHITE,
+                            highlightthickness=1, highlightbackground=LGRAY)
+        pie_card.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(4, 0))
+        tk.Frame(pie_card, bg=C_RATT, height=3).pack(fill="x")
+        tk.Label(pie_card, text="Répartition du temps", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold")).pack(anchor="w", padx=12, pady=(4, 0))
 
-        def _draw_pie():
+        pie_cv = tk.Canvas(pie_card, bg=WHITE, highlightthickness=0)
+        pie_cv.pack(fill="both", expand=True, padx=8, pady=4)
+
+        def _draw_pie(e=None):
             pie_cv.delete("all")
-            cx, cy, r = 150, 140, 100
-            # Segments: (label, seconds, color)
-            prod_eff_s = max(0.0, of_s - stop_s)
+            pw = pie_cv.winfo_width()
+            ph = pie_cv.winfo_height()
+            if pw < 40 or ph < 40:
+                return
+            r  = min(pw, ph) // 2 - 12
+            cx = pw // 3          # camembert à gauche
+            cy = ph // 2
+            prod_eff_s = max(0.0, of_s - stop_s - _nett_counted - _reunion_counted)
             segments = [
-                ("Prod. effective", prod_eff_s, "#1a8c4e"),
-                ("Arrêts",         stop_s,     "#e31e24"),
-                ("Pauses",         pause_s,    "#94a3b8"),
-                ("Nettoyage plan.",_nett_planned, "#60a5fa"),
-                ("Réunion planif.",_reunion_planned, "#fbbf24"),
+                ("Prod. effective",     prod_eff_s,       "#1a8c4e"),
+                ("Arrêts (TRS)",        stop_s,           "#e31e24"),
+                ("Pauses",              pause_s,          "#94a3b8"),
+                ("Nettoyage planifié",  _nett_planned,    "#60a5fa"),
+                ("Nettoyage excès",     _nett_counted,    "#dc2626"),
+                ("Réunion tolérée",     _reunion_planned, "#fbbf24"),
+                ("Réunion excès",       _reunion_counted, "#f97316"),
+                ("Changement de série", self._inter_of_s, "#a855f7"),
             ]
-            total_pie = sum(s for _, s, _ in segments)
+            total_pie = sum(s for _, s, _ in segments if s > 0)
             if total_pie <= 0:
                 pie_cv.create_text(cx, cy, text="Aucune donnée",
-                                   fill=GRAY, font=("Arial", 11))
+                                   fill=GRAY, font=("Arial", 10))
                 return
             start_ang = 90.0
-            legend_y  = 265
+            legend_x  = pw // 3 * 2 + 10
+            legend_y  = 14
             for seg_lbl, seg_s, seg_col in segments:
                 if seg_s <= 0:
                     continue
@@ -5264,23 +5317,23 @@ Arrêts imputés au TRS (temps perdu) :
                 pie_cv.create_arc(cx - r, cy - r, cx + r, cy + r,
                                   start=start_ang, extent=-extent,
                                   fill=seg_col, outline=WHITE, width=1)
-                # Légende
-                pie_cv.create_rectangle(10, legend_y, 22, legend_y + 10,
+                # Légende à droite
+                pie_cv.create_rectangle(legend_x, legend_y,
+                                        legend_x + 14, legend_y + 14,
                                         fill=seg_col, outline="")
                 pct_v = seg_s / total_pie * 100
-                pie_cv.create_text(26, legend_y + 5,
-                                   text=f"{seg_lbl}: {pct_v:.0f}%",
-                                   anchor="w", fill=DARK, font=("Arial", 8))
-                legend_y += 14
+                pie_cv.create_text(legend_x + 18, legend_y + 7,
+                                   text=f"{seg_lbl}  {pct_v:.0f}%  ({fmt(int(seg_s))})",
+                                   anchor="w", fill=DARK, font=("Arial", 9))
+                legend_y += 20
                 start_ang -= extent
 
-        pie_cv.bind("<Configure>", lambda e: _draw_pie())
-        _draw_pie()
+        pie_cv.bind("<Configure>", _draw_pie)
 
-        tk.Frame(recap, bg=LGRAY, height=1).pack(fill="x", padx=40)
-
+        # ── Boutons bas ───────────────────────────────────────────────────────
+        tk.Frame(recap, bg=LGRAY, height=1).pack(fill="x", padx=0)
         btn_row_r = tk.Frame(recap, bg=WHITE)
-        btn_row_r.pack(fill="x", padx=60, pady=20)
+        btn_row_r.pack(fill="x", padx=20, pady=10)
 
         def _modifier():
             confirmed[0] = False
@@ -5295,12 +5348,12 @@ Arrêts imputés au TRS (temps perdu) :
 
         tk.Button(btn_row_r, text="✏  MODIFIER",
                   command=_modifier, bg=LGRAY, fg=DARK,
-                  font=("Arial", 15, "bold"), relief="flat",
-                  padx=30, pady=14, cursor="hand2").pack(side="left", padx=(0, 12))
+                  font=("Arial", 12, "bold"), relief="flat",
+                  padx=24, pady=10, cursor="hand2").pack(side="left", padx=(0, 10))
         tk.Button(btn_row_r, text="✔  CONFIRMER LA DÉCLARATION",
                   command=_confirmer, bg=GREEN, fg=WHITE,
-                  font=("Arial", 15, "bold"), relief="flat",
-                  padx=30, pady=14, cursor="hand2").pack(side="left")
+                  font=("Arial", 12, "bold"), relief="flat",
+                  padx=24, pady=10, cursor="hand2").pack(side="left")
 
         self.root.wait_variable(recap_var)
 
