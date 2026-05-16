@@ -131,6 +131,27 @@ def _hms_to_sec(s):
         return 0
 
 
+def _row_date(v):
+    """Normalise une valeur date Excel (datetime, date, ou string) en dd/mm/yyyy."""
+    if v is None:
+        return ""
+    if hasattr(v, 'strftime'):
+        return v.strftime("%d/%m/%Y")
+    s = str(v).strip()[:10]
+    if len(s) == 10 and s[4] == '-':   # ISO yyyy-mm-dd
+        return f"{s[8:10]}/{s[5:7]}/{s[0:4]}"
+    return s
+
+
+def _row_time(v):
+    """Normalise une valeur time Excel (datetime.time ou string) en HH:MM:SS."""
+    if v is None:
+        return ""
+    if hasattr(v, 'strftime'):
+        return v.strftime("%H:%M:%S")
+    return str(v).strip()
+
+
 def _min_str_to_hms(val):
     """Convertit une valeur en minutes (saisie opérateur) vers HH:MM:SS pour Excel."""
     if not val or str(val).strip() == "":
@@ -641,6 +662,7 @@ class App:
             self.root.state("zoomed")
         except Exception:
             self.root.attributes("-fullscreen", True)
+        self.root.protocol("WM_DELETE_WINDOW", lambda: self._confirm_quit())
 
         self._px = lambda n: n   # pas de scaling
 
@@ -726,7 +748,7 @@ class App:
         def _pdt(date_s, time_s):
             try:
                 return datetime.datetime.strptime(
-                    f"{str(date_s).strip()[:10]} {str(time_s).strip()}",
+                    f"{_row_date(date_s)} {_row_time(time_s)}",
                     "%d/%m/%Y %H:%M:%S")
             except Exception:
                 return None
@@ -742,7 +764,7 @@ class App:
                     if not any(row):
                         continue
                     r = list(row) + [None] * 55
-                    date_val = str(r[1] or "").strip()[:10]
+                    date_val = _row_date(r[1])
                     if date_val != today:
                         continue
                     start_dt = _pdt(date_val, r[17])
@@ -808,16 +830,14 @@ class App:
                 for ci, val in enumerate(row, 1):
                     if ci in headers and val is not None:
                         self.lists[headers[ci]].append(str(val))
-            # Cache de la référence de production (cellule I2 = colonne 9)
-            # Lecture explicite min_col=9,max_col=9 pour garantir la cellule I2
-            # même si elle n'a pas de header en ligne 1
+            # Prod de référence : même valeur pour tous les postes — première cellule non nulle de col I
             try:
-                for row_i2 in ws.iter_rows(min_row=2, max_row=2,
-                                           min_col=9, max_col=9, values_only=True):
-                    if row_i2 and row_i2[0] is not None:
-                        self._prod_ref_cached = float(
-                            str(row_i2[0]).replace(",", "."))
-                    break
+                for row_ix in ws.iter_rows(min_row=2, min_col=9, max_col=9, values_only=True):
+                    if row_ix and row_ix[0] is not None:
+                        v_ref = str(row_ix[0]).replace(",", ".")
+                        if v_ref.replace(".", "", 1).isdigit():
+                            self._prod_ref_cached = float(v_ref)
+                            break
             except Exception:
                 pass
             wb.close()
@@ -1027,6 +1047,10 @@ class App:
                 "logged_in_pilot":  self._logged_in_pilot,
                 "inter_of_s":       self._inter_of_s,
                 "of_count_shift":   self._of_count_this_shift,
+                "pause_total_s":    self._pause_total_s,
+                "pause_start":      self._dt_str(self._pause_start) if self._pause_start else None,
+                "is_paused":        self._is_paused,
+                "pause_periods":    [[self._dt_str(a), self._dt_str(b)] for a, b in self._pause_periods],
             }
             with open(SESSION_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -1091,6 +1115,16 @@ class App:
 
             self._inter_of_s          = float(data.get("inter_of_s", 0))
             self._of_count_this_shift = int(data.get("of_count_shift", 0))
+
+            # Pauses (restauration après crash)
+            self._pause_total_s = float(data.get("pause_total_s", 0))
+            self._is_paused     = bool(data.get("is_paused", False))
+            self._pause_start   = self._str_dt(data.get("pause_start"))
+            self._pause_periods = []
+            for pair in data.get("pause_periods", []):
+                if len(pair) == 2:
+                    self._pause_periods.append(
+                        (self._str_dt(pair[0]), self._str_dt(pair[1])))
 
             return True
         except Exception:
@@ -2446,6 +2480,7 @@ Arrêts imputés au TRS (temps perdu) :
         except Exception:
             pass
 
+        if self._after_id: self.root.after_cancel(self._after_id)
         self._after_id = self.root.after(1000, self._tick)
 
     def _redraw_status(self, of_s=0, stop_s=0, any_running=False):
@@ -2869,9 +2904,6 @@ Arrêts imputés au TRS (temps perdu) :
                 bg=NAVY, fg=col_arr, font=("Arial", 10, "bold"))
             self._stops_lbl.pack(anchor="center", padx=10, pady=(0, 10))
 
-            # Bouton PAUSE — jaune, toujours sous EN COURS
-            _make_canvas_btn(btn_zone, "☕  JE VAIS EN PAUSE", "#d4a017",
-                             self._toggle_pause, expand=False, pady=(4, 2), height=56)
         else:
             # Bouton vert "Démarrer"
             btn_canvas = tk.Canvas(btn_zone, bg=BG, highlightthickness=0)
@@ -2894,11 +2926,7 @@ Arrêts imputés au TRS (temps perdu) :
             btn_canvas.bind("<Button-1>",  lambda e: self._start_production())
             btn_canvas.config(cursor="hand2")
 
-            # Bouton PAUSE — gris, toujours visible même sans prod
-            _make_canvas_btn(btn_zone, "☕  JE VAIS EN PAUSE", "#b0b8c8",
-                             lambda: None, expand=False, pady=(2, 2), height=56)
-
-        # Colonne centre : Se déconnecter / Se connecter + Fin de poste
+        # Colonne centre : Se déconnecter / Se connecter
         action_zone = tk.Frame(right_zone, bg=BG, width=self._px(200))
         action_zone.pack(side="left", fill="y", padx=(0, 8))
         action_zone.pack_propagate(False)
@@ -2915,13 +2943,21 @@ Arrêts imputés au TRS (temps perdu) :
         else:
             _make_canvas_btn(action_zone, "🔑  SE\nCONNECTER", GREEN, _do_connect)
 
-        # Bouton FIN DE POSTE — toujours visible
-        _make_canvas_btn(action_zone, "🏁  FIN DE\nMON POSTE", NAVY_L, self._show_fin_de_poste)
-
         # Colonne droite : panneau KPI arrêts
         kpi_stops = tk.Frame(right_zone, bg=BG)
         kpi_stops.pack(side="left", fill="both", expand=True)
         self._build_stops_kpi_panel(kpi_stops)
+
+        # ── Barre de boutons d'action — PAUSE + FIN DE MON POSTE ──────────────
+        # Rangée dédiée, toujours visible, indépendante du panneau du haut
+        action_bar = tk.Frame(body, bg=BG, height=60)
+        action_bar.pack(fill="x", pady=(6, 2))
+        action_bar.pack_propagate(False)
+
+        _pause_color = "#d4a017" if self._prod_active else "#b0b8c8"
+        _pause_cmd   = self._toggle_pause if self._prod_active else lambda: None
+        _make_canvas_btn(action_bar, "☕  JE VAIS EN PAUSE", _pause_color, _pause_cmd)
+        _make_canvas_btn(action_bar, "🏁  FIN DE MON POSTE", NAVY_L, self._show_fin_de_poste)
 
         # ── Onglets Déclarations / Événements ──────────────────────────────────
         tab_bar = tk.Frame(body, bg=BG)
@@ -3117,6 +3153,7 @@ Arrêts imputés au TRS (temps perdu) :
             except Exception:
                 pass
 
+        if self._after_id: self.root.after_cancel(self._after_id)
         self._after_id = self.root.after(1000, self._tick)
 
     def _save_form_data(self):
@@ -3294,7 +3331,7 @@ Arrêts imputés au TRS (temps perdu) :
         pilots_seen = []
         for row in rows:
             p = str(row[3] or "").strip()
-            d = str(row[1] or "").strip()[:10]
+            d = _row_date(row[1])
             if d == today and p and p not in pilots_seen:
                 pilots_seen.append(p)
         last_pilot = (self._logged_in_pilot if self._logged_in_pilot
@@ -3303,18 +3340,18 @@ Arrêts imputés au TRS (temps perdu) :
         prod_ref = self._get_prod_ref()
         tot_eq, tot_s = 0.0, 0.0
         for row in rows:
-            d = str(row[1] or "").strip()[:10]
+            d = _row_date(row[1])
             p = str(row[3] or "").strip()
             if d != today or p != last_pilot:
                 continue
             try:
                 tot_eq += float(str(row[15] or 0).replace(",", "."))
-                tot_s  += _hms_to_sec(str(row[16] or "00:00:00"))
+                tot_s  += _hms_to_sec(_row_time(row[16]) or "00:00:00")
             except Exception:
                 pass
             try:
-                d_s = str(row[1] or "")[:10]
-                t_s = str(row[18] or "")[:5]
+                d_s = _row_date(row[1])
+                t_s = _row_time(row[18])[:5]
                 if d_s and t_s:
                     last_dt_str = f"{d_s} à {t_s}"
             except Exception:
@@ -3431,7 +3468,7 @@ Arrêts imputés au TRS (temps perdu) :
         def _row_dt(row):
             try:
                 return datetime.datetime.strptime(
-                    f"{str(row[1] or '').strip()[:10]} {str(row[17] or '').strip()}",
+                    f"{_row_date(row[1])} {_row_time(row[17])}",
                     "%d/%m/%Y %H:%M:%S")
             except Exception:
                 return None
@@ -3467,7 +3504,7 @@ Arrêts imputés au TRS (temps perdu) :
                 continue
             try:
                 totals[p]["eq"] += float(str(row[15] or 0).replace(",", "."))
-                totals[p]["s"]  += _hms_to_sec(str(row[16] or "00:00:00"))
+                totals[p]["s"]  += _hms_to_sec(_row_time(row[16]) or "00:00:00")
                 if not totals[p]["poste"]:
                     totals[p]["poste"] = str(row[2] or "").strip()
             except Exception:
@@ -3606,11 +3643,11 @@ Arrêts imputés au TRS (temps perdu) :
                 if trs_val >= 0:
                     trs_str = f"{trs_val:.0f}%"
                     trs_tag = ("trs_hi",) if trs_val >= 70 else (("trs_warn",) if trs_val >= 50 else ("trs_low",))
-            date_str = str(row[1])[:10] if row[1] else ""
+            date_str = _row_date(row[1])
             tree.insert("", "end", iid=str(excel_row), tags=trs_tag, values=(
                 date_str,
-                str(row[17])[:8]      if row[17] else "",
-                str(row[18])[:8]      if row[18] else "",
+                _row_time(row[17]),
+                _row_time(row[18]),
                 str(row[0])           if row[0]  else "",
                 str(row[3])           if row[3]  else "",
                 str(row[2])           if row[2]  else "",
@@ -3618,7 +3655,7 @@ Arrêts imputés au TRS (temps perdu) :
                 str(row[14])          if row[14] else "0",
                 f"{equiv:.1f}"        if equiv   else "",
                 trs_str,
-                str(row[16])          if row[16] else "",
+                _row_time(row[16]),
                 fmt(arr_s),
                 "✏", "🗑",
             ))
@@ -3684,8 +3721,8 @@ Arrêts imputés au TRS (temps perdu) :
             ws = wb["Data"]
             for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 if (str(r[0] or "").strip() == of_val
-                        and str(r[1] or "").strip()[:10] == dt_val
-                        and str(r[17] or "").strip()[:8] == hs_val):
+                        and _row_date(r[1]) == dt_val
+                        and _row_time(r[17])[:8] == hs_val):
                     return i, wb
             wb.close()
         except Exception:
@@ -3950,8 +3987,8 @@ Arrêts imputés au TRS (temps perdu) :
                             if _r_of == of_num2 and _r_date == of_date2:
                                 continue  # supprimé — sera remplacé par evt_snapshot
                             keep.append(list(r))
-                        for row_idx in range(ws_e.max_row, 1, -1):
-                            ws_e.delete_rows(row_idx)
+                        if ws_e.max_row > 1:
+                            ws_e.delete_rows(2, ws_e.max_row)
                         for r in keep:
                             ws_e.append(r)
                             self._format_row(ws_e, ws_e.max_row)
@@ -4086,6 +4123,7 @@ Arrêts imputés au TRS (temps perdu) :
                     ts_short = f"{h2}h {m2:02d}min {s2:02d}s" if h2 else f"{m2}min {s2:02d}s"
                     _alert_res = [False]
                     _alert_var = tk.BooleanVar(value=False)
+                    self._modal_open = True
                     ov_a = tk.Frame(self.root, bg=WHITE)
                     ov_a.place(relx=0, rely=0, relwidth=1, relheight=1)
                     ov_a.lift()
@@ -4113,6 +4151,7 @@ Arrêts imputés au TRS (temps perdu) :
                               font=("Arial", 12), relief="flat",
                               padx=18, pady=10, cursor="hand2").pack(side="left", padx=8)
                     self.root.wait_variable(_alert_var)
+                    self._modal_open = False
                     do_changeof = _alert_res[0]
                 elif self._last_of_pilot and self._last_of_pilot != (self._logged_in_pilot or ""):
                     h = int(gap // 3600)
@@ -4344,6 +4383,7 @@ Arrêts imputés au TRS (temps perdu) :
         self._recap_panel = recap_panel
         self._build_stops_recap(recap_panel)
 
+        if self._after_id: self.root.after_cancel(self._after_id)
         self._after_id = self.root.after(1000, self._tick)
 
     # ── Formulaire compact 4 colonnes (pas de scroll) ────────────────────────
@@ -5438,6 +5478,7 @@ Arrêts imputés au TRS (temps perdu) :
                 self.root.wait_variable(reunion_var)
                 if not reunion_ok[0]:
                     self._prod_active = True
+                    if self._after_id: self.root.after_cancel(self._after_id)
                     self._after_id = self.root.after(1000, self._tick)
                     return
 
@@ -5460,6 +5501,7 @@ Arrêts imputés au TRS (temps perdu) :
         _reunion_counted = max(0.0, _reunion_s - _mtol_s)
 
         # ── Overlay plein écran recap avant confirmation ──────────────────────
+        self._modal_open = True
         confirmed = [False]
         modified  = [False]
         recap_var = tk.BooleanVar(value=False)
@@ -5660,16 +5702,19 @@ Arrêts imputés au TRS (temps perdu) :
                   padx=24, pady=10, cursor="hand2").pack(side="left")
 
         self.root.wait_variable(recap_var)
+        self._modal_open = False
 
         if modified[0]:
             # Retour a la vue production sans rien perdre
             self._prod_active = True
+            if self._after_id: self.root.after_cancel(self._after_id)
             self._after_id = self.root.after(1000, self._tick)
             return
 
         if not confirmed[0]:
             # Ferme sans confirmer → retour prod
             self._prod_active = True
+            if self._after_id: self.root.after_cancel(self._after_id)
             self._after_id = self.root.after(1000, self._tick)
             return
 
@@ -5738,7 +5783,7 @@ Arrêts imputés au TRS (temps perdu) :
                                         _t_qte   += int(float(str(_r[13] or 0) or 0))
                                         _t_reunion += _hms_to_sec(str(_r[31] or ""))
                                         _t_ratt_row = sum(_hms_to_sec(str(_r[i] or "")) for i in range(33, 38) if _r[i])
-                                        _t_panne_row = sum(_hms_to_sec(str(_r[i] or "")) for i in range(38, 57) if i < len(_r) and _r[i])
+                                        _t_panne_row = sum(_hms_to_sec(str(_r[i] or "")) for i in range(38, 56) if i < len(_r) and _r[i])
                                         _t_ratt  += _t_ratt_row
                                         _t_panne += _t_panne_row
                                 # Pauses from events sheet
@@ -5856,16 +5901,16 @@ Arrêts imputés au TRS (temps perdu) :
         total_qte      = 0
 
         for _, row in self._data_rows_cache:
-            row_date  = str(row[1] or "")[:10]
+            row_date  = _row_date(row[1])
             row_pilot = str(row[3] or "")
-            if row_date != today and row_pilot != pilot:
+            if row_date != today or row_pilot != pilot:
                 continue
             try:
                 total_prod_s  += _hms_to_sec(str(row[16] or ""))
                 total_equiv   += float(str(row[15] or 0).replace(",", ".") or 0)
                 total_qte     += int(float(str(row[13] or 0)))
                 nb_of         += 1
-                panne_cols = range(38, 57)
+                panne_cols = range(38, 56)
                 for ci in panne_cols:
                     if ci < len(row) and row[ci]:
                         total_panne_s += _hms_to_sec(str(row[ci]))
@@ -6251,24 +6296,27 @@ Arrêts imputés au TRS (temps perdu) :
         if not path or not os.path.exists(path):
             self._schedule_pending_retry()
             return
-        try:
-            wb   = load_workbook(path)
-            ws_d = self._ensure_data_sheet(wb)
-            ws_d.append(payload["row"])
-            self._format_row(ws_d, ws_d.max_row)
-            ws_e = self._ensure_events_sheet(wb)
-            for ev_row in payload.get("events_rows", []):
-                ws_e.append(ev_row)
-                self._format_row(ws_e, ws_e.max_row)
-            wb.save(path)
-            wb.close()
-            os.remove(PENDING_FILE)
-            _toast(self.root, "✔  Déclaration enregistrée dans Excel !", bg=GREEN)
-            self.root.after(0, self._reload_and_refresh)
-        except PermissionError:
-            self._schedule_pending_retry()
-        except Exception:
-            self._schedule_pending_retry()
+        def _bg_pending():
+            try:
+                with self._excel_lock:
+                    wb   = load_workbook(path)
+                    ws_d = self._ensure_data_sheet(wb)
+                    ws_d.append(payload["row"])
+                    self._format_row(ws_d, ws_d.max_row)
+                    ws_e = self._ensure_events_sheet(wb)
+                    for ev_row in payload.get("events_rows", []):
+                        ws_e.append(ev_row)
+                        self._format_row(ws_e, ws_e.max_row)
+                    wb.save(path)
+                    wb.close()
+                os.remove(PENDING_FILE)
+                self.root.after(0, lambda: _toast(self.root, "✔  Déclaration enregistrée dans Excel !", bg=GREEN))
+                self.root.after(0, self._reload_and_refresh)
+            except PermissionError:
+                self.root.after(0, self._schedule_pending_retry)
+            except Exception:
+                self.root.after(0, self._schedule_pending_retry)
+        threading.Thread(target=_bg_pending, daemon=True).start()
 
     @staticmethod
     def _format_row(ws, row_idx):
