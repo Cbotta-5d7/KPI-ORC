@@ -2836,7 +2836,7 @@ Arrêts imputés au TRS (temps perdu) :
             return cv
 
         if self._prod_active:
-            # Grand panneau "Production en cours" (70% de la hauteur)
+            # Grand panneau "Production en cours"
             prod_wrap, prod_inner = shadow_frame(btn_zone, bg=NAVY)
             prod_wrap.pack(fill="both", expand=True)
             self._main_prod_panel = prod_wrap
@@ -2869,13 +2869,13 @@ Arrêts imputés au TRS (temps perdu) :
                 bg=NAVY, fg=col_arr, font=("Arial", 10, "bold"))
             self._stops_lbl.pack(anchor="center", padx=10, pady=(0, 10))
 
-            # Bouton "Aller en pause" JAUNE sous le panneau EN COURS
-            _make_canvas_btn(btn_zone, "☕  ALLER EN PAUSE", "#d4a017",
-                             self._toggle_pause, expand=False, pady=(4, 2), height=52)
+            # Bouton PAUSE — jaune, toujours sous EN COURS
+            _make_canvas_btn(btn_zone, "☕  JE VAIS EN PAUSE", "#d4a017",
+                             self._toggle_pause, expand=False, pady=(4, 2), height=56)
         else:
             # Bouton vert "Démarrer"
             btn_canvas = tk.Canvas(btn_zone, bg=BG, highlightthickness=0)
-            btn_canvas.pack(fill="both", expand=True, padx=2, pady=6)
+            btn_canvas.pack(fill="both", expand=True, padx=2, pady=(6, 2))
 
             def _draw_btn(e=None):
                 btn_canvas.delete("all")
@@ -2894,7 +2894,11 @@ Arrêts imputés au TRS (temps perdu) :
             btn_canvas.bind("<Button-1>",  lambda e: self._start_production())
             btn_canvas.config(cursor="hand2")
 
-        # Colonne centre : Se déconnecter / Se connecter + Pause
+            # Bouton PAUSE — gris, toujours visible même sans prod
+            _make_canvas_btn(btn_zone, "☕  JE VAIS EN PAUSE", "#b0b8c8",
+                             lambda: None, expand=False, pady=(2, 2), height=56)
+
+        # Colonne centre : Se déconnecter / Se connecter + Fin de poste
         action_zone = tk.Frame(right_zone, bg=BG, width=self._px(200))
         action_zone.pack(side="left", fill="y", padx=(0, 8))
         action_zone.pack_propagate(False)
@@ -2911,13 +2915,8 @@ Arrêts imputés au TRS (temps perdu) :
         else:
             _make_canvas_btn(action_zone, "🔑  SE\nCONNECTER", GREEN, _do_connect)
 
-        # Bouton FIN DE POSTE
-        _make_canvas_btn(action_zone, "🏁  FIN\nDE POSTE", NAVY_L, self._show_fin_de_poste)
-
-        # Bouton Pause — toujours visible, jaune si prod active, gris sinon
-        _pause_color = "#d4a017" if self._prod_active else "#b0b8c8"
-        _pause_cmd   = self._toggle_pause if self._prod_active else lambda: None
-        _make_canvas_btn(action_zone, "☕  JE VAIS\nEN PAUSE", _pause_color, _pause_cmd)
+        # Bouton FIN DE POSTE — toujours visible
+        _make_canvas_btn(action_zone, "🏁  FIN DE\nMON POSTE", NAVY_L, self._show_fin_de_poste)
 
         # Colonne droite : panneau KPI arrêts
         kpi_stops = tk.Frame(right_zone, bg=BG)
