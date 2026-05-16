@@ -4805,9 +4805,30 @@ Arrêts imputés au TRS (temps perdu) :
         kit       = 2 if self._v_kit.get() else 1
 
         prod_ref = self._get_prod_ref()
+        # ── Ajustements TRS nettoyage et réunion ─────────────────────────────
+        _nett_s_tmp = sum(
+            (ev["end"] - ev["start"]).total_seconds()
+            for ev in self._tl_events
+            if ev.get("key") == "nettoyage" and ev.get("start") and ev.get("end")
+        )
+        _nett_type_tmp = None
+        for _ev in self._tl_events:
+            if _ev.get("key") == "nettoyage" and _ev.get("start") and _ev.get("end"):
+                _nett_type_tmp = _ev.get("nettoyage_type", "court")
+                break
+        _tol_key_map2 = {"court": "clean_short_min", "long": "clean_long_min", "grand": "clean_grand_min"}
+        _tol_key2 = _tol_key_map2.get(_nett_type_tmp or "court", "clean_short_min")
+        _tol_s2   = int(self.cfg.get(_tol_key2, 10)) * 60
+        _nett_planned_s = min(_nett_s_tmp, _tol_s2)   # Portion planifiée exclue TRS
+        _mtol_s2 = int(self.cfg.get("meeting_tol_min", 5)) * 60
+        _reunion_s2 = _hms_to_sec(_min_str_to_hms(v.get("manquant_pers", "")))
+        _reunion_planned_s = min(_reunion_s2, _mtol_s2)   # Portion planifiée exclue TRS
+        # Temps d'ouverture = of_s - temps planifiés
+        _planned_total_s = _nett_planned_s + _reunion_planned_s
+        _ouverture_s = max(1.0, of_s - _planned_total_s)
         trs_pct  = -1.0
-        if prod_ref > 0 and of_s > 0:
-            expected = prod_ref * of_s / 28800.0
+        if prod_ref > 0 and _ouverture_s > 0:
+            expected = prod_ref * _ouverture_s / 28800.0
             trs_pct  = (equiv / expected * 100.0) if expected > 0 else -1.0
 
         # TRS du poste (12h) = historique Excel + déclaration actuelle
