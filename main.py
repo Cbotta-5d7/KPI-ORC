@@ -701,6 +701,8 @@ class App:
         self._pause_periods    = []
         self._is_paused        = False
         self._pause_overlay    = None
+        self._modal_open       = False
+        self._trs_cache        = []
         self._loading_overlay  = None
         self._loading_canvas   = None
         self._loading_anim_id  = None
@@ -824,12 +826,14 @@ class App:
 
     def _select_db(self):
         # ── Étape 1 : mot de passe ─────────────────────────────────────────────
+        self._modal_open = True
         top = tk.Toplevel(self.root)
         top.title("Acces base de donnees")
         top.resizable(False, False)
         top.grab_set()
         top.update_idletasks()
         self._center_on_root(top, 320, 180)
+        top.bind("<Destroy>", lambda e: setattr(self, "_modal_open", False) if e.widget is top else None)
         allowed = tk.BooleanVar(value=False)
         tk.Label(top, text="Mot de passe base de donnees",
                  font=("Arial", 10, "bold"), fg=DARK).pack(pady=(18, 4))
@@ -1821,11 +1825,10 @@ Arrêts imputés au TRS (temps perdu) :
   • Manquant matière première (100%)
 
 ═══ INTERVALLE ENTRE OF ═══
-  • Si l'intervalle entre deux OF est ≤ 5 min (configurable), il est
-    automatiquement déclaré comme "Changement d'OF" dans les événements
-    et n'est PAS imputé au TRS.
-  • Si l'intervalle est > 5 min, le temps est déclaré dans la colonne
-    "Temps inter-poste" et PEUT impacter le TRS selon les règles.
+  • Si l'intervalle entre deux OF est ≤ durée configurée (défaut 5 min),
+    il est automatiquement classé "Changement d'OF" dans les événements.
+    Il est toujours imputé au TRS du prochain OF ouvert.
+    Si l'intervalle dépasse la durée configurée, une confirmation est demandée au pilote.
 
 ═══ CHANGEMENT D'OF ═══
   • Un changement d'OF crée automatiquement un événement dans l'onglet
@@ -1851,11 +1854,6 @@ Arrêts imputés au TRS (temps perdu) :
   • Grand nettoyage : tolérance configurable (défaut 60 min)
   • Seul le temps dépassant la tolérance est imputé au TRS.
 
-═══ MOT DE PASSE ═══
-  • Application : configurable (défaut 0000)
-  • Base de données : configurable (défaut 4594)
-  • Paramètres : configurable (défaut 2026)
-  • Pilotes : mot de passe individuel stocké dans Excel (onglet Listes)
 """
 
     def _show_settings(self):
@@ -1905,12 +1903,14 @@ Arrêts imputés au TRS (temps perdu) :
             return
 
         # Étape 2 : fenêtre paramètres
+        self._modal_open = True
         win = tk.Toplevel(self.root)
         win.title("Paramètres KPI-ORC")
         win.grab_set()
         win.configure(bg=BG)
         win.resizable(True, True)
         self._center_on_root(win, 820, 620)
+        win.bind("<Destroy>", lambda e: setattr(self, "_modal_open", False) if e.widget is win else None)
 
         tk.Frame(win, bg=NAVY, height=6).pack(fill="x")
         hdr_s = tk.Frame(win, bg=NAVY, height=50)
@@ -1943,6 +1943,7 @@ Arrêts imputés au TRS (temps perdu) :
             ("Nettoyage long ex: mercredi (minutes)",  "clean_long_min",    30),
             ("Grand nettoyage (minutes)",              "clean_grand_min",   60),
             ("Réunion tolérée par poste (minutes)",    "meeting_tol_min",    5),
+            ("Temps de pause autorisé par poste (min)", "pause_max_min",    20),
             ("Intervalle inter-OF ignoré (minutes)",   "inter_of_tol_min",   5),
             ("Mot de passe application",               "app_password",    "0000"),
             ("Mot de passe base de données",           "db_password",     "4594"),
@@ -2109,6 +2110,48 @@ Arrêts imputés au TRS (temps perdu) :
 
         cop_items_ref = _make_list_tab(tab_cop, "Co-pilotes")
 
+        # ── Tab Postes ────────────────────────────────────────────────────────
+        tab_post = tk.Frame(nb_s, bg=WHITE)
+        nb_s.add(tab_post, text="  Postes  ")
+
+        postes_defaults = [("Matin", 8, 0), ("Midi", 8, 0), ("Nuit", 8, 0), ("Jour", 8, 0)]
+        postes_vars = {}  # nom -> (h_var, m_var)
+        poste_durees_cfg = self.cfg.get("postes_durees", {})
+
+        post_frm = tk.Frame(tab_post, bg=WHITE)
+        post_frm.pack(fill="both", expand=True, padx=16, pady=12)
+        tk.Label(post_frm, text="Durées des postes", bg=WHITE, fg=NAVY,
+                 font=("Arial", 12, "bold")).pack(anchor="w", pady=(0, 8))
+
+        post_hdr = tk.Frame(post_frm, bg=WHITE)
+        post_hdr.pack(fill="x", pady=(0, 4))
+        tk.Label(post_hdr, text="Poste", bg=WHITE, fg=GRAY,
+                 font=("Arial", 10, "bold"), width=14, anchor="w").pack(side="left")
+        tk.Label(post_hdr, text="Heures", bg=WHITE, fg=GRAY,
+                 font=("Arial", 10, "bold"), width=8, anchor="w").pack(side="left")
+        tk.Label(post_hdr, text="Minutes", bg=WHITE, fg=GRAY,
+                 font=("Arial", 10, "bold"), width=8, anchor="w").pack(side="left")
+
+        for nom, dh, dm in postes_defaults:
+            total_min = poste_durees_cfg.get(nom, dh * 60 + dm)
+            h_val = total_min // 60
+            m_val = total_min % 60
+            h_var = tk.StringVar(value=str(h_val))
+            m_var = tk.StringVar(value=str(m_val))
+            postes_vars[nom] = (h_var, m_var)
+            prow = tk.Frame(post_frm, bg=WHITE if postes_defaults.index((nom, dh, dm)) % 2 == 0 else "#f8f9fc")
+            prow.pack(fill="x", pady=2)
+            tk.Label(prow, text=nom, bg=prow.cget("bg"), fg=DARK,
+                     font=("Arial", 11), width=14, anchor="w").pack(side="left")
+            tk.Entry(prow, textvariable=h_var, font=("Arial", 11),
+                     width=6, relief="solid", bd=1, justify="center").pack(side="left", padx=4)
+            tk.Label(prow, text="h", bg=prow.cget("bg"), fg=GRAY,
+                     font=("Arial", 11)).pack(side="left", padx=(0, 8))
+            tk.Entry(prow, textvariable=m_var, font=("Arial", 11),
+                     width=6, relief="solid", bd=1, justify="center").pack(side="left", padx=4)
+            tk.Label(prow, text="min", bg=prow.cget("bg"), fg=GRAY,
+                     font=("Arial", 11)).pack(side="left")
+
         # ── Tab Règles de calcul ──────────────────────────────────────────────
         tab_rules = tk.Frame(nb_s, bg=WHITE)
         nb_s.add(tab_rules, text="  Règles de calcul  ")
@@ -2136,6 +2179,15 @@ Arrêts imputés au TRS (temps perdu) :
                         self.cfg[key] = int(val2)
                     except (ValueError, TypeError):
                         self.cfg[key] = val2
+            # Sauvegarder les durées de postes
+            postes_dict = {}
+            for nom, (hv, mv) in postes_vars.items():
+                try:
+                    total = int(hv.get() or 0) * 60 + int(mv.get() or 0)
+                except Exception:
+                    total = 480
+                postes_dict[nom] = total
+            self.cfg["postes_durees"] = postes_dict
             save_cfg(self.cfg)
             # Mettre à jour self.lists
             self.lists["Pilotes"] = list(pil_names_ref)
@@ -2336,6 +2388,7 @@ Arrêts imputés au TRS (temps perdu) :
 
         # Auto-retour
         if (self._mode == "main" and self._prod_active
+                and not self._modal_open
                 and (now - self._last_activity).total_seconds() > 30):
             self._last_activity = now
             self._transition(self._nav_to_production)
@@ -2567,6 +2620,7 @@ Arrêts imputés au TRS (temps perdu) :
         def _bg():
             rows = []
             events = []
+            trs_data = []
             if path and os.path.exists(path):
                 try:
                     wb = load_workbook(path, read_only=True, data_only=True)
@@ -2581,17 +2635,23 @@ Arrêts imputés au TRS (temps perdu) :
                         for r in ws_e.iter_rows(min_row=2, values_only=True):
                             if r and any(r):
                                 events.append(list(r))
+                    if "TRS" in wb.sheetnames:
+                        ws_t = wb["TRS"]
+                        for r in ws_t.iter_rows(min_row=2, values_only=True):
+                            if r and any(r):
+                                trs_data.append(list(r))
                     wb.close()
                 except Exception:
                     pass
             final = rows[-50:] if len(rows) > 50 else rows
-            self.root.after(0, lambda: self._show_main_done(final, events=events))
+            self.root.after(0, lambda: self._show_main_done(final, events=events, trs_data=trs_data))
 
         threading.Thread(target=_bg, daemon=True).start()
 
-    def _show_main_done(self, rows, toast=None, events=None):
+    def _show_main_done(self, rows, toast=None, events=None, trs_data=None):
         self._data_rows_cache = rows
         self._events_cache    = events or []
+        self._trs_cache       = trs_data or []
         self._hide_loading()
         self._build_main_ui()
         if toast:
@@ -2810,6 +2870,9 @@ Arrêts imputés au TRS (temps perdu) :
         else:
             _make_canvas_btn(action_zone, "🔑  SE\nCONNECTER", GREEN, _do_connect)
 
+        # Bouton FIN DE POSTE
+        _make_canvas_btn(action_zone, "🏁  FIN\nDE POSTE", NAVY_L, self._show_fin_de_poste)
+
         # Bouton Pause — toujours visible, jaune si prod active, gris sinon
         _pause_color = "#d4a017" if self._prod_active else "#b0b8c8"
         _pause_cmd   = self._toggle_pause if self._prod_active else lambda: None
@@ -2824,8 +2887,8 @@ Arrêts imputés au TRS (temps perdu) :
         tab_bar = tk.Frame(body, bg=BG)
         tab_bar.pack(fill="x", pady=(0, 0))
 
-        _active_tab = [0]   # 0 = Déclarations, 1 = Événements
-        tab_frames  = [None, None]
+        _active_tab = [0]   # 0 = Déclarations, 1 = Événements, 2 = Postes
+        tab_frames  = [None, None, None]
 
         def _switch_tab(idx):
             _active_tab[0] = idx
@@ -2842,7 +2905,7 @@ Arrêts imputés au TRS (temps perdu) :
                         frm.pack_forget()
 
         tab_btns = []
-        for i, lbl in enumerate(["📋  Déclarations", "📊  Événements"]):
+        for i, lbl in enumerate(["📋  Déclarations", "📊  Événements", "🏁  Postes"]):
             btn = tk.Button(tab_bar, text=lbl, bg=NAVY if i == 0 else LGRAY,
                             fg=WHITE if i == 0 else DARK,
                             font=("Arial", 10, "bold"), relief="flat",
@@ -2925,6 +2988,13 @@ Arrêts imputés au TRS (temps perdu) :
         evt_tree2.pack(side="left", fill="both", expand=True)
         sb_evt.pack(side="right", fill="y")
 
+        # Configure event color tags
+        evt_tree2.tag_configure("evt_pause", background="#fff8e1", foreground="#92400e")
+        evt_tree2.tag_configure("evt_panne", background="#fee2e2", foreground="#991b1b")
+        evt_tree2.tag_configure("evt_ratt",  background="#fff3e0", foreground="#d97706")
+        evt_tree2.tag_configure("evt_chg",   background="#ede9fe", foreground="#5b21b6")
+        evt_tree2.tag_configure("evt_nett",  background="#e0f2fe", foreground="#0369a1")
+
         # Populate events tree
         for ev_row in reversed(self._events_cache[-100:]):
             try:
@@ -2936,8 +3006,72 @@ Arrêts imputés au TRS (temps perdu) :
                 ev_hf   = str(ev_row[17] or "")[:8]
                 ev_dur  = str(ev_row[18] or "")
                 ev_cmt  = str(ev_row[19] or "")
+                ev_type_low = ev_type.lower()
+                if "pause" in ev_type_low:
+                    tag = "evt_pause"
+                elif "panne" in ev_type_low or "pb" in ev_type_low or "problème" in ev_type_low:
+                    tag = "evt_panne"
+                elif "ratt" in ev_type_low:
+                    tag = "evt_ratt"
+                elif "changement" in ev_type_low:
+                    tag = "evt_chg"
+                elif "nettoyage" in ev_type_low:
+                    tag = "evt_nett"
+                else:
+                    tag = ""
                 evt_tree2.insert("", "end", values=(
-                    ev_type, ev_pil, ev_of, ev_date, ev_hd, ev_hf, ev_dur, ev_cmt))
+                    ev_type, ev_pil, ev_of, ev_date, ev_hd, ev_hf, ev_dur, ev_cmt),
+                    tags=(tag,) if tag else ())
+            except Exception:
+                pass
+
+        # ── Tab 2: Postes (TRS par poste) ────────────────────────────────────
+        postes_frame = tk.Frame(tab_container, bg=BG)
+        tab_frames[2] = postes_frame
+
+        pos_wrap, pos_inner = shadow_frame(postes_frame, bg=WHITE)
+        pos_wrap.pack(fill="both", expand=True)
+
+        pos_cols = ("Date", "Poste", "Pilote", "TRS", "Qté produite",
+                    "Équivalence", "Total prod", "Total panne", "Total ratt")
+        pos_tree = ttk.Treeview(pos_inner, columns=pos_cols, show="headings",
+                                height=15, style="KPI.Treeview")
+        pos_widths = {"Date": 80, "Poste": 80, "Pilote": 130, "TRS": 70,
+                      "Qté produite": 90, "Équivalence": 90,
+                      "Total prod": 90, "Total panne": 90, "Total ratt": 90}
+        for c3 in pos_cols:
+            pos_tree.heading(c3, text=c3)
+            pos_tree.column(c3, width=pos_widths.get(c3, 80), anchor="center",
+                            stretch=(c3 == "Pilote"))
+        pos_tree.tag_configure("trs_hi",   background="#e6f7ee", foreground=GREEN)
+        pos_tree.tag_configure("trs_warn", background="#fff7e6", foreground=ORANGE)
+        pos_tree.tag_configure("trs_low",  background="#fde8e8", foreground=C_RED)
+        sb_pos = ttk.Scrollbar(pos_inner, orient="vertical", command=pos_tree.yview)
+        pos_tree.configure(yscrollcommand=sb_pos.set)
+        pos_tree.pack(side="left", fill="both", expand=True)
+        sb_pos.pack(side="right", fill="y")
+
+        # Populate from _trs_cache
+        for trs_row in reversed(self._trs_cache[-100:]):
+            try:
+                t_date  = str(trs_row[0] or "")[:10]
+                t_poste = str(trs_row[1] or "")
+                t_pilot = str(trs_row[2] or "")
+                t_trs   = str(trs_row[14] or "")
+                t_qte   = str(trs_row[11] or "")
+                t_equiv = str(trs_row[12] or "")
+                t_prod  = str(trs_row[5] or "")
+                t_panne = str(trs_row[6] or "")
+                t_ratt  = str(trs_row[7] or "")
+                # Tag TRS
+                try:
+                    trs_num = float(str(t_trs).replace("%", "").replace(",", "."))
+                    pos_tag = ("trs_hi",) if trs_num >= 75 else (("trs_warn",) if trs_num >= 55 else ("trs_low",))
+                except Exception:
+                    pos_tag = ()
+                pos_tree.insert("", "end", values=(
+                    t_date, t_poste, t_pilot, t_trs, t_qte,
+                    t_equiv, t_prod, t_panne, t_ratt), tags=pos_tag)
             except Exception:
                 pass
 
@@ -4262,11 +4396,13 @@ Arrêts imputés au TRS (temps perdu) :
 
     # ── Popup info structure fichier Excel ───────────────────────────────────
     def _show_excel_info(self):
+        self._modal_open = True
         win = tk.Toplevel(self.root)
         win.title("Structure du fichier Excel")
         win.geometry("680x540")
         win.configure(bg=WHITE)
         win.attributes("-topmost", True)
+        win.bind("<Destroy>", lambda e: setattr(self, "_modal_open", False) if e.widget is win else None)
 
         # En-tête
         hdr = tk.Frame(win, bg=NAVY, height=52)
@@ -5018,7 +5154,10 @@ Arrêts imputés au TRS (temps perdu) :
             return
         of_s_brut = (end_dt - self._of_start).total_seconds()
         # L'intervalle inter-OF impute toujours le TRS de l'OF suivant
-        of_s      = max(1, of_s_brut + self._inter_of_s - self._pause_total_s)
+        # Les pauses en excès du quota autorisé restent dans of_s (impactent TRS)
+        _pause_max_s = int(self.cfg.get("pause_max_min", 20)) * 60
+        _pause_excess_s = max(0.0, self._pause_total_s - _pause_max_s)
+        of_s      = max(1, of_s_brut + self._inter_of_s - min(self._pause_total_s, _pause_max_s))
         stop_s    = self._t_wall_clock_stops()
         qte_fab   = _n("qte_fab")
         nb_pers   = max(1, _n("nb_pers") or 1)
@@ -5223,9 +5362,9 @@ Arrêts imputés au TRS (temps perdu) :
             f = tk.Frame(info_inner, bg=WHITE)
             f.pack(fill="x", pady=2)
             tk.Label(f, text=lbl, bg=WHITE, fg=lbl_color,
-                     font=("Arial", 9), width=22, anchor="w").pack(side="left")
+                     font=("Arial", 10), width=22, anchor="w").pack(side="left")
             tk.Label(f, text=str(val), bg=WHITE, fg=val_color,
-                     font=("Arial", 10, "bold" if bold else "normal")).pack(side="left")
+                     font=("Arial", 11, "bold" if bold else "normal")).pack(side="left")
 
         _row("N° OF",                 v.get("of_num", "—"),        NAVY,  bold=True)
         _row("Pilote",                self._logged_in_pilot or v.get("pilote","—"), NAVY_L)
@@ -5242,15 +5381,22 @@ Arrêts imputés au TRS (temps perdu) :
         _row("Arrêts cumulés",        fmt(stop_s),
              C_RED if stop_s > 0 else DARK,                         bold=(stop_s > 0))
         _row("Pauses",                fmt(pause_s),                 GRAY)
+        _pause_max_s_rc = int(self.cfg.get("pause_max_min", 20)) * 60
+        _pause_excess_rc = max(0.0, self._pause_total_s - _pause_max_s_rc)
+        _row("Pauses tolérées",       fmt(min(pause_s, _pause_max_s_rc)), GRAY)
+        if _pause_excess_rc > 0:
+            _row("Pauses excès TRS",  fmt(_pause_excess_rc),       C_RED, bold=True)
         _row(None, None, sep=True)
         if _nett_s > 0:
             _row("Nettoyage planifié",fmt(_nett_planned),           "#60a5fa")
             if _nett_counted > 0:
                 _row("Nettoyage excès",fmt(_nett_counted),          C_RED, bold=True)
+        _row("Nettoyage déclaré",     fmt(_nett_s) if _nett_s > 0 else "Aucun", GRAY)
         if _reunion_s > 0:
             _row("Réunion tolérée",   fmt(_reunion_planned),        "#fbbf24")
             if _reunion_counted > 0:
                 _row("Réunion excès", fmt(_reunion_counted),        C_RED, bold=True)
+        _row("Réunion déclarée",      fmt(_reunion_s) if _reunion_s > 0 else "Aucune", GRAY)
         _row("Commentaire",           v.get("comment","")[:60] or "—", GRAY)
 
         # ── Colonne droite : visuels ───────────────────────────────────────────
@@ -5267,7 +5413,7 @@ Arrêts imputés au TRS (temps perdu) :
         g1_card.grid(row=0, column=0, sticky="nsew", padx=(0, 4), pady=(0, 4))
         tk.Frame(g1_card, bg=GREEN, height=3).pack(fill="x")
         tk.Label(g1_card, text="TRS — cet OF", bg=WHITE, fg=GRAY,
-                 font=("Arial", 9, "bold")).pack(pady=(6, 0))
+                 font=("Arial", 11, "bold")).pack(pady=(6, 0))
         trs_disp  = max(0.0, trs_pct) if trs_pct >= 0 else 0.0
         trs_label = f"{trs_disp:.1f}%" if trs_pct >= 0 else "—"
         gauge_r   = Gauge(g1_card, bg=WHITE, width=210, height=160, highlightthickness=0)
@@ -5282,7 +5428,7 @@ Arrêts imputés au TRS (temps perdu) :
         _pilot_lbl = self._logged_in_pilot or v.get("pilote", "—")
         tk.Label(g2_card, text=f"TRS poste — {_pilot_lbl}",
                  bg=WHITE, fg=GRAY,
-                 font=("Arial", 9, "bold"), wraplength=200).pack(pady=(6, 0))
+                 font=("Arial", 11, "bold"), wraplength=200).pack(pady=(6, 0))
         trs12_disp = max(0.0, pilot_trs_12h) if pilot_trs_12h >= 0 else 0.0
         trs12_lbl  = f"{trs12_disp:.1f}%" if pilot_trs_12h >= 0 else "—"
         gauge_r2   = Gauge(g2_card, bg=WHITE, width=210, height=160, highlightthickness=0)
@@ -5295,7 +5441,7 @@ Arrêts imputés au TRS (temps perdu) :
         pie_card.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(4, 0))
         tk.Frame(pie_card, bg=C_RATT, height=3).pack(fill="x")
         tk.Label(pie_card, text="Répartition du temps", bg=WHITE, fg=GRAY,
-                 font=("Arial", 9, "bold")).pack(anchor="w", padx=12, pady=(4, 0))
+                 font=("Arial", 11, "bold")).pack(anchor="w", padx=12, pady=(4, 0))
 
         pie_cv = tk.Canvas(pie_card, bg=WHITE, highlightthickness=0)
         pie_cv.pack(fill="both", expand=True, padx=8, pady=4)
@@ -5429,6 +5575,58 @@ Arrêts imputés au TRS (temps perdu) :
                             ws_d.append(row)
                             self._format_row(ws_d, ws_d.max_row)
                             self._write_rows_to_events_sheet(wb, events_rows)
+                            # Write TRS sheet summary
+                            try:
+                                _today_str = datetime.date.today().strftime("%d/%m/%Y")
+                                _poste_nom = str(row[2] or "")
+                                _pilot_nm  = str(row[3] or "")
+                                _copilot_nm = str(row[4] or "")
+                                _nb_pers_trs = str(row[5] or "")
+                                # Accumulate from Data sheet for today/pilot/poste
+                                _t_prod = 0.0; _t_panne = 0.0; _t_ratt = 0.0
+                                _t_pause = 0.0; _t_reunion = 0.0
+                                _nb_of_trs = 0; _t_qte = 0; _t_equiv = 0.0
+                                for _r in ws_d.iter_rows(min_row=2, values_only=True):
+                                    if not _r or not any(_r):
+                                        continue
+                                    if (str(_r[1] or "")[:10] == _today_str
+                                            and str(_r[3] or "") == _pilot_nm
+                                            and str(_r[2] or "") == _poste_nom):
+                                        _nb_of_trs += 1
+                                        _t_prod  += _hms_to_sec(str(_r[16] or ""))
+                                        _t_equiv += float(str(_r[15] or 0).replace(",",".") or 0)
+                                        _t_qte   += int(float(str(_r[13] or 0) or 0))
+                                        _t_reunion += _hms_to_sec(str(_r[31] or ""))
+                                        _t_ratt_row = sum(_hms_to_sec(str(_r[i] or "")) for i in range(33, 38) if _r[i])
+                                        _t_panne_row = sum(_hms_to_sec(str(_r[i] or "")) for i in range(38, 57) if i < len(_r) and _r[i])
+                                        _t_ratt  += _t_ratt_row
+                                        _t_panne += _t_panne_row
+                                # Pauses from events sheet
+                                ws_e2 = self._ensure_events_sheet(wb)
+                                for _er in ws_e2.iter_rows(min_row=2, values_only=True):
+                                    if not _er or not _er[0]:
+                                        continue
+                                    if ("pause" in str(_er[0] or "").lower()
+                                            and str(_er[2] or "")[:10] == _today_str
+                                            and str(_er[4] or "") == _pilot_nm):
+                                        _t_pause += _hms_to_sec(str(_er[18] or ""))
+                                # TRS poste
+                                _prod_ref_trs = self._get_prod_ref()
+                                _pause_max_trs = int(self.cfg.get("pause_max_min", 20)) * 60
+                                _meet_tol_trs  = int(self.cfg.get("meeting_tol_min", 5)) * 60
+                                _planned_trs   = min(_t_pause, _pause_max_trs) + min(_t_reunion, _meet_tol_trs)
+                                _ouv_trs       = max(1.0, _t_prod - _planned_trs)
+                                _trs_poste_val = -1.0
+                                if _prod_ref_trs > 0 and _t_equiv > 0:
+                                    _exp_trs = _prod_ref_trs * _ouv_trs / 28800.0
+                                    _trs_poste_val = _t_equiv / _exp_trs * 100.0 if _exp_trs > 0 else -1.0
+                                self._write_trs_sheet(
+                                    wb, _today_str, _poste_nom, _pilot_nm, _copilot_nm,
+                                    _nb_pers_trs, _t_prod, _t_panne, _t_ratt,
+                                    _t_pause, _t_reunion, _nb_of_trs, _t_qte,
+                                    _t_equiv, _trs_poste_val)
+                            except Exception:
+                                pass
                             wb.save(path)
                             self._wb_mtime_cache = os.path.getmtime(path)
                             try:
@@ -5463,6 +5661,7 @@ Arrêts imputés au TRS (temps perdu) :
                     pass
 
             fresh_events = []
+            fresh_trs    = []
             if path and os.path.exists(path):
                 try:
                     wb3 = load_workbook(path, read_only=True, data_only=True)
@@ -5471,6 +5670,11 @@ Arrêts imputés au TRS (temps perdu) :
                         for r in ws3.iter_rows(min_row=2, values_only=True):
                             if r and any(r):
                                 fresh_events.append(list(r))
+                    if "TRS" in wb3.sheetnames:
+                        ws_t3 = wb3["TRS"]
+                        for r in ws_t3.iter_rows(min_row=2, values_only=True):
+                            if r and any(r):
+                                fresh_trs.append(list(r))
                     wb3.close()
                 except Exception:
                     pass
@@ -5481,9 +5685,51 @@ Arrêts imputés au TRS (temps perdu) :
                 toast = f"⚠  Erreur Excel : {write_err[:60]}"
             else:
                 toast = "⚠  Déclaration sauvegardée — Excel inaccessible"
-            self.root.after(0, lambda: self._show_main_done(final, toast=toast, events=fresh_events))
+            self.root.after(0, lambda: self._show_main_done(final, toast=toast, events=fresh_events, trs_data=fresh_trs))
 
         threading.Thread(target=_bg_write_then_read, daemon=True).start()
+
+    def _write_trs_sheet(self, wb, today_str, poste_nom, pilot_name, copilot_name,
+                          nb_pers, total_prod_s, total_panne_s, total_ratt_s,
+                          total_pause_s, total_reunion_s, nb_of, total_qte,
+                          total_equiv, trs_val):
+        """Écrit ou met à jour une ligne dans l'onglet TRS du workbook."""
+        if "TRS" not in wb.sheetnames:
+            ws_trs = wb.create_sheet("TRS")
+            trs_headers = ["Date", "Poste", "Pilote", "Co-Pilote", "Nb Personnes",
+                           "Total prod", "Total arrêts panne", "Total arrêt rattrapage",
+                           "Total pauses", "Total réunions", "Nombre d'OF",
+                           "Qté produite réel", "Équivalence", "Nb moyen pièces/OF", "TRS poste"]
+            ws_trs.append(trs_headers)
+        else:
+            ws_trs = wb["TRS"]
+
+        avg_of = round(total_qte / nb_of, 1) if nb_of > 0 else 0
+
+        # Chercher si une ligne existe déjà pour ce pilote/poste/date
+        existing_row_idx = None
+        for i, r in enumerate(ws_trs.iter_rows(min_row=2, values_only=True), start=2):
+            if (r and str(r[0] or "")[:10] == today_str
+                    and str(r[2] or "") == pilot_name
+                    and str(r[1] or "") == poste_nom):
+                existing_row_idx = i
+                break
+
+        trs_row = [today_str, poste_nom, pilot_name, copilot_name, nb_pers,
+                   fmt(int(total_prod_s)), fmt(int(total_panne_s)), fmt(int(total_ratt_s)),
+                   fmt(int(total_pause_s)), fmt(int(total_reunion_s)), nb_of,
+                   total_qte, round(total_equiv, 1), avg_of,
+                   f"{trs_val:.1f}%" if trs_val >= 0 else "—"]
+
+        if existing_row_idx:
+            for ci, val in enumerate(trs_row, start=1):
+                ws_trs.cell(existing_row_idx, ci).value = val
+        else:
+            ws_trs.append(trs_row)
+
+    def _show_fin_de_poste(self):
+        """Récap fin de poste — à implémenter."""
+        _toast(self.root, "Fin de poste — fonctionnalité à venir", bg=NAVY_L, duration=2500)
 
     def _calc_equiv(self, qte, taille, type_prod):
         """Cherche le coef d'equivalence pour type_prod dans la colonne Equivalence coef."""
