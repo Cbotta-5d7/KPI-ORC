@@ -706,6 +706,8 @@ class App:
         self._saved_form_data  = {}   # Mémoire formulaire entre onglets
         self._reset_form_next  = False  # True = ne pas restaurer au prochain _show_production
         self._logged_in_pilot  = None   # Pilote actuellement connecté
+        self._logged_in_poste  = None   # Poste choisi à la connexion
+        self._login_time       = None   # Heure de connexion (pour postes de nuit)
         self._inter_of_s       = 0      # Durée inter-OF (changement de série)
         self._of_count_this_shift = 0   # Nb déclarations complétées ce poste
         self._data_rows_cache  = []
@@ -1350,9 +1352,22 @@ class App:
         cb = ttk.Combobox(inner, textvariable=pilot_var,
                           values=pilots, font=("Arial", 14),
                           state="readonly", width=28)
-        cb.pack(fill="x", pady=(4, 16))
+        cb.pack(fill="x", pady=(4, 12))
         if pilots:
             cb.set(pilots[0])
+
+        tk.Label(inner, text="Poste", bg=WHITE, fg=GRAY,
+                 font=("Arial", 11)).pack(anchor="w")
+        poste_var = tk.StringVar()
+        postes_list = self._get_list("Postes")
+        cb_poste = ttk.Combobox(inner, textvariable=poste_var,
+                                values=postes_list, font=("Arial", 14),
+                                state="readonly", width=28)
+        cb_poste.pack(fill="x", pady=(4, 16))
+        # Pré-sélectionner le dernier poste utilisé si disponible
+        _last_poste = self._logged_in_poste or (postes_list[0] if postes_list else "")
+        if _last_poste:
+            cb_poste.set(_last_poste)
 
         passwords = self._get_list("Mots de passe pilote") or self._get_list("Mots de passe")
         need_pw = bool(passwords)
@@ -1377,6 +1392,10 @@ class App:
             if not name:
                 err_lbl.config(text="Sélectionnez un pilote.")
                 return
+            poste_sel = poste_var.get().strip()
+            if postes_list and not poste_sel:
+                err_lbl.config(text="Sélectionnez un poste.")
+                return
             if need_pw:
                 pw = pw_var.get()
                 try:
@@ -1390,6 +1409,8 @@ class App:
                     err_lbl.config(text="Pilote introuvable.")
                     return
             self._logged_in_pilot = name
+            self._logged_in_poste = poste_sel
+            self._login_time      = datetime.datetime.now()
             self._of_count_this_shift = 0
             self._inter_of_s = 0
             ov.destroy()
@@ -1443,6 +1464,8 @@ class App:
     def _do_logout_to_main(self):
         """Déconnecte le pilote courant et réaffiche l'écran principal (sans relogin auto)."""
         self._logged_in_pilot = None
+        self._logged_in_poste = None
+        self._login_time      = None
         try:
             self._save_session()
         except Exception:
@@ -3163,6 +3186,13 @@ Arrêts imputés au TRS (temps perdu) :
 
     def _restore_form_data(self):
         """Restaure les valeurs du formulaire après retour en production."""
+        # Pré-remplir le poste depuis la connexion si pas encore dans saved_form_data
+        if self._logged_in_poste and "poste" not in self._saved_form_data:
+            if "poste" in self.fv:
+                try:
+                    self.fv["poste"].set(self._logged_in_poste)
+                except Exception:
+                    pass
         if not self._saved_form_data:
             return
         for k, v in self._saved_form_data.items():
@@ -3170,6 +3200,8 @@ Arrêts imputés au TRS (temps perdu) :
                 continue
             if k == "pilote" and self._logged_in_pilot:
                 continue  # Ne pas écraser le pilote connecté
+            if k == "poste" and self._logged_in_poste:
+                continue  # Le poste vient de la connexion
             if k in self.fv:
                 try:
                     self.fv[k].set(v)
@@ -5868,8 +5900,8 @@ Arrêts imputés au TRS (temps perdu) :
         now = datetime.datetime.now()
 
         # Calcul durée théorique du poste depuis cfg
-        poste_nom = ""
-        if hasattr(self, "fv") and self.fv:
+        poste_nom = self._logged_in_poste or ""
+        if not poste_nom and hasattr(self, "fv") and self.fv:
             poste_nom = self.fv.get("poste", tk.StringVar()).get()
         if not poste_nom:
             poste_nom = self._saved_form_data.get("poste", "")
@@ -5878,7 +5910,14 @@ Arrêts imputés au TRS (temps perdu) :
         duree_theorique_min = durees_cfg.get(poste_nom, 480)  # défaut 8h
 
         pilot = self._logged_in_pilot or ""
-        today = datetime.date.today().strftime("%d/%m/%Y")
+
+        # Plage du poste : depuis la connexion jusqu'à maintenant (gère les nuits)
+        login_dt  = self._login_time or (now - datetime.timedelta(hours=duree_theorique_min / 60))
+        login_date_str = login_dt.strftime("%d/%m/%Y")
+        today_str      = now.strftime("%d/%m/%Y")
+        # Ensemble des dates à inclure (ex: veille + aujourd'hui pour les nuits)
+        _shift_dates = {login_date_str, today_str}
+        today = today_str  # conservé pour les écritures Excel
 
         total_prod_s   = 0.0
         total_panne_s  = 0.0
@@ -5892,7 +5931,7 @@ Arrêts imputés au TRS (temps perdu) :
         for _, row in self._data_rows_cache:
             row_date  = _row_date(row[1])
             row_pilot = str(row[3] or "")
-            if row_date != today or row_pilot != pilot:
+            if row_date not in _shift_dates or row_pilot != pilot:
                 continue
             try:
                 total_prod_s  += _hms_to_sec(str(row[16] or ""))
@@ -5924,7 +5963,7 @@ Arrêts imputés au TRS (temps perdu) :
                 if "pause" in str(ev_row[0] or "").lower():
                     ev_date = str(ev_row[2] or "")[:10]
                     ev_pil  = str(ev_row[4] or "")
-                    if ev_date == today and (not pilot or ev_pil == pilot):
+                    if ev_date in _shift_dates and (not pilot or ev_pil == pilot):
                         total_pause_s += _hms_to_sec(str(ev_row[18] or ""))
             except Exception:
                 pass
