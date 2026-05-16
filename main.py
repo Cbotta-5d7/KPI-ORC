@@ -2812,7 +2812,7 @@ Arrêts imputés au TRS (temps perdu) :
         tk.Label(col_cur, text="Poste en cours", bg=WHITE, fg=NAVY,
                  font=("Arial", 9, "bold")).pack(pady=(6, 0))
         self._main_gauge = Gauge(col_cur, bg=WHITE,
-                                 width=self._px(200), height=self._px(100), highlightthickness=0)
+                                 width=self._px(130), height=self._px(80), highlightthickness=0)
         self._main_gauge.pack(pady=(0, 2))
         self._pilot_name_lbl = tk.Label(col_cur, text="",
                                         bg=WHITE, fg=DARK, font=("Arial", 9, "bold"))
@@ -2827,7 +2827,7 @@ Arrêts imputés au TRS (temps perdu) :
         tk.Label(col_prev, text="Poste précédent", bg=WHITE, fg=GRAY,
                  font=("Arial", 9, "bold")).pack(pady=(6, 0))
         self._prev_gauge = Gauge(col_prev, bg=WHITE,
-                                 width=self._px(200), height=self._px(100), highlightthickness=0)
+                                 width=self._px(130), height=self._px(80), highlightthickness=0)
         self._prev_gauge.pack(pady=(0, 2))
         self._prev_pilot_lbl = tk.Label(col_prev, text="—",
                                         bg=WHITE, fg=GRAY, font=("Arial", 9))
@@ -2839,11 +2839,6 @@ Arrêts imputés au TRS (temps perdu) :
         # Zone droite — remplit tout l'espace restant
         right_zone = tk.Frame(top, bg=BG)
         right_zone.pack(side="left", fill="both", expand=True)
-
-        # Colonne gauche : bouton démarrer OU panneau prod en cours + pause (largeur fixe)
-        btn_zone = tk.Frame(right_zone, bg=BG, width=self._px(260))
-        btn_zone.pack(side="left", fill="y", padx=(0, 8))
-        btn_zone.pack_propagate(False)
 
         def _make_canvas_btn(parent, text, color, cmd, expand=True, pady=4, height=None):
             """Bouton canvas arrondi style Dodo."""
@@ -2871,7 +2866,11 @@ Arrêts imputés au TRS (temps perdu) :
             return cv
 
         if self._prod_active:
-            # Grand panneau "Production en cours"
+            # Panneau "Production en cours" — affiché à gauche de right_zone
+            btn_zone = tk.Frame(right_zone, bg=BG, width=self._px(230))
+            btn_zone.pack(side="left", fill="y", padx=(0, 8))
+            btn_zone.pack_propagate(False)
+
             prod_wrap, prod_inner = shadow_frame(btn_zone, bg=NAVY)
             prod_wrap.pack(fill="both", expand=True)
             self._main_prod_panel = prod_wrap
@@ -2904,32 +2903,15 @@ Arrêts imputés au TRS (temps perdu) :
                 bg=NAVY, fg=col_arr, font=("Arial", 10, "bold"))
             self._stops_lbl.pack(anchor="center", padx=10, pady=(0, 10))
 
-        else:
-            # Bouton vert "Démarrer"
-            btn_canvas = tk.Canvas(btn_zone, bg=BG, highlightthickness=0)
-            btn_canvas.pack(fill="both", expand=True, padx=2, pady=(6, 2))
+        # Panneau KPI arrêts — toujours présent
+        kpi_stops = tk.Frame(right_zone, bg=BG)
+        kpi_stops.pack(side="left", fill="both", expand=True)
+        self._build_stops_kpi_panel(kpi_stops)
 
-            def _draw_btn(e=None):
-                btn_canvas.delete("all")
-                bw, bh = btn_canvas.winfo_width(), btn_canvas.winfo_height()
-                if bw < 10 or bh < 10:
-                    return
-                _rrect(btn_canvas, 5, 7, bw-1, bh, 16, fill=_off(GREEN, -40))
-                _rrect(btn_canvas, 0, 0, bw-6, bh-7, 16, fill=GREEN)
-                _rrect(btn_canvas, 2, 2, bw-8, bh//3, 16, fill=_off(GREEN, +40))
-                btn_canvas.create_text(bw//2-3, bh//2-3,
-                                       text="▶  DÉMARRER\nUNE PROD",
-                                       fill=WHITE, font=("Arial", 14, "bold"),
-                                       justify="center")
-
-            btn_canvas.bind("<Configure>", _draw_btn)
-            btn_canvas.bind("<Button-1>",  lambda e: self._start_production())
-            btn_canvas.config(cursor="hand2")
-
-        # Colonne centre : Se déconnecter / Se connecter
-        action_zone = tk.Frame(right_zone, bg=BG, width=self._px(200))
-        action_zone.pack(side="left", fill="y", padx=(0, 8))
-        action_zone.pack_propagate(False)
+        # ── Barre de boutons d'action — 4 boutons côte à côte, toujours visibles ──
+        action_bar = tk.Frame(body, bg=BG, height=66)
+        action_bar.pack(fill="x", pady=(6, 2))
+        action_bar.pack_propagate(False)
 
         def _do_logout():
             self._check_nettoyage_before_logout(
@@ -2938,26 +2920,33 @@ Arrêts imputés au TRS (temps perdu) :
         def _do_connect():
             self._show_login_overlay(on_success=self._show_main)
 
-        if self._logged_in_pilot:
-            _make_canvas_btn(action_zone, "👤  SE\nDÉCONNECTER", ORANGE, _do_logout)
+        # Btn 1 : DÉMARRER (vert) ou grisé si prod active
+        b1 = tk.Frame(action_bar, bg=BG)
+        b1.pack(side="left", fill="both", expand=True)
+        if self._prod_active:
+            _make_canvas_btn(b1, "▶  DÉMARRER\nUNE PROD", "#b0b8c8", lambda: None)
         else:
-            _make_canvas_btn(action_zone, "🔑  SE\nCONNECTER", GREEN, _do_connect)
+            _make_canvas_btn(b1, "▶  DÉMARRER\nUNE PROD", GREEN, self._start_production)
 
-        # Colonne droite : panneau KPI arrêts
-        kpi_stops = tk.Frame(right_zone, bg=BG)
-        kpi_stops.pack(side="left", fill="both", expand=True)
-        self._build_stops_kpi_panel(kpi_stops)
+        # Btn 2 : SE CONNECTER / SE DÉCONNECTER
+        b2 = tk.Frame(action_bar, bg=BG)
+        b2.pack(side="left", fill="both", expand=True)
+        if self._logged_in_pilot:
+            _make_canvas_btn(b2, "👤  SE\nDÉCONNECTER", ORANGE, _do_logout)
+        else:
+            _make_canvas_btn(b2, "🔑  SE\nCONNECTER", GREEN, _do_connect)
 
-        # ── Barre de boutons d'action — PAUSE + FIN DE MON POSTE ──────────────
-        # Rangée dédiée, toujours visible, indépendante du panneau du haut
-        action_bar = tk.Frame(body, bg=BG, height=60)
-        action_bar.pack(fill="x", pady=(6, 2))
-        action_bar.pack_propagate(False)
-
+        # Btn 3 : PAUSE (jaune si prod active, gris sinon)
+        b3 = tk.Frame(action_bar, bg=BG)
+        b3.pack(side="left", fill="both", expand=True)
         _pause_color = "#d4a017" if self._prod_active else "#b0b8c8"
         _pause_cmd   = self._toggle_pause if self._prod_active else lambda: None
-        _make_canvas_btn(action_bar, "☕  JE VAIS EN PAUSE", _pause_color, _pause_cmd)
-        _make_canvas_btn(action_bar, "🏁  FIN DE MON POSTE", NAVY_L, self._show_fin_de_poste)
+        _make_canvas_btn(b3, "☕  JE VAIS\nEN PAUSE", _pause_color, _pause_cmd)
+
+        # Btn 4 : FIN DE MON POSTE
+        b4 = tk.Frame(action_bar, bg=BG)
+        b4.pack(side="left", fill="both", expand=True)
+        _make_canvas_btn(b4, "🏁  FIN DE\nMON POSTE", NAVY_L, self._show_fin_de_poste)
 
         # ── Onglets Déclarations / Événements ──────────────────────────────────
         tab_bar = tk.Frame(body, bg=BG)
