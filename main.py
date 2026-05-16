@@ -5987,9 +5987,11 @@ Arrêts imputés au TRS (temps perdu) :
         _ri("Poste",                 poste_nom or "—",               NAVY_L)
         _ri("Durée théorique",       fmt(duree_theorique_s),         DARK)
         _ri(None, None, sep=True)
-        _ri("Nbre d'OF déclarés",    nb_of,                          NAVY, bold=True)
-        _ri("Qté fabriquée (réel)",  total_qte,                      GREEN, bold=True)
-        _ri("Équivalence totale",    f"{total_equiv:.0f}",           GREEN)
+        avg_of_poste = round(total_qte / nb_of, 1) if nb_of > 0 else 0
+        _ri("Nbre d'OF déclarés",       nb_of,                          NAVY, bold=True)
+        _ri("Qté fabriquée (réel)",     total_qte,                      GREEN, bold=True)
+        _ri("Équivalence totale",       f"{total_equiv:.0f}",           GREEN)
+        _ri("Nbre moyen pièces/OF",     f"{avg_of_poste:.1f}" if nb_of > 0 else "—", DARK)
         _ri(None, None, sep=True)
         _ri("Total production",      fmt(total_prod_s),              GREEN)
         _ri("Total arrêts panne",    fmt(total_panne_s),             C_RED if total_panne_s > 0 else DARK, bold=(total_panne_s > 0))
@@ -6016,6 +6018,49 @@ Arrêts imputés au TRS (temps perdu) :
             alrt.pack(fill="x", pady=(8, 0))
             tk.Label(alrt, text=msg_alert, bg="#fff3cd", fg="#92400e",
                      font=("Arial", 9, "bold"), justify="left", padx=8, pady=6).pack(anchor="w")
+
+        # ── Sauvegarde TRS + refresh onglet Postes ──────────────────────────────
+        def _fin_de_poste_save_trs():
+            """Écrit la ligne TRS du poste dans Excel et rafraîchit l'onglet Postes."""
+            path = self.cfg.get("db_path", "")
+            if not path or not os.path.exists(path):
+                return
+            _copilot = self._saved_form_data.get("copilote", "")
+            _nb_pers = self._saved_form_data.get("nb_pers", "")
+            _today_s = datetime.date.today().strftime("%d/%m/%Y")
+            def _bg_trs():
+                try:
+                    with self._excel_lock:
+                        wb = self._get_wb(path)
+                        if wb is None:
+                            return
+                        self._write_trs_sheet(
+                            wb, _today_s, poste_nom, pilot, _copilot,
+                            _nb_pers, total_prod_s, total_panne_s, total_ratt_s,
+                            total_pause_s, total_reunion_s, nb_of,
+                            total_qte, total_equiv, trs_poste)
+                        wb.save(path)
+                    # Relire TRS pour mettre à jour le cache
+                    trs_fresh = []
+                    try:
+                        wb2 = load_workbook(path, read_only=True, data_only=True)
+                        if "TRS" in wb2.sheetnames:
+                            ws_t = wb2["TRS"]
+                            hdrs = [c.value for c in next(ws_t.iter_rows(max_row=1))]
+                            for r in ws_t.iter_rows(min_row=2, values_only=True):
+                                if any(r):
+                                    trs_fresh.append(dict(zip(hdrs, r)))
+                        wb2.close()
+                    except Exception:
+                        pass
+                    if trs_fresh:
+                        self._trs_cache = trs_fresh
+                        self.root.after(0, self._refresh_postes_tab)
+                except Exception:
+                    pass
+            threading.Thread(target=_bg_trs, daemon=True).start()
+
+        _fin_de_poste_save_trs()
 
         # Colonne droite : jauge TRS + options
         right_c = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground=LGRAY)
@@ -6081,7 +6126,11 @@ Arrêts imputés au TRS (temps perdu) :
                   padx=14, pady=8, cursor="hand2").pack(fill="x", pady=4)
 
         if non_declare_s > 60:
-            def _declarer_non_declare():
+            _nd_h = int(non_declare_s) // 3600
+            _nd_m = (int(non_declare_s) % 3600) // 60
+            _nd_label = f"{_nd_h}h{_nd_m:02d}min" if _nd_h > 0 else f"{_nd_m}min"
+
+            def _valider_etat():
                 path = self.cfg.get("db_path", "")
                 if not path or not os.path.exists(path):
                     _toast(self.root, "Aucun fichier Excel", bg=C_RED, duration=2000)
@@ -6094,29 +6143,32 @@ Arrêts imputés au TRS (temps perdu) :
                         if "Evenements" not in wb.sheetnames:
                             wb.create_sheet("Evenements")
                         ws_e = wb["Evenements"]
-                        nd_row = ["Durée non déclarée"] + [""] * 19
+                        nd_row = ["Non défini"] + [""] * 19
                         nd_row[2] = today
                         nd_row[4] = pilot
-                        nd_row[16] = ""
-                        nd_row[17] = ""
                         nd_row[18] = fmt(int(non_declare_s))
                         nd_row[19] = f"Poste {poste_nom} — durée théorique {fmt(duree_theorique_s)}"
                         ws_e.append(nd_row)
                         wb.save(path)
-                    _toast(self.root, "✔  Durée non déclarée enregistrée", bg=GREEN, duration=2500)
+                    _toast(self.root, "✔  Validé — durée enregistrée comme « Non défini »", bg=GREEN, duration=2500)
+                    ov.destroy()
+                    self._show_main()
                 except Exception as ex:
                     _toast(self.root, f"Erreur : {ex}", bg=C_RED, duration=3000)
 
-            tk.Button(ri2, text="📝  Déclarer la durée non déclarée",
-                      command=_declarer_non_declare, bg=C_RATT, fg=WHITE,
+            tk.Button(ri2,
+                      text=f"✔  Valider en l'état\n({_nd_label} déclaré comme « Non défini »)",
+                      command=_valider_etat, bg=GREEN, fg=WHITE,
                       font=("Arial", 10, "bold"), relief="flat",
-                      padx=14, pady=8, cursor="hand2").pack(fill="x", pady=4)
+                      padx=14, pady=10, cursor="hand2",
+                      wraplength=260, justify="center").pack(fill="x", pady=4)
 
-        tk.Button(ri2, text="📊  Tableau de bord",
+        tk.Button(ri2, text="↩  Revenir à l'écran d'accueil\n(modifier les déclarations)",
                   command=lambda: [ov.destroy(), self._show_main()],
-                  bg=NAVY, fg=WHITE,
-                  font=("Arial", 11, "bold"), relief="flat",
-                  padx=14, pady=8, cursor="hand2").pack(fill="x", pady=(20, 4))
+                  bg=NAVY_L, fg=WHITE,
+                  font=("Arial", 10, "bold"), relief="flat",
+                  padx=14, pady=10, cursor="hand2",
+                  wraplength=260, justify="center").pack(fill="x", pady=(16, 4))
 
     def _write_trs_sheet(self, wb, today_str, poste_nom, pilot_name, copilot_name,
                           nb_pers, total_prod_s, total_panne_s, total_ratt_s,
