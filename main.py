@@ -1060,10 +1060,35 @@ class App:
                 "is_paused":        self._is_paused,
                 "pause_periods":    [[self._dt_str(a), self._dt_str(b)] for a, b in self._pause_periods],
             }
-            with open(SESSION_FILE, "w", encoding="utf-8") as f:
+            tmp_sf = SESSION_FILE + ".tmp"
+            with open(tmp_sf, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_sf, SESSION_FILE)
         except Exception:
             pass
+
+    def _safe_excel_save(self, wb, path):
+        """Sauvegarde atomique Excel : tmp → vérif → backup → replace. À appeler sous _excel_lock."""
+        import shutil
+        tmp_path = path + ".tmp_kpi"
+        bak_path = path + ".bak_kpi"
+        wb.save(tmp_path)
+        try:
+            from openpyxl import load_workbook as _lw
+            _vwb = _lw(tmp_path, read_only=True, data_only=True)
+            _vwb.close()
+        except Exception as e:
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+            raise RuntimeError(f"Excel temp illisible après sauvegarde: {e}")
+        try:
+            if os.path.exists(path):
+                shutil.copy2(path, bak_path)
+        except Exception:
+            pass
+        os.replace(tmp_path, path)
 
     def _load_session(self):
         """Recharge l'état sauvegardé. Retourne True si une session a été restaurée."""
@@ -2354,7 +2379,8 @@ Arrêts imputés au TRS (temps perdu) :
                         ]
                         ws_l.append(row_data)
                         self._format_row(ws_l, ws_l.max_row)
-                    wb_s.save(path)
+                    with self._excel_lock:
+                        self._safe_excel_save(wb_s, path)
                     wb_s.close()
                     self._load_lists()  # Recharger
                 except Exception:
@@ -3796,7 +3822,7 @@ Arrêts imputés au TRS (temps perdu) :
                     if wb is None:
                         return
                     wb["Data"].delete_rows(actual_idx)
-                    wb.save(path)
+                    self._safe_excel_save(wb, path)
                     self._wb_mtime_cache = os.path.getmtime(path)
                     self._invalidate_wb_cache()
                 self.root.after(0, lambda: _toast(
@@ -4117,7 +4143,7 @@ Arrêts imputés au TRS (temps perdu) :
                         for r in evt_snapshot:
                             ws_e.append(r)
                             self._format_row(ws_e, ws_e.max_row)
-                        wb2.save(path2)
+                        self._safe_excel_save(wb2, path2)
                         self._wb_mtime_cache = os.path.getmtime(path2)
                     self.root.after(0, lambda: _toast(
                         self.root, "✔  Modifications enregistrées", bg=GREEN, duration=3000))
@@ -4803,11 +4829,12 @@ Arrêts imputés au TRS (temps perdu) :
                 if pw_var.get() == PASSWORD:
                     pw_win.destroy()
                     try:
-                        wb2 = load_workbook(path)
-                        if "Listes" in wb2.sheetnames:
-                            wb2.active = wb2["Listes"]
-                        wb2.save(path)
-                        wb2.close()
+                        with self._excel_lock:
+                            wb2 = load_workbook(path)
+                            if "Listes" in wb2.sheetnames:
+                                wb2.active = wb2["Listes"]
+                            self._safe_excel_save(wb2, path)
+                            wb2.close()
                     except Exception:
                         pass
                     try:
@@ -5565,7 +5592,7 @@ Arrêts imputés au TRS (temps perdu) :
                     ws = self._ensure_events_sheet(wb)
                     ws.append(row_evt)
                     self._format_row(ws, ws.max_row)
-                    wb.save(path)
+                    self._safe_excel_save(wb, path)
                     self._wb_mtime_cache = os.path.getmtime(path)
                 self.root.after(0, lambda: _toast(
                     self.root, f"☕  Pause enregistrée ({int(dur//60)}min)", bg=NAVY_L))
@@ -6280,7 +6307,7 @@ Arrêts imputés au TRS (temps perdu) :
                             # Événement inter-poste si même OF, pilote différent
                             if _interposte_ev_row is not None:
                                 self._write_rows_to_events_sheet(wb, [_interposte_ev_row])
-                            wb.save(path)
+                            self._safe_excel_save(wb, path)
                             self._wb_mtime_cache = os.path.getmtime(path)
                             try:
                                 os.remove(PENDING_FILE)
@@ -6466,7 +6493,7 @@ Arrêts imputés au TRS (temps perdu) :
                             total_qte, total_equiv, trs_poste,
                             _total_decl_f, duree_theorique_s,
                             _prevu_f, _depasse_f)
-                        wb.save(path)
+                        self._safe_excel_save(wb, path)
                         wb.close()
                     trs_fresh = []
                     try:
@@ -6596,7 +6623,7 @@ Arrêts imputés au TRS (temps perdu) :
                                 nd_row[19] = f"Durée théorique {fmt(duree_theorique_s)}"
                                 ws_e.append(nd_row)
                                 self._format_row(ws_e, ws_e.max_row)
-                                wb.save(path)
+                                self._safe_excel_save(wb, path)
                     except Exception as ex:
                         _toast(self.root, f"Erreur Excel : {ex}", bg=C_RED, duration=3000)
                 _deconnecter_et_quitter()
@@ -7093,7 +7120,8 @@ Arrêts imputés au TRS (temps perdu) :
             self._ensure_events_sheet(wb)
             changed = True
             if changed:
-                wb.save(path)
+                with self._excel_lock:
+                    self._safe_excel_save(wb, path)
             wb.close()
         except Exception:
             pass
@@ -7203,7 +7231,7 @@ Arrêts imputés au TRS (temps perdu) :
                     for ev_row in payload.get("events_rows", []):
                         ws_e.append(ev_row)
                         self._format_row(ws_e, ws_e.max_row)
-                    wb.save(path)
+                    self._safe_excel_save(wb, path)
                     wb.close()
                 os.remove(PENDING_FILE)
                 self.root.after(0, lambda: _toast(self.root, "✔  Déclaration enregistrée dans Excel !", bg=GREEN))
@@ -7834,6 +7862,7 @@ new Chart(document.getElementById('gauge{i}'), {{
         pie_values  = _json.dumps([round(prod_s_pie/60,1), round(total_stop_s_pie/60,1), round(remaining_s_pie/60,1)])
 
         # ── Timeline SVG 8h ─────────────────────────────────────────────────
+        of_periods = session_data.get("of_periods", [])
         shift_total_s_tl = 8 * 3600
         if sup_of_start_dt:
             shift_start_tl = sup_of_start_dt
@@ -7879,7 +7908,6 @@ new Chart(document.getElementById('gauge{i}'), {{
             timeline_svg = '<div style="text-align:center;color:#94a3b8;padding:18px;font-style:italic">Aucune session active</div>'
 
         # OF en cours complets / périodes
-        of_periods = session_data.get("of_periods", [])
         of_periods_html = ""
         for i, op in enumerate(reversed(of_periods[-10:]), 1):
             of_lbl = str(op.get("of_num") or f"OF #{i}")
@@ -9369,7 +9397,7 @@ showTab = function(name) {{
                     ws_d.append(row)
                     self._format_row(ws_d, ws_d.max_row)
                     self._write_rows_to_events_sheet(wb, events_rows)
-                    wb.save(path)
+                    self._safe_excel_save(wb, path)
                     self._wb_mtime_cache = os.path.getmtime(path)
                     self._copy_excel_for_dashboard(path)
                     try:
@@ -9482,7 +9510,7 @@ showTab = function(name) {{
                     ws = self._ensure_events_sheet(wb)
                     ws.append(row_evt)
                     self._format_row(ws, ws.max_row)
-                    wb.save(path)
+                    self._safe_excel_save(wb, path)
                     self._wb_mtime_cache = os.path.getmtime(path)
             except Exception:
                 self._invalidate_wb_cache()
