@@ -6301,8 +6301,6 @@ Arrêts imputés au TRS (temps perdu) :
                     pass
             threading.Thread(target=_bg_trs, daemon=True).start()
 
-        _fin_de_poste_save_trs()
-
         # ── Overlay récap poste ──────────────────────────────────────────────────
         ov = tk.Frame(self.root, bg="#0d2040")
         ov.place(relx=0, rely=0, relwidth=1, relheight=1)
@@ -6369,6 +6367,7 @@ Arrêts imputés au TRS (temps perdu) :
                       relief="flat", padx=10, pady=6, cursor="hand2").pack(side="left")
 
         def _deconnecter_et_quitter():
+            _fin_de_poste_save_trs()
             self._logged_in_pilot = None
             self._logged_in_poste = None
             self._login_time      = None
@@ -6496,54 +6495,6 @@ Arrêts imputés au TRS (temps perdu) :
                      font=("Arial", 13, "bold"), justify="center",
                      padx=8, pady=6).pack(fill="x")
 
-        # ── Graphique barres répartition du temps (Canvas pur tkinter) ─────────
-        tk.Frame(li, bg=LGRAY, height=1).pack(fill="x", pady=(10, 6))
-        tk.Label(li, text="Répartition du temps", bg=WHITE, fg=GRAY,
-                 font=("Arial", 9, "bold")).pack(anchor="w")
-
-        bars_data = [
-            ("Production",   total_prod_s,            "#16a34a"),
-            ("Arrêts panne", total_panne_s,           "#dc2626"),
-            ("Rattrapages",  total_ratt_s,            "#f59e0b"),
-            ("Pauses",       total_pause_s,           "#3b82f6"),
-            ("Réunions",     total_reunion_s,         "#8b5cf6"),
-            ("Non déclaré",  max(0.0, non_declare_s), "#94a3b8"),
-        ]
-        total_ref = max(duree_theorique_s, total_declare_s, 1)
-        bar_h = 14
-        gap = 6
-        cv_h = len(bars_data) * (bar_h + gap) + 4
-        bar_cv = tk.Canvas(li, bg=WHITE, height=cv_h, highlightthickness=0)
-        bar_cv.pack(fill="x", pady=(4, 6))
-
-        def _draw_bars(event=None):
-            bar_cv.delete("all")
-            W = bar_cv.winfo_width() or 300
-            label_w = 100
-            bar_w = W - label_w - 50  # 50px for pct text
-            for i, (lbl, sec, col) in enumerate(bars_data):
-                if sec <= 0:
-                    continue
-                y = i * (bar_h + gap) + 2
-                pct = sec / total_ref * 100
-                filled = int(bar_w * sec / total_ref)
-                # Background track
-                bar_cv.create_rectangle(label_w, y, label_w + bar_w, y + bar_h,
-                                        fill="#f1f5f9", outline="", width=0)
-                # Filled bar
-                bar_cv.create_rectangle(label_w, y, label_w + max(filled, 2), y + bar_h,
-                                        fill=col, outline="", width=0)
-                # Label
-                bar_cv.create_text(label_w - 4, y + bar_h // 2,
-                                   text=lbl, anchor="e", font=("Arial", 8), fill="#475569")
-                # Percentage
-                bar_cv.create_text(label_w + bar_w + 4, y + bar_h // 2,
-                                   text=f"{pct:.0f}%", anchor="w",
-                                   font=("Arial", 8, "bold"), fill=col)
-
-        bar_cv.bind("<Configure>", _draw_bars)
-        bar_cv.after(50, _draw_bars)
-
         # ── ZONE 0 droite : jauge TRS + KPI cards ───────────────────────────────
         gauge_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
         gauge_f.grid(row=0, column=1, sticky="nsew", padx=(3, 0), pady=(0, 3))
@@ -6570,183 +6521,219 @@ Arrêts imputés au TRS (temps perdu) :
             tk.Label(kf, text=kv, bg=kc, fg=WHITE, font=("Arial", 13, "bold")).pack()
             tk.Label(kf, text=kl, bg=kc, fg="#e0f2fe", font=("Arial", 8)).pack()
 
-        # ── ZONE 1 : Chronologie matplotlib ─────────────────────────────────────
+        # ── Graphique barres répartition du temps (Canvas pur tkinter) ─────────
+        tk.Frame(gauge_f, bg=LGRAY, height=1).pack(fill="x", padx=8, pady=(8, 4))
+        tk.Label(gauge_f, text="Répartition du temps", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold")).pack(anchor="w", padx=10)
+        bars_data = [
+            ("Production",   total_prod_s,            "#16a34a"),
+            ("Arrêts panne", total_panne_s,           "#dc2626"),
+            ("Rattrapages",  total_ratt_s,            "#f59e0b"),
+            ("Pauses",       total_pause_s,           "#3b82f6"),
+            ("Réunions",     total_reunion_s,         "#8b5cf6"),
+            ("Non déclaré",  max(0.0, non_declare_s), "#94a3b8"),
+        ]
+        total_ref = max(duree_theorique_s, total_declare_s, 1)
+        _bh = 14; _bgap = 6
+        _cv_h = len(bars_data) * (_bh + _bgap) + 4
+        bar_cv = tk.Canvas(gauge_f, bg=WHITE, height=_cv_h, highlightthickness=0)
+        bar_cv.pack(fill="x", padx=10, pady=(2, 8))
+
+        def _draw_bars(event=None):
+            bar_cv.delete("all")
+            W = bar_cv.winfo_width() or 300
+            label_w = 95
+            bar_w = W - label_w - 46
+            for i, (lbl, sec, col) in enumerate(bars_data):
+                if sec <= 0:
+                    continue
+                y = i * (_bh + _bgap) + 2
+                pct = sec / total_ref * 100
+                filled = int(bar_w * sec / total_ref)
+                bar_cv.create_rectangle(label_w, y, label_w + bar_w, y + _bh,
+                                        fill="#f1f5f9", outline="", width=0)
+                bar_cv.create_rectangle(label_w, y, label_w + max(filled, 2), y + _bh,
+                                        fill=col, outline="", width=0)
+                bar_cv.create_text(label_w - 4, y + _bh // 2,
+                                   text=lbl, anchor="e", font=("Arial", 8), fill="#475569")
+                bar_cv.create_text(label_w + bar_w + 4, y + _bh // 2,
+                                   text=f"{pct:.0f}%", anchor="w",
+                                   font=("Arial", 8, "bold"), fill=col)
+
+        bar_cv.bind("<Configure>", _draw_bars)
+        bar_cv.after(50, _draw_bars)
+
+        # ── ZONE 1 : Chronologie ─────────────────────────────────────────────────
         chron_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
         chron_f.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(0, 3))
+        tk.Frame(chron_f, bg=NAVY_L, height=3).pack(fill="x")
+        tk.Label(chron_f, text="Chronologie du poste", bg=WHITE, fg=NAVY,
+                 font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(4, 0))
 
-        def _mpl_missing(parent):
-            f = tk.Frame(parent, bg=WHITE)
-            f.pack(expand=True)
-            tk.Label(f, text="📦  Graphiques indisponibles",
-                     bg=WHITE, fg="#64748b", font=("Arial", 11, "bold")).pack(pady=(20, 4))
-            tk.Label(f, text="Installez matplotlib pour afficher les graphiques :",
-                     bg=WHITE, fg="#94a3b8", font=("Arial", 9)).pack()
-            tk.Label(f, text="pip install matplotlib",
-                     bg="#1e3a5f", fg="#93c5fd", font=("Courier", 11, "bold"),
-                     padx=12, pady=6).pack(pady=8)
+        chron_cv = tk.Canvas(chron_f, bg=WHITE, height=56, highlightthickness=0)
+        chron_cv.pack(fill="x", padx=10, pady=(2, 0))
 
-        def _build_chron(parent):
-            try:
-                import matplotlib
-                matplotlib.use("TkAgg")
-                import matplotlib.pyplot as plt
-                import matplotlib.patches as mpatches
-                from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-            except Exception:
-                _mpl_missing(parent)
-                return
-            t0 = login_dt.timestamp(); t1 = now.timestamp()
-            span = max(t1 - t0, 1)
-            fig, ax = plt.subplots(figsize=(14, 1.6))
-            fig.patch.set_facecolor("white")
-            ax.set_facecolor("#f8faff")
-            ax.barh(0, 100, left=0, height=0.6, color="#e2e8f0", edgecolor="none", zorder=1)
-            def _p(dt): return (dt.timestamp() - t0) / span * 100
+        chron_leg = tk.Frame(chron_f, bg=WHITE)
+        chron_leg.pack(anchor="w", padx=10, pady=(2, 4))
+        for _ll, _lc in [("Production","#16a34a"),("Panne","#dc2626"),
+                          ("Rattrapage","#f59e0b"),("Pause","#3b82f6"),("Réunion","#8b5cf6")]:
+            _lf = tk.Frame(chron_leg, bg=WHITE)
+            _lf.pack(side="left", padx=(0, 8))
+            tk.Frame(_lf, bg=_lc, width=12, height=10).pack(side="left")
+            tk.Label(_lf, text=_ll, bg=WHITE, fg="#475569", font=("Arial", 8)).pack(side="left", padx=(2, 0))
+
+        _ct0 = login_dt.timestamp()
+        _ct1 = now.timestamp()
+        _cspan = max(_ct1 - _ct0, 1)
+
+        def _draw_chron(event=None):
+            chron_cv.delete("all")
+            W = chron_cv.winfo_width() or 700
+            pad_l = 44; pad_r = 12; bar_y = 8; bar_h = 24
+            bw = W - pad_l - pad_r
+
+            def _px(ts):
+                return pad_l + (ts - _ct0) / _cspan * bw
+
+            chron_cv.create_rectangle(pad_l, bar_y, pad_l + bw, bar_y + bar_h,
+                                      fill="#e2e8f0", outline="", width=0)
             for p in self._of_periods:
-                ps2, pe2 = p.get("start"), p.get("end") or now
+                ps2 = p.get("start"); pe2 = p.get("end") or now
                 if ps2 and ps2 >= login_dt:
-                    x0, x1 = _p(ps2), _p(min(pe2, now))
-                    ax.barh(0, max(x1-x0, 0.2), left=x0, height=0.6,
-                            color="#16a34a", edgecolor="white", lw=0.5, zorder=2)
+                    x0 = _px(ps2.timestamp()); x1 = _px(min(pe2, now).timestamp())
+                    chron_cv.create_rectangle(x0, bar_y, max(x1, x0 + 2), bar_y + bar_h,
+                                              fill="#16a34a", outline="", width=0)
             for ev in self._tl_events:
-                if ev.get("cat") in ("ratt", "pb"):
-                    es, ee = ev.get("start"), ev.get("end") or now
-                    if es and es >= login_dt:
-                        x0, x1 = _p(es), _p(min(ee, now))
-                        ax.barh(0, max(x1-x0, 0.3), left=x0, height=0.6,
-                                color="#dc2626" if ev["cat"]=="pb" else "#f59e0b",
-                                edgecolor="white", lw=0.5, zorder=3)
+                cat = ev.get("cat", "")
+                es = ev.get("start"); ee = ev.get("end") or now
+                if es and es >= login_dt and cat in ("ratt","pb","pause","reunion"):
+                    _cat_col = {"pb":"#dc2626","ratt":"#f59e0b","pause":"#3b82f6","reunion":"#8b5cf6"}.get(cat,"#94a3b8")
+                    x0 = _px(es.timestamp()); x1 = _px(min(ee, now).timestamp())
+                    chron_cv.create_rectangle(x0, bar_y, max(x1, x0 + 2), bar_y + bar_h,
+                                              fill=_cat_col, outline="", width=0)
             for ps2, pe2 in self._pause_periods:
                 if ps2 >= login_dt:
-                    x0, x1 = _p(ps2), _p(min(pe2, now))
-                    ax.barh(0, max(x1-x0, 0.3), left=x0, height=0.6,
-                            color="#3b82f6", edgecolor="white", lw=0.5, zorder=3)
-            patches = [mpatches.Patch(color=c, label=l) for c, l in
-                       [("#16a34a","Production"),("#dc2626","Panne"),
-                        ("#f59e0b","Rattrapage"),("#3b82f6","Pause")]]
-            ax.legend(handles=patches, loc="upper center", ncol=4,
-                      fontsize=8, framealpha=0.9, bbox_to_anchor=(0.5, 1.5))
-            n = 10
-            ax.set_xticks([i*100/n for i in range(n+1)])
-            ax.set_xticklabels(
-                [datetime.datetime.fromtimestamp(t0+i*span/n).strftime("%H:%M")
-                 for i in range(n+1)], fontsize=8)
-            ax.set_yticks([])
-            ax.set_xlim(0, 100)
-            ax.spines[["top","left","right"]].set_visible(False)
-            ax.spines["bottom"].set_color("#cbd5e1")
-            ax.set_title("Chronologie du poste", fontsize=10,
-                         fontweight="bold", color="#1e3a5f", pad=18)
-            fig.tight_layout(pad=0.5)
-            cv = FigureCanvasTkAgg(fig, master=parent)
-            cv.draw()
-            cv.get_tk_widget().pack(fill="both", expand=True)
-            plt.close(fig)
+                    x0 = _px(ps2.timestamp()); x1 = _px(min(pe2, now).timestamp())
+                    chron_cv.create_rectangle(x0, bar_y, max(x1, x0 + 2), bar_y + bar_h,
+                                              fill="#3b82f6", outline="", width=0)
+            n_ticks = 8
+            for i in range(n_ticks + 1):
+                tx = pad_l + i * bw / n_ticks
+                t_str = datetime.datetime.fromtimestamp(_ct0 + i * _cspan / n_ticks).strftime("%H:%M")
+                chron_cv.create_line(tx, bar_y + bar_h, tx, bar_y + bar_h + 4, fill="#94a3b8")
+                chron_cv.create_text(tx, bar_y + bar_h + 12, text=t_str, anchor="center",
+                                     font=("Arial", 7), fill="#64748b")
 
-        _build_chron(chron_f)
+        chron_cv.bind("<Configure>", _draw_chron)
+        chron_cv.after(50, _draw_chron)
 
-        # ── ZONE 2 : Analyses (3 graphiques côte à côte) ────────────────────────
+        # ── ZONE 2 : Analyses ────────────────────────────────────────────────────
         ana_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
         ana_f.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(0, 3))
+        tk.Frame(ana_f, bg=NAVY_L, height=3).pack(fill="x")
 
-        def _build_ana(parent):
-            try:
-                import matplotlib
-                matplotlib.use("TkAgg")
-                import matplotlib.pyplot as plt
-                from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-            except Exception:
-                _mpl_missing(parent)
+        _stop_totals: dict = {}
+        for _, row in self._data_rows_cache:
+            rd = _row_date(row[1])
+            if rd not in _shift_dates or str(row[3] or "").strip() != pilot:
+                continue
+            for ci in range(33, 56):
+                if ci < len(row) and row[ci]:
+                    _lbl_s = EVENTS[ci-33][0] if (ci-33) < len(EVENTS) else f"Col{ci}"
+                    sv = _hms_to_sec(str(row[ci]))
+                    if sv > 0:
+                        _stop_totals[_lbl_s] = _stop_totals.get(_lbl_s, 0) + sv
+
+        _prod_theo = (self._get_prod_ref() * duree_theorique_s / 28800.0
+                      if duree_theorique_s > 0 else 0)
+
+        ana_body = tk.Frame(ana_f, bg=WHITE)
+        ana_body.pack(fill="both", expand=True, padx=6, pady=4)
+        ana_body.columnconfigure(0, weight=1)
+        ana_body.columnconfigure(1, weight=1)
+        ana_body.rowconfigure(0, weight=1)
+
+        # Left panel: Pareto arrêts
+        pareto_f = tk.Frame(ana_body, bg=WHITE)
+        pareto_f.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        tk.Label(pareto_f, text="Pareto arrêts", bg=WHITE, fg=NAVY,
+                 font=("Arial", 9, "bold")).pack(anchor="w")
+        pareto_cv = tk.Canvas(pareto_f, bg=WHITE, highlightthickness=0)
+        pareto_cv.pack(fill="both", expand=True)
+
+        _pareto_items = sorted(_stop_totals.items(), key=lambda x: -x[1])[:8]
+        _pareto_colors = ["#dc2626","#ef4444","#f87171","#fb923c",
+                          "#fbbf24","#facc15","#a3e635","#4ade80"]
+        _pareto_max = max((v for _, v in _pareto_items), default=1)
+
+        def _draw_pareto(event=None):
+            pareto_cv.delete("all")
+            W = pareto_cv.winfo_width() or 340
+            H = pareto_cv.winfo_height() or 160
+            if not _pareto_items:
+                pareto_cv.create_text(W // 2, H // 2, text="Aucun arrêt déclaré",
+                                      anchor="center", font=("Arial", 10), fill="#94a3b8")
                 return
-            stop_totals: dict = {}
-            for _, row in self._data_rows_cache:
-                rd = _row_date(row[1])
-                if rd not in _shift_dates or str(row[3] or "").strip() != pilot:
-                    continue
-                for ci in range(33, 56):
-                    if ci < len(row) and row[ci]:
-                        lbl_s = EVENTS[ci-33][0] if (ci-33) < len(EVENTS) else f"Col{ci}"
-                        sv = _hms_to_sec(str(row[ci]))
-                        if sv > 0:
-                            stop_totals[lbl_s] = stop_totals.get(lbl_s, 0) + sv
+            pad_l = 100; pad_r = 46; pad_t = 4; pad_b = 4
+            bw2 = W - pad_l - pad_r
+            n = len(_pareto_items)
+            row_h2 = (H - pad_t - pad_b) / n
+            bh2 = max(8, row_h2 * 0.6)
+            for i, ((lbl, val), col) in enumerate(zip(_pareto_items, _pareto_colors)):
+                y_mid = pad_t + i * row_h2 + row_h2 / 2
+                y0 = y_mid - bh2 / 2; y1 = y_mid + bh2 / 2
+                filled = int(bw2 * val / _pareto_max)
+                pareto_cv.create_rectangle(pad_l, y0, pad_l + bw2, y1,
+                                           fill="#f1f5f9", outline="", width=0)
+                pareto_cv.create_rectangle(pad_l, y0, pad_l + max(filled, 2), y1,
+                                           fill=col, outline="", width=0)
+                pareto_cv.create_text(pad_l - 4, y_mid, text=lbl[:18], anchor="e",
+                                      font=("Arial", 7), fill="#374151")
+                pareto_cv.create_text(pad_l + bw2 + 4, y_mid,
+                                      text=f"{val/60:.0f}m", anchor="w",
+                                      font=("Arial", 7, "bold"), fill=col)
 
-            prod_theo = (self._get_prod_ref() * duree_theorique_s / 28800.0
-                         if duree_theorique_s > 0 else 0)
+        pareto_cv.bind("<Configure>", _draw_pareto)
+        pareto_cv.after(50, _draw_pareto)
 
-            fig, axes = plt.subplots(1, 3, figsize=(14, 3.2))
-            fig.patch.set_facecolor("white")
+        # Right panel: Prod réelle vs théorique
+        bar2_f = tk.Frame(ana_body, bg=WHITE)
+        bar2_f.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+        tk.Label(bar2_f, text="Prod. réelle vs théorique (équiv.)", bg=WHITE, fg=NAVY,
+                 font=("Arial", 9, "bold")).pack(anchor="w")
+        bar2_cv = tk.Canvas(bar2_f, bg=WHITE, highlightthickness=0)
+        bar2_cv.pack(fill="both", expand=True)
 
-            # Pareto
-            ax1 = axes[0]; ax1.set_facecolor("#f8faff")
-            if stop_totals:
-                sv2 = sorted(stop_totals.items(), key=lambda x: -x[1])[:8]
-                lbls = [s[0][:20] for s in sv2]; vals = [s[1]/60 for s in sv2]
-                cols = ["#dc2626","#ef4444","#f87171","#fb923c",
-                        "#fbbf24","#facc15","#a3e635","#4ade80"]
-                b = ax1.barh(lbls[::-1], vals[::-1],
-                             color=cols[:len(lbls)][::-1], edgecolor="white", lw=0.5)
-                ax1.bar_label(b, fmt="%.0f min", padding=2, fontsize=7)
-                ax1.spines[["top","right"]].set_visible(False)
-                ax1.tick_params(labelsize=7)
-                ax1.set_xlabel("min", fontsize=8)
-            else:
-                ax1.text(0.5, 0.5, "Aucun arrêt", ha="center", va="center",
-                         fontsize=10, color="#94a3b8", transform=ax1.transAxes)
-                ax1.axis("off")
-            ax1.set_title("Pareto arrêts", fontsize=10, fontweight="bold", color="#1e3a5f")
+        def _draw_bar2(event=None):
+            bar2_cv.delete("all")
+            W = bar2_cv.winfo_width() or 220
+            H = bar2_cv.winfo_height() or 160
+            pad_t = 24; pad_b = 28; pad_l = 30; pad_r = 20
+            max_v = max(_prod_theo, total_equiv, 1)
+            bar_area_h = H - pad_t - pad_b
+            bar_section_w = (W - pad_l - pad_r) / 2
+            _b2_items = [("Théo.", _prod_theo, "#1e3a5f"),
+                         ("Réel", total_equiv,
+                          "#16a34a" if total_equiv >= _prod_theo * 0.9 else "#dc2626")]
+            for i, (lbl, val, col) in enumerate(_b2_items):
+                x_mid = pad_l + (i + 0.5) * bar_section_w
+                bh3 = int(bar_area_h * val / max_v) if max_v > 0 else 0
+                bw3 = max(int(bar_section_w * 0.5), 20)
+                x0 = x_mid - bw3 // 2; x1 = x_mid + bw3 // 2
+                y0 = H - pad_b - bh3; y1 = H - pad_b
+                bar2_cv.create_rectangle(x0, y0, x1, y1, fill=col, outline="white", width=1)
+                bar2_cv.create_text(x_mid, max(y0 - 4, pad_t), text=f"{val:.0f}",
+                                    anchor="s", font=("Arial", 9, "bold"), fill=col)
+                bar2_cv.create_text(x_mid, H - pad_b + 6, text=lbl,
+                                    anchor="n", font=("Arial", 8), fill="#374151")
+            if _prod_theo > 0:
+                pct2 = total_equiv / _prod_theo * 100
+                pct2_col = "#16a34a" if pct2 >= 90 else "#dc2626"
+                bar2_cv.create_text(W - pad_r, pad_t - 4, text=f"{pct2:.1f}%",
+                                    anchor="ne", font=("Arial", 12, "bold"), fill=pct2_col)
 
-            # Répartition pie
-            ax2 = axes[1]
-            pie_raw = [("Production",total_prod_s,"#16a34a"),
-                       ("Pannes",total_panne_s,"#dc2626"),
-                       ("Rattrapages",total_ratt_s,"#f59e0b"),
-                       ("Pauses",total_pause_s,"#3b82f6"),
-                       ("Réunions",total_reunion_s,"#8b5cf6"),
-                       ("Non déclaré",max(0.0,non_declare_s),"#94a3b8")]
-            pie_d = [(l,v,c) for l,v,c in pie_raw if v > 30]
-            if pie_d:
-                wedges, _ = ax2.pie([p[1] for p in pie_d],
-                                    colors=[p[2] for p in pie_d],
-                                    startangle=90,
-                                    wedgeprops={"edgecolor":"white","linewidth":1.5})
-                ax2.legend(wedges, [p[0] for p in pie_d],
-                           loc="lower center", bbox_to_anchor=(0.5,-0.15),
-                           ncol=2, fontsize=7, framealpha=0.8)
-            else:
-                ax2.text(0.5,0.5,"Pas de données",ha="center",va="center",
-                         fontsize=10,color="#94a3b8",transform=ax2.transAxes)
-            ax2.set_title("Répartition du temps", fontsize=10, fontweight="bold", color="#1e3a5f")
-
-            # Prod réelle vs théorique
-            ax3 = axes[2]; ax3.set_facecolor("#f8faff")
-            brs = ax3.bar(["Théorique","Réelle"],
-                          [prod_theo, total_equiv],
-                          color=["#1e3a5f",
-                                 "#16a34a" if total_equiv >= prod_theo*0.9 else "#dc2626"],
-                          width=0.4, edgecolor="white")
-            for br in brs:
-                ax3.text(br.get_x()+br.get_width()/2,
-                         br.get_height()+max(prod_theo,total_equiv,1)*0.02,
-                         f"{br.get_height():.0f}",
-                         ha="center", fontsize=10, fontweight="bold", color="#1e3a5f")
-            if prod_theo > 0:
-                pct = total_equiv/prod_theo*100
-                ax3.text(0.97, 0.95, f"{pct:.1f}%",
-                         transform=ax3.transAxes, ha="right", va="top",
-                         fontsize=12, fontweight="bold",
-                         color="#16a34a" if pct >= 90 else "#dc2626")
-            ax3.set_ylabel("Équivalences", fontsize=8)
-            ax3.spines[["top","right"]].set_visible(False)
-            ax3.tick_params(labelsize=8)
-            ax3.set_title("Prod. réelle vs théorique", fontsize=10, fontweight="bold", color="#1e3a5f")
-
-            fig.tight_layout(pad=1.5)
-            cv = FigureCanvasTkAgg(fig, master=parent)
-            cv.draw()
-            cv.get_tk_widget().pack(fill="both", expand=True)
-            plt.close(fig)
-
-        _build_ana(ana_f)
+        bar2_cv.bind("<Configure>", _draw_bar2)
+        bar2_cv.after(50, _draw_bar2)
 
         # ── ZONE 3 : Détail OFs ──────────────────────────────────────────────────
         of_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
