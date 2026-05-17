@@ -1809,7 +1809,7 @@ class App:
                     of_min  = of_s / 60
                     of_hrs  = of_s / 3600
                     equiv = self._calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
-                    c1 = round(equiv / of_min, 2)   if of_min > 0 else 0
+                    c1 = round(equiv / of_hrs, 2)   if of_hrs > 0 else 0
                     c2 = round(equiv / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
                     prod_ref = self._get_prod_ref()
                     kit = 2 if getattr(self, "_v_kit", None) and self._v_kit.get() else 1
@@ -2557,8 +2557,11 @@ Arrêts imputés au TRS (temps perdu) :
         # Reflet haut
         _rrect(cv, 2, 2, w - 2, h // 3, r, fill=_off(face, +35))
 
-        # Compteur pièces attendues (hors arrêts)
-        pure_s   = max(0.0, of_s - stop_s)
+        # Compteur pièces attendues (hors arrêts et pauses)
+        _pause_elapsed = self._pause_total_s
+        if getattr(self, "_is_paused", False) and self._pause_start:
+            _pause_elapsed += (datetime.datetime.now() - self._pause_start).total_seconds()
+        pure_s = max(0.0, of_s - stop_s - _pause_elapsed)
         prod_ref = self._get_prod_ref()
         # Adjust pcs_obj for current product equivalence coeff
         _equiv_coef = 1.0
@@ -3836,14 +3839,21 @@ Arrêts imputés au TRS (temps perdu) :
                         _p = of_date.split('-')
                         of_date = f"{_p[2]}/{_p[1]}/{_p[0]}"
                     if "Evenements" in wb.sheetnames:
+                        _row_pilot = str(row_data[3] or "").strip()
                         for r in wb["Evenements"].iter_rows(min_row=2, values_only=True):
                             if not r:
                                 continue
                             _etype = str(r[0] or "").strip()
-                            # Exclure "Changement d'OF" — événement inter-OF sans OF spécifique
                             if _etype.lower().startswith("changement d"):
                                 continue
-                            if str(r[1] or "") == of_num and str(r[2] or "")[:10] == of_date:
+                            _evt_of   = str(r[1] or "").strip()
+                            _evt_date = str(r[2] or "")[:10]
+                            _evt_pil  = str(r[4] or "").strip()
+                            # Match par OF + date, OU pause sans OF (hors prod) par date + pilote
+                            if _evt_of == of_num and _evt_date == of_date:
+                                evt_rows.append(list(r))
+                            elif ("pause" in _etype.lower() and not _evt_of
+                                  and _evt_date == of_date and _evt_pil == _row_pilot):
                                 evt_rows.append(list(r))
                     wb.close()
             except Exception as e:
@@ -5616,7 +5626,7 @@ Arrêts imputés au TRS (temps perdu) :
         of_min    = of_s / 60
         of_hrs    = of_s / 3600
         equiv     = self._calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
-        c1        = round(equiv / of_min, 2)   if of_min  > 0 else 0
+        c1        = round(equiv / of_hrs, 2)   if of_hrs > 0 else 0
         c2        = round(equiv / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
         kit       = 2 if self._v_kit.get() else 1
 
@@ -6056,56 +6066,6 @@ Arrêts imputés au TRS (temps perdu) :
                             # Événement inter-poste si même OF, pilote différent
                             if _interposte_ev_row is not None:
                                 self._write_rows_to_events_sheet(wb, [_interposte_ev_row])
-                            # Write TRS sheet summary
-                            try:
-                                _today_str = datetime.date.today().strftime("%d/%m/%Y")
-                                _poste_nom = str(row[2] or "")
-                                _pilot_nm  = str(row[3] or "")
-                                _copilot_nm = str(row[4] or "")
-                                _nb_pers_trs = str(row[5] or "")
-                                # Accumulate from Data sheet for today/pilot/poste
-                                _t_prod = 0.0; _t_panne = 0.0; _t_ratt = 0.0
-                                _t_pause = 0.0; _t_reunion = 0.0
-                                _nb_of_trs = 0; _t_qte = 0; _t_equiv = 0.0
-                                for _r in ws_d.iter_rows(min_row=2, values_only=True):
-                                    if not _r or not any(_r):
-                                        continue
-                                    if (str(_r[1] or "")[:10] == _today_str
-                                            and str(_r[3] or "") == _pilot_nm
-                                            and str(_r[2] or "") == _poste_nom):
-                                        _nb_of_trs += 1
-                                        _t_prod  += _hms_to_sec(str(_r[16] or ""))
-                                        _t_equiv += float(str(_r[15] or 0).replace(",",".") or 0)
-                                        _t_qte   += int(float(str(_r[13] or 0) or 0))
-                                        _t_reunion += _hms_to_sec(str(_r[31] or ""))
-                                        _t_ratt_row = sum(_hms_to_sec(str(_r[i] or "")) for i in range(33, 38) if _r[i])
-                                        _t_panne_row = sum(_hms_to_sec(str(_r[i] or "")) for i in range(38, 56) if i < len(_r) and _r[i])
-                                        _t_ratt  += _t_ratt_row
-                                        _t_panne += _t_panne_row
-                                # Pauses from events sheet
-                                ws_e2 = self._ensure_events_sheet(wb)
-                                for _er in ws_e2.iter_rows(min_row=2, values_only=True):
-                                    if not _er or not _er[0]:
-                                        continue
-                                    if ("pause" in str(_er[0] or "").lower()
-                                            and str(_er[2] or "")[:10] == _today_str
-                                            and str(_er[4] or "") == _pilot_nm):
-                                        _t_pause += _hms_to_sec(str(_er[18] or ""))
-                                # TRS poste : sum(equiv) / (prod_ref * sum(of_s) / 28800)
-                                # _t_prod = sum(col16) inclut déjà la déduction des pauses par OF
-                                _prod_ref_trs = self._get_prod_ref()
-                                _ouv_trs = max(1.0, _t_prod)
-                                _trs_poste_val = -1.0
-                                if _prod_ref_trs > 0 and _t_equiv > 0:
-                                    _exp_trs = _prod_ref_trs * _ouv_trs / 28800.0
-                                    _trs_poste_val = _t_equiv / _exp_trs * 100.0 if _exp_trs > 0 else -1.0
-                                self._write_trs_sheet(
-                                    wb, _today_str, _poste_nom, _pilot_nm, _copilot_nm,
-                                    _nb_pers_trs, _t_prod, _t_panne, _t_ratt,
-                                    _t_pause, _t_reunion, _nb_of_trs, _t_qte,
-                                    _t_equiv, _trs_poste_val)
-                            except Exception:
-                                pass
                             wb.save(path)
                             self._wb_mtime_cache = os.path.getmtime(path)
                             try:
@@ -6248,12 +6208,12 @@ Arrêts imputés au TRS (temps perdu) :
         duree_theorique_s = duree_theorique_min * 60
         non_declare_s = max(0.0, duree_theorique_s - total_declare_s)
 
-        # Calcul TRS poste : sum(equiv) / (prod_ref * sum(of_s) / 28800)
-        # total_prod_s = sum(col16) = durée productive nette, pauses déjà déduites par OF
+        # TRS poste = equiv produite / (prod_ref × durée_théorique_poste / 28800)
+        # Mesure le TRS sur l'intégralité du poste théorique configuré
         prod_ref = self._get_prod_ref()
         trs_poste = -1.0
-        if prod_ref > 0 and total_equiv > 0 and total_prod_s > 0:
-            expected2 = prod_ref * total_prod_s / 28800.0
+        if prod_ref > 0 and total_equiv > 0 and duree_theorique_s > 0:
+            expected2 = prod_ref * duree_theorique_s / 28800.0
             trs_poste = total_equiv / expected2 * 100.0 if expected2 > 0 else -1.0
 
         avg_of_poste = round(total_qte / nb_of, 1) if nb_of > 0 else 0
@@ -6569,8 +6529,8 @@ Arrêts imputés au TRS (temps perdu) :
                  font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(4, 0))
 
         # Canvas plus haut pour accueillir la légende intégrée et les labels OF
-        chron_cv = tk.Canvas(chron_f, bg=WHITE, height=86, highlightthickness=0)
-        chron_cv.pack(fill="x", padx=10, pady=(2, 4))
+        chron_cv = tk.Canvas(chron_f, bg=WHITE, height=68, highlightthickness=0)
+        chron_cv.pack(fill="x", padx=10, pady=(2, 0))
 
         _ct0 = login_dt.timestamp()
         _ct1 = now.timestamp()
@@ -6649,18 +6609,18 @@ Arrêts imputés au TRS (temps perdu) :
                 chron_cv.create_text(tx, tick_y + 10, text=t_str, anchor="center",
                                      font=("Arial", 7), fill="#64748b")
 
-            # Légende en bas à gauche
-            leg_y = H - 2
-            lx = pad_l
-            for leg_lbl, leg_col in _chron_legend:
-                chron_cv.create_rectangle(lx, leg_y - 9, lx + 10, leg_y - 1,
-                                          fill=leg_col, outline="", width=0)
-                chron_cv.create_text(lx + 12, leg_y - 5, text=leg_lbl, anchor="w",
-                                     font=("Arial", 7), fill="#475569")
-                lx += len(leg_lbl) * 5 + 22
-
         chron_cv.bind("<Configure>", _draw_chron)
         chron_cv.after(50, _draw_chron)
+
+        # Légende chronologie (sous le canvas)
+        chron_leg_f = tk.Frame(chron_f, bg=WHITE)
+        chron_leg_f.pack(anchor="w", padx=10, pady=(3, 6))
+        for _cll, _clc in _chron_legend:
+            _clf = tk.Frame(chron_leg_f, bg=WHITE)
+            _clf.pack(side="left", padx=(0, 10))
+            tk.Frame(_clf, bg=_clc, width=12, height=10).pack(side="left")
+            tk.Label(_clf, text=_cll, bg=WHITE, fg="#475569",
+                     font=("Arial", 8)).pack(side="left", padx=(2, 0))
 
         # ── ZONE 2 : Analyses ────────────────────────────────────────────────────
         ana_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
