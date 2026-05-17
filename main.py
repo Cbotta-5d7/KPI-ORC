@@ -1808,9 +1808,9 @@ class App:
                     nb_pers = max(1, _n("nb_pers") or 1)
                     of_min  = of_s / 60
                     of_hrs  = of_s / 3600
-                    c1 = round(qte_fab / of_min, 2)  if of_min > 0 else 0
-                    c2 = round(qte_fab / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
                     equiv = self._calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
+                    c1 = round(equiv / of_min, 2)   if of_min > 0 else 0
+                    c2 = round(equiv / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
                     prod_ref = self._get_prod_ref()
                     kit = 2 if getattr(self, "_v_kit", None) and self._v_kit.get() else 1
                     def _ts(key): return fmt(self._t_get(key))
@@ -5613,9 +5613,9 @@ Arrêts imputés au TRS (temps perdu) :
         nb_pers   = max(1, _n("nb_pers") or 1)
         of_min    = of_s / 60
         of_hrs    = of_s / 3600
-        c1        = round(qte_fab / of_min, 2)  if of_min  > 0 else 0
-        c2        = round(qte_fab / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
         equiv     = self._calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
+        c1        = round(equiv / of_min, 2)   if of_min  > 0 else 0
+        c2        = round(equiv / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
         kit       = 2 if self._v_kit.get() else 1
 
         prod_ref = self._get_prod_ref()
