@@ -2549,8 +2549,8 @@ Arrêts imputés au TRS (temps perdu) :
         except Exception:
             pass
 
-        # Régénère le HTML toutes les 30 secondes (supervision live)
-        if self._tick_count % 30 == 1 and self.cfg.get("db_path"):
+        # Régénère le HTML toutes les 15 secondes (supervision live)
+        if self._tick_count % 15 == 1 and self.cfg.get("db_path"):
             self._generate_dashboard_html()
 
         if self._after_id: self.root.after_cancel(self._after_id)
@@ -9127,8 +9127,8 @@ function openOfModal(rowData) {{
   numEl.textContent = rowData[0] || '';
   var html = '';
   var sections = [
-    {{title:'Identification', color:'#1e3a5f', bg:'#eff6ff', indices:[0,1,2,3,4,5,10]}},
-    {{title:'Produit', color:'#16a34a', bg:'#f0fdf4', indices:[6,7,8,9,11,12,21]}},
+    {{title:'Identification', color:'#1e3a5f', bg:'#eff6ff', indices:[0,1,2,3,4,5]}},
+    {{title:'Produit', color:'#16a34a', bg:'#f0fdf4', indices:[6,7,8,9,10,11,12,21]}},
     {{title:'Quantités & Qualité', color:'#7c3aed', bg:'#faf5ff', indices:[13,14,15,16,17,18,19,20,22,23,24,25,26,27,28]}},
     {{title:'Durées & Arrêts', color:'#d97706', bg:'#fffbeb', indices:[29,30,31,32,33,34,35,36,37,57]}},
     {{title:'Pannes', color:'#dc2626', bg:'#fef2f2', indices:[38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55]}},
@@ -9137,12 +9137,12 @@ function openOfModal(rowData) {{
   sections.forEach(function(sec) {{
     var secHtml = '';
     sec.indices.forEach(function(i) {{
-      if (i >= DATA_HEADERS.length || i >= rowData.length) return;
-      var val = rowData[i];
-      if (!val || val === '0') return;
-      secHtml += '<div style="background:white;border-radius:6px;padding:8px 10px;border:1px solid #e2e8f0">'
+      if (i >= DATA_HEADERS.length) return;
+      var val = (i < rowData.length && rowData[i] !== '' && rowData[i] !== null && rowData[i] !== undefined) ? rowData[i] : '—';
+      var isEmpty = (val === '—');
+      secHtml += '<div style="background:white;border-radius:6px;padding:8px 10px;border:1px solid ' + (isEmpty ? '#f1f5f9' : '#e2e8f0') + '">'
         + '<div style="font-size:0.62em;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px">' + esc(DATA_HEADERS[i]) + '</div>'
-        + '<div style="font-weight:700;color:#1e3a5f;margin-top:2px;word-break:break-word;font-size:0.95em">' + esc(val) + '</div>'
+        + '<div style="font-weight:700;color:' + (isEmpty ? '#cbd5e1' : '#1e3a5f') + ';margin-top:2px;word-break:break-word;font-size:0.95em">' + esc(val) + '</div>'
         + '</div>';
     }});
     if (!secHtml) return;
