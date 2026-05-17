@@ -2534,11 +2534,8 @@ Arrêts imputés au TRS (temps perdu) :
             pass
 
         # Régénère le HTML toutes les 30 secondes (supervision live)
-        if self._tick_count % 30 == 0 and self.cfg.get("db_path"):
-            try:
-                self._generate_dashboard_html()
-            except Exception:
-                pass
+        if self._tick_count % 30 == 1 and self.cfg.get("db_path"):
+            self._generate_dashboard_html()
 
         if self._after_id: self.root.after_cancel(self._after_id)
         self._after_id = self.root.after(1000, self._tick)
@@ -7233,14 +7230,27 @@ Arrêts imputés au TRS (temps perdu) :
         """Génère KPI_Dashboard.html dans le même dossier que l'Excel."""
         import json as _json
         import datetime as _dt
+        import traceback as _tb
 
         path = self.cfg.get("db_path", "")
         if not path:
             return
         out_dir = os.path.dirname(path) or "."
+        log_path  = os.path.join(out_dir, "KPI_Dashboard_error.log")
         # Utilise la copie dashboard si disponible (lecture seule, non-bloquante)
         read_path = self._get_read_path()
         html_path = os.path.join(out_dir, "KPI_Dashboard.html")
+        try:
+            self._generate_dashboard_html_inner(_json, _dt, out_dir, read_path, html_path)
+        except Exception:
+            try:
+                with open(log_path, "a", encoding="utf-8") as _lf:
+                    _lf.write(f"\n[{_dt.datetime.now()}] ERREUR _generate_dashboard_html:\n")
+                    _lf.write(_tb.format_exc())
+            except Exception:
+                pass
+
+    def _generate_dashboard_html_inner(self, _json, _dt, out_dir, read_path, html_path):
         now_str = _dt.datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
 
         # ── helpers ──────────────────────────────────────────────────────────
