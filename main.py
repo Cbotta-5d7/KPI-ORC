@@ -1879,6 +1879,11 @@ class App:
         # Pilote (shows name)
         pilot_name = self._logged_in_pilot or "Non connecté"
         pilot_bg   = GREEN if self._logged_in_pilot else C_RED
+        # Poste en cours (visible à côté du pilote)
+        if self._logged_in_poste:
+            tk.Label(right_bar, text=f"🕐 {self._logged_in_poste}",
+                     bg=NAVY, fg="#4ade80",
+                     font=("Arial", 12, "bold")).pack(side="right", padx=(0, 8))
         # Pilote (nom)
         tk.Button(right_bar, text=f"👤  {pilot_name}", bg=pilot_bg, fg=WHITE,
                   command=lambda: self._check_nettoyage_before_logout(
@@ -4388,6 +4393,7 @@ Arrêts imputés au TRS (temps perdu) :
         body.columnconfigure(1, weight=2)   # arrêts actifs (33%)
         body.columnconfigure(2, weight=1)   # récap (17%)
         body.rowconfigure(0, weight=1)
+        body.rowconfigure(1, weight=0)
 
         # Zone 1 : formulaire
         left = tk.Frame(body, bg=WHITE)
@@ -4404,6 +4410,45 @@ Arrêts imputés au TRS (temps perdu) :
         recap_panel.grid(row=0, column=2, sticky="nsew", padx=(2, 0))
         self._recap_panel = recap_panel
         self._build_stops_recap(recap_panel)
+
+        # ── Footer : bouton Annuler bas-droite ───────────────────────────────
+        footer = tk.Frame(body, bg=BG)
+        footer.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(6, 0))
+        tk.Frame(footer, bg=BG).pack(side="left", fill="both", expand=True)
+
+        def _annuler_production():
+            from tkinter import messagebox
+            if not messagebox.askyesno(
+                    "Annuler la production",
+                    "Annuler TOUTES les déclarations de cette session ?\n\n"
+                    "Les données seront perdues et vous revenez au tableau de bord.",
+                    icon="warning"):
+                return
+            self._prod_active      = False
+            self._of_start         = None
+            self._timers.clear()
+            self._tl_events        = []
+            self._pause_total_s    = 0.0
+            self._is_paused        = False
+            self._pause_start      = None
+            self._pause_periods    = []
+            self._inter_of_s       = 0
+            self._interposte_s     = 0
+            self._of_periods       = []
+            self._saved_form_data  = {}
+            self._of_count_this_shift = 0
+            self._last_of_end      = None
+            self._delete_session()
+            if self._after_id:
+                self.root.after_cancel(self._after_id)
+                self._after_id = None
+            self._show_main()
+
+        tk.Button(footer, text="✕  Annuler la production",
+                  command=_annuler_production,
+                  bg="#dc2626", fg=WHITE,
+                  font=("Arial", 11, "bold"), relief="flat",
+                  padx=16, pady=8, cursor="hand2").pack(side="right")
 
         if self._after_id: self.root.after_cancel(self._after_id)
         self._after_id = self.root.after(1000, self._tick)
@@ -4882,12 +4927,14 @@ Arrêts imputés au TRS (temps perdu) :
     def _build_stops_recap(self, parent):
         hdr_f = tk.Frame(parent, bg="#c0392b", relief="raised", bd=2)
         hdr_f.pack(fill="x")
-        # Reflet 3D haut
         tk.Frame(hdr_f, bg="#e74c3c", height=3).pack(fill="x", side="top")
         inner_hdr = tk.Frame(hdr_f, bg="#c0392b")
         inner_hdr.pack(fill="x", padx=6, pady=4)
         tk.Label(inner_hdr, text="RÉCAP ARRÊTS OF",
                  bg="#c0392b", fg=WHITE, font=("Arial", 9, "bold")).pack(side="left")
+        tk.Button(inner_hdr, text="✏", bg="#e74c3c", fg=WHITE,
+                  font=("Arial", 9, "bold"), relief="flat", cursor="hand2",
+                  command=self._open_stops_editor).pack(side="right", padx=2)
         self._recap_inner = tk.Frame(parent, bg=WHITE)
         self._recap_inner.pack(fill="both", expand=True, padx=4, pady=4)
         self._refresh_stops_recap()
@@ -4962,6 +5009,161 @@ Arrêts imputés au TRS (temps perdu) :
         ts = int(total % 60)
         tk.Label(inner, text=f"Total : {tm}min {ts:02d}s",
                  bg=WHITE, fg=DARK, font=("Arial", 12, "bold")).pack(anchor="w", padx=6, pady=(2, 0))
+
+    def _open_stops_editor(self):
+        """Dialogue de modification des arrêts de l'OF en cours."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Modifier les arrêts")
+        dlg.resizable(True, True)
+        dlg.grab_set()
+        self._center_on_root(dlg, 720, 500)
+        dlg.configure(bg=WHITE)
+
+        # Header
+        hdr = tk.Frame(dlg, bg="#c0392b", height=40)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="✏  Modification des arrêts de l'OF en cours",
+                 bg="#c0392b", fg=WHITE, font=("Arial", 11, "bold")).pack(side="left", padx=12, pady=8)
+
+        # Colonnes
+        cols_hdr = tk.Frame(dlg, bg=LGRAY)
+        cols_hdr.pack(fill="x", padx=8, pady=(8, 0))
+        for txt, w in [("Type d'arrêt", 200), ("Début", 140), ("Fin", 140), ("Durée", 80), ("", 80)]:
+            tk.Label(cols_hdr, text=txt, bg=LGRAY, fg=DARK,
+                     font=("Arial", 9, "bold"), width=w//8, anchor="w").pack(side="left", padx=4, pady=4)
+
+        # Scrollable list
+        scroll_frame = tk.Frame(dlg, bg=WHITE)
+        scroll_frame.pack(fill="both", expand=True, padx=8, pady=4)
+        canvas_s = tk.Canvas(scroll_frame, bg=WHITE, highlightthickness=0)
+        sb = ttk.Scrollbar(scroll_frame, orient="vertical", command=canvas_s.yview)
+        canvas_s.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas_s.pack(side="left", fill="both", expand=True)
+        list_frame = tk.Frame(canvas_s, bg=WHITE)
+        canvas_s.create_window((0, 0), window=list_frame, anchor="nw")
+        list_frame.bind("<Configure>", lambda e: canvas_s.configure(scrollregion=canvas_s.bbox("all")))
+
+        now = datetime.datetime.now()
+
+        def _fmt_dt(dt):
+            return dt.strftime("%d/%m %H:%M:%S") if dt else "—"
+
+        def _rebuild():
+            for w in list_frame.winfo_children():
+                w.destroy()
+            stops = [ev for ev in self._tl_events
+                     if ev.get("cat") in ("ratt", "pb")
+                     and (not self._of_start or ev["start"] >= self._of_start)]
+            if not stops:
+                tk.Label(list_frame, text="Aucun arrêt enregistré.", bg=WHITE, fg=GRAY,
+                         font=("Arial", 10, "italic")).pack(pady=20)
+            for i, ev in enumerate(stops):
+                label = next((e[0] for e in EVENTS if e[1] == ev["key"]), ev["key"])
+                color = C_RATT if ev["cat"] == "ratt" else C_RED
+                end_dt = ev.get("end") or now
+                dur_s = int((end_dt - ev["start"]).total_seconds())
+                dur_txt = fmt(dur_s)
+                row = tk.Frame(list_frame, bg=WHITE if i % 2 == 0 else "#f9f9f9")
+                row.pack(fill="x", pady=1)
+                tk.Frame(row, bg=color, width=4).pack(side="left", fill="y")
+                tk.Label(row, text=label, bg=row["bg"], fg=DARK,
+                         font=("Arial", 10), width=25, anchor="w").pack(side="left", padx=4)
+                tk.Label(row, text=_fmt_dt(ev["start"]), bg=row["bg"], fg=DARK,
+                         font=("Arial", 10), width=16, anchor="w").pack(side="left", padx=2)
+                tk.Label(row, text=_fmt_dt(ev.get("end")), bg=row["bg"], fg=DARK if ev.get("end") else GRAY,
+                         font=("Arial", 10), width=16, anchor="w").pack(side="left", padx=2)
+                tk.Label(row, text=dur_txt, bg=row["bg"], fg=color,
+                         font=("Arial", 10, "bold"), width=8, anchor="w").pack(side="left", padx=2)
+
+                def _edit(ev=ev):
+                    _edit_stop_dlg(ev)
+                def _delete(ev=ev):
+                    if ev in self._tl_events:
+                        self._tl_events.remove(ev)
+                        # Recalculer elapsed du timer correspondant
+                        key = ev["key"]
+                        if key in self._timers and not self._timers[key]["running"]:
+                            elapsed = sum(
+                                (e.get("end") or now - e["start"]).total_seconds()
+                                for e in self._tl_events
+                                if e["key"] == key and e.get("end")
+                            )
+                            self._timers[key]["elapsed"] = elapsed
+                    _rebuild()
+                    self._refresh_stops_recap()
+
+                tk.Button(row, text="✏", bg=LGRAY, fg=DARK, font=("Arial", 9),
+                          relief="flat", cursor="hand2", padx=4,
+                          command=_edit).pack(side="left", padx=2)
+                tk.Button(row, text="🗑", bg="#fee2e2", fg="#dc2626", font=("Arial", 9),
+                          relief="flat", cursor="hand2", padx=4,
+                          command=_delete).pack(side="left", padx=2)
+
+        def _edit_stop_dlg(ev):
+            """Mini-formulaire pour modifier heure début/fin d'un arrêt."""
+            ed = tk.Toplevel(dlg)
+            ed.title("Modifier l'arrêt")
+            ed.resizable(False, False)
+            ed.grab_set()
+            self._center_on_root(ed, 380, 240)
+            ed.configure(bg=WHITE)
+            label = next((e[0] for e in EVENTS if e[1] == ev["key"]), ev["key"])
+            tk.Label(ed, text=label, bg=WHITE, fg=NAVY,
+                     font=("Arial", 12, "bold")).pack(pady=(16, 8))
+
+            def _dt_entry(parent, lbl, dt):
+                f = tk.Frame(parent, bg=WHITE)
+                f.pack(fill="x", padx=20, pady=4)
+                tk.Label(f, text=lbl, bg=WHITE, fg=GRAY,
+                         font=("Arial", 10), width=10, anchor="w").pack(side="left")
+                sv = tk.StringVar(value=dt.strftime("%d/%m/%Y %H:%M:%S") if dt else "")
+                tk.Entry(f, textvariable=sv, font=("Arial", 11), width=20,
+                         relief="solid", bd=1).pack(side="left", padx=4)
+                return sv
+
+            sv_start = _dt_entry(ed, "Début :", ev["start"])
+            sv_end   = _dt_entry(ed, "Fin :", ev.get("end"))
+
+            def _apply():
+                try:
+                    new_start = datetime.datetime.strptime(sv_start.get().strip(), "%d/%m/%Y %H:%M:%S")
+                    ev["start"] = new_start
+                    end_s = sv_end.get().strip()
+                    ev["end"] = datetime.datetime.strptime(end_s, "%d/%m/%Y %H:%M:%S") if end_s else None
+                    # Recalculer elapsed
+                    key = ev["key"]
+                    if key in self._timers and not self._timers[key]["running"]:
+                        self._timers[key]["elapsed"] = sum(
+                            (e["end"] - e["start"]).total_seconds()
+                            for e in self._tl_events
+                            if e["key"] == key and e.get("end") and e.get("start")
+                        )
+                    ed.destroy()
+                    _rebuild()
+                    self._refresh_stops_recap()
+                except ValueError:
+                    _toast(ed, "Format : dd/mm/yyyy HH:MM:SS", bg=C_RED, duration=2000)
+
+            bf = tk.Frame(ed, bg=WHITE)
+            bf.pack(pady=12)
+            tk.Button(bf, text="✔  Appliquer", command=_apply,
+                      bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
+                      relief="flat", padx=12, pady=6, cursor="hand2").pack(side="left", padx=4)
+            tk.Button(bf, text="Annuler", command=ed.destroy,
+                      bg=LGRAY, fg=DARK, font=("Arial", 10),
+                      relief="flat", padx=8, pady=6).pack(side="left")
+
+        _rebuild()
+
+        # Footer
+        foot = tk.Frame(dlg, bg=WHITE)
+        foot.pack(fill="x", padx=8, pady=8)
+        tk.Button(foot, text="✔  Fermer",
+                  command=lambda: [dlg.destroy(), self._refresh_stops_recap()],
+                  bg=NAVY, fg=WHITE, font=("Arial", 11, "bold"),
+                  relief="flat", padx=14, pady=8, cursor="hand2").pack(side="right")
 
     def _show_nettoyage_selector(self):
         """Popup de sélection du type de nettoyage."""
