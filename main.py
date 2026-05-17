@@ -2775,14 +2775,22 @@ Arrêts imputés au TRS (temps perdu) :
                 except Exception:
                     pass
             final = rows[-50:] if len(rows) > 50 else rows
-            self.root.after(0, lambda: self._show_main_done(final, events=events, trs_data=trs_data))
+            self.root.after(0, lambda: self._show_main_done(final, events=events, trs_data=trs_data,
+                                                             full_data=rows, full_evts=events))
 
         threading.Thread(target=_bg, daemon=True).start()
 
-    def _show_main_done(self, rows, toast=None, events=None, trs_data=None):
+    def _show_main_done(self, rows, toast=None, events=None, trs_data=None,
+                        full_data=None, full_evts=None):
+        import time as _t
         self._data_rows_cache = rows
         self._events_cache    = events or []
         self._trs_cache       = trs_data or []
+        if full_data is not None:
+            self._review_full_data = full_data
+            self._review_full_evts = full_evts or events or []
+            self._review_full_trs  = trs_data or []
+            self._review_cache_ts  = _t.time()
         self._hide_loading()
         self._build_main_ui()
         if toast:
@@ -4732,6 +4740,15 @@ Arrêts imputés au TRS (temps perdu) :
         for _key in ("taille", "type_prod"):
             if _key in self.fv:
                 self.fv[_key].trace_add("write", _on_prod_type_change)
+        # Sauvegarde auto session à chaque modification du formulaire (debounce 1s)
+        _form_save_id = [None]
+        def _on_form_change(*_):
+            if _form_save_id[0]:
+                try: self.root.after_cancel(_form_save_id[0])
+                except Exception: pass
+            _form_save_id[0] = self.root.after(1000, self._save_form_data)
+        for _v in self.fv.values():
+            _v.trace_add("write", _on_form_change)
 
     def _tick_force_redraw(self):
         """Force un recalcul du statut bar (pièces attendues) sans attendre le tick."""
