@@ -4829,8 +4829,9 @@ Arrêts imputés au TRS (temps perdu) :
             sb.pack(side="right", fill="y")
             cv.pack(side="left", fill="both", expand=True)
             inner = tk.Frame(cv, bg=WHITE)
-            cv.create_window((0, 0), window=inner, anchor="nw")
+            win_id = cv.create_window((0, 0), window=inner, anchor="nw")
             inner.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+            cv.bind("<Configure>", lambda e: cv.itemconfig(win_id, width=e.width))
             inner.columnconfigure(1, weight=1)
             inner.columnconfigure(2, weight=2)
             # En-têtes
@@ -4988,8 +4989,9 @@ Arrêts imputés au TRS (temps perdu) :
         sb_l.pack(side="right", fill="y")
         cv_l.pack(side="left", fill="both", expand=True)
         inner_l = tk.Frame(cv_l, bg=WHITE)
-        cv_l.create_window((0, 0), window=inner_l, anchor="nw")
+        win_id_l = cv_l.create_window((0, 0), window=inner_l, anchor="nw")
         inner_l.bind("<Configure>", lambda e: cv_l.configure(scrollregion=cv_l.bbox("all")))
+        cv_l.bind("<Configure>", lambda e: cv_l.itemconfig(win_id_l, width=e.width))
         inner_l.columnconfigure(1, weight=1)
         inner_l.columnconfigure(2, weight=2)
         for ci, txt in enumerate(["Col", "Nom de la colonne", "Description"]):
