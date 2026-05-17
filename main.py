@@ -6201,6 +6201,7 @@ Arrêts imputés au TRS (temps perdu) :
         nb_of          = 0
         total_equiv    = 0.0
         total_qte      = 0
+        total_qte_emb  = 0
 
         for _, row in self._data_rows_cache:
             row_date  = _row_date(row[1])
@@ -6211,6 +6212,7 @@ Arrêts imputés au TRS (temps perdu) :
                 total_prod_s  += _hms_to_sec(str(row[16] or ""))
                 total_equiv   += float(str(row[15] or 0).replace(",", ".") or 0)
                 total_qte     += int(float(str(row[13] or 0)))
+                total_qte_emb += int(float(str(row[14] or 0)))
                 nb_of         += 1
                 panne_cols = range(38, 56)
                 for ci in panne_cols:
@@ -6502,10 +6504,10 @@ Arrêts imputés au TRS (temps perdu) :
                              f"{trs_poste:.1f}%" if trs_poste >= 0 else "—")
         tk.Frame(gauge_f, bg=LGRAY, height=1).pack(fill="x", padx=8, pady=4)
         kpi_data = [
-            ("OF déclarés",  str(nb_of),              "#2563eb"),
-            ("Qté fab.",     str(total_qte),           "#16a34a"),
-            ("Équiv.",       f"{total_equiv:.0f}",     "#7c3aed"),
-            ("Moy/OF",       f"{avg_of_poste:.1f}" if nb_of else "—", "#0891b2"),
+            ("Quantité fabriquée",  str(total_qte),                          "#16a34a"),
+            ("Quantité emballée",   str(total_qte_emb),                      "#0891b2"),
+            ("Équivalence",         f"{total_equiv:.0f}",                    "#7c3aed"),
+            ("Moyenne pièces / OF", f"{avg_of_poste:.1f}" if nb_of else "—", "#2563eb"),
         ]
         kg = tk.Frame(gauge_f, bg=WHITE)
         kg.pack(fill="x", padx=6, pady=4)
@@ -6520,6 +6522,17 @@ Arrêts imputés au TRS (temps perdu) :
         chron_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
         chron_f.grid(row=1, column=0, columnspan=3, sticky="nsew", pady=(0, 3))
 
+        def _mpl_missing(parent):
+            f = tk.Frame(parent, bg=WHITE)
+            f.pack(expand=True)
+            tk.Label(f, text="📦  Graphiques indisponibles",
+                     bg=WHITE, fg="#64748b", font=("Arial", 11, "bold")).pack(pady=(20, 4))
+            tk.Label(f, text="Installez matplotlib pour afficher les graphiques :",
+                     bg=WHITE, fg="#94a3b8", font=("Arial", 9)).pack()
+            tk.Label(f, text="pip install matplotlib",
+                     bg="#1e3a5f", fg="#93c5fd", font=("Courier", 11, "bold"),
+                     padx=12, pady=6).pack(pady=8)
+
         def _build_chron(parent):
             try:
                 import matplotlib
@@ -6527,9 +6540,8 @@ Arrêts imputés au TRS (temps perdu) :
                 import matplotlib.pyplot as plt
                 import matplotlib.patches as mpatches
                 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-            except ImportError:
-                tk.Label(parent, text="matplotlib manquant", bg=WHITE, fg=GRAY,
-                         font=("Arial", 10)).pack(expand=True)
+            except Exception:
+                _mpl_missing(parent)
                 return
             t0 = login_dt.timestamp(); t1 = now.timestamp()
             span = max(t1 - t0, 1)
@@ -6591,9 +6603,8 @@ Arrêts imputés au TRS (temps perdu) :
                 matplotlib.use("TkAgg")
                 import matplotlib.pyplot as plt
                 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-            except ImportError:
-                tk.Label(parent, text="matplotlib manquant", bg=WHITE, fg=GRAY,
-                         font=("Arial", 10)).pack(expand=True)
+            except Exception:
+                _mpl_missing(parent)
                 return
             stop_totals: dict = {}
             for _, row in self._data_rows_cache:
