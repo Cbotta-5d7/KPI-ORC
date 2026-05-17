@@ -3170,12 +3170,12 @@ Arrêts imputés au TRS (temps perdu) :
                 t_date  = str(trs_row[0] or "")[:10]
                 t_poste = str(trs_row[1] or "")
                 t_pilot = str(trs_row[2] or "")
-                t_trs   = str(trs_row[14] or "")
-                t_qte   = str(trs_row[11] or "")
-                t_equiv = str(trs_row[12] or "")
-                t_prod  = str(trs_row[5] or "")
-                t_panne = str(trs_row[6] or "")
-                t_ratt  = str(trs_row[7] or "")
+                t_trs   = str(trs_row[19] or "")
+                t_qte   = str(trs_row[16] or "")
+                t_equiv = str(trs_row[17] or "")
+                t_prod  = str(trs_row[8] or "")
+                t_panne = str(trs_row[11] or "")
+                t_ratt  = str(trs_row[12] or "")
                 # Tag TRS
                 try:
                     trs_num = float(str(t_trs).replace("%", "").replace(",", "."))
@@ -3464,12 +3464,12 @@ Arrêts imputés au TRS (temps perdu) :
                 t_date  = str(trs_row[0] or "")[:10]
                 t_poste = str(trs_row[1] or "")
                 t_pilot = str(trs_row[2] or "")
-                t_trs   = str(trs_row[14] or "")
-                t_qte   = str(trs_row[11] or "")
-                t_equiv = str(trs_row[12] or "")
-                t_prod  = str(trs_row[5] or "")
-                t_panne = str(trs_row[6] or "")
-                t_ratt  = str(trs_row[7] or "")
+                t_trs   = str(trs_row[19] or "")
+                t_qte   = str(trs_row[16] or "")
+                t_equiv = str(trs_row[17] or "")
+                t_prod  = str(trs_row[8] or "")
+                t_panne = str(trs_row[11] or "")
+                t_ratt  = str(trs_row[12] or "")
                 try:
                     trs_num = float(str(t_trs).replace("%", "").replace(",", "."))
                     pos_tag = ("trs_hi",) if trs_num >= 75 else (("trs_warn",) if trs_num >= 55 else ("trs_low",))
@@ -3583,13 +3583,13 @@ Arrêts imputés au TRS (temps perdu) :
 
         def _trs_from_cache(pilot_name):
             """Lit le TRS poste depuis la feuille TRS (même valeur que l'onglet Postes).
-            Colonnes: 0=Date, 1=Poste, 2=Pilote, 14=TRS poste"""
+            Colonnes: 0=Date, 1=Poste, 2=Pilote, 19=TRS"""
             for row in reversed(getattr(self, "_trs_cache", [])):
-                if not row or len(row) < 15:
+                if not row or len(row) < 20:
                     continue
                 if str(row[2] or "").strip() == pilot_name:
                     try:
-                        return float(str(row[14] or "").replace("%", "").replace(",", ".").strip())
+                        return float(str(row[19] or "").replace("%", "").replace(",", ".").strip())
                     except Exception:
                         pass
             return 0.0
@@ -6833,14 +6833,29 @@ Arrêts imputés au TRS (temps perdu) :
                           total_equiv, trs_val,
                           total_declare_s=0.0, duree_theo_s=0.0,
                           temps_prevu_s=0.0, depassement_prevu_s=0.0):
-        """Écrit ou met à jour une ligne dans l'onglet TRS du workbook."""
+        """Écrit ou met à jour une ligne dans l'onglet TRS du workbook.
+        Structure 20 colonnes A-T selon spécification v5.86."""
         trs_headers = [
-            "Date", "Poste", "Pilote", "Co-Pilote", "Nb Personnes",
-            "Total prod", "Total arrêts panne", "Total arrêt rattrapage",
-            "Total pauses", "Total réunions", "Nombre d'OF",
-            "Qté produite réel", "Équivalence", "Nb moyen pièces/OF", "TRS poste",
-            "Total temps déclaré", "Total temps attendu",
-            "Total temps prévu", "Dépassement temps prévu",
+            "Date",                          # A
+            "Poste",                         # B
+            "Pilote",                        # C
+            "Co-Pilote",                     # D
+            "Nb Personnes",                  # E
+            "Total temps d'ouverture",       # F — durée théorique du poste
+            "Total temps déclarés",          # G — prod + arrêts + pauses + réunions
+            "Ecart ouverture/déclarés",      # H — F - G
+            "Total temps de marche",         # I — temps de production pure
+            "Total arrêts prévu",            # J — pauses + réunions dans les tolérances
+            "Débordement arrêts prévu",      # K — dépassement des tolérances
+            "Total arrêts (panne)",          # L
+            "Total arrêt rattrapage",        # M
+            "Total pauses",                  # N
+            "Total réunions",                # O
+            "Nombre d'OF",                   # P
+            "Nombre de pièce produites",     # Q
+            "Equivalence",                   # R
+            "Nombre moyen de pièce par OF",  # S
+            "TRS",                           # T
         ]
         if "TRS" not in wb.sheetnames:
             ws_trs = wb.create_sheet("TRS")
@@ -6848,15 +6863,15 @@ Arrêts imputés au TRS (temps perdu) :
             self._format_row(ws_trs, 1)
         else:
             ws_trs = wb["TRS"]
-            # Ajouter les nouvelles colonnes si la feuille est ancienne
+            # Réécrire l'en-tête si la structure a changé
             existing_hdrs = [c.value for c in next(ws_trs.iter_rows(max_row=1))]
-            for h in trs_headers:
-                if h not in existing_hdrs:
-                    col_n = len(existing_hdrs) + 1
-                    ws_trs.cell(1, col_n).value = h
-                    existing_hdrs.append(h)
+            if existing_hdrs != trs_headers:
+                for ci, h in enumerate(trs_headers, start=1):
+                    ws_trs.cell(1, ci).value = h
+                self._format_row(ws_trs, 1)
 
         avg_of = round(total_qte / nb_of, 1) if nb_of > 0 else 0
+        ecart_s = max(0.0, duree_theo_s - total_declare_s)
 
         existing_row_idx = None
         for i, r in enumerate(ws_trs.iter_rows(min_row=2, values_only=True), start=2):
@@ -6866,14 +6881,24 @@ Arrêts imputés au TRS (temps perdu) :
                 existing_row_idx = i
                 break
 
-        trs_row = [today_str, poste_nom, pilot_name, copilot_name, nb_pers,
-                   fmt(int(total_prod_s)), fmt(int(total_panne_s)), fmt(int(total_ratt_s)),
-                   fmt(int(total_pause_s)), fmt(int(total_reunion_s)), nb_of,
-                   total_qte, round(total_equiv, 1), avg_of,
-                   f"{trs_val:.1f}%" if trs_val >= 0 else "—",
-                   fmt(int(total_declare_s)), fmt(int(duree_theo_s)),
-                   fmt(int(temps_prevu_s)), fmt(int(depassement_prevu_s)),
-                   ]
+        trs_row = [
+            today_str, poste_nom, pilot_name, copilot_name, nb_pers,
+            fmt(int(duree_theo_s)),          # F: Total temps d'ouverture
+            fmt(int(total_declare_s)),       # G: Total temps déclarés
+            fmt(int(ecart_s)),               # H: Ecart ouverture/déclarés
+            fmt(int(total_prod_s)),          # I: Total temps de marche
+            fmt(int(temps_prevu_s)),         # J: Total arrêts prévu
+            fmt(int(depassement_prevu_s)),   # K: Débordement arrêts prévu
+            fmt(int(total_panne_s)),         # L: Total arrêts (panne)
+            fmt(int(total_ratt_s)),          # M: Total arrêt rattrapage
+            fmt(int(total_pause_s)),         # N: Total pauses
+            fmt(int(total_reunion_s)),       # O: Total réunions
+            nb_of,                           # P: Nombre d'OF
+            total_qte,                       # Q: Nombre de pièce produites
+            round(total_equiv, 1),           # R: Equivalence
+            avg_of,                          # S: Nombre moyen de pièce par OF
+            f"{trs_val:.1f}%" if trs_val >= 0 else "—",  # T: TRS
+        ]
 
         if existing_row_idx:
             for ci, val in enumerate(trs_row, start=1):
