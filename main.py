@@ -6429,17 +6429,17 @@ Arrêts imputés au TRS (temps perdu) :
 
         # Colonnes : info (col 0, 1) | gauge+kpi (col 2)
         # Lignes   : résumé (0) | timeline (1) | analyses (2) | OF (3)
+        # Colonnes : info (col 0) | gauge+kpi (col 1)
+        # Lignes   : résumé (0) | timeline (1) | analyses (2) | OF (3)
         body.columnconfigure(0, weight=2)
-        body.columnconfigure(1, weight=2)
-        body.columnconfigure(2, weight=2)
-        body.rowconfigure(0, weight=3)   # résumé
+        body.columnconfigure(1, weight=3)
         body.rowconfigure(1, weight=2)   # timeline
         body.rowconfigure(2, weight=3)   # analyses
         body.rowconfigure(3, weight=2)   # OF table
 
         # ── ZONE 0 gauche : tableau infos ───────────────────────────────────────
         info_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
-        info_f.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=(0, 3), pady=(0, 3))
+        info_f.grid(row=0, column=0, sticky="nsew", padx=(0, 3), pady=(0, 3))
         tk.Frame(info_f, bg=NAVY, height=3).pack(fill="x")
         li = tk.Frame(info_f, bg=WHITE)
         li.pack(fill="both", expand=True, padx=10, pady=6)
@@ -6498,7 +6498,7 @@ Arrêts imputés au TRS (temps perdu) :
 
         # ── ZONE 0 droite : jauge TRS + KPI cards ───────────────────────────────
         gauge_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
-        gauge_f.grid(row=0, column=2, sticky="nsew", padx=(3, 0), pady=(0, 3))
+        gauge_f.grid(row=0, column=1, sticky="nsew", padx=(3, 0), pady=(0, 3))
         tk.Frame(gauge_f, bg=NAVY_L, height=3).pack(fill="x")
         tk.Label(gauge_f, text="TRS du poste", bg=WHITE, fg=GRAY,
                  font=("Arial", 10, "bold")).pack(pady=(6, 0))
@@ -6524,7 +6524,7 @@ Arrêts imputés au TRS (temps perdu) :
 
         # ── ZONE 1 : Chronologie matplotlib ─────────────────────────────────────
         chron_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
-        chron_f.grid(row=1, column=0, columnspan=3, sticky="nsew", pady=(0, 3))
+        chron_f.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(0, 3))
 
         def _mpl_missing(parent):
             f = tk.Frame(parent, bg=WHITE)
@@ -6599,7 +6599,7 @@ Arrêts imputés au TRS (temps perdu) :
 
         # ── ZONE 2 : Analyses (3 graphiques côte à côte) ────────────────────────
         ana_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
-        ana_f.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=(0, 3))
+        ana_f.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(0, 3))
 
         def _build_ana(parent):
             try:
@@ -6702,7 +6702,7 @@ Arrêts imputés au TRS (temps perdu) :
 
         # ── ZONE 3 : Détail OFs ──────────────────────────────────────────────────
         of_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
-        of_f.grid(row=3, column=0, columnspan=3, sticky="nsew")
+        of_f.grid(row=3, column=0, columnspan=2, sticky="nsew")
 
         cols_of = ("N° OF","H.Début","H.Fin","Durée OF","Qté fab","Qté emb","Équiv","TRS OF","Arrêts","Rattrapages")
         tv = ttk.Treeview(of_f, columns=cols_of, show="headings", height=5)
