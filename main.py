@@ -1806,8 +1806,8 @@ class App:
                         except: return 0
                     qte_fab = _n("qte_fab")
                     nb_pers = max(1, _n("nb_pers") or 1)
-                    of_min  = of_s / 60
-                    of_hrs  = of_s / 3600
+                    of_min  = int(of_s) / 60
+                    of_hrs  = int(of_s) / 3600
                     equiv = self._calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
                     c1 = round(equiv / of_hrs, 2)   if of_hrs > 0 else 0
                     c2 = round(equiv / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
@@ -3588,12 +3588,15 @@ Arrêts imputés au TRS (temps perdu) :
             except Exception:
                 pass
 
-        def _trs(p):
-            if not p or p not in totals:
-                return 0.0
-            eq, s = totals[p]["eq"], totals[p]["s"]
-            return (eq / (prod_ref * s / 28800.0) * 100.0
-                    if prod_ref > 0 and s > 0 else 0.0)
+        def _trs_from_cache(pilot_name):
+            """Lit le TRS poste depuis la feuille TRS (même valeur que l'onglet Postes)."""
+            for row in reversed(getattr(self, "_trs_cache", [])):
+                if str(row.get("Pilote", "")).strip() == pilot_name:
+                    try:
+                        return float(str(row.get("TRS poste", "") or "").replace("%", "").replace(",", ".").strip())
+                    except Exception:
+                        pass
+            return 0.0
 
         last_stops, prev_stops = {}, {}
         # Read stop totals directly from Data rows (cols 33-55)
@@ -3685,7 +3688,7 @@ Arrêts imputés au TRS (temps perdu) :
 
         self._pilot_kpi_data = {
             "last_pilot": last_pilot, "prev_pilot": prev_pilot,
-            "last_trs": _trs(last_pilot), "prev_trs": _trs(prev_pilot),
+            "last_trs": _trs_from_cache(last_pilot), "prev_trs": _trs_from_cache(prev_pilot),
             "last_stops": last_stops,     "prev_stops": prev_stops,
             "last_eq":    totals.get(last_pilot, {}).get("eq",    0.0),
             "last_s":     totals.get(last_pilot, {}).get("s",     0.0),
@@ -3840,6 +3843,13 @@ Arrêts imputés au TRS (temps perdu) :
                         of_date = f"{_p[2]}/{_p[1]}/{_p[0]}"
                     if "Evenements" in wb.sheetnames:
                         _row_pilot = str(row_data[3] or "").strip()
+                        def _norm_evt_date(d):
+                            s = str(d or "").strip()[:10]
+                            # YYYY-MM-DD → DD/MM/YYYY
+                            if len(s) == 10 and s[4] == '-':
+                                p = s.split('-')
+                                return f"{p[2]}/{p[1]}/{p[0]}"
+                            return s
                         for r in wb["Evenements"].iter_rows(min_row=2, values_only=True):
                             if not r:
                                 continue
@@ -3847,11 +3857,12 @@ Arrêts imputés au TRS (temps perdu) :
                             if _etype.lower().startswith("changement d"):
                                 continue
                             _evt_of   = str(r[1] or "").strip()
-                            _evt_date = str(r[2] or "")[:10]
+                            _evt_date = _norm_evt_date(r[2])
                             _evt_pil  = str(r[4] or "").strip()
-                            # Match par OF + date, OU pause sans OF (hors prod) par date + pilote
+                            # Match par OF + date (inclut pauses avec OF)
                             if _evt_of == of_num and _evt_date == of_date:
                                 evt_rows.append(list(r))
+                            # Pauses sans OF : par date + pilote
                             elif ("pause" in _etype.lower() and not _evt_of
                                   and _evt_date == of_date and _evt_pil == _row_pilot):
                                 evt_rows.append(list(r))
@@ -5623,8 +5634,8 @@ Arrêts imputés au TRS (temps perdu) :
         stop_s    = self._t_wall_clock_stops()
         qte_fab   = _n("qte_fab")
         nb_pers   = max(1, _n("nb_pers") or 1)
-        of_min    = of_s / 60
-        of_hrs    = of_s / 3600
+        of_min    = int(of_s) / 60
+        of_hrs    = int(of_s) / 3600
         equiv     = self._calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
         c1        = round(equiv / of_hrs, 2)   if of_hrs > 0 else 0
         c2        = round(equiv / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
@@ -5839,6 +5850,10 @@ Arrêts imputés au TRS (temps perdu) :
         _row(None, None, sep=True)
         _row("Durée brute",           fmt(total_brut_s),            DARK)
         _row("Durée comptée (TRS)",   fmt(of_s),                    NAVY_L, bold=True)
+        _diff_s = of_s - total_brut_s
+        if abs(_diff_s) >= 1:
+            _diff_sign = "+" if _diff_s > 0 else "−"
+            _row(f"Différence ({_diff_sign})", fmt(abs(_diff_s)),   C_RATT if _diff_s < 0 else GREEN, bold=True)
         if self._inter_of_s > 0:
             _row("Chgmt. de série",   fmt(self._inter_of_s),        C_RATT, bold=True)
         _row("Arrêts cumulés",        fmt(stop_s),
@@ -6642,12 +6657,33 @@ Arrêts imputés au TRS (temps perdu) :
             rd = _row_date(row[1])
             if rd not in _shift_dates or str(row[3] or "").strip() != pilot:
                 continue
+            # Arrêts (colonnes 33-55)
             for ci in range(33, 56):
                 if ci < len(row) and row[ci]:
                     _lbl_s = EVENTS[ci-33][0] if (ci-33) < len(EVENTS) else f"Col{ci}"
                     sv = _hms_to_sec(str(row[ci]))
                     if sv > 0:
                         _stop_totals[_lbl_s] = _stop_totals.get(_lbl_s, 0) + sv
+            # Nettoyage (colonne AG = index 32)
+            if len(row) > 32 and row[32]:
+                sv = _hms_to_sec(str(row[32]))
+                if sv > 0:
+                    _stop_totals["Nettoyage"] = _stop_totals.get("Nettoyage", 0) + sv
+        # Pauses depuis _events_cache
+        for _ev_r in self._events_cache:
+            try:
+                if "pause" in str(_ev_r[0] or "").lower():
+                    _rd2 = str(_ev_r[2] or "")[:10]
+                    _rp2 = str(_ev_r[4] or "").strip()
+                    if _rd2 in _shift_dates and (not pilot or _rp2 == pilot):
+                        sv = _hms_to_sec(str(_ev_r[18] or ""))
+                        if sv > 0:
+                            _stop_totals["Pause pilote"] = _stop_totals.get("Pause pilote", 0) + sv
+            except Exception:
+                pass
+        # Pauses en cours (pas encore dans _events_cache)
+        if total_pause_s > 0 and "Pause pilote" not in _stop_totals:
+            _stop_totals["Pause pilote"] = total_pause_s
 
         _prod_theo = (self._get_prod_ref() * duree_theorique_s / 28800.0
                       if duree_theorique_s > 0 else 0)
