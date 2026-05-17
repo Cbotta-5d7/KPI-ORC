@@ -7526,11 +7526,24 @@ new Chart(document.getElementById('gauge{i}'), {{
         sup_pilot       = session_data.get("logged_in_pilot") or "—"
         sup_form        = session_data.get("form_data", {})
         sup_poste       = str(sup_form.get("poste") or self._logged_in_poste or "—")
+        sup_copilot     = str(sup_form.get("copilote") or "—")
+        sup_nb_pers     = str(sup_form.get("nb_pers") or "—")
         sup_is_paused   = session_data.get("is_paused", False)
         sup_of_num      = str(sup_form.get("of_num") or "—")
         sup_taille      = str(sup_form.get("taille") or "—")
         sup_type_prod   = str(sup_form.get("type_prod") or "—")
         sup_code        = str(sup_form.get("code_prod") or "—")
+        sup_fibre       = str(sup_form.get("fibre") or "—")
+        sup_poids       = str(sup_form.get("poids") or "—")
+        sup_of_taie     = str(sup_form.get("of_taie") or "—")
+        sup_traca       = str(sup_form.get("traca") or "—")
+        sup_ref_taie    = str(sup_form.get("ref_taie") or "—")
+        sup_qte_fab     = str(sup_form.get("qte_fab") or "—")
+        sup_qte_emb     = str(sup_form.get("qte_emb") or "—")
+        sup_duree_mq_mp = str(sup_form.get("duree_mq_mp") or "—")
+        sup_mq_pers     = str(sup_form.get("manquant_pers") or "—")
+        sup_comment     = str(sup_form.get("_comment") or "")
+        sup_kit         = bool(sup_form.get("_kit", False))
         sup_of_start_dt = None
         if session_data.get("of_start"):
             try:
@@ -7624,13 +7637,12 @@ new Chart(document.getElementById('gauge{i}'), {{
                     sup_qte_tot   += int(str(rd[13] or "0") or 0)
                 except Exception:
                     pass
-            if sup_of_start_dt and prod_ref and prod_ref > 0:
-                elapsed_s = (datetime.datetime.now() - sup_of_start_dt).total_seconds()
-                stop_s = sum((tv.get("elapsed") or 0) for tv in sup_timers.values())
-                pure_s = max(1, elapsed_s - stop_s)
-                expected = prod_ref * pure_s / 28800.0
-                if expected > 0:
-                    sup_trs_val = min(200, round(sup_equiv_tot / expected * 100, 1))
+            if prod_ref and prod_ref > 0:
+                total_decl_s = sum(_hms_to_sec(str(rd[16] or "0")) for rd in sup_decls)
+                if total_decl_s > 0:
+                    expected = prod_ref * total_decl_s / 28800.0
+                    if expected > 0:
+                        sup_trs_val = min(200, round(sup_equiv_tot / expected * 100, 1))
 
         # Rows HTML déclarations
         sup_decl_rows = ""
@@ -7684,6 +7696,45 @@ new Chart(document.getElementById('gauge{i}'), {{
                 continue
         if not sup_evts_rows:
             sup_evts_rows = '<tr><td colspan="6" class="empty">Aucun événement aujourd\'hui</td></tr>'
+
+        # Événements de session en cours (tl_events, pas encore sauvés dans Excel)
+        live_evts_rows = ""
+        for ev in sorted(sup_events, key=lambda e: str(e.get("start") or ""), reverse=True):
+            try:
+                key = ev.get("key", "")
+                lbl = EVENT_LABELS.get(key, key)
+                start_s_str = "—"
+                end_s_str   = "—"
+                dur_s_str   = "—"
+                try:
+                    s_dt2 = datetime.datetime.fromisoformat(ev["start"])
+                    start_s_str = s_dt2.strftime("%H:%M")
+                    e_dt2 = datetime.datetime.fromisoformat(ev["end"]) if ev.get("end") else None
+                    if e_dt2:
+                        end_s_str = e_dt2.strftime("%H:%M")
+                        dur_s_str = fmt((e_dt2 - s_dt2).total_seconds())
+                    else:
+                        end_s_str = "En cours"
+                        dur_s_str = fmt((datetime.datetime.now() - s_dt2).total_seconds())
+                except Exception:
+                    pass
+                is_open2 = not ev.get("end")
+                row_style2 = ' style="background:#fee2e2"' if is_open2 else ""
+                open_badge2 = ' <span style="background:#dc2626;color:white;border-radius:4px;padding:1px 6px;font-size:0.72em">EN COURS</span>' if is_open2 else ""
+                live_evts_rows += f"""<tr{row_style2}>
+                  <td>{_badge_evt(lbl)}{open_badge2}</td>
+                  <td>{_esc(sup_of_num)}</td>
+                  <td>{start_s_str}</td>
+                  <td>{end_s_str}</td>
+                  <td><b>{dur_s_str}</b></td>
+                  <td style="max-width:180px;white-space:normal">{_esc(ev.get('comment', ''))}</td>
+                </tr>"""
+            except Exception:
+                continue
+        if not live_evts_rows and not sup_prod_active:
+            live_evts_rows = '<tr><td colspan="6" class="empty">Aucune session active</td></tr>'
+        elif not live_evts_rows:
+            live_evts_rows = '<tr><td colspan="6" class="empty">Aucun événement dans cette session</td></tr>'
 
         # Arrêts actifs HTML
         active_stops_html = ""
@@ -7754,11 +7805,28 @@ new Chart(document.getElementById('gauge{i}'), {{
 
         def _to_str_row(r):
             row = r[1] if isinstance(r, (list, tuple)) and len(r) == 2 and isinstance(r[0], int) else r
-            return [str(v or "") for v in (row + [None]*60)[:60]]
+            result = list((list(row) + [None]*60)[:60])
+            if len(result) > 1:
+                result[1] = _row_date(result[1])  # Data col B = Date
+            return [str(v or "") for v in result]
+
+        def _to_str_evt(r):
+            row = list(r)
+            result = list((row + [""]*22)[:22])
+            if len(result) > 2:
+                result[2] = _row_date(result[2])  # Events col C = Date
+            return [str(v or "") for v in result]
+
+        def _to_str_trs(r):
+            row = list(r)
+            result = list((row + [""]*22)[:22])
+            if len(result) > 0:
+                result[0] = _row_date(result[0])  # TRS col A = Date
+            return [str(v or "") for v in result]
 
         rev_data_js  = _json.dumps([_to_str_row(r) for r in rev_all_data], ensure_ascii=False)
-        rev_evts_js  = _json.dumps([[str(v or "") for v in (list(r) + [""]*22)[:22]] for r in rev_all_evts], ensure_ascii=False)
-        rev_trs_js   = _json.dumps([[str(v or "") for v in (list(r) + [""]*22)[:22]] for r in rev_all_trs], ensure_ascii=False)
+        rev_evts_js  = _json.dumps([_to_str_evt(r) for r in rev_all_evts], ensure_ascii=False)
+        rev_trs_js   = _json.dumps([_to_str_trs(r) for r in rev_all_trs], ensure_ascii=False)
 
         # Listes déroulantes filtre
         all_postes_rev  = sorted(set(str(r[1][2] if isinstance(r,(list,tuple)) and len(r)==2 else r[2] or "") for r in rev_all_data if r) - {""})
@@ -8046,11 +8114,76 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 
 {alert_html}
 
+<!-- Barre de statut pilote -->
 <div class="sup-status-bar" style="background:{sup_status_bg};border-color:{sup_status_color};color:{sup_status_color}">
   <div class="sup-status-icon">{sup_status_icon}</div>
-  <div>
+  <div style="flex:1">
     <div class="sup-status-text">{_esc(sup_status)}</div>
-    <div class="sup-status-sub">{_esc(sup_poste)} &nbsp;&bull;&nbsp; Pilote : {_esc(sup_pilot)} &nbsp;&bull;&nbsp; Session : {sup_session_dur} &nbsp;&bull;&nbsp; OF ce poste : {sup_of_count}</div>
+    <div class="sup-status-sub">
+      <b>{_esc(sup_poste)}</b>
+      &nbsp;&bull;&nbsp; &#128100; Pilote : <b>{_esc(sup_pilot)}</b>
+      {'&nbsp;&bull;&nbsp; Co-pilote : <b>' + _esc(sup_copilot) + '</b>' if sup_copilot not in ('—','') else ''}
+      &nbsp;&bull;&nbsp; &#128101; {_esc(sup_nb_pers)} pers.
+      &nbsp;&bull;&nbsp; Dur&eacute;e session : {sup_session_dur}
+      &nbsp;&bull;&nbsp; OF ce poste : <b>{sup_of_count}</b>
+    </div>
+  </div>
+  <div style="text-align:right;font-size:0.82em;opacity:0.75">{now_str}</div>
+</div>
+
+<!-- OF EN COURS — carte principale très visible -->
+{'<div style="background:linear-gradient(135deg,#1e3a5f,#2c5282);color:white;padding:18px 28px;border-bottom:4px solid ' + sup_status_color + '">' if sup_prod_active else '<div style="display:none">'}
+  <div style="display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap">
+    <div style="min-width:200px">
+      <div style="font-size:0.7em;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.6);margin-bottom:4px">&#128203; OF EN COURS</div>
+      <div style="font-size:2.8em;font-weight:900;color:#fbbf24;line-height:1">{_esc(sup_of_num)}</div>
+      <div style="font-size:0.85em;margin-top:6px;color:rgba(255,255,255,0.85)">{_esc(sup_taille)} &nbsp;&bull;&nbsp; {_esc(sup_type_prod)}</div>
+      <div style="font-size:0.85em;color:#86efac">Code : <b>{_esc(sup_code)}</b></div>
+      <div style="margin-top:10px;background:rgba(255,255,255,0.12);border-radius:8px;padding:8px 12px;font-size:0.82em">
+        <div style="color:rgba(255,255,255,0.6);font-size:0.75em;text-transform:uppercase;letter-spacing:0.5px">Dur&eacute;e OF</div>
+        <div style="font-size:1.6em;font-weight:800;font-variant-numeric:tabular-nums" id="supOfDurLive">{sup_of_dur}</div>
+      </div>
+    </div>
+    <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
+      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
+        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Fibre</div>
+        <div style="font-weight:700;margin-top:2px">{_esc(sup_fibre)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
+        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Poids garnissage</div>
+        <div style="font-weight:700;margin-top:2px">{_esc(sup_poids)} gr</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
+        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">OF Taie</div>
+        <div style="font-weight:700;margin-top:2px">{_esc(sup_of_taie)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
+        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Réf. Taie</div>
+        <div style="font-weight:700;margin-top:2px">{_esc(sup_ref_taie)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
+        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Traça fibre</div>
+        <div style="font-weight:700;margin-top:2px">{_esc(sup_traca)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
+        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Qte Fab.</div>
+        <div style="font-size:1.4em;font-weight:900;color:#86efac;margin-top:2px">{_esc(sup_qte_fab)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
+        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Qte Emb.</div>
+        <div style="font-size:1.4em;font-weight:900;color:#86efac;margin-top:2px">{_esc(sup_qte_emb)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
+        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Arr&ecirc;t MQ MP (min)</div>
+        <div style="font-weight:700;margin-top:2px;color:#fca5a5">{_esc(sup_duree_mq_mp)}</div>
+      </div>
+      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
+        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">MQ Pers / R&eacute;union (min)</div>
+        <div style="font-weight:700;margin-top:2px;color:#fca5a5">{_esc(sup_mq_pers)}</div>
+      </div>
+      {'<div style="background:rgba(251,191,36,0.2);border-radius:8px;padding:10px 12px;border:1px solid rgba(251,191,36,0.4)"><div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Options</div><div style="font-weight:700;margin-top:2px;color:#fbbf24">Kit 2 pièces</div></div>' if sup_kit else ''}
+    </div>
+    {'<div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px 14px;min-width:200px;max-width:320px"><div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase;margin-bottom:4px">Commentaire</div><div style="font-size:0.88em;white-space:pre-wrap">' + _esc(sup_comment) + '</div></div>' if sup_comment else ''}
   </div>
 </div>
 
@@ -8058,11 +8191,11 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
   <!-- Colonne gauche -->
   <div class="sup-left">
 
-    <!-- TRS live -->
+    <!-- TRS actuel -->
     <div class="sup-card">
-      <div class="sup-card-hdr">&#128200; TRS Poste en cours (estimé)</div>
+      <div class="sup-card-hdr">&#128200; TRS Actuel</div>
       <div class="sup-trs-big" style="color:{sup_trs_color}">{_esc(sup_trs_display)}</div>
-      <div class="sup-trs-label">Taux de Rendement Synthétique</div>
+      <div class="sup-trs-label">Bas&eacute; sur le temps d&eacute;clar&eacute;</div>
       <div class="sup-kpi-grid">
         <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Équivalence totale</div><div class="sup-kpi-val">{sup_equiv_tot:.1f}</div></div>
         <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Qté produite</div><div class="sup-kpi-val">{sup_qte_tot}</div></div>
@@ -8071,16 +8204,13 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
       </div>
     </div>
 
-    <!-- Infos OF actuel -->
+    <!-- Arrêts actifs -->
     <div class="sup-card">
-      <div class="sup-card-hdr">&#128203; OF en cours</div>
-      <div class="sup-kpi-grid">
-        <div class="sup-kpi-cell" style="grid-column:1/-1"><div class="sup-kpi-lbl">Numéro OF</div><div class="sup-kpi-val" style="font-size:1.3em">{_esc(sup_of_num)}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Taille</div><div class="sup-kpi-val">{_esc(sup_taille)}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Type produit</div><div class="sup-kpi-val">{_esc(sup_type_prod)}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Code produit</div><div class="sup-kpi-val">{_esc(sup_code)}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Durée OF actuel</div><div class="sup-kpi-val">{sup_of_dur}</div></div>
+      <div class="sup-card-hdr" style="{'background:#dc2626' if has_active_stop else ''}">
+        &#9888; Arr&ecirc;ts actifs {'— ' + str(len(active_stops_info)) + ' en cours' if active_stops_info else '— Aucun'}
       </div>
+      {f'<div class="active-stops-grid">{active_stops_html}</div>' if active_stops_info
+        else '<div style="padding:20px;text-align:center;color:#16a34a;font-weight:700;font-size:1.05em">&#10003; Aucun arr&ecirc;t en cours</div>'}
     </div>
 
     <!-- Historique OF session -->
@@ -8088,7 +8218,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
       <div class="sup-card-hdr">&#128336; Historique OF cette session</div>
       <div style="padding:0">
         <table>
-          <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Durée</th></tr></thead>
+          <thead><tr><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th></tr></thead>
           <tbody>{of_periods_html}</tbody>
         </table>
       </div>
@@ -8099,20 +8229,24 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
   <!-- Colonne droite -->
   <div class="sup-right">
 
-    <!-- Arrêts actifs -->
+    <!-- Événements de session EN COURS (avant fin OF) -->
     <div class="sup-card">
-      <div class="sup-card-hdr" style="{'background:#dc2626' if has_active_stop else ''}">
-        &#9888; Arrêts actifs {'— ' + str(len(active_stops_info)) + ' en cours' if active_stops_info else '— Aucun'}
+      <div class="sup-card-hdr" style="background:#7c3aed">&#128308; &Eacute;v&eacute;nements &amp; Arr&ecirc;ts — Session en cours ({len(sup_events)} &eacute;v&eacute;nements)</div>
+      <div class="tbl-wrap" style="max-height:260px;overflow-y:auto">
+        <table>
+          <thead><tr>
+            <th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
+          </tr></thead>
+          <tbody>{live_evts_rows}</tbody>
+        </table>
       </div>
-      {f'<div class="active-stops-grid">{active_stops_html}</div>' if active_stops_info
-        else '<div style="padding:20px;text-align:center;color:#16a34a;font-weight:700;font-size:1.05em">&#10003; Aucun arrêt en cours</div>'}
     </div>
 
-    <!-- Déclarations d'aujourd'hui -->
+    <!-- Déclarations d'aujourd'hui (cliquables) -->
     <div class="sup-card">
-      <div class="sup-card-hdr">&#128221; D&eacute;clarations du poste ({len(sup_decls)} OF)</div>
+      <div class="sup-card-hdr">&#128221; D&eacute;clarations du poste ({len(sup_decls)} OF) &nbsp;<span style="font-size:0.75em;opacity:0.7">— cliquer sur une ligne pour les d&eacute;tails</span></div>
       <div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
-        <table>
+        <table id="supDeclTable">
           <thead><tr>
             <th>OF</th><th>D&eacute;but</th><th>Fin</th>
             <th>Taille</th><th>Code</th><th>Type</th>
@@ -8120,14 +8254,14 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
             <th>Equiv</th><th>Dur&eacute;e</th>
             <th>Cad/h</th><th>TRS of</th>
           </tr></thead>
-          <tbody>{sup_decl_rows}</tbody>
+          <tbody id="supDeclBody">{sup_decl_rows}</tbody>
         </table>
       </div>
     </div>
 
-    <!-- Événements du jour -->
+    <!-- Événements sauvegardés du jour (depuis Excel) -->
     <div class="sup-card">
-      <div class="sup-card-hdr">&#128308; &Eacute;v&eacute;nements &amp; Arr&ecirc;ts ({len(sup_evts_today)} au total)</div>
+      <div class="sup-card-hdr">&#128203; &Eacute;v&eacute;nements sauv&eacute;s du poste ({len(sup_evts_today)} au total)</div>
       <div class="tbl-wrap" style="max-height:260px;overflow-y:auto">
         <table>
           <thead><tr>
@@ -8140,6 +8274,17 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 
   </div><!-- /sup-right -->
 </div><!-- /sup-grid -->
+
+<!-- Modal détail OF -->
+<div id="ofDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:16px;max-width:900px;width:95%;max-height:90vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column">
+    <div style="background:linear-gradient(135deg,#1e3a5f,#2c5282);color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:1.1em;font-weight:800">&#128203; D&eacute;tail de l'OF <span id="modalOfNum"></span></div>
+      <button onclick="closeOfModal()" style="background:rgba(255,255,255,0.15);border:none;color:white;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700;font-size:1.1em">&#10005;</button>
+    </div>
+    <div id="modalBody" style="overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
+  </div>
+</div>
 
 <div class="footer">
   KPI-ORC Supervision &bull; {now_str} &bull; Rafra&icirc;chissement automatique 30s
@@ -8818,14 +8963,82 @@ function updateTables(d) {{
   }}
 }}
 
-// Initialisation de la revue au chargement de l'onglet
+// DATA_HEADERS pour modal OF
+var DATA_HEADERS = {_json.dumps(DATA_HEADERS, ensure_ascii=False)};
+
+// ── Modal détail OF ────────────────────────────────────────────────────
+function openOfModal(rowData) {{
+  var modal = document.getElementById('ofDetailModal');
+  var body  = document.getElementById('modalBody');
+  var numEl = document.getElementById('modalOfNum');
+  numEl.textContent = rowData[0] || '';
+  var html = '';
+  rowData.forEach(function(val, i) {{
+    if (i >= DATA_HEADERS.length) return;
+    if (!val || val === '0' || val === '—') return;
+    html += '<div style="background:#f8fafc;border-radius:8px;padding:10px 12px;border:1px solid #e2e8f0">'
+      + '<div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase;letter-spacing:0.4px">' + esc(DATA_HEADERS[i]) + '</div>'
+      + '<div style="font-weight:700;color:#1e3a5f;margin-top:3px;word-break:break-word">' + esc(val) + '</div>'
+      + '</div>';
+  }});
+  body.innerHTML = html || '<div style="color:#94a3b8;text-align:center;padding:20px">Aucune donnée</div>';
+  modal.style.display = 'flex';
+}}
+
+function closeOfModal() {{
+  document.getElementById('ofDetailModal').style.display = 'none';
+}}
+
+document.getElementById('ofDetailModal').addEventListener('click', function(e) {{
+  if (e.target === this) closeOfModal();
+}});
+
+// Rendre les lignes de déclarations cliquables
 (function() {{
-  // Dates par défaut : 30 derniers jours
+  var body = document.getElementById('supDeclBody');
+  if (!body) return;
+  var rows = body.querySelectorAll('tr');
+  rows.forEach(function(tr) {{
+    tr.style.cursor = 'pointer';
+    tr.addEventListener('click', function() {{
+      var cells = tr.querySelectorAll('td');
+      // Les lignes HTML n'ont que les colonnes résumées — on cherche l'OF dans REV_DATA
+      if (!cells.length) return;
+      var ofNum = cells[0] ? cells[0].textContent.trim() : '';
+      var found = REV_DATA.find(function(r) {{ return r[0] === ofNum; }});
+      if (found) openOfModal(found);
+    }});
+    tr.title = 'Cliquer pour voir tous les détails';
+  }});
+}})();
+
+// ── Initialisation filtres avec persistance localStorage ───────────────
+(function() {{
   var today = new Date();
   var m30   = new Date(today); m30.setDate(m30.getDate()-30);
-  document.getElementById('dtStart').value = isoDate(m30);
-  document.getElementById('dtEnd').value   = isoDate(today);
-  // Déclencher les filtres si l'onglet review est actif
+  var savedStart  = ''; try {{ savedStart  = localStorage.getItem('kpi_orc_dtStart')  || ''; }} catch(e) {{}}
+  var savedEnd    = ''; try {{ savedEnd    = localStorage.getItem('kpi_orc_dtEnd')    || ''; }} catch(e) {{}}
+  var savedPoste  = ''; try {{ savedPoste  = localStorage.getItem('kpi_orc_fPoste')  || ''; }} catch(e) {{}}
+  var savedPilote = ''; try {{ savedPilote = localStorage.getItem('kpi_orc_fPilote') || ''; }} catch(e) {{}}
+
+  document.getElementById('dtStart').value = savedStart  || isoDate(m30);
+  document.getElementById('dtEnd').value   = savedEnd    || isoDate(today);
+  var elPoste  = document.getElementById('fPoste');
+  var elPilote = document.getElementById('fPilote');
+  if (savedPoste  && Array.from(elPoste.options).some(function(o){{return o.value===savedPoste;}}))
+    elPoste.value  = savedPoste;
+  if (savedPilote && Array.from(elPilote.options).some(function(o){{return o.value===savedPilote;}}))
+    elPilote.value = savedPilote;
+
+  // Sauvegarder à chaque changement
+  ['dtStart','dtEnd'].forEach(function(id) {{
+    document.getElementById(id).addEventListener('change', function() {{
+      try {{ localStorage.setItem('kpi_orc_'+id, this.value); }} catch(e) {{}}
+    }});
+  }});
+  elPoste.addEventListener('change', function()  {{ try {{ localStorage.setItem('kpi_orc_fPoste',  this.value); }} catch(e) {{}} }});
+  elPilote.addEventListener('change', function() {{ try {{ localStorage.setItem('kpi_orc_fPilote', this.value); }} catch(e) {{}} }});
+
   if (document.getElementById('tab-review').classList.contains('visible')) {{
     applyFilters();
   }}
