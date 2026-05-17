@@ -6306,6 +6306,9 @@ Arrêts imputés au TRS (temps perdu) :
 
     def _show_fin_de_poste(self):
         """Affiche le récapitulatif complet du poste en cours."""
+        if not self._logged_in_pilot:
+            messagebox.showwarning("Accès refusé", "Aucun pilote connecté.\nConnectez-vous avant de déclarer une fin de poste.")
+            return
         now = datetime.datetime.now()
 
         # Calcul durée théorique du poste depuis cfg
