@@ -1,37 +1,35 @@
-name: Build KPI-ORC EXE
+name: Build KPI-ORC.exe
 
 on:
   push:
+    branches:
+      - claude/python-api-compiler-8H0AR
+      - main
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-      - name: Recuperer le repo
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Installer Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Installer dependances
+      - name: Install dependencies
         run: |
-          pip install pyinstaller
-          pip install openpyxl
+          pip install pyinstaller openpyxl
 
-      - name: Lister fichiers (debug)
-        run: dir
+      - name: Build exe
+        run: |
+          pyinstaller --onefile --windowed --name "KPI-ORC" main.py
 
-      - name: Compiler EXE
-        run: pyinstaller --onefile --windowed --clean --name "KPI-ORC" main.py
-
-      - name: Verifier dist
-        run: dir dist
-
-      - name: Upload EXE
+      - name: Upload exe artifact
         uses: actions/upload-artifact@v4
         with:
           name: KPI-ORC-exe
-          path: dist/*.exe
+          path: dist\KPI-ORC.exe
+          retention-days: 30
