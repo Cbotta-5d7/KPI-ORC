@@ -2826,6 +2826,10 @@ Arrêts imputés au TRS (temps perdu) :
         self._refresh_main_kpi()
         self._refresh_events_tab()
         self._refresh_postes_tab()
+        try:
+            self._generate_dashboard_html()
+        except Exception:
+            pass
 
     def _build_main_ui(self):
         self._cells = []
@@ -7182,6 +7186,296 @@ Arrêts imputés au TRS (temps perdu) :
             cell.alignment = align
             cell.border    = border
 
+
+    # ── Dashboard HTML ────────────────────────────────────────────────────────
+    def _generate_dashboard_html(self):
+        """Génère KPI_Dashboard.html dans le même dossier que l'Excel."""
+        path = self.cfg.get("db_path", "")
+        if not path or not self._trs_cache:
+            return
+        out_dir = os.path.dirname(path)
+        if not out_dir:
+            out_dir = "."
+        html_path = os.path.join(out_dir, "KPI_Dashboard.html")
+
+        # 3 derniers postes (plus récent en premier)
+        last3 = list(self._trs_cache[-3:])[::-1]
+
+        import datetime as _dt
+
+        now_str = _dt.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+        # ── Helpers ───────────────────────────────────────────────────────────
+        def _safe(v):
+            return str(v) if v is not None else "—"
+
+        def _trs_float(v):
+            try:
+                return float(str(v).replace("%", "").replace("—", "0")
+                             .replace(",", ".").strip() or 0)
+            except Exception:
+                return 0.0
+
+        def _date10(v):
+            s = str(v)
+            return s[:10] if len(s) >= 10 else s
+
+        # ── Cartes postes (Tab 1) ─────────────────────────────────────────────
+        cards_html = ""
+        for row in last3:
+            date_val  = _safe(row[0])
+            poste_val = _safe(row[1])
+            pilote_val = _safe(row[2])
+            copilote_val = _safe(row[3])
+            nb_pers   = _safe(row[4])
+            t_ouv     = _safe(row[5])
+            t_decl    = _safe(row[6])
+            ecart     = _safe(row[7])
+            t_marche  = _safe(row[8])
+            arr_prev  = _safe(row[9])
+            debord    = _safe(row[10])
+            pannes    = _safe(row[11])
+            rattrap   = _safe(row[12])
+            pauses    = _safe(row[13])
+            reunions  = _safe(row[14])
+            nb_of     = _safe(row[15])
+            nb_pieces = _safe(row[16])
+            equiv     = _safe(row[17])
+            moy_of    = _safe(row[18])
+            trs_raw   = _safe(row[19])
+
+            trs_val   = _trs_float(row[19])
+            trs_color = "#27ae60" if trs_val >= 80 else ("#f39c12" if trs_val >= 60 else "#e74c3c")
+            trs_deg   = trs_val * 1.8
+            gauge_style = (
+                f"background: conic-gradient({trs_color} {trs_deg:.1f}deg, "
+                f"#ddd {trs_deg:.1f}deg)"
+            )
+
+            pilot_line = pilote_val
+            if copilote_val and copilote_val != "—":
+                pilot_line += f" / {copilote_val}"
+
+            cards_html += f"""
+            <div class="card">
+              <div class="card-header">
+                <span class="card-date">{date_val}</span>
+                <span class="card-poste">{poste_val}</span>
+                <span class="card-pilot">{pilot_line}</span>
+                <span class="card-pers">{nb_pers} pers.</span>
+              </div>
+              <div class="gauge-section">
+                <div class="gauge-label">TRS</div>
+                <div class="gauge-wrap">
+                  <div class="gauge-bg" style="{gauge_style}"></div>
+                  <div class="gauge-text" style="color:{trs_color}">{trs_raw}</div>
+                </div>
+              </div>
+              <div class="kpi-grid">
+                <div class="kpi-item"><span class="kpi-label">Tps ouverture</span><span class="kpi-val">{t_ouv}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Tps marche</span><span class="kpi-val">{t_marche}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Tps déclarés</span><span class="kpi-val">{t_decl}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Ecart</span><span class="kpi-val">{ecart}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Arrêts prévus</span><span class="kpi-val">{arr_prev}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Débordement</span><span class="kpi-val">{debord}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Pannes</span><span class="kpi-val">{pannes}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Rattrapages</span><span class="kpi-val">{rattrap}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Pauses</span><span class="kpi-val">{pauses}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Réunions</span><span class="kpi-val">{reunions}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Nb OF</span><span class="kpi-val">{nb_of}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Moy pièces/OF</span><span class="kpi-val">{moy_of}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Qte produite</span><span class="kpi-val">{nb_pieces}</span></div>
+                <div class="kpi-item"><span class="kpi-label">Equivalence</span><span class="kpi-val">{equiv}</span></div>
+              </div>
+            </div>"""
+
+        # ── Tableau OF (Tab 2) ────────────────────────────────────────────────
+        # Collecter les OF des 3 derniers postes
+        of_rows_html = ""
+        of_rows_collected = []
+        for trs_row in last3:
+            date10  = _date10(trs_row[0])
+            poste_f = _safe(trs_row[1])
+            pilot_f = _safe(trs_row[2])
+            for _idx, rd in self._data_rows_cache:
+                try:
+                    rd_date  = _date10(rd[1])
+                    rd_poste = _safe(rd[2])
+                    rd_pilot = _safe(rd[3])
+                    if rd_date == date10 and rd_poste == poste_f and rd_pilot == pilot_f:
+                        of_rows_collected.append(rd)
+                except Exception:
+                    continue
+
+        # tri : plus récent en premier (par date puis heure début)
+        def _sort_key(rd):
+            try:
+                return (str(rd[1]), str(rd[17]))
+            except Exception:
+                return ("", "")
+
+        of_rows_collected.sort(key=_sort_key, reverse=True)
+
+        for rd in of_rows_collected:
+            try:
+                of_no   = _safe(rd[0])
+                of_date = _safe(rd[1])
+                of_post = _safe(rd[2])
+                of_pil  = _safe(rd[3])
+                of_tail = _safe(rd[6])
+                of_code = _safe(rd[7])
+                of_type = _safe(rd[8])
+                of_qfab = _safe(rd[13])
+                of_qemb = _safe(rd[14])
+                of_equi = _safe(rd[15])
+                of_dur  = _safe(rd[16])
+                of_cad  = _safe(rd[19])
+                of_cadp = _safe(rd[20])
+                of_chgt = _safe(rd[29])
+                of_comm = _safe(rd[56])
+            except Exception:
+                continue
+            of_rows_html += f"""
+              <tr>
+                <td>{of_no}</td><td>{of_date}</td><td>{of_post}</td><td>{of_pil}</td>
+                <td>{of_tail}</td><td>{of_code}</td><td>{of_type}</td>
+                <td>{of_qfab}</td><td>{of_qemb}</td><td>{of_equi}</td>
+                <td>{of_dur}</td><td>{of_cad}</td><td>{of_cadp}</td>
+                <td>{of_chgt}</td><td>{of_comm}</td>
+              </tr>"""
+
+        if not of_rows_html:
+            of_rows_html = '<tr><td colspan="15" style="text-align:center;color:#aaa;">Aucun OF trouvé</td></tr>'
+
+        # ── HTML complet ──────────────────────────────────────────────────────
+        html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="60">
+<title>KPI-ORC Dashboard</title>
+<style>
+  *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: Arial, sans-serif; background: #0d2040; color: #ecf0f1; min-height: 100vh; }}
+  /* Header */
+  .header {{ background: #1e3a5f; padding: 14px 24px; display: flex; align-items: center;
+             justify-content: space-between; position: sticky; top: 0; z-index: 100;
+             box-shadow: 0 2px 8px rgba(0,0,0,0.4); }}
+  .header h1 {{ font-size: 1.5em; color: #fff; }}
+  .header .meta {{ font-size: 0.82em; color: #aac; text-align: right; }}
+  .countdown {{ font-size: 0.78em; color: #f39c12; margin-top: 2px; }}
+  /* Tabs */
+  .tabs {{ display: flex; background: #0d2040; padding: 0 20px; border-bottom: 2px solid #1e3a5f; }}
+  .tab-btn {{ padding: 12px 28px; cursor: pointer; color: #aac; font-size: 0.95em;
+              border: none; background: transparent; border-bottom: 3px solid transparent;
+              transition: all .2s; }}
+  .tab-btn.active {{ color: #fff; border-bottom-color: #27ae60; font-weight: bold; }}
+  .tab-btn:hover {{ color: #ecf0f1; }}
+  /* Tab content */
+  .tab-content {{ display: none; padding: 20px; }}
+  .tab-content.active {{ display: block; }}
+  /* Cards */
+  .cards-wrap {{ display: flex; flex-wrap: wrap; gap: 18px; justify-content: flex-start; }}
+  .card {{ background: #1e3a5f; border-radius: 12px; flex: 1 1 280px; max-width: 400px;
+           box-shadow: 0 4px 16px rgba(0,0,0,0.35); overflow: hidden; }}
+  .card-header {{ background: #0d2040; padding: 10px 14px; display: flex;
+                  flex-wrap: wrap; gap: 6px; align-items: center; }}
+  .card-date  {{ color: #f39c12; font-weight: bold; font-size: 0.9em; }}
+  .card-poste {{ background: #27ae60; color: #fff; border-radius: 4px; padding: 2px 8px;
+                 font-size: 0.85em; font-weight: bold; }}
+  .card-pilot {{ color: #ecf0f1; font-size: 0.88em; flex: 1; }}
+  .card-pers  {{ color: #aac; font-size: 0.82em; }}
+  /* Gauge */
+  .gauge-section {{ text-align: center; padding: 18px 0 10px; }}
+  .gauge-label {{ color: #aac; font-size: 0.8em; margin-bottom: 4px; letter-spacing: 1px; text-transform: uppercase; }}
+  .gauge-wrap {{ position: relative; width: 160px; height: 80px; overflow: hidden; margin: auto; }}
+  .gauge-bg   {{ width: 160px; height: 160px; border-radius: 50%;
+                 clip-path: polygon(0 0, 100% 0, 100% 50%, 0 50%); }}
+  .gauge-text {{ position: absolute; bottom: 0; width: 100%; text-align: center;
+                 font-size: 1.9em; font-weight: bold; line-height: 1; }}
+  /* KPI Grid */
+  .kpi-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+               background: #0d2040; border-top: 1px solid #0d2040; }}
+  .kpi-item {{ background: #1e3a5f; padding: 8px 12px; display: flex;
+               flex-direction: column; gap: 2px; }}
+  .kpi-label {{ font-size: 0.72em; color: #aac; text-transform: uppercase; letter-spacing: 0.5px; }}
+  .kpi-val   {{ font-size: 0.95em; color: #ecf0f1; font-weight: bold; }}
+  /* OF Table */
+  .of-title {{ font-size: 1.1em; color: #ecf0f1; margin-bottom: 14px; font-weight: bold; }}
+  .of-wrap {{ overflow-x: auto; border-radius: 8px; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 0.84em; }}
+  thead tr {{ background: #1e3a5f; position: sticky; top: 60px; z-index: 10; }}
+  thead th {{ padding: 10px 10px; text-align: left; color: #ecf0f1; font-weight: bold;
+              border-bottom: 2px solid #27ae60; white-space: nowrap; }}
+  tbody tr:nth-child(even) {{ background: #162d4a; }}
+  tbody tr:nth-child(odd)  {{ background: #1a3352; }}
+  tbody tr:hover {{ background: #1e3a5f; }}
+  tbody td {{ padding: 8px 10px; color: #ecf0f1; border-bottom: 1px solid #0d2040;
+              white-space: nowrap; }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>&#128202; KPI-ORC Dashboard</h1>
+  <div class="meta">
+    Dernière mise à jour : {now_str}
+    <div class="countdown" id="cd">Mise à jour dans 60s</div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('postes',this)">&#128202; Postes</button>
+  <button class="tab-btn" onclick="showTab('of',this)">&#128203; Détail des OF</button>
+</div>
+
+<div id="postes" class="tab-content active">
+  <div class="cards-wrap">
+    {cards_html}
+  </div>
+</div>
+
+<div id="of" class="tab-content">
+  <p class="of-title">OF des 3 derniers postes</p>
+  <div class="of-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th>
+          <th>Taille</th><th>Code Produit</th><th>Type Produit</th>
+          <th>Qte Fab</th><th>Qte Emb</th><th>Equivalence</th>
+          <th>Durée OF</th><th>Cadence/h</th><th>Cadence/h/pers</th>
+          <th>Chgt Série</th><th>Commentaire</th>
+        </tr>
+      </thead>
+      <tbody>
+        {of_rows_html}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function showTab(id, btn) {{
+  document.querySelectorAll('.tab-content').forEach(function(t){{t.classList.remove('active');}});
+  document.querySelectorAll('.tab-btn').forEach(function(b){{b.classList.remove('active');}});
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}}
+(function() {{
+  var secs = 60;
+  var el = document.getElementById('cd');
+  setInterval(function() {{
+    secs--;
+    if (secs <= 0) secs = 60;
+    el.textContent = 'Mise à jour dans ' + secs + 's';
+  }}, 1000);
+}})();
+</script>
+</body>
+</html>"""
+
+        with open(html_path, "w", encoding="utf-8") as fh:
+            fh.write(html)
 
     # ── Loading overlay ───────────────────────────────────────────────────────
     def _show_loading(self, msg="Chargement…"):
