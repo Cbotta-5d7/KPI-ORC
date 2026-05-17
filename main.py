@@ -6403,9 +6403,10 @@ Arrêts imputés au TRS (temps perdu) :
                                 ws_e = wb["Evenements"]
                                 nd_row = ["Non défini"] + [""] * 19
                                 nd_row[2] = today
+                                nd_row[3] = poste_nom
                                 nd_row[4] = pilot
                                 nd_row[18] = fmt(int(non_declare_s))
-                                nd_row[19] = f"Poste {poste_nom} — durée théorique {fmt(duree_theorique_s)}"
+                                nd_row[19] = f"Durée théorique {fmt(duree_theorique_s)}"
                                 ws_e.append(nd_row)
                                 wb.save(path)
                     except Exception as ex:
@@ -6899,11 +6900,17 @@ Arrêts imputés au TRS (temps perdu) :
                 continue
             if of_start and ev["start"] < of_start:
                 continue
-            cat_name = "Rattrapage" if ev["cat"] == "ratt" else "PB Technique"
-            label    = next((e[0] for e in EVENTS if e[1] == ev["key"]), ev["key"])
             start    = ev["start"]
             end      = ev.get("end") or datetime.datetime.now()
-            row = _base_row(f"{cat_name}: {label}", start, end)
+            if ev["key"] == "nettoyage":
+                _ntype = ev.get("nettoyage_type", "court")
+                _nett_labels = {"court": "Nettoyage court", "long": "Nettoyage long", "grand": "Grand nettoyage"}
+                label = _nett_labels.get(_ntype, "Nettoyage court")
+                row = _base_row(label, start, end)
+            else:
+                cat_name = "Rattrapage" if ev["cat"] == "ratt" else "PB Technique"
+                label    = next((e[0] for e in EVENTS if e[1] == ev["key"]), ev["key"])
+                row = _base_row(f"{cat_name}: {label}", start, end)
             row[19] = ev.get("comment", "")
             events_rows.append(row)
 
@@ -7193,11 +7200,12 @@ Arrêts imputés au TRS (temps perdu) :
         if not path or not os.path.exists(path):
             return
         pilot = self._last_of_pilot or self._logged_in_pilot or ""
+        poste_co = self._logged_in_poste or ""
         row_evt = [
             "Changement d'OF",                       # A col 1
             "",                                       # B col 2 OF
             start_dt.strftime("%d/%m/%Y"),            # C col 3 Date
-            "",                                       # D col 4 Poste
+            poste_co,                                 # D col 4 Poste
             pilot,                                    # E col 5 pilote du dernier OF
             "", "", "", "", "", "", "", "", "", "", "", # F-P (cols 6-16)
             start_dt.strftime("%H:%M:%S"),            # Q col 17 Heure Début
