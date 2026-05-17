@@ -6496,6 +6496,54 @@ Arrêts imputés au TRS (temps perdu) :
                      font=("Arial", 13, "bold"), justify="center",
                      padx=8, pady=6).pack(fill="x")
 
+        # ── Graphique barres répartition du temps (Canvas pur tkinter) ─────────
+        tk.Frame(li, bg=LGRAY, height=1).pack(fill="x", pady=(10, 6))
+        tk.Label(li, text="Répartition du temps", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold")).pack(anchor="w")
+
+        bars_data = [
+            ("Production",   total_prod_s,            "#16a34a"),
+            ("Arrêts panne", total_panne_s,           "#dc2626"),
+            ("Rattrapages",  total_ratt_s,            "#f59e0b"),
+            ("Pauses",       total_pause_s,           "#3b82f6"),
+            ("Réunions",     total_reunion_s,         "#8b5cf6"),
+            ("Non déclaré",  max(0.0, non_declare_s), "#94a3b8"),
+        ]
+        total_ref = max(duree_theorique_s, total_declare_s, 1)
+        bar_h = 14
+        gap = 6
+        cv_h = len(bars_data) * (bar_h + gap) + 4
+        bar_cv = tk.Canvas(li, bg=WHITE, height=cv_h, highlightthickness=0)
+        bar_cv.pack(fill="x", pady=(4, 6))
+
+        def _draw_bars(event=None):
+            bar_cv.delete("all")
+            W = bar_cv.winfo_width() or 300
+            label_w = 100
+            bar_w = W - label_w - 50  # 50px for pct text
+            for i, (lbl, sec, col) in enumerate(bars_data):
+                if sec <= 0:
+                    continue
+                y = i * (bar_h + gap) + 2
+                pct = sec / total_ref * 100
+                filled = int(bar_w * sec / total_ref)
+                # Background track
+                bar_cv.create_rectangle(label_w, y, label_w + bar_w, y + bar_h,
+                                        fill="#f1f5f9", outline="", width=0)
+                # Filled bar
+                bar_cv.create_rectangle(label_w, y, label_w + max(filled, 2), y + bar_h,
+                                        fill=col, outline="", width=0)
+                # Label
+                bar_cv.create_text(label_w - 4, y + bar_h // 2,
+                                   text=lbl, anchor="e", font=("Arial", 8), fill="#475569")
+                # Percentage
+                bar_cv.create_text(label_w + bar_w + 4, y + bar_h // 2,
+                                   text=f"{pct:.0f}%", anchor="w",
+                                   font=("Arial", 8, "bold"), fill=col)
+
+        bar_cv.bind("<Configure>", _draw_bars)
+        bar_cv.after(50, _draw_bars)
+
         # ── ZONE 0 droite : jauge TRS + KPI cards ───────────────────────────────
         gauge_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
         gauge_f.grid(row=0, column=1, sticky="nsew", padx=(3, 0), pady=(0, 3))
