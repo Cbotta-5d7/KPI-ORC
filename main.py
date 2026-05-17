@@ -7675,7 +7675,8 @@ new Chart(document.getElementById('gauge{i}'), {{
                     pass
                 trs_col = "#16a34a" if trs_of >= 80 else ("#d97706" if trs_of >= 60 else "#dc2626")
                 trs_cell = f'<span style="color:{trs_col};font-weight:700">{trs_of:.0f}%</span>' if trs_of > 0 else "—"
-                sup_decl_rows += f"""<tr>
+                row_json = _json.dumps([str(v or "") for v in (list(rd) + [None]*60)[:60]], ensure_ascii=False).replace("'", "&#39;")
+                sup_decl_rows += f"""<tr style="cursor:pointer" onclick="openOfModal(JSON.parse(this.dataset.row))" data-row='{row_json}' title="Cliquer pour voir tous les d&eacute;tails">
                   <td><b>{_esc(rd[0])}</b></td>
                   <td>{_esc(rd[17])}</td><td>{_esc(rd[18])}</td>
                   <td>{_esc(rd[6])}</td><td>{_esc(rd[7])}</td><td>{_esc(rd[8])}</td>
@@ -7782,6 +7783,90 @@ new Chart(document.getElementById('gauge{i}'), {{
         # TRS color pour supervision
         sup_trs_color = _trs_color(sup_trs_val)
         sup_trs_display = f"{sup_trs_val:.1f}%" if sup_trs_val > 0 else "—"
+
+        # ── Pareto arrêts supervision (live + sauvegardés) ───────────────────
+        sup_pareto_dict = {}
+        for ev in sup_events:
+            key_p = ev.get("key", "")
+            lbl_p = EVENT_LABELS.get(key_p, key_p)
+            dur_p = 0.0
+            try:
+                s_p = datetime.datetime.fromisoformat(ev["start"])
+                e_p = datetime.datetime.fromisoformat(ev["end"]) if ev.get("end") else datetime.datetime.now()
+                dur_p = (e_p - s_p).total_seconds() / 60.0
+            except Exception:
+                pass
+            sup_pareto_dict[lbl_p] = sup_pareto_dict.get(lbl_p, 0) + dur_p
+        for ev in sup_evts_today:
+            lbl_p = str(ev[0] or "").strip()
+            if not lbl_p:
+                continue
+            sup_pareto_dict[lbl_p] = sup_pareto_dict.get(lbl_p, 0) + _hms_to_min(ev[18] if len(ev) > 18 else 0)
+        sup_par_sorted = sorted(sup_pareto_dict.items(), key=lambda x: -x[1])[:8]
+        def _par_col(l):
+            ll = l.lower()
+            if "pb" in ll or "panne" in ll: return "#dc2626"
+            if "ratt" in ll: return "#d97706"
+            if "nettoyage" in ll: return "#0284c7"
+            if "pause" in ll: return "#2563eb"
+            return "#7c3aed"
+        sup_par_labels = _json.dumps([x[0] for x in sup_par_sorted], ensure_ascii=False)
+        sup_par_values = _json.dumps([round(x[1], 1) for x in sup_par_sorted])
+        sup_par_colors = _json.dumps([_par_col(x[0]) for x in sup_par_sorted])
+
+        # ── Camembert production/arrêts/reste ────────────────────────────────
+        shift_total_s = 8 * 3600
+        elapsed_sess_s = (datetime.datetime.now() - sup_of_start_dt).total_seconds() if sup_of_start_dt else 0
+        total_decl_s_pie = sum(_hms_to_sec(str(rd[16] or "0")) for rd in sup_decls)
+        total_stop_s_pie = sum(v * 60 for v in sup_pareto_dict.values())
+        prod_s_pie  = max(0.0, total_decl_s_pie - total_stop_s_pie)
+        remaining_s_pie = max(0.0, shift_total_s - elapsed_sess_s)
+        pie_values  = _json.dumps([round(prod_s_pie/60,1), round(total_stop_s_pie/60,1), round(remaining_s_pie/60,1)])
+
+        # ── Timeline SVG 8h ─────────────────────────────────────────────────
+        shift_total_s_tl = 8 * 3600
+        if sup_of_start_dt:
+            shift_start_tl = sup_of_start_dt
+            now_s_tl = (datetime.datetime.now() - shift_start_tl).total_seconds()
+            tl_segs = []
+            for h in range(9):
+                xp = h / 8 * 100
+                hh = (shift_start_tl.hour + h) % 24
+                tl_segs.append(f'<line x1="{xp:.1f}%" y1="0" x2="{xp:.1f}%" y2="54" stroke="#e2e8f0" stroke-width="1"/>')
+                tl_segs.append(f'<text x="{xp:.1f}%" y="70" text-anchor="middle" fill="#94a3b8" font-size="9">{hh:02d}h</text>')
+            for op in of_periods:
+                try:
+                    s_op = datetime.datetime.fromisoformat(op["start"])
+                    e_op = datetime.datetime.fromisoformat(op["end"]) if op.get("end") else datetime.datetime.now()
+                    xp2 = max(0.0, (s_op - shift_start_tl).total_seconds() / shift_total_s_tl * 100)
+                    wp2 = min(100.0 - xp2, (e_op - s_op).total_seconds() / shift_total_s_tl * 100)
+                    if wp2 <= 0: continue
+                    col_op = "#16a34a" if op.get("end") else "#22c55e"
+                    of_lbl_tl = _esc(str(op.get("of_num") or "OF")[:10])
+                    tl_segs.append(f'<rect x="{xp2:.2f}%" y="4" width="{wp2:.2f}%" height="24" fill="{col_op}" rx="3" opacity="0.92"><title>{of_lbl_tl}</title></rect>')
+                    if wp2 > 3:
+                        tl_segs.append(f'<text x="{(xp2+wp2/2):.2f}%" y="20" text-anchor="middle" fill="white" font-size="8" font-weight="600">{of_lbl_tl[:9]}</text>')
+                except Exception:
+                    pass
+            for ev in sup_events:
+                try:
+                    s_ev = datetime.datetime.fromisoformat(ev["start"])
+                    e_ev = datetime.datetime.fromisoformat(ev["end"]) if ev.get("end") else datetime.datetime.now()
+                    xp2 = max(0.0, (s_ev - shift_start_tl).total_seconds() / shift_total_s_tl * 100)
+                    wp2 = min(100.0 - xp2, (e_ev - s_ev).total_seconds() / shift_total_s_tl * 100)
+                    if wp2 <= 0: continue
+                    key_tl = ev.get("key", "")
+                    col_tl = "#dc2626" if key_tl.startswith("pb_") else "#d97706"
+                    lbl_tl = _esc(EVENT_LABELS.get(key_tl, key_tl)[:14])
+                    tl_segs.append(f'<rect x="{xp2:.2f}%" y="32" width="{wp2:.2f}%" height="14" fill="{col_tl}" rx="2" opacity="0.88"><title>{lbl_tl}</title></rect>')
+                except Exception:
+                    pass
+            now_pct_tl = min(100.0, now_s_tl / shift_total_s_tl * 100)
+            tl_segs.append(f'<line x1="{now_pct_tl:.2f}%" y1="0" x2="{now_pct_tl:.2f}%" y2="54" stroke="#2563eb" stroke-width="2" stroke-dasharray="4,2"/>')
+            tl_segs.append(f'<text x="{now_pct_tl:.2f}%" y="56" text-anchor="middle" fill="#2563eb" font-size="8" font-weight="700">▲</text>')
+            timeline_svg = '<svg width="100%" height="74" style="overflow:visible;display:block">' + "".join(tl_segs) + '</svg>'
+        else:
+            timeline_svg = '<div style="text-align:center;color:#94a3b8;padding:18px;font-style:italic">Aucune session active</div>'
 
         # OF en cours complets / périodes
         of_periods = session_data.get("of_periods", [])
@@ -8138,86 +8223,108 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <div class="sup-status-text">{_esc(sup_status)}</div>
     <div class="sup-status-sub">
       <b>{_esc(sup_poste)}</b>
-      &nbsp;&bull;&nbsp; &#128100; Pilote : <b>{_esc(sup_pilot)}</b>
+      &nbsp;&bull;&nbsp; &#128100; <b>{_esc(sup_pilot)}</b>
       {'&nbsp;&bull;&nbsp; Co-pilote : <b>' + _esc(sup_copilot) + '</b>' if sup_copilot not in ('—','') else ''}
-      &nbsp;&bull;&nbsp; &#128101; {_esc(sup_nb_pers)} pers.
-      &nbsp;&bull;&nbsp; Dur&eacute;e session : {sup_session_dur}
-      &nbsp;&bull;&nbsp; OF ce poste : <b>{sup_of_count}</b>
+      &nbsp;&bull;&nbsp; {_esc(sup_nb_pers)} pers.
+      &nbsp;&bull;&nbsp; Session : {sup_session_dur}
+      &nbsp;&bull;&nbsp; OF déclarés : <b>{sup_of_count}</b>
     </div>
   </div>
   <div style="text-align:right;font-size:0.82em;opacity:0.75">{now_str}</div>
 </div>
 
-<!-- OF EN COURS — carte principale très visible -->
-{'<div style="background:linear-gradient(135deg,#1e3a5f,#2c5282);color:white;padding:18px 28px;border-bottom:4px solid ' + sup_status_color + '">' if sup_prod_active else '<div style="display:none">'}
-  <div style="display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap">
-    <div style="min-width:200px">
-      <div style="font-size:0.7em;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.6);margin-bottom:4px">&#128203; OF EN COURS</div>
-      <div style="font-size:2.8em;font-weight:900;color:#fbbf24;line-height:1">{_esc(sup_of_num)}</div>
-      <div style="font-size:0.85em;margin-top:6px;color:rgba(255,255,255,0.85)">{_esc(sup_taille)} &nbsp;&bull;&nbsp; {_esc(sup_type_prod)}</div>
-      <div style="font-size:0.85em;color:#86efac">Code : <b>{_esc(sup_code)}</b></div>
-      <div style="margin-top:10px;background:rgba(255,255,255,0.12);border-radius:8px;padding:8px 12px;font-size:0.82em">
-        <div style="color:rgba(255,255,255,0.6);font-size:0.75em;text-transform:uppercase;letter-spacing:0.5px">Dur&eacute;e OF</div>
-        <div style="font-size:1.6em;font-weight:800;font-variant-numeric:tabular-nums" id="supOfDurLive">{sup_of_dur}</div>
-      </div>
+<!-- OF EN COURS — carte lumineuse -->
+{'<div style="background:white;border-left:6px solid ' + sup_status_color + ';border-bottom:2px solid #e2e8f0;padding:16px 28px;display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap">' if sup_prod_active else '<div style="display:none">'}
+  <!-- Bloc n° OF + infos principales -->
+  <div style="min-width:180px">
+    <div style="font-size:0.68em;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:2px">&#128203; OF EN COURS</div>
+    <div style="font-size:2.6em;font-weight:900;color:{sup_status_color};line-height:1.1">{_esc(sup_of_num)}</div>
+    <div style="font-size:0.9em;font-weight:600;color:#374151;margin-top:4px">{_esc(sup_taille)} &nbsp;&bull;&nbsp; {_esc(sup_type_prod)}</div>
+    <div style="font-size:0.85em;color:#16a34a;font-weight:700">Code : {_esc(sup_code)}</div>
+    <div style="margin-top:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px">
+      <div style="font-size:0.65em;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Dur&eacute;e OF actuel</div>
+      <div style="font-size:1.5em;font-weight:900;color:#1e3a5f;font-variant-numeric:tabular-nums">{sup_of_dur}</div>
     </div>
-    <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
-      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
-        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Fibre</div>
-        <div style="font-weight:700;margin-top:2px">{_esc(sup_fibre)}</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
-        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Poids garnissage</div>
-        <div style="font-weight:700;margin-top:2px">{_esc(sup_poids)} gr</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
-        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">OF Taie</div>
-        <div style="font-weight:700;margin-top:2px">{_esc(sup_of_taie)}</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
-        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Réf. Taie</div>
-        <div style="font-weight:700;margin-top:2px">{_esc(sup_ref_taie)}</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
-        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Traça fibre</div>
-        <div style="font-weight:700;margin-top:2px">{_esc(sup_traca)}</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
-        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Qte Fab.</div>
-        <div style="font-size:1.4em;font-weight:900;color:#86efac;margin-top:2px">{_esc(sup_qte_fab)}</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
-        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Qte Emb.</div>
-        <div style="font-size:1.4em;font-weight:900;color:#86efac;margin-top:2px">{_esc(sup_qte_emb)}</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
-        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Arr&ecirc;t MQ MP (min)</div>
-        <div style="font-weight:700;margin-top:2px;color:#fca5a5">{_esc(sup_duree_mq_mp)}</div>
-      </div>
-      <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:10px 12px">
-        <div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">MQ Pers / R&eacute;union (min)</div>
-        <div style="font-weight:700;margin-top:2px;color:#fca5a5">{_esc(sup_mq_pers)}</div>
-      </div>
-      {'<div style="background:rgba(251,191,36,0.2);border-radius:8px;padding:10px 12px;border:1px solid rgba(251,191,36,0.4)"><div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase">Options</div><div style="font-weight:700;margin-top:2px;color:#fbbf24">Kit 2 pièces</div></div>' if sup_kit else ''}
-    </div>
-    {'<div style="background:rgba(255,255,255,0.08);border-radius:8px;padding:10px 14px;min-width:200px;max-width:320px"><div style="font-size:0.67em;color:rgba(255,255,255,0.55);text-transform:uppercase;margin-bottom:4px">Commentaire</div><div style="font-size:0.88em;white-space:pre-wrap">' + _esc(sup_comment) + '</div></div>' if sup_comment else ''}
   </div>
+  <!-- Grille infos produit -->
+  <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
+      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Fibre</div>
+      <div style="font-weight:700;color:#1e3a5f;margin-top:2px">{_esc(sup_fibre)}</div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
+      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Poids garnissage</div>
+      <div style="font-weight:700;color:#1e3a5f;margin-top:2px">{_esc(sup_poids)} gr</div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
+      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">OF Taie</div>
+      <div style="font-weight:700;color:#1e3a5f;margin-top:2px">{_esc(sup_of_taie)}</div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
+      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">R&eacute;f. Taie</div>
+      <div style="font-weight:700;color:#1e3a5f;margin-top:2px">{_esc(sup_ref_taie)}</div>
+    </div>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
+      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Tra&ccedil;a fibre</div>
+      <div style="font-weight:700;color:#1e3a5f;margin-top:2px">{_esc(sup_traca)}</div>
+    </div>
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 12px">
+      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Arr&ecirc;t MQ MP (min)</div>
+      <div style="font-weight:700;color:#dc2626;margin-top:2px">{_esc(sup_duree_mq_mp)}</div>
+    </div>
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 12px">
+      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">MQ Pers/R&eacute;union (min)</div>
+      <div style="font-weight:700;color:#dc2626;margin-top:2px">{_esc(sup_mq_pers)}</div>
+    </div>
+    {'<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:8px 12px"><div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Options</div><div style="font-weight:700;color:#d97706;margin-top:2px">&#10003; Kit 2 pi&egrave;ces</div></div>' if sup_kit else ''}
+  </div>
+  {'<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;min-width:200px;max-width:300px"><div style="font-size:0.65em;color:#64748b;text-transform:uppercase;margin-bottom:4px">Commentaire</div><div style="font-size:0.9em;color:#1e3a5f;white-space:pre-wrap">' + _esc(sup_comment) + '</div></div>' if sup_comment else ''}
+</div>
+
+<!-- Timeline poste (8h) -->
+<div style="background:white;border-bottom:2px solid #e2e8f0;padding:12px 28px">
+  <div style="font-size:0.72em;font-weight:700;color:#1e3a5f;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
+    &#9654; Timeline du poste (8h) &nbsp;
+    <span style="font-weight:400;color:#94a3b8">&#9632; OF produits &nbsp; <span style="color:#dc2626">&#9632;</span> Pannes &nbsp; <span style="color:#d97706">&#9632;</span> Rattrapages &nbsp; <span style="color:#2563eb">│</span> Maintenant</span>
+  </div>
+  {timeline_svg}
 </div>
 
 <div class="sup-grid">
-  <!-- Colonne gauche -->
+  <!-- Colonne gauche : KPIs + graphiques -->
   <div class="sup-left">
 
-    <!-- TRS actuel -->
+    <!-- TRS actuel + KPIs -->
     <div class="sup-card">
       <div class="sup-card-hdr">&#128200; TRS Actuel</div>
       <div class="sup-trs-big" style="color:{sup_trs_color}">{_esc(sup_trs_display)}</div>
-      <div class="sup-trs-label">Bas&eacute; sur le temps d&eacute;clar&eacute;</div>
+      <div class="sup-trs-label">Bas&eacute; sur OF d&eacute;clar&eacute;s</div>
       <div class="sup-kpi-grid">
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Équivalence totale</div><div class="sup-kpi-val">{sup_equiv_tot:.1f}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Qté produite</div><div class="sup-kpi-val">{sup_qte_tot}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">OF complétés</div><div class="sup-kpi-val">{sup_of_count}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Durée session</div><div class="sup-kpi-val">{sup_session_dur}</div></div>
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Equiv. totale</div><div class="sup-kpi-val">{sup_equiv_tot:.1f}</div></div>
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Qt&eacute; produite</div><div class="sup-kpi-val">{sup_qte_tot}</div></div>
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">OF compl&eacute;t&eacute;s</div><div class="sup-kpi-val">{sup_of_count}</div></div>
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Dur&eacute;e session</div><div class="sup-kpi-val">{sup_session_dur}</div></div>
+      </div>
+    </div>
+
+    <!-- Camembert production/arrêts/reste -->
+    <div class="sup-card">
+      <div class="sup-card-hdr">&#9685; R&eacute;partition du poste (min)</div>
+      <div style="padding:12px;display:flex;align-items:center;gap:12px">
+        <canvas id="supPieChart" width="120" height="120" style="flex-shrink:0"></canvas>
+        <div style="font-size:0.78em;display:flex;flex-direction:column;gap:6px">
+          <div><span style="display:inline-block;width:12px;height:12px;background:#16a34a;border-radius:2px;margin-right:6px;vertical-align:middle"></span>Production d&eacute;clar&eacute;e</div>
+          <div><span style="display:inline-block;width:12px;height:12px;background:#dc2626;border-radius:2px;margin-right:6px;vertical-align:middle"></span>Arr&ecirc;ts</div>
+          <div><span style="display:inline-block;width:12px;height:12px;background:#e2e8f0;border-radius:2px;margin-right:6px;vertical-align:middle"></span>Reste du poste</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pareto arrêts -->
+    <div class="sup-card">
+      <div class="sup-card-hdr">&#128200; Par&eacute;to arr&ecirc;ts &amp; &eacute;v&eacute;nements (min)</div>
+      <div style="padding:12px">
+        <canvas id="supParetoChart" height="180"></canvas>
       </div>
     </div>
 
@@ -8227,30 +8334,19 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
         &#9888; Arr&ecirc;ts actifs {'— ' + str(len(active_stops_info)) + ' en cours' if active_stops_info else '— Aucun'}
       </div>
       {f'<div class="active-stops-grid">{active_stops_html}</div>' if active_stops_info
-        else '<div style="padding:20px;text-align:center;color:#16a34a;font-weight:700;font-size:1.05em">&#10003; Aucun arr&ecirc;t en cours</div>'}
-    </div>
-
-    <!-- Historique OF session -->
-    <div class="sup-card">
-      <div class="sup-card-hdr">&#128336; Historique OF cette session</div>
-      <div style="padding:0">
-        <table>
-          <thead><tr><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th></tr></thead>
-          <tbody>{of_periods_html}</tbody>
-        </table>
-      </div>
+        else '<div style="padding:16px;text-align:center;color:#16a34a;font-weight:700">&#10003; Aucun arr&ecirc;t en cours</div>'}
     </div>
 
   </div><!-- /sup-left -->
 
-  <!-- Colonne droite -->
+  <!-- Colonne droite : tableaux -->
   <div class="sup-right">
 
-    <!-- Événements de session EN COURS (avant fin OF) -->
+    <!-- Événements session EN COURS -->
     <div class="sup-card">
-      <div class="sup-card-hdr" style="background:#7c3aed">&#128308; &Eacute;v&eacute;nements &amp; Arr&ecirc;ts — Session en cours ({len(sup_events)} &eacute;v&eacute;nements)</div>
-      <div class="tbl-wrap" style="max-height:260px;overflow-y:auto">
-        <table>
+      <div class="sup-card-hdr" style="background:#7c3aed">&#128308; &Eacute;v&eacute;nements session en cours ({len(sup_events)})</div>
+      <div class="tbl-wrap" style="max-height:280px;overflow-y:auto">
+        <table style="font-size:0.88em">
           <thead><tr>
             <th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
           </tr></thead>
@@ -8259,28 +8355,28 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
       </div>
     </div>
 
-    <!-- Déclarations d'aujourd'hui (cliquables) -->
+    <!-- Déclarations cliquables -->
     <div class="sup-card">
-      <div class="sup-card-hdr">&#128221; D&eacute;clarations du poste ({len(sup_decls)} OF) &nbsp;<span style="font-size:0.75em;opacity:0.7">— cliquer sur une ligne pour les d&eacute;tails</span></div>
-      <div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
-        <table id="supDeclTable">
+      <div class="sup-card-hdr">&#128221; D&eacute;clarations du poste ({len(sup_decls)} OF) <span style="font-size:0.75em;opacity:0.7">— cliquer pour d&eacute;tails</span></div>
+      <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
+        <table id="supDeclTable" style="font-size:0.88em">
           <thead><tr>
             <th>OF</th><th>D&eacute;but</th><th>Fin</th>
             <th>Taille</th><th>Code</th><th>Type</th>
             <th>Qte Fab</th><th>Qte Emb</th>
             <th>Equiv</th><th>Dur&eacute;e</th>
-            <th>Cad/h</th><th>TRS of</th>
+            <th>Cad/h</th><th>TRS</th>
           </tr></thead>
           <tbody id="supDeclBody">{sup_decl_rows}</tbody>
         </table>
       </div>
     </div>
 
-    <!-- Événements sauvegardés du jour (depuis Excel) -->
+    <!-- Événements sauvegardés -->
     <div class="sup-card">
-      <div class="sup-card-hdr">&#128203; &Eacute;v&eacute;nements sauv&eacute;s du poste ({len(sup_evts_today)} au total)</div>
-      <div class="tbl-wrap" style="max-height:260px;overflow-y:auto">
-        <table>
+      <div class="sup-card-hdr">&#128203; &Eacute;v&eacute;nements sauv&eacute;s du poste ({len(sup_evts_today)})</div>
+      <div class="tbl-wrap" style="max-height:280px;overflow-y:auto">
+        <table style="font-size:0.88em">
           <thead><tr>
             <th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
           </tr></thead>
@@ -8868,54 +8964,66 @@ function updateCharts(d) {{
     }}
   }});
 
-  // — Débordements & Changements série
+  // Helper: trier des clés DD/MM/YYYY par date réelle
+  function sortDateKeys(keys) {{
+    return keys.slice().sort(function(a,b) {{
+      var pa=String(a).split('/'), pb=String(b).split('/');
+      var da=new Date(parseInt(pa[2]||2000),parseInt(pa[1]||1)-1,parseInt(pa[0]||1));
+      var db=new Date(parseInt(pb[2]||2000),parseInt(pb[1]||1)-1,parseInt(pb[0]||1));
+      return da-db;
+    }});
+  }}
+
+  // — Débordements & Changements série (clé = date complète DD/MM/YYYY)
   var debByDate = {{}};
   d.trs.forEach(function(r) {{
-    var dt = String(r[0]).slice(0,5);
+    var dt = String(r[0]).slice(0,10);
     if (!debByDate[dt]) debByDate[dt] = {{deb:0, chgt:0}};
     debByDate[dt].deb  += hmsToMin(r[10]);
     debByDate[dt].chgt += hmsToMin(r[9]);
   }});
   d.data.forEach(function(r) {{
-    var dt = String(r[1]).slice(0,5);
+    var dt = String(r[1]).slice(0,10);
     if (!debByDate[dt]) debByDate[dt] = {{deb:0, chgt:0}};
     if (String(r[29]).trim() && String(r[29]).trim() !== '0') debByDate[dt].chgt += 1;
   }});
-  var dbDates = Object.keys(debByDate).sort();
+  var dbKeys = sortDateKeys(Object.keys(debByDate));
+  var dbLabels = dbKeys.map(function(k){{return k.slice(0,5);}});
   makeChart('revChartDebord', {{
     type:'bar',
     data:{{
-      labels:dbDates,
+      labels:dbLabels,
       datasets:[
-        {{label:'Débord. (min)', data:dbDates.map(function(d){{return Math.round(debByDate[d].deb*10)/10;}}), backgroundColor:'#dc2626cc',borderRadius:4,borderWidth:0}},
-        {{label:'Chgt série (nb)', data:dbDates.map(function(d){{return debByDate[d].chgt;}}), backgroundColor:'#7c3aedcc',borderRadius:4,borderWidth:0}}
+        {{label:'Débord. (min)', data:dbKeys.map(function(k){{return Math.round(debByDate[k].deb*10)/10;}}), backgroundColor:'#dc2626cc',borderRadius:4,borderWidth:0}},
+        {{label:'Chgt série (nb)', data:dbKeys.map(function(k){{return debByDate[k].chgt;}}), backgroundColor:'#7c3aedcc',borderRadius:4,borderWidth:0}}
       ]
     }},
     options:{{
       scales:{{
-        x:{{grid:{{display:false}},ticks:{{font:{{size:9}}}}}},
-        y:{{grid:{{color:'#f1f5f9'}}}}
+        x:{{grid:{{display:false}},ticks:{{font:{{size:9}}}},title:{{display:true,text:'Date',font:{{size:9}},color:'#94a3b8'}}}},
+        y:{{grid:{{color:'#f1f5f9'}},title:{{display:true,text:'min / nb',font:{{size:9}},color:'#94a3b8'}}}}
       }},
       plugins:{{legend:{{position:'bottom',labels:{{boxWidth:10,font:{{size:9}}}}}}}}
     }}
   }});
 
-  // — Nb OF par jour
+  // — Nb OF par jour (clé = date complète DD/MM/YYYY)
   var ofByDate = {{}};
   d.data.forEach(function(r) {{
-    var dt = String(r[1]).slice(0,5);
+    var dt = String(r[1]).slice(0,10);
     ofByDate[dt] = (ofByDate[dt]||0) + 1;
   }});
-  var ofDates = Object.keys(ofByDate).sort();
+  var ofKeys = sortDateKeys(Object.keys(ofByDate));
+  var ofLabels = ofKeys.map(function(k){{return k.slice(0,5);}});
   makeChart('revChartOFJour', {{
     type:'bar',
-    data:{{labels:ofDates, datasets:[{{label:'Nb OF',data:ofDates.map(function(d){{return ofByDate[d];}}) ,
+    data:{{labels:ofLabels, datasets:[{{label:'Nb OF',data:ofKeys.map(function(k){{return ofByDate[k];}}) ,
       backgroundColor:'#1e3a5fcc',borderRadius:4,borderSkipped:false,borderWidth:0}}]}},
     options:{{
       plugins:{{legend:{{display:false}}}},
       scales:{{
-        x:{{grid:{{display:false}},ticks:{{font:{{size:9}}}}}},
-        y:{{grid:{{color:'#f1f5f9'}},ticks:{{stepSize:1}}}}
+        x:{{grid:{{display:false}},ticks:{{font:{{size:9}}}},title:{{display:true,text:'Date',font:{{size:9}},color:'#94a3b8'}}}},
+        y:{{grid:{{color:'#f1f5f9'}},ticks:{{stepSize:1}},title:{{display:true,text:'Nombre OF',font:{{size:9}},color:'#94a3b8'}}}}
       }}
     }}
   }});
@@ -8990,12 +9098,29 @@ function openOfModal(rowData) {{
   var numEl = document.getElementById('modalOfNum');
   numEl.textContent = rowData[0] || '';
   var html = '';
-  rowData.forEach(function(val, i) {{
-    if (i >= DATA_HEADERS.length) return;
-    if (!val || val === '0' || val === '—') return;
-    html += '<div style="background:#f8fafc;border-radius:8px;padding:10px 12px;border:1px solid #e2e8f0">'
-      + '<div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase;letter-spacing:0.4px">' + esc(DATA_HEADERS[i]) + '</div>'
-      + '<div style="font-weight:700;color:#1e3a5f;margin-top:3px;word-break:break-word">' + esc(val) + '</div>'
+  var sections = [
+    {{title:'Identification', color:'#1e3a5f', bg:'#eff6ff', indices:[0,1,2,3,4,5,10]}},
+    {{title:'Produit', color:'#16a34a', bg:'#f0fdf4', indices:[6,7,8,9,11,12,21]}},
+    {{title:'Quantités & Qualité', color:'#7c3aed', bg:'#faf5ff', indices:[13,14,15,16,17,18,19,20,22,23,24,25,26,27,28]}},
+    {{title:'Durées & Arrêts', color:'#d97706', bg:'#fffbeb', indices:[29,30,31,32,33,34,35,36,37,57]}},
+    {{title:'Pannes', color:'#dc2626', bg:'#fef2f2', indices:[38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55]}},
+    {{title:'Commentaire', color:'#64748b', bg:'#f8fafc', indices:[56]}}
+  ];
+  sections.forEach(function(sec) {{
+    var secHtml = '';
+    sec.indices.forEach(function(i) {{
+      if (i >= DATA_HEADERS.length || i >= rowData.length) return;
+      var val = rowData[i];
+      if (!val || val === '0') return;
+      secHtml += '<div style="background:white;border-radius:6px;padding:8px 10px;border:1px solid #e2e8f0">'
+        + '<div style="font-size:0.62em;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px">' + esc(DATA_HEADERS[i]) + '</div>'
+        + '<div style="font-weight:700;color:#1e3a5f;margin-top:2px;word-break:break-word;font-size:0.95em">' + esc(val) + '</div>'
+        + '</div>';
+    }});
+    if (!secHtml) return;
+    html += '<div style="grid-column:1/-1;background:' + sec.bg + ';border-radius:10px;padding:12px;border-left:4px solid ' + sec.color + ';margin-bottom:4px">'
+      + '<div style="font-size:0.72em;font-weight:700;color:' + sec.color + ';text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">' + esc(sec.title) + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px">' + secHtml + '</div>'
       + '</div>';
   }});
   body.innerHTML = html || '<div style="color:#94a3b8;text-align:center;padding:20px">Aucune donnée</div>';
@@ -9010,23 +9135,44 @@ document.getElementById('ofDetailModal').addEventListener('click', function(e) {
   if (e.target === this) closeOfModal();
 }});
 
-// Rendre les lignes de déclarations cliquables
+// ── Graphiques supervision ────────────────────────────────────────────
 (function() {{
-  var body = document.getElementById('supDeclBody');
-  if (!body) return;
-  var rows = body.querySelectorAll('tr');
-  rows.forEach(function(tr) {{
-    tr.style.cursor = 'pointer';
-    tr.addEventListener('click', function() {{
-      var cells = tr.querySelectorAll('td');
-      // Les lignes HTML n'ont que les colonnes résumées — on cherche l'OF dans REV_DATA
-      if (!cells.length) return;
-      var ofNum = cells[0] ? cells[0].textContent.trim() : '';
-      var found = REV_DATA.find(function(r) {{ return r[0] === ofNum; }});
-      if (found) openOfModal(found);
+  var supPie = document.getElementById('supPieChart');
+  if (supPie) {{
+    new Chart(supPie, {{
+      type: 'doughnut',
+      data: {{
+        labels: ['Production déclarée','Arrêts','Reste du poste'],
+        datasets: [{{ data: {pie_values}, backgroundColor: ['#16a34a','#dc2626','#e2e8f0'], borderWidth: 2, borderColor: 'white' }}]
+      }},
+      options: {{
+        cutout: '65%',
+        plugins: {{
+          legend: {{ display: false }},
+          tooltip: {{ callbacks: {{ label: function(c) {{ return c.label+': '+c.raw+'min'; }} }} }}
+        }},
+        animation: {{ duration: 600 }}
+      }}
     }});
-    tr.title = 'Cliquer pour voir tous les détails';
-  }});
+  }}
+  var supPar = document.getElementById('supParetoChart');
+  if (supPar) {{
+    new Chart(supPar, {{
+      type: 'bar',
+      data: {{
+        labels: {sup_par_labels},
+        datasets: [{{ label: 'Durée (min)', data: {sup_par_values}, backgroundColor: {sup_par_colors}, borderRadius: 4, borderSkipped: false, borderWidth: 0 }}]
+      }},
+      options: {{
+        indexAxis: 'y',
+        plugins: {{ legend: {{ display: false }}, tooltip: {{ callbacks: {{ label: function(c) {{ return c.raw.toFixed(1)+' min'; }} }} }} }},
+        scales: {{
+          x: {{ grid: {{ color: '#f1f5f9' }}, ticks: {{ callback: function(v) {{ return v+'m'; }}, font: {{ size: 9 }} }} }},
+          y: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 9 }} }} }}
+        }}
+      }}
+    }});
+  }}
 }})();
 
 // ── Initialisation filtres avec persistance localStorage ───────────────
