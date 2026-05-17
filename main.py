@@ -1068,21 +1068,11 @@ class App:
             pass
 
     def _safe_excel_save(self, wb, path):
-        """Sauvegarde atomique Excel : tmp → vérif → backup → replace. À appeler sous _excel_lock."""
+        """Sauvegarde atomique Excel : tmp → backup → replace. À appeler sous _excel_lock."""
         import shutil
         tmp_path = path + ".tmp_kpi"
         bak_path = path + ".bak_kpi"
         wb.save(tmp_path)
-        try:
-            from openpyxl import load_workbook as _lw
-            _vwb = _lw(tmp_path, read_only=True, data_only=True)
-            _vwb.close()
-        except Exception as e:
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
-            raise RuntimeError(f"Excel temp illisible après sauvegarde: {e}")
         try:
             if os.path.exists(path):
                 shutil.copy2(path, bak_path)
