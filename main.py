@@ -6375,14 +6375,18 @@ Arrêts imputés au TRS (temps perdu) :
             ov.destroy()
             self._show_main()
 
-        tk.Button(footer, text="✏  Modifier la durée",
+        _dh = duree_theorique_min // 60
+        _dm = duree_theorique_min % 60
+        _dlbl = f"{_dh}h{_dm:02d}" if _dm else f"{_dh}h"
+        tk.Button(footer,
+                  text=f"⏱  Changer la durée du poste  (calculé sur {_dlbl})",
                   command=_modifier_duree, bg="#2563eb", fg=WHITE,
-                  font=("Arial", 10, "bold"), relief="flat",
-                  padx=12, pady=6, cursor="hand2").pack(side="left", padx=(12, 4), pady=8)
-        tk.Button(footer, text="↩  Retour",
+                  font=("Arial", 11, "bold"), relief="flat",
+                  padx=16, pady=8, cursor="hand2").pack(side="left", padx=(12, 6), pady=8)
+        tk.Button(footer, text="↩  Retour sans clôturer",
                   command=lambda: ov.destroy(),
-                  bg="#475569", fg=WHITE, font=("Arial", 10), relief="flat",
-                  padx=12, pady=6, cursor="hand2").pack(side="left", padx=4, pady=8)
+                  bg="#475569", fg=WHITE, font=("Arial", 11), relief="flat",
+                  padx=16, pady=8, cursor="hand2").pack(side="left", padx=6, pady=8)
 
         if non_declare_s > 60:
             _nd_h = int(non_declare_s) // 3600
@@ -6411,13 +6415,13 @@ Arrêts imputés au TRS (temps perdu) :
             tk.Button(footer,
                       text=f"✔  Valider en l'état  ({_nd_label} → « Non défini »)",
                       command=_valider_etat, bg=GREEN, fg=WHITE,
-                      font=("Arial", 10, "bold"), relief="flat",
-                      padx=14, pady=6, cursor="hand2").pack(side="right", padx=12, pady=8)
+                      font=("Arial", 11, "bold"), relief="flat",
+                      padx=18, pady=8, cursor="hand2").pack(side="right", padx=12, pady=8)
         else:
             tk.Button(footer, text="✔  Valider et clôturer le poste",
                       command=_deconnecter_et_quitter, bg=GREEN, fg=WHITE,
-                      font=("Arial", 10, "bold"), relief="flat",
-                      padx=14, pady=6, cursor="hand2").pack(side="right", padx=12, pady=8)
+                      font=("Arial", 11, "bold"), relief="flat",
+                      padx=18, pady=8, cursor="hand2").pack(side="right", padx=12, pady=8)
 
         # ── Body — grille 4 lignes x 3 colonnes, tout visible ───────────────────
         body = tk.Frame(ov, bg="#0d2040")
