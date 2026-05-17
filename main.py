@@ -4873,7 +4873,7 @@ Arrêts imputés au TRS (temps perdu) :
             ("Traca Fibre",                     "Traçabilité fibre (numéro de lot)"),
             ("Qte Fabriquee",                   "Quantité de pièces produites déclarées"),
             ("Qte Emballee",                    "Quantité de pièces emballées"),
-            ("Equivalence",                     "Qte Fabriquée × coef (Listes col F) ÷ (Prod réf × Durée / 28800)"),
+            ("Equivalence",                     "Qte Fabriquée × coef (Listes col F)"),
             ("Duree OF",                        "Durée totale OF + changement de série (HH:MM:SS)"),
             ("Heure Debut",                     "Heure de début production (HH:MM:SS)"),
             ("Heure Fin",                       "Heure de fin production (HH:MM:SS)"),
