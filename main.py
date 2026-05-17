@@ -6284,416 +6284,25 @@ Arrêts imputés au TRS (temps perdu) :
         _fin_de_poste_save_trs()
 
         # ── Overlay récap poste ──────────────────────────────────────────────────
-        ov = tk.Frame(self.root, bg="#f0f4fb")
+        ov = tk.Frame(self.root, bg="#0d2040")
         ov.place(relx=0, rely=0, relwidth=1, relheight=1)
         ov.lift()
 
-        hdr = tk.Frame(ov, bg=NAVY, height=52)
+        # Header
+        hdr = tk.Frame(ov, bg=NAVY, height=48)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         _date_display = today_str if login_date_str == today_str else f"{login_date_str} → {today_str}"
         tk.Label(hdr, text="🏁  FIN DE POSTE — Récapitulatif",
-                 bg=NAVY, fg=WHITE, font=("Arial", 14, "bold")).pack(side="left", padx=16, pady=14)
+                 bg=NAVY, fg=WHITE, font=("Arial", 13, "bold")).pack(side="left", padx=16, pady=12)
         tk.Label(hdr, text=f"{pilot}  ·  {poste_nom}  ·  {_date_display}",
                  bg=NAVY, fg="#93c5fd", font=("Arial", 10)).pack(side="left", padx=4)
-        tk.Button(hdr, text="✕  Fermer", command=ov.destroy,
-                  bg=NAVY, fg=WHITE, font=("Arial", 10), relief="flat",
-                  cursor="hand2", padx=10).pack(side="right", padx=12, pady=10)
+        tk.Button(hdr, text="✕", command=ov.destroy,
+                  bg=NAVY, fg=WHITE, font=("Arial", 12), relief="flat",
+                  cursor="hand2", padx=8).pack(side="right", padx=10, pady=8)
 
-        # ── Notebook with 4 tabs ─────────────────────────────────────────────────
-        style_nb = ttk.Style()
-        style_nb.configure("FDP.TNotebook.Tab", font=("Arial", 11, "bold"), padding=(14, 6))
-        nb = ttk.Notebook(ov, style="FDP.TNotebook")
-        nb.pack(fill="both", expand=True, padx=12, pady=(8, 4))
-
-        # ═══════════════════════════════════════════════════════════════════════
-        # TAB 1 — RÉSUMÉ
-        # ═══════════════════════════════════════════════════════════════════════
-        tab_resume = tk.Frame(nb, bg=WHITE)
-        nb.add(tab_resume, text="📋  Résumé")
-        tab_resume.columnconfigure(0, weight=3)
-        tab_resume.columnconfigure(1, weight=2)
-        tab_resume.rowconfigure(0, weight=1)
-
-        # Left: info table
-        left_c = tk.Frame(tab_resume, bg=WHITE)
-        left_c.grid(row=0, column=0, sticky="nsew", padx=(12, 6), pady=10)
-        tk.Frame(left_c, bg=NAVY, height=3).pack(fill="x")
-        li = tk.Frame(left_c, bg=WHITE)
-        li.pack(fill="both", expand=True, padx=12, pady=10)
-
-        def _ri(lbl, val, vc=DARK, bold=False, sep=False, parent=None):
-            p = parent or li
-            if sep:
-                tk.Frame(p, bg=LGRAY, height=1).pack(fill="x", pady=(6, 4))
-                return
-            f = tk.Frame(p, bg=WHITE)
-            f.pack(fill="x", pady=2)
-            tk.Label(f, text=lbl, bg=WHITE, fg=GRAY,
-                     font=("Arial", 10), width=26, anchor="w").pack(side="left")
-            tk.Label(f, text=str(val), bg=WHITE, fg=vc,
-                     font=("Arial", 11, "bold" if bold else "normal")).pack(side="left")
-
-        _ri("Date",              _date_display,              DARK)
-        _ri("Pilote",            pilot or "—",               NAVY, bold=True)
-        _ri("Poste",             poste_nom or "—",           NAVY_L)
-        _ri("Durée théorique",   fmt(duree_theorique_s),     DARK)
-        _ri(None, None, sep=True)
-        _ri("OF déclarés",       nb_of,                      NAVY, bold=True)
-        _ri("Qté fabriquée",     total_qte,                  GREEN, bold=True)
-        _ri("Équivalence totale",f"{total_equiv:.0f}",       GREEN)
-        _ri("Moy. pièces / OF",  f"{avg_of_poste:.1f}" if nb_of > 0 else "—", DARK)
-        _ri(None, None, sep=True)
-        _ri("Total production",  fmt(total_prod_s),          GREEN)
-        _ri("Total arrêts panne",fmt(total_panne_s),
-            C_RED if total_panne_s > 0 else DARK, bold=(total_panne_s > 0))
-        _ri("Total rattrapages", fmt(total_ratt_s),
-            C_RATT if total_ratt_s > 0 else DARK)
-        _ri("Total pauses",      fmt(total_pause_s),         GRAY)
-        _ri("Total réunions",    fmt(total_reunion_s),       GRAY)
-        _ri("Total déclaré",     fmt(total_declare_s),       DARK, bold=True)
-        nc_col = C_RED if non_declare_s > 60 else DARK
-        _ri("Durée non déclarée",fmt(non_declare_s),         nc_col, bold=(non_declare_s > 60))
-        _ri(None, None, sep=True)
-        trs_col = GREEN if trs_poste >= 75 else (C_RATT if trs_poste >= 55 else C_RED)
-        _ri("TRS du poste",
-            f"{trs_poste:.1f}%" if trs_poste >= 0 else "—",
-            trs_col, bold=True)
-
-        # Alert banner (large, inside left column)
-        delta_s = total_declare_s - duree_theorique_s
-        if abs(delta_s) > 300:
-            if delta_s < 0:
-                msg_line1 = "⚠  DURÉE INSUFFISANTE"
-                msg_line2 = (f"Vous avez déclaré {fmt(abs(int(delta_s)))} de moins "
-                             f"par rapport au poste théorique "
-                             f"({duree_theorique_min//60}h{duree_theorique_min%60:02d}min).")
-                alrt_bg, alrt_fg = "#fee2e2", "#991b1b"
-            else:
-                msg_line1 = "⚠  DURÉE DÉPASSÉE"
-                msg_line2 = (f"Vous avez déclaré {fmt(int(delta_s))} de plus "
-                             f"par rapport au poste théorique "
-                             f"({duree_theorique_min//60}h{duree_theorique_min%60:02d}min).")
-                alrt_bg, alrt_fg = "#fff3cd", "#92400e"
-            alrt = tk.Frame(li, bg=alrt_bg,
-                            highlightthickness=2, highlightbackground=alrt_fg)
-            alrt.pack(fill="x", pady=(12, 0))
-            tk.Label(alrt, text=msg_line1, bg=alrt_bg, fg=alrt_fg,
-                     font=("Arial", 17, "bold"), justify="center",
-                     padx=10, pady=6).pack(fill="x")
-            tk.Label(alrt, text=msg_line2, bg=alrt_bg, fg=alrt_fg,
-                     font=("Arial", 12), justify="center",
-                     wraplength=380, padx=10, pady=(2, 12)).pack(fill="x")
-
-        # Right: TRS gauge + KPI cards
-        right_c = tk.Frame(tab_resume, bg="#f0f4fb")
-        right_c.grid(row=0, column=1, sticky="nsew", padx=(6, 12), pady=10)
-
-        tk.Label(right_c, text="TRS du poste", bg="#f0f4fb", fg=GRAY,
-                 font=("Arial", 12, "bold")).pack(pady=(16, 0))
-        g_poste = Gauge(right_c, bg="#f0f4fb", width=280, height=210, highlightthickness=0)
-        g_poste.pack(pady=4)
-        g_poste.update_gauge(max(0.0, trs_poste) if trs_poste >= 0 else 0.0,
-                             f"{trs_poste:.1f}%" if trs_poste >= 0 else "—")
-
-        tk.Frame(right_c, bg=LGRAY, height=1).pack(fill="x", pady=8, padx=12)
-
-        # KPI mini-cards
-        kpi_data = [
-            ("OF déclarés",  str(nb_of),                              "#2563eb"),
-            ("Qté fabriquée",str(total_qte),                          "#16a34a"),
-            ("Équivalences", f"{total_equiv:.0f}",                    "#7c3aed"),
-            ("Moy. pcs/OF",  f"{avg_of_poste:.1f}" if nb_of else "—","#0891b2"),
-        ]
-        kpi_grid = tk.Frame(right_c, bg="#f0f4fb")
-        kpi_grid.pack(fill="x", padx=8)
-        for idx, (klbl, kval, kcol) in enumerate(kpi_data):
-            kf = tk.Frame(kpi_grid, bg=kcol, highlightthickness=0)
-            kf.grid(row=idx // 2, column=idx % 2, sticky="ew",
-                    padx=4, pady=4, ipadx=8, ipady=6)
-            kpi_grid.columnconfigure(idx % 2, weight=1)
-            tk.Label(kf, text=kval, bg=kcol, fg=WHITE,
-                     font=("Arial", 15, "bold")).pack()
-            tk.Label(kf, text=klbl, bg=kcol, fg="#e0f2fe",
-                     font=("Arial", 8)).pack()
-
-        # ═══════════════════════════════════════════════════════════════════════
-        # TAB 2 — CHRONOLOGIE
-        # ═══════════════════════════════════════════════════════════════════════
-        tab_chron = tk.Frame(nb, bg=WHITE)
-        nb.add(tab_chron, text="⏱  Chronologie")
-
-        def _build_chronologie(parent):
-            try:
-                import matplotlib
-                matplotlib.use("TkAgg")
-                import matplotlib.pyplot as plt
-                import matplotlib.patches as mpatches
-                from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-            except ImportError:
-                tk.Label(parent, text="matplotlib non disponible",
-                         bg=WHITE, fg=GRAY, font=("Arial", 12)).pack(expand=True)
-                return
-
-            t0 = login_dt.timestamp()
-            t1 = now.timestamp()
-            span = max(t1 - t0, 1)
-
-            fig, ax = plt.subplots(figsize=(12, 3.2))
-            fig.patch.set_facecolor("white")
-            ax.set_facecolor("#f8faff")
-
-            # Background rail
-            ax.barh(0, 100, left=0, height=0.6, color="#e2e8f0",
-                    edgecolor="none", zorder=1)
-
-            def _pct(dt):
-                return (dt.timestamp() - t0) / span * 100
-
-            # Production periods
-            for p in self._of_periods:
-                ps2 = p.get("start"); pe2 = p.get("end") or now
-                if ps2 and ps2 >= login_dt:
-                    x0, x1 = _pct(ps2), _pct(min(pe2, now))
-                    ax.barh(0, max(x1 - x0, 0.2), left=x0, height=0.6,
-                            color="#16a34a", edgecolor="white", lw=0.5, zorder=2,
-                            label="_prod")
-
-            # Stops (arrêts + rattrapages)
-            for ev in self._tl_events:
-                if ev.get("cat") in ("ratt", "pb"):
-                    es = ev.get("start"); ee = ev.get("end") or now
-                    if es and es >= login_dt:
-                        x0, x1 = _pct(es), _pct(min(ee, now))
-                        col_ev = "#dc2626" if ev["cat"] == "pb" else "#f59e0b"
-                        ax.barh(0, max(x1 - x0, 0.4), left=x0, height=0.6,
-                                color=col_ev, edgecolor="white", lw=0.5, zorder=3)
-
-            # Pauses
-            for ps2, pe2 in self._pause_periods:
-                if ps2 >= login_dt:
-                    x0, x1 = _pct(ps2), _pct(min(pe2, now))
-                    ax.barh(0, max(x1 - x0, 0.4), left=x0, height=0.6,
-                            color="#3b82f6", edgecolor="white", lw=0.5, zorder=3)
-
-            patches = [
-                mpatches.Patch(color="#16a34a", label="Production"),
-                mpatches.Patch(color="#dc2626", label="Panne"),
-                mpatches.Patch(color="#f59e0b", label="Rattrapage"),
-                mpatches.Patch(color="#3b82f6", label="Pause"),
-            ]
-            ax.legend(handles=patches, loc="upper center", ncol=4,
-                      fontsize=10, framealpha=0.9, bbox_to_anchor=(0.5, 1.45))
-
-            n_ticks = 10
-            ax.set_xticks([i * 100 / n_ticks for i in range(n_ticks + 1)])
-            ax.set_xticklabels(
-                [datetime.datetime.fromtimestamp(t0 + i * span / n_ticks).strftime("%H:%M")
-                 for i in range(n_ticks + 1)], fontsize=9)
-            ax.set_yticks([])
-            ax.set_xlim(0, 100)
-            ax.spines[["top", "left", "right"]].set_visible(False)
-            ax.spines["bottom"].set_color("#cbd5e1")
-            ax.set_title(f"Chronologie du poste  ·  {login_dt.strftime('%H:%M')} → {now.strftime('%H:%M')}",
-                         fontsize=12, fontweight="bold", color="#1e3a5f", pad=28)
-            fig.tight_layout(pad=1.2)
-
-            canvas = FigureCanvasTkAgg(fig, master=parent)
-            canvas.draw()
-            canvas.get_tk_widget().pack(fill="both", expand=True, padx=16, pady=16)
-            plt.close(fig)
-
-        _build_chronologie(tab_chron)
-
-        # ═══════════════════════════════════════════════════════════════════════
-        # TAB 3 — ANALYSES
-        # ═══════════════════════════════════════════════════════════════════════
-        tab_ana = tk.Frame(nb, bg=WHITE)
-        nb.add(tab_ana, text="📊  Analyses")
-
-        def _build_analyses(parent):
-            try:
-                import matplotlib
-                matplotlib.use("TkAgg")
-                import matplotlib.pyplot as plt
-                from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-            except ImportError:
-                tk.Label(parent, text="matplotlib non disponible",
-                         bg=WHITE, fg=GRAY, font=("Arial", 12)).pack(expand=True)
-                return
-
-            # Collect stop durations per category
-            stop_totals: dict = {}
-            rows_all = [r for _, r in self._data_rows_cache]
-            for row in rows_all:
-                try:
-                    row_date2 = _row_date(row[1])
-                    if row_date2 not in _shift_dates or str(row[3] or "").strip() != pilot:
-                        continue
-                except Exception:
-                    continue
-                for ci in range(33, 56):
-                    if ci < len(row) and row[ci]:
-                        lbl_s = EVENTS[ci - 33][0] if (ci - 33) < len(EVENTS) else f"Col {ci}"
-                        s_v = _hms_to_sec(str(row[ci]))
-                        if s_v > 0:
-                            stop_totals[lbl_s] = stop_totals.get(lbl_s, 0) + s_v
-
-            prod_theo = (self._get_prod_ref() * duree_theorique_s / 28800.0
-                         if duree_theorique_s > 0 else 0)
-
-            fig, axes = plt.subplots(1, 3, figsize=(14, 4.5))
-            fig.patch.set_facecolor("white")
-
-            # ── Pareto arrêts ──
-            ax_par = axes[0]
-            ax_par.set_facecolor("#f8faff")
-            if stop_totals:
-                sorted_s = sorted(stop_totals.items(), key=lambda x: -x[1])[:10]
-                slbls = [s[0][:22] for s in sorted_s]
-                svals = [s[1] / 60 for s in sorted_s]
-                bar_colors = ["#dc2626", "#ef4444", "#f87171", "#fb923c", "#fbbf24",
-                              "#facc15", "#a3e635", "#4ade80", "#34d399", "#2dd4bf"]
-                bars_p = ax_par.barh(slbls[::-1], svals[::-1],
-                                     color=bar_colors[:len(slbls)][::-1],
-                                     edgecolor="white", linewidth=0.5)
-                ax_par.bar_label(bars_p, fmt="%.1f min", padding=3, fontsize=8)
-                ax_par.set_xlabel("Minutes", fontsize=9)
-                ax_par.spines[["top", "right"]].set_visible(False)
-                ax_par.tick_params(labelsize=8)
-            else:
-                ax_par.text(0.5, 0.5, "Aucun arrêt déclaré",
-                            ha="center", va="center", fontsize=11,
-                            color="#94a3b8", transform=ax_par.transAxes)
-                ax_par.axis("off")
-            ax_par.set_title("Pareto des arrêts", fontsize=11,
-                             fontweight="bold", color="#1e3a5f")
-
-            # ── Répartition du temps (pie) ──
-            ax_pie = axes[1]
-            pie_data_raw = [
-                ("Production",  total_prod_s,            "#16a34a"),
-                ("Pannes",      total_panne_s,           "#dc2626"),
-                ("Rattrapages", total_ratt_s,            "#f59e0b"),
-                ("Pauses",      total_pause_s,           "#3b82f6"),
-                ("Réunions",    total_reunion_s,         "#8b5cf6"),
-                ("Non déclaré", max(0.0, non_declare_s), "#94a3b8"),
-            ]
-            pie_data = [(l, v, c) for l, v, c in pie_data_raw if v > 30]
-            if pie_data:
-                pie_vals = [p[1] for p in pie_data]
-                pie_lbls = [f"{p[0]}\n{fmt(int(p[1]))}" for p in pie_data]
-                pie_cols = [p[2] for p in pie_data]
-                wedges, _ = ax_pie.pie(pie_vals, colors=pie_cols,
-                                       startangle=90,
-                                       wedgeprops={"edgecolor": "white", "linewidth": 1.5})
-                ax_pie.legend(wedges, [p[0] for p in pie_data],
-                              loc="lower center", bbox_to_anchor=(0.5, -0.22),
-                              ncol=2, fontsize=8, framealpha=0.8)
-            else:
-                ax_pie.text(0.5, 0.5, "Aucune donnée",
-                            ha="center", va="center", fontsize=11,
-                            color="#94a3b8", transform=ax_pie.transAxes)
-            ax_pie.set_title("Répartition du temps", fontsize=11,
-                             fontweight="bold", color="#1e3a5f")
-
-            # ── Prod réelle vs théorique (barres) ──
-            ax_pv = axes[2]
-            ax_pv.set_facecolor("#f8faff")
-            cats_pv = ["Théorique", "Réelle"]
-            vals_pv = [prod_theo, total_equiv]
-            c_pv = ["#1e3a5f",
-                    "#16a34a" if total_equiv >= prod_theo * 0.9 else "#dc2626"]
-            brs = ax_pv.bar(cats_pv, vals_pv, color=c_pv, width=0.45,
-                            edgecolor="white", linewidth=1.5)
-            for br in brs:
-                ax_pv.text(br.get_x() + br.get_width() / 2,
-                           br.get_height() + max(vals_pv or [1]) * 0.02,
-                           f"{br.get_height():.0f}",
-                           ha="center", fontsize=12, fontweight="bold",
-                           color="#1e3a5f")
-            if prod_theo > 0:
-                pct_real = total_equiv / prod_theo * 100
-                ax_pv.text(0.97, 0.95,
-                           f"Réalisation : {pct_real:.1f}%",
-                           transform=ax_pv.transAxes, ha="right", va="top",
-                           fontsize=11, fontweight="bold",
-                           color="#16a34a" if pct_real >= 90 else "#dc2626")
-            ax_pv.set_ylabel("Équivalences", fontsize=9)
-            ax_pv.spines[["top", "right"]].set_visible(False)
-            ax_pv.tick_params(labelsize=9)
-            ax_pv.set_title("Prod. réelle vs théorique", fontsize=11,
-                            fontweight="bold", color="#1e3a5f")
-
-            fig.tight_layout(pad=1.8)
-            canvas = FigureCanvasTkAgg(fig, master=parent)
-            canvas.draw()
-            canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
-            plt.close(fig)
-
-        _build_analyses(tab_ana)
-
-        # ═══════════════════════════════════════════════════════════════════════
-        # TAB 4 — DÉTAIL OFs
-        # ═══════════════════════════════════════════════════════════════════════
-        tab_of = tk.Frame(nb, bg=WHITE)
-        nb.add(tab_of, text="📦  Détail OFs")
-
-        cols_of = ("N° OF", "H. Début", "H. Fin", "Durée OF",
-                   "Qté fab", "Qté emb", "Équiv", "TRS OF",
-                   "Arrêts panne", "Rattrapages")
-        tv_of = ttk.Treeview(tab_of, columns=cols_of, show="headings", height=16)
-        col_widths = [90, 75, 75, 80, 70, 70, 70, 70, 100, 100]
-        for col, w in zip(cols_of, col_widths):
-            tv_of.heading(col, text=col)
-            tv_of.column(col, width=w, anchor="center")
-        sb_of = ttk.Scrollbar(tab_of, orient="vertical", command=tv_of.yview)
-        tv_of.configure(yscrollcommand=sb_of.set)
-        sb_of.pack(side="right", fill="y", pady=8)
-        tv_of.pack(fill="both", expand=True, padx=8, pady=8)
-
-        pr_ref = self._get_prod_ref()
-        rows_all_of = [r for _, r in self._data_rows_cache]
-        for row in rows_all_of:
-            try:
-                row_date2 = _row_date(row[1])
-                if row_date2 not in _shift_dates or str(row[3] or "").strip() != pilot:
-                    continue
-            except Exception:
-                continue
-            try:
-                arr_s = sum(_hms_to_sec(str(row[ci] or ""))
-                            for ci in range(38, 56) if ci < len(row) and row[ci])
-                rat_s = sum(_hms_to_sec(str(row[ci] or ""))
-                            for ci in range(33, 38) if ci < len(row) and row[ci])
-                eq = float(str(row[15] or 0).replace(",", ".") or 0)
-                ps = _hms_to_sec(str(row[16] or ""))
-                trs_of_str = "—"
-                if pr_ref > 0 and ps > 0 and eq > 0:
-                    trs_of_str = f"{eq / (pr_ref * ps / 28800) * 100:.0f}%"
-                tv_of.insert("", "end", values=(
-                    str(row[0] or "—"),
-                    str(row[17] or "—")[:8],
-                    str(row[18] or "—")[:8],
-                    str(row[16] or "—")[:8],
-                    str(row[13] or "—"),
-                    str(row[14] or "—"),
-                    f"{eq:.0f}" if eq else "—",
-                    trs_of_str,
-                    fmt(int(arr_s)) if arr_s else "—",
-                    fmt(int(rat_s)) if rat_s else "—",
-                ))
-            except Exception:
-                pass
-
-        # Alternate row colors
-        tv_of.tag_configure("odd",  background="#f8faff")
-        tv_of.tag_configure("even", background=WHITE)
-        for i, item in enumerate(tv_of.get_children()):
-            tv_of.item(item, tags=("odd" if i % 2 else "even",))
-
-        # ── Action footer ─────────────────────────────────────────────────────
-        footer = tk.Frame(ov, bg="#e8edf5", height=56)
+        # Footer buttons
+        footer = tk.Frame(ov, bg="#1e3a5f", height=52)
         footer.pack(fill="x", side="bottom")
         footer.pack_propagate(False)
 
@@ -6747,21 +6356,18 @@ Arrêts imputés au TRS (temps perdu) :
             self._show_main()
 
         tk.Button(footer, text="✏  Modifier la durée",
-                  command=_modifier_duree, bg=NAVY_L, fg=WHITE,
+                  command=_modifier_duree, bg="#2563eb", fg=WHITE,
                   font=("Arial", 10, "bold"), relief="flat",
-                  padx=12, pady=8, cursor="hand2").pack(side="left", padx=(12, 4), pady=8)
-
-        tk.Button(footer, text="↩  Retour (modifier déclarations)",
+                  padx=12, pady=6, cursor="hand2").pack(side="left", padx=(12, 4), pady=8)
+        tk.Button(footer, text="↩  Retour",
                   command=lambda: ov.destroy(),
-                  bg=LGRAY, fg=DARK,
-                  font=("Arial", 10), relief="flat",
-                  padx=12, pady=8, cursor="hand2").pack(side="left", padx=4, pady=8)
+                  bg="#475569", fg=WHITE, font=("Arial", 10), relief="flat",
+                  padx=12, pady=6, cursor="hand2").pack(side="left", padx=4, pady=8)
 
         if non_declare_s > 60:
             _nd_h = int(non_declare_s) // 3600
             _nd_m = (int(non_declare_s) % 3600) // 60
             _nd_label = f"{_nd_h}h{_nd_m:02d}min" if _nd_h > 0 else f"{_nd_m}min"
-
             def _valider_etat():
                 path = self.cfg.get("db_path", "")
                 if path and os.path.exists(path):
@@ -6782,17 +6388,332 @@ Arrêts imputés au TRS (temps perdu) :
                     except Exception as ex:
                         _toast(self.root, f"Erreur Excel : {ex}", bg=C_RED, duration=3000)
                 _deconnecter_et_quitter()
-
             tk.Button(footer,
                       text=f"✔  Valider en l'état  ({_nd_label} → « Non défini »)",
                       command=_valider_etat, bg=GREEN, fg=WHITE,
                       font=("Arial", 10, "bold"), relief="flat",
-                      padx=14, pady=8, cursor="hand2").pack(side="right", padx=12, pady=8)
+                      padx=14, pady=6, cursor="hand2").pack(side="right", padx=12, pady=8)
         else:
             tk.Button(footer, text="✔  Valider et clôturer le poste",
                       command=_deconnecter_et_quitter, bg=GREEN, fg=WHITE,
                       font=("Arial", 10, "bold"), relief="flat",
-                      padx=14, pady=8, cursor="hand2").pack(side="right", padx=12, pady=8)
+                      padx=14, pady=6, cursor="hand2").pack(side="right", padx=12, pady=8)
+
+        # ── Body — grille 4 lignes x 3 colonnes, tout visible ───────────────────
+        body = tk.Frame(ov, bg="#0d2040")
+        body.pack(fill="both", expand=True, padx=6, pady=4)
+
+        # Colonnes : info (col 0, 1) | gauge+kpi (col 2)
+        # Lignes   : résumé (0) | timeline (1) | analyses (2) | OF (3)
+        body.columnconfigure(0, weight=2)
+        body.columnconfigure(1, weight=2)
+        body.columnconfigure(2, weight=2)
+        body.rowconfigure(0, weight=3)   # résumé
+        body.rowconfigure(1, weight=2)   # timeline
+        body.rowconfigure(2, weight=3)   # analyses
+        body.rowconfigure(3, weight=2)   # OF table
+
+        # ── ZONE 0 gauche : tableau infos ───────────────────────────────────────
+        info_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
+        info_f.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=(0, 3), pady=(0, 3))
+        tk.Frame(info_f, bg=NAVY, height=3).pack(fill="x")
+        li = tk.Frame(info_f, bg=WHITE)
+        li.pack(fill="both", expand=True, padx=10, pady=6)
+
+        def _ri(lbl, val, vc=DARK, bold=False, sep=False):
+            if sep:
+                tk.Frame(li, bg=LGRAY, height=1).pack(fill="x", pady=(4, 2))
+                return
+            f = tk.Frame(li, bg=WHITE)
+            f.pack(fill="x", pady=1)
+            tk.Label(f, text=lbl, bg=WHITE, fg=GRAY,
+                     font=("Arial", 9), width=22, anchor="w").pack(side="left")
+            tk.Label(f, text=str(val), bg=WHITE, fg=vc,
+                     font=("Arial", 10, "bold" if bold else "normal")).pack(side="left")
+
+        _ri("Date",              _date_display,              DARK)
+        _ri("Pilote",            pilot or "—",               NAVY, bold=True)
+        _ri("Poste",             poste_nom or "—",           NAVY_L)
+        _ri("Durée théorique",   fmt(duree_theorique_s),     DARK)
+        _ri(None, None, sep=True)
+        _ri("OF déclarés",       nb_of,                      NAVY, bold=True)
+        _ri("Qté fabriquée",     total_qte,                  GREEN, bold=True)
+        _ri("Équivalence totale",f"{total_equiv:.0f}",       GREEN)
+        _ri("Moy. pièces / OF",  f"{avg_of_poste:.1f}" if nb_of > 0 else "—", DARK)
+        _ri(None, None, sep=True)
+        _ri("Total production",  fmt(total_prod_s),          GREEN)
+        _ri("Total arrêts panne",fmt(total_panne_s),
+            C_RED if total_panne_s > 0 else DARK, bold=(total_panne_s > 0))
+        _ri("Total rattrapages", fmt(total_ratt_s),
+            C_RATT if total_ratt_s > 0 else DARK)
+        _ri("Total pauses",      fmt(total_pause_s),         GRAY)
+        _ri("Total réunions",    fmt(total_reunion_s),       GRAY)
+        _ri("Total déclaré",     fmt(total_declare_s),       DARK, bold=True)
+        nc_col = C_RED if non_declare_s > 60 else DARK
+        _ri("Durée non déclarée",fmt(non_declare_s),         nc_col, bold=(non_declare_s > 60))
+        _ri(None, None, sep=True)
+        trs_col = GREEN if trs_poste >= 75 else (C_RATT if trs_poste >= 55 else C_RED)
+        _ri("TRS du poste",
+            f"{trs_poste:.1f}%" if trs_poste >= 0 else "—",
+            trs_col, bold=True)
+
+        # Alerte durée
+        delta_s = total_declare_s - duree_theorique_s
+        if abs(delta_s) > 300:
+            if delta_s < 0:
+                msg = f"⚠  DURÉE INSUFFISANTE — {fmt(abs(int(delta_s)))} de moins"
+                alrt_bg, alrt_fg = "#fee2e2", "#991b1b"
+            else:
+                msg = f"⚠  DURÉE DÉPASSÉE — {fmt(int(delta_s))} de plus"
+                alrt_bg, alrt_fg = "#fff3cd", "#92400e"
+            alrt = tk.Frame(li, bg=alrt_bg, highlightthickness=2, highlightbackground=alrt_fg)
+            alrt.pack(fill="x", pady=(6, 0))
+            tk.Label(alrt, text=msg, bg=alrt_bg, fg=alrt_fg,
+                     font=("Arial", 13, "bold"), justify="center",
+                     padx=8, pady=6).pack(fill="x")
+
+        # ── ZONE 0 droite : jauge TRS + KPI cards ───────────────────────────────
+        gauge_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
+        gauge_f.grid(row=0, column=2, sticky="nsew", padx=(3, 0), pady=(0, 3))
+        tk.Frame(gauge_f, bg=NAVY_L, height=3).pack(fill="x")
+        tk.Label(gauge_f, text="TRS du poste", bg=WHITE, fg=GRAY,
+                 font=("Arial", 10, "bold")).pack(pady=(6, 0))
+        g_poste = Gauge(gauge_f, bg=WHITE, width=200, height=160, highlightthickness=0)
+        g_poste.pack(pady=2)
+        g_poste.update_gauge(max(0.0, trs_poste) if trs_poste >= 0 else 0.0,
+                             f"{trs_poste:.1f}%" if trs_poste >= 0 else "—")
+        tk.Frame(gauge_f, bg=LGRAY, height=1).pack(fill="x", padx=8, pady=4)
+        kpi_data = [
+            ("OF déclarés",  str(nb_of),              "#2563eb"),
+            ("Qté fab.",     str(total_qte),           "#16a34a"),
+            ("Équiv.",       f"{total_equiv:.0f}",     "#7c3aed"),
+            ("Moy/OF",       f"{avg_of_poste:.1f}" if nb_of else "—", "#0891b2"),
+        ]
+        kg = tk.Frame(gauge_f, bg=WHITE)
+        kg.pack(fill="x", padx=6, pady=4)
+        for idx, (kl, kv, kc) in enumerate(kpi_data):
+            kg.columnconfigure(idx % 2, weight=1)
+            kf = tk.Frame(kg, bg=kc)
+            kf.grid(row=idx // 2, column=idx % 2, sticky="ew", padx=3, pady=3, ipadx=4, ipady=4)
+            tk.Label(kf, text=kv, bg=kc, fg=WHITE, font=("Arial", 13, "bold")).pack()
+            tk.Label(kf, text=kl, bg=kc, fg="#e0f2fe", font=("Arial", 8)).pack()
+
+        # ── ZONE 1 : Chronologie matplotlib ─────────────────────────────────────
+        chron_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
+        chron_f.grid(row=1, column=0, columnspan=3, sticky="nsew", pady=(0, 3))
+
+        def _build_chron(parent):
+            try:
+                import matplotlib
+                matplotlib.use("TkAgg")
+                import matplotlib.pyplot as plt
+                import matplotlib.patches as mpatches
+                from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            except ImportError:
+                tk.Label(parent, text="matplotlib manquant", bg=WHITE, fg=GRAY,
+                         font=("Arial", 10)).pack(expand=True)
+                return
+            t0 = login_dt.timestamp(); t1 = now.timestamp()
+            span = max(t1 - t0, 1)
+            fig, ax = plt.subplots(figsize=(14, 1.6))
+            fig.patch.set_facecolor("white")
+            ax.set_facecolor("#f8faff")
+            ax.barh(0, 100, left=0, height=0.6, color="#e2e8f0", edgecolor="none", zorder=1)
+            def _p(dt): return (dt.timestamp() - t0) / span * 100
+            for p in self._of_periods:
+                ps2, pe2 = p.get("start"), p.get("end") or now
+                if ps2 and ps2 >= login_dt:
+                    x0, x1 = _p(ps2), _p(min(pe2, now))
+                    ax.barh(0, max(x1-x0, 0.2), left=x0, height=0.6,
+                            color="#16a34a", edgecolor="white", lw=0.5, zorder=2)
+            for ev in self._tl_events:
+                if ev.get("cat") in ("ratt", "pb"):
+                    es, ee = ev.get("start"), ev.get("end") or now
+                    if es and es >= login_dt:
+                        x0, x1 = _p(es), _p(min(ee, now))
+                        ax.barh(0, max(x1-x0, 0.3), left=x0, height=0.6,
+                                color="#dc2626" if ev["cat"]=="pb" else "#f59e0b",
+                                edgecolor="white", lw=0.5, zorder=3)
+            for ps2, pe2 in self._pause_periods:
+                if ps2 >= login_dt:
+                    x0, x1 = _p(ps2), _p(min(pe2, now))
+                    ax.barh(0, max(x1-x0, 0.3), left=x0, height=0.6,
+                            color="#3b82f6", edgecolor="white", lw=0.5, zorder=3)
+            patches = [mpatches.Patch(color=c, label=l) for c, l in
+                       [("#16a34a","Production"),("#dc2626","Panne"),
+                        ("#f59e0b","Rattrapage"),("#3b82f6","Pause")]]
+            ax.legend(handles=patches, loc="upper center", ncol=4,
+                      fontsize=8, framealpha=0.9, bbox_to_anchor=(0.5, 1.5))
+            n = 10
+            ax.set_xticks([i*100/n for i in range(n+1)])
+            ax.set_xticklabels(
+                [datetime.datetime.fromtimestamp(t0+i*span/n).strftime("%H:%M")
+                 for i in range(n+1)], fontsize=8)
+            ax.set_yticks([])
+            ax.set_xlim(0, 100)
+            ax.spines[["top","left","right"]].set_visible(False)
+            ax.spines["bottom"].set_color("#cbd5e1")
+            ax.set_title("Chronologie du poste", fontsize=10,
+                         fontweight="bold", color="#1e3a5f", pad=18)
+            fig.tight_layout(pad=0.5)
+            cv = FigureCanvasTkAgg(fig, master=parent)
+            cv.draw()
+            cv.get_tk_widget().pack(fill="both", expand=True)
+            plt.close(fig)
+
+        _build_chron(chron_f)
+
+        # ── ZONE 2 : Analyses (3 graphiques côte à côte) ────────────────────────
+        ana_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
+        ana_f.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=(0, 3))
+
+        def _build_ana(parent):
+            try:
+                import matplotlib
+                matplotlib.use("TkAgg")
+                import matplotlib.pyplot as plt
+                from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            except ImportError:
+                tk.Label(parent, text="matplotlib manquant", bg=WHITE, fg=GRAY,
+                         font=("Arial", 10)).pack(expand=True)
+                return
+            stop_totals: dict = {}
+            for _, row in self._data_rows_cache:
+                rd = _row_date(row[1])
+                if rd not in _shift_dates or str(row[3] or "").strip() != pilot:
+                    continue
+                for ci in range(33, 56):
+                    if ci < len(row) and row[ci]:
+                        lbl_s = EVENTS[ci-33][0] if (ci-33) < len(EVENTS) else f"Col{ci}"
+                        sv = _hms_to_sec(str(row[ci]))
+                        if sv > 0:
+                            stop_totals[lbl_s] = stop_totals.get(lbl_s, 0) + sv
+
+            prod_theo = (self._get_prod_ref() * duree_theorique_s / 28800.0
+                         if duree_theorique_s > 0 else 0)
+
+            fig, axes = plt.subplots(1, 3, figsize=(14, 3.2))
+            fig.patch.set_facecolor("white")
+
+            # Pareto
+            ax1 = axes[0]; ax1.set_facecolor("#f8faff")
+            if stop_totals:
+                sv2 = sorted(stop_totals.items(), key=lambda x: -x[1])[:8]
+                lbls = [s[0][:20] for s in sv2]; vals = [s[1]/60 for s in sv2]
+                cols = ["#dc2626","#ef4444","#f87171","#fb923c",
+                        "#fbbf24","#facc15","#a3e635","#4ade80"]
+                b = ax1.barh(lbls[::-1], vals[::-1],
+                             color=cols[:len(lbls)][::-1], edgecolor="white", lw=0.5)
+                ax1.bar_label(b, fmt="%.0f min", padding=2, fontsize=7)
+                ax1.spines[["top","right"]].set_visible(False)
+                ax1.tick_params(labelsize=7)
+                ax1.set_xlabel("min", fontsize=8)
+            else:
+                ax1.text(0.5, 0.5, "Aucun arrêt", ha="center", va="center",
+                         fontsize=10, color="#94a3b8", transform=ax1.transAxes)
+                ax1.axis("off")
+            ax1.set_title("Pareto arrêts", fontsize=10, fontweight="bold", color="#1e3a5f")
+
+            # Répartition pie
+            ax2 = axes[1]
+            pie_raw = [("Production",total_prod_s,"#16a34a"),
+                       ("Pannes",total_panne_s,"#dc2626"),
+                       ("Rattrapages",total_ratt_s,"#f59e0b"),
+                       ("Pauses",total_pause_s,"#3b82f6"),
+                       ("Réunions",total_reunion_s,"#8b5cf6"),
+                       ("Non déclaré",max(0.0,non_declare_s),"#94a3b8")]
+            pie_d = [(l,v,c) for l,v,c in pie_raw if v > 30]
+            if pie_d:
+                wedges, _ = ax2.pie([p[1] for p in pie_d],
+                                    colors=[p[2] for p in pie_d],
+                                    startangle=90,
+                                    wedgeprops={"edgecolor":"white","linewidth":1.5})
+                ax2.legend(wedges, [p[0] for p in pie_d],
+                           loc="lower center", bbox_to_anchor=(0.5,-0.15),
+                           ncol=2, fontsize=7, framealpha=0.8)
+            else:
+                ax2.text(0.5,0.5,"Pas de données",ha="center",va="center",
+                         fontsize=10,color="#94a3b8",transform=ax2.transAxes)
+            ax2.set_title("Répartition du temps", fontsize=10, fontweight="bold", color="#1e3a5f")
+
+            # Prod réelle vs théorique
+            ax3 = axes[2]; ax3.set_facecolor("#f8faff")
+            brs = ax3.bar(["Théorique","Réelle"],
+                          [prod_theo, total_equiv],
+                          color=["#1e3a5f",
+                                 "#16a34a" if total_equiv >= prod_theo*0.9 else "#dc2626"],
+                          width=0.4, edgecolor="white")
+            for br in brs:
+                ax3.text(br.get_x()+br.get_width()/2,
+                         br.get_height()+max(prod_theo,total_equiv,1)*0.02,
+                         f"{br.get_height():.0f}",
+                         ha="center", fontsize=10, fontweight="bold", color="#1e3a5f")
+            if prod_theo > 0:
+                pct = total_equiv/prod_theo*100
+                ax3.text(0.97, 0.95, f"{pct:.1f}%",
+                         transform=ax3.transAxes, ha="right", va="top",
+                         fontsize=12, fontweight="bold",
+                         color="#16a34a" if pct >= 90 else "#dc2626")
+            ax3.set_ylabel("Équivalences", fontsize=8)
+            ax3.spines[["top","right"]].set_visible(False)
+            ax3.tick_params(labelsize=8)
+            ax3.set_title("Prod. réelle vs théorique", fontsize=10, fontweight="bold", color="#1e3a5f")
+
+            fig.tight_layout(pad=1.5)
+            cv = FigureCanvasTkAgg(fig, master=parent)
+            cv.draw()
+            cv.get_tk_widget().pack(fill="both", expand=True)
+            plt.close(fig)
+
+        _build_ana(ana_f)
+
+        # ── ZONE 3 : Détail OFs ──────────────────────────────────────────────────
+        of_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
+        of_f.grid(row=3, column=0, columnspan=3, sticky="nsew")
+
+        cols_of = ("N° OF","H.Début","H.Fin","Durée OF","Qté fab","Qté emb","Équiv","TRS OF","Arrêts","Rattrapages")
+        tv = ttk.Treeview(of_f, columns=cols_of, show="headings", height=5)
+        cws = [90, 70, 70, 75, 65, 65, 65, 65, 90, 90]
+        for col, w in zip(cols_of, cws):
+            tv.heading(col, text=col)
+            tv.column(col, width=w, anchor="center", minwidth=w)
+        sb = ttk.Scrollbar(of_f, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        tv.pack(fill="both", expand=True)
+
+        pr_ref = self._get_prod_ref()
+        for _, row in self._data_rows_cache:
+            try:
+                if _row_date(row[1]) not in _shift_dates or str(row[3] or "").strip() != pilot:
+                    continue
+                arr_s = sum(_hms_to_sec(str(row[ci] or ""))
+                            for ci in range(38, 56) if ci < len(row) and row[ci])
+                rat_s = sum(_hms_to_sec(str(row[ci] or ""))
+                            for ci in range(33, 38) if ci < len(row) and row[ci])
+                eq = float(str(row[15] or 0).replace(",", ".") or 0)
+                ps = _hms_to_sec(str(row[16] or ""))
+                trs_of_str = "—"
+                if pr_ref > 0 and ps > 0 and eq > 0:
+                    trs_of_str = f"{eq/(pr_ref*ps/28800)*100:.0f}%"
+                tv.insert("", "end", values=(
+                    str(row[0] or "—"),
+                    str(row[17] or "—")[:8],
+                    str(row[18] or "—")[:8],
+                    str(row[16] or "—")[:8],
+                    str(row[13] or "—"),
+                    str(row[14] or "—"),
+                    f"{eq:.0f}" if eq else "—",
+                    trs_of_str,
+                    fmt(int(arr_s)) if arr_s else "—",
+                    fmt(int(rat_s)) if rat_s else "—",
+                ))
+            except Exception:
+                pass
+        tv.tag_configure("odd", background="#f8faff")
+        tv.tag_configure("even", background=WHITE)
+        for i, item in enumerate(tv.get_children()):
+            tv.item(item, tags=("odd" if i % 2 else "even",))
 
     def _write_trs_sheet(self, wb, today_str, poste_nom, pilot_name, copilot_name,
                           nb_pers, total_prod_s, total_panne_s, total_ratt_s,
