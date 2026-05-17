@@ -6226,6 +6226,14 @@ Arrêts imputés au TRS (temps perdu) :
             _copilot = self._saved_form_data.get("copilote", "")
             _nb_pers = self._saved_form_data.get("nb_pers", "")
             _today_s = datetime.date.today().strftime("%d/%m/%Y")
+            _pause_max_f = int(self.cfg.get("pause_max_min", 20)) * 60
+            _meet_tol_f  = int(self.cfg.get("meeting_tol_min", 5)) * 60
+            _total_decl_f = (total_prod_s + total_panne_s + total_ratt_s
+                             + total_pause_s + total_reunion_s)
+            _prevu_f = (min(total_pause_s, _pause_max_f)
+                        + min(total_reunion_s, _meet_tol_f))
+            _depasse_f = (max(0.0, total_pause_s - _pause_max_f)
+                          + max(0.0, total_reunion_s - _meet_tol_f))
             def _bg_trs():
                 try:
                     with self._excel_lock:
@@ -6236,7 +6244,9 @@ Arrêts imputés au TRS (temps perdu) :
                             wb, _today_s, poste_nom, pilot, _copilot,
                             _nb_pers, total_prod_s, total_panne_s, total_ratt_s,
                             total_pause_s, total_reunion_s, nb_of,
-                            total_qte, total_equiv, trs_poste)
+                            total_qte, total_equiv, trs_poste,
+                            _total_decl_f, duree_theorique_s,
+                            _prevu_f, _depasse_f)
                         wb.save(path)
                     trs_fresh = []
                     try:
@@ -6737,22 +6747,34 @@ Arrêts imputés au TRS (temps perdu) :
     def _write_trs_sheet(self, wb, today_str, poste_nom, pilot_name, copilot_name,
                           nb_pers, total_prod_s, total_panne_s, total_ratt_s,
                           total_pause_s, total_reunion_s, nb_of, total_qte,
-                          total_equiv, trs_val):
+                          total_equiv, trs_val,
+                          total_declare_s=0.0, duree_theo_s=0.0,
+                          temps_prevu_s=0.0, depassement_prevu_s=0.0):
         """Écrit ou met à jour une ligne dans l'onglet TRS du workbook."""
+        trs_headers = [
+            "Date", "Poste", "Pilote", "Co-Pilote", "Nb Personnes",
+            "Total prod", "Total arrêts panne", "Total arrêt rattrapage",
+            "Total pauses", "Total réunions", "Nombre d'OF",
+            "Qté produite réel", "Équivalence", "Nb moyen pièces/OF", "TRS poste",
+            "Total temps déclaré", "Total temps attendu",
+            "Total temps prévu", "Dépassement temps prévu",
+        ]
         if "TRS" not in wb.sheetnames:
             ws_trs = wb.create_sheet("TRS")
-            trs_headers = ["Date", "Poste", "Pilote", "Co-Pilote", "Nb Personnes",
-                           "Total prod", "Total arrêts panne", "Total arrêt rattrapage",
-                           "Total pauses", "Total réunions", "Nombre d'OF",
-                           "Qté produite réel", "Équivalence", "Nb moyen pièces/OF", "TRS poste"]
             ws_trs.append(trs_headers)
             self._format_row(ws_trs, 1)
         else:
             ws_trs = wb["TRS"]
+            # Ajouter les nouvelles colonnes si la feuille est ancienne
+            existing_hdrs = [c.value for c in next(ws_trs.iter_rows(max_row=1))]
+            for h in trs_headers:
+                if h not in existing_hdrs:
+                    col_n = len(existing_hdrs) + 1
+                    ws_trs.cell(1, col_n).value = h
+                    existing_hdrs.append(h)
 
         avg_of = round(total_qte / nb_of, 1) if nb_of > 0 else 0
 
-        # Chercher si une ligne existe déjà pour ce pilote/poste/date
         existing_row_idx = None
         for i, r in enumerate(ws_trs.iter_rows(min_row=2, values_only=True), start=2):
             if (r and str(r[0] or "")[:10] == today_str
@@ -6765,7 +6787,10 @@ Arrêts imputés au TRS (temps perdu) :
                    fmt(int(total_prod_s)), fmt(int(total_panne_s)), fmt(int(total_ratt_s)),
                    fmt(int(total_pause_s)), fmt(int(total_reunion_s)), nb_of,
                    total_qte, round(total_equiv, 1), avg_of,
-                   f"{trs_val:.1f}%" if trs_val >= 0 else "—"]
+                   f"{trs_val:.1f}%" if trs_val >= 0 else "—",
+                   fmt(int(total_declare_s)), fmt(int(duree_theo_s)),
+                   fmt(int(temps_prevu_s)), fmt(int(depassement_prevu_s)),
+                   ]
 
         if existing_row_idx:
             for ci, val in enumerate(trs_row, start=1):
