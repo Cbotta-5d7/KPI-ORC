@@ -5639,12 +5639,11 @@ Arrêts imputés au TRS (temps perdu) :
         _mtol_s2 = int(self.cfg.get("meeting_tol_min", 5)) * 60
         _reunion_s2 = _hms_to_sec(_min_str_to_hms(v.get("manquant_pers", "")))
         _reunion_planned_s = min(_reunion_s2, _mtol_s2)   # Portion planifiée exclue TRS
-        # Temps d'ouverture = of_s - temps planifiés
-        _planned_total_s = _nett_planned_s + _reunion_planned_s
-        _ouverture_s = max(1.0, of_s - _planned_total_s)
+        # TRS OF : equiv / (prod_ref * of_s / 28800)
+        # of_s inclut déjà la déduction des pauses planifiées — pas de déduction supplémentaire
         trs_pct  = -1.0
-        if prod_ref > 0 and _ouverture_s > 0:
-            expected = prod_ref * _ouverture_s / 28800.0
+        if prod_ref > 0 and of_s > 0:
+            expected = prod_ref * of_s / 28800.0
             trs_pct  = (equiv / expected * 100.0) if expected > 0 else -1.0
 
         # TRS du poste (12h) = historique Excel + déclaration actuelle
@@ -6092,12 +6091,10 @@ Arrêts imputés au TRS (temps perdu) :
                                             and str(_er[2] or "")[:10] == _today_str
                                             and str(_er[4] or "") == _pilot_nm):
                                         _t_pause += _hms_to_sec(str(_er[18] or ""))
-                                # TRS poste
+                                # TRS poste : sum(equiv) / (prod_ref * sum(of_s) / 28800)
+                                # _t_prod = sum(col16) inclut déjà la déduction des pauses par OF
                                 _prod_ref_trs = self._get_prod_ref()
-                                _pause_max_trs = int(self.cfg.get("pause_max_min", 20)) * 60
-                                _meet_tol_trs  = int(self.cfg.get("meeting_tol_min", 5)) * 60
-                                _planned_trs   = min(_t_pause, _pause_max_trs) + min(_t_reunion, _meet_tol_trs)
-                                _ouv_trs       = max(1.0, _t_prod - _planned_trs)
+                                _ouv_trs = max(1.0, _t_prod)
                                 _trs_poste_val = -1.0
                                 if _prod_ref_trs > 0 and _t_equiv > 0:
                                     _exp_trs = _prod_ref_trs * _ouv_trs / 28800.0
@@ -6251,15 +6248,12 @@ Arrêts imputés au TRS (temps perdu) :
         duree_theorique_s = duree_theorique_min * 60
         non_declare_s = max(0.0, duree_theorique_s - total_declare_s)
 
-        # Calcul TRS poste
+        # Calcul TRS poste : sum(equiv) / (prod_ref * sum(of_s) / 28800)
+        # total_prod_s = sum(col16) = durée productive nette, pauses déjà déduites par OF
         prod_ref = self._get_prod_ref()
-        _pause_max_s2 = int(self.cfg.get("pause_max_min", 20)) * 60
-        _meeting_tol_s2 = int(self.cfg.get("meeting_tol_min", 5)) * 60
-        _planned_s2 = min(total_pause_s, _pause_max_s2) + min(total_reunion_s, _meeting_tol_s2)
-        _ouverture_s2 = max(1.0, duree_theorique_s - _planned_s2)
         trs_poste = -1.0
-        if prod_ref > 0 and total_equiv > 0:
-            expected2 = prod_ref * _ouverture_s2 / 28800.0
+        if prod_ref > 0 and total_equiv > 0 and total_prod_s > 0:
+            expected2 = prod_ref * total_prod_s / 28800.0
             trs_poste = total_equiv / expected2 * 100.0 if expected2 > 0 else -1.0
 
         avg_of_poste = round(total_qte / nb_of, 1) if nb_of > 0 else 0
