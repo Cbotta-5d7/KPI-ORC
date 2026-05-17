@@ -732,6 +732,10 @@ class App:
         self._loading_canvas   = None
         self._loading_anim_id  = None
         self._loading_msg_lbl  = None
+        self._review_full_data  = None   # Toutes les données Data
+        self._review_full_evts  = None   # Tous les événements
+        self._review_full_trs   = None   # Toutes les lignes TRS
+        self._review_cache_ts   = 0.0    # Timestamp du dernier chargement complet
 
         self._load_lists()
         self._load_history_from_excel()
@@ -2529,6 +2533,13 @@ Arrêts imputés au TRS (temps perdu) :
         except Exception:
             pass
 
+        # Régénère le HTML toutes les 30 secondes (supervision live)
+        if self._tick_count % 30 == 0 and self.cfg.get("db_path"):
+            try:
+                self._generate_dashboard_html()
+            except Exception:
+                pass
+
         if self._after_id: self.root.after_cancel(self._after_id)
         self._after_id = self.root.after(1000, self._tick)
 
@@ -2782,7 +2793,7 @@ Arrêts imputés au TRS (temps perdu) :
         """Relit Excel et rafraîchit tous les onglets du dashboard."""
         if self._mode != "main":
             return
-        path = self.cfg.get("db_path", "")
+        path = self._get_read_path()
         if not path or not os.path.exists(path):
             return
 
@@ -2810,14 +2821,23 @@ Arrêts imputés au TRS (temps perdu) :
             except Exception:
                 pass
             final = rows[-50:] if len(rows) > 50 else rows
-            self.root.after(0, lambda: self._apply_fresh_data(final, events, trs_data=trs_data))
+            self.root.after(0, lambda: self._apply_fresh_data(
+                final, events, trs_data=trs_data,
+                full_data=rows, full_evts=events))
 
         threading.Thread(target=_bg, daemon=True).start()
 
-    def _apply_fresh_data(self, rows, events=None, trs_data=None):
+    def _apply_fresh_data(self, rows, events=None, trs_data=None,
+                           full_data=None, full_evts=None):
         if self._mode != "main":
             return
         self._data_rows_cache = rows
+        if full_data is not None:
+            import time as _t
+            self._review_full_data = full_data
+            self._review_full_evts = full_evts or events or []
+            self._review_full_trs  = trs_data or []
+            self._review_cache_ts  = _t.time()
         if events is not None:
             self._events_cache = events
         if trs_data is not None:
@@ -7201,6 +7221,8 @@ Arrêts imputés au TRS (temps perdu) :
         if not path:
             return
         out_dir = os.path.dirname(path) or "."
+        # Utilise la copie dashboard si disponible (lecture seule, non-bloquante)
+        read_path = self._get_read_path()
         html_path = os.path.join(out_dir, "KPI_Dashboard.html")
         now_str = _dt.datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
 
@@ -7245,9 +7267,7 @@ Arrêts imputés au TRS (temps perdu) :
             return f'<span class="badge badge-other">{_esc(label)}</span>'
 
         # ── collect last 3 postes ─────────────────────────────────────────────
-        if not self._trs_cache:
-            return
-        last3 = list(self._trs_cache[-3:])[::-1]  # newest first
+        last3 = list(self._trs_cache[-3:])[::-1] if self._trs_cache else []
 
         postes = []
         for trs_row in last3:
@@ -7276,19 +7296,16 @@ Arrêts imputés au TRS (temps perdu) :
                 "trs_raw":   _s(trs_row[19]),
                 "trs_val":   _trs_f(trs_row[19]),
             }
-            d10 = str(trs_row[0] or "")[:10]
+            d10 = _row_date(trs_row[0])
             p["ofs"] = [rd for _, rd in self._data_rows_cache
-                        if str(rd[1] or "")[:10] == d10
+                        if _row_date(rd[1]) == d10
                         and str(rd[2] or "") == p["poste"]
                         and str(rd[3] or "") == p["pilote"]]
             p["evts"] = [r for r in self._events_cache
-                         if str(r[2] or "")[:10] == d10
+                         if _row_date(r[2]) == d10
                          and str(r[3] or "") == p["poste"]
                          and str(r[4] or "") == p["pilote"]]
             postes.append(p)
-
-        if not postes:
-            return
 
         # ── chart data ────────────────────────────────────────────────────────
         chart_labels = [f"{p['date'][:5]}  {p['poste']}  {p['pilote']}" for p in postes]
@@ -7495,13 +7512,269 @@ new Chart(document.getElementById('gauge{i}'), {{
         if not evts_html:
             evts_html = '<tr><td colspan="9" class="empty">Aucun événement enregistré</td></tr>'
 
+        # ── SUPERVISION : lecture session ─────────────────────────────────────
+        import json as _json2
+        session_data = {}
+        try:
+            if os.path.exists(SESSION_FILE):
+                with open(SESSION_FILE, "r", encoding="utf-8") as _sf:
+                    session_data = _json2.load(_sf)
+        except Exception:
+            pass
+
+        sup_prod_active = bool(session_data.get("of_start"))
+        sup_pilot       = session_data.get("logged_in_pilot") or "—"
+        sup_form        = session_data.get("form_data", {})
+        sup_poste       = str(sup_form.get("poste") or self._logged_in_poste or "—")
+        sup_is_paused   = session_data.get("is_paused", False)
+        sup_of_num      = str(sup_form.get("of_num") or "—")
+        sup_taille      = str(sup_form.get("taille") or "—")
+        sup_type_prod   = str(sup_form.get("type_prod") or "—")
+        sup_code        = str(sup_form.get("code_prod") or "—")
+        sup_of_start_dt = None
+        if session_data.get("of_start"):
+            try:
+                sup_of_start_dt = datetime.datetime.fromisoformat(session_data["of_start"])
+            except Exception:
+                pass
+        sup_timers = session_data.get("timers", {})
+        sup_events = session_data.get("tl_events", [])
+        sup_of_count = int(session_data.get("of_count_shift", 0))
+
+        # Arrêts actifs
+        EVENT_LABELS = {e[1]: e[0] for e in EVENTS}
+        active_stops_info = []
+        for k, tv in sup_timers.items():
+            if tv.get("running"):
+                elapsed_s = tv.get("elapsed", 0) or 0
+                if tv.get("start"):
+                    try:
+                        s_dt = datetime.datetime.fromisoformat(tv["start"])
+                        elapsed_s += (datetime.datetime.now() - s_dt).total_seconds()
+                    except Exception:
+                        pass
+                lbl = EVENT_LABELS.get(k, k)
+                cat = "pb" if k.startswith("pb_") else "ratt"
+                active_stops_info.append({"label": lbl, "elapsed": elapsed_s, "cat": cat})
+
+        has_active_stop = bool(active_stops_info)
+
+        # Statut
+        if has_active_stop:
+            sup_status       = "ARRÊT EN COURS"
+            sup_status_color = "#dc2626"
+            sup_status_bg    = "#fee2e2"
+            sup_status_icon  = "🔴"
+        elif sup_is_paused:
+            sup_status       = "EN PAUSE"
+            sup_status_color = "#d97706"
+            sup_status_bg    = "#fef3c7"
+            sup_status_icon  = "⏸"
+        elif sup_prod_active:
+            sup_status       = "PRODUCTION EN COURS"
+            sup_status_color = "#16a34a"
+            sup_status_bg    = "#f0fdf4"
+            sup_status_icon  = "▶"
+        else:
+            sup_status       = "EN ATTENTE"
+            sup_status_color = "#64748b"
+            sup_status_bg    = "#f1f5f9"
+            sup_status_icon  = "⏺"
+
+        # Durée de session
+        sup_session_dur = "—"
+        if sup_of_start_dt:
+            sup_session_dur = fmt((datetime.datetime.now() - sup_of_start_dt).total_seconds())
+
+        # Durée OF actuel
+        sup_of_dur = "—"
+        if sup_of_start_dt and not session_data.get("last_of_end"):
+            # still in current OF
+            periods = session_data.get("of_periods", [])
+            if periods:
+                last_p = periods[-1]
+                try:
+                    last_end_str = last_p.get("end")
+                    last_end = datetime.datetime.fromisoformat(last_end_str) if last_end_str else None
+                    if last_end is None:
+                        sup_of_dur = fmt((datetime.datetime.now() - sup_of_start_dt).total_seconds())
+                    else:
+                        sup_of_dur = fmt((datetime.datetime.now() - last_end).total_seconds())
+                except Exception:
+                    pass
+
+        # Déclarations d'aujourd'hui pour ce pilote/poste
+        today_d = _dt.date.today().strftime("%d/%m/%Y")
+        sup_decls = [rd for _, rd in self._data_rows_cache
+                     if _row_date(rd[1]) == today_d
+                     and (not sup_pilot or sup_pilot == "—"
+                          or str(rd[3] or "").strip() == sup_pilot)]
+        sup_decls_sorted = sorted(sup_decls,
+            key=lambda r: str(r[17] or ""), reverse=True)
+
+        # Calcul TRS live (depuis déclarations du jour)
+        sup_trs_val  = 0.0
+        sup_equiv_tot = 0.0
+        sup_qte_tot   = 0
+        prod_ref = self._get_prod_ref() if hasattr(self, "_get_prod_ref") else self._prod_ref_cached
+        if sup_decls:
+            for rd in sup_decls:
+                try:
+                    sup_equiv_tot += float(str(rd[15] or "0").replace(",", ".") or 0)
+                    sup_qte_tot   += int(str(rd[13] or "0") or 0)
+                except Exception:
+                    pass
+            if sup_of_start_dt and prod_ref and prod_ref > 0:
+                elapsed_s = (datetime.datetime.now() - sup_of_start_dt).total_seconds()
+                stop_s = sum((tv.get("elapsed") or 0) for tv in sup_timers.values())
+                pure_s = max(1, elapsed_s - stop_s)
+                expected = prod_ref * pure_s / 28800.0
+                if expected > 0:
+                    sup_trs_val = min(200, round(sup_equiv_tot / expected * 100, 1))
+
+        # Rows HTML déclarations
+        sup_decl_rows = ""
+        for rd in sup_decls_sorted:
+            try:
+                trs_of = 0.0
+                try:
+                    eq  = float(str(rd[15] or "0").replace(",", ".") or 0)
+                    ofs = _hms_to_sec(str(rd[16] or "0"))
+                    if ofs > 0 and prod_ref and prod_ref > 0:
+                        trs_of = min(200, round(eq / (prod_ref * ofs / 28800) * 100, 1))
+                except Exception:
+                    pass
+                trs_col = "#16a34a" if trs_of >= 80 else ("#d97706" if trs_of >= 60 else "#dc2626")
+                trs_cell = f'<span style="color:{trs_col};font-weight:700">{trs_of:.0f}%</span>' if trs_of > 0 else "—"
+                sup_decl_rows += f"""<tr>
+                  <td><b>{_esc(rd[0])}</b></td>
+                  <td>{_esc(rd[17])}</td><td>{_esc(rd[18])}</td>
+                  <td>{_esc(rd[6])}</td><td>{_esc(rd[7])}</td><td>{_esc(rd[8])}</td>
+                  <td>{_esc(rd[13])}</td><td>{_esc(rd[14])}</td>
+                  <td>{_esc(rd[15])}</td><td>{_esc(rd[16])}</td>
+                  <td><b>{_esc(rd[19])}</b></td>
+                  <td>{trs_cell}</td>
+                </tr>"""
+            except Exception:
+                continue
+        if not sup_decl_rows:
+            sup_decl_rows = '<tr><td colspan="12" class="empty">Aucune déclaration pour ce poste aujourd\'hui</td></tr>'
+
+        # Rows HTML événements d'aujourd'hui
+        sup_evts_today = [r for r in self._events_cache
+                          if _row_date(r[2]) == today_d
+                          and (not sup_pilot or sup_pilot == "—"
+                               or str(r[4] or "").strip() == sup_pilot)]
+        sup_evts_rows = ""
+        for ev in sorted(sup_evts_today, key=lambda r: str(r[16] or ""), reverse=True):
+            try:
+                dur_str = str(ev[18] if len(ev) > 18 else "")
+                is_open = not dur_str or dur_str.strip() in ("", "—", "00:00:00")
+                row_style = ' style="background:#fee2e2"' if is_open else ""
+                open_badge = ' <span style="background:#dc2626;color:white;border-radius:4px;padding:1px 6px;font-size:0.72em">EN COURS</span>' if is_open else ""
+                sup_evts_rows += f"""<tr{row_style}>
+                  <td>{_badge_evt(ev[0])}{open_badge}</td>
+                  <td>{_esc(ev[1])}</td>
+                  <td>{_esc(ev[16] if len(ev) > 16 else '')}</td>
+                  <td>{_esc(ev[17] if len(ev) > 17 else '')}</td>
+                  <td><b>{_esc(ev[18] if len(ev) > 18 else '')}</b></td>
+                  <td style="max-width:180px;white-space:normal">{_esc(ev[19] if len(ev) > 19 else '')}</td>
+                </tr>"""
+            except Exception:
+                continue
+        if not sup_evts_rows:
+            sup_evts_rows = '<tr><td colspan="6" class="empty">Aucun événement aujourd\'hui</td></tr>'
+
+        # Arrêts actifs HTML
+        active_stops_html = ""
+        for s in active_stops_info:
+            cat_col = "#dc2626" if s["cat"] == "pb" else "#d97706"
+            cat_lbl = "Panne" if s["cat"] == "pb" else "Rattrapage"
+            active_stops_html += f"""
+            <div class="active-stop-card" style="border-left-color:{cat_col}">
+              <div class="stop-cat" style="color:{cat_col}">{cat_lbl}</div>
+              <div class="stop-lbl">{_esc(s['label'])}</div>
+              <div class="stop-dur" style="color:{cat_col}">{fmt(s['elapsed'])}</div>
+            </div>"""
+
+        # Alerte HTML
+        alert_html = ""
+        if has_active_stop:
+            stops_list_txt = ", ".join(s["label"] for s in active_stops_info)
+            alert_html = f"""
+<div class="alarm-overlay" id="alarmBanner">
+  <div class="alarm-icon">⚠</div>
+  <div class="alarm-body">
+    <div class="alarm-title">ARRÊT EN COURS — INTERVENTION REQUISE</div>
+    <div class="alarm-detail">{_esc(stops_list_txt)}</div>
+    <div class="alarm-timer" id="alarmTimer">En attente de clôture…</div>
+  </div>
+</div>"""
+
+        # TRS color pour supervision
+        sup_trs_color = _trs_color(sup_trs_val)
+        sup_trs_display = f"{sup_trs_val:.1f}%" if sup_trs_val > 0 else "—"
+
+        # OF en cours complets / périodes
+        of_periods = session_data.get("of_periods", [])
+        of_periods_html = ""
+        for i, op in enumerate(reversed(of_periods[-10:]), 1):
+            of_lbl = str(op.get("of_num") or f"OF #{i}")
+            start_s = ""
+            end_s = ""
+            dur_s = "—"
+            try:
+                s_dt = datetime.datetime.fromisoformat(op["start"])
+                start_s = s_dt.strftime("%H:%M")
+                e_dt = datetime.datetime.fromisoformat(op["end"]) if op.get("end") else None
+                if e_dt:
+                    end_s = e_dt.strftime("%H:%M")
+                    dur_s = fmt((e_dt - s_dt).total_seconds())
+                else:
+                    end_s = "En cours"
+                    dur_s = fmt((datetime.datetime.now() - s_dt).total_seconds())
+            except Exception:
+                pass
+            row_style = ' style="background:#f0fdf4"' if i == 1 and not op.get("end") else ""
+            of_periods_html += f'<tr{row_style}><td><b>{_esc(of_lbl)}</b></td><td>{start_s}</td><td>{end_s}</td><td>{dur_s}</td></tr>'
+        if not of_periods_html:
+            of_periods_html = '<tr><td colspan="4" class="empty">Aucun OF cette session</td></tr>'
+
+        # ── REVUE COMPLÈTE : préparer les données JSON pour le JS ─────────────
+        import time as _time
+        rev_all_data = self._review_full_data or []
+        rev_all_evts = self._review_full_evts or []
+        rev_all_trs  = self._review_full_trs or self._trs_cache or []
+
+        # Si pas encore de données complètes, utiliser le cache courant
+        if not rev_all_data:
+            rev_all_data = [(i, rd) for i, rd in self._data_rows_cache]
+        if not rev_all_evts:
+            rev_all_evts = self._events_cache
+
+        def _to_str_row(r):
+            row = r[1] if isinstance(r, (list, tuple)) and len(r) == 2 and isinstance(r[0], int) else r
+            return [str(v or "") for v in (row + [None]*60)[:60]]
+
+        rev_data_js  = _json.dumps([_to_str_row(r) for r in rev_all_data], ensure_ascii=False)
+        rev_evts_js  = _json.dumps([[str(v or "") for v in (list(r) + [""]*22)[:22]] for r in rev_all_evts], ensure_ascii=False)
+        rev_trs_js   = _json.dumps([[str(v or "") for v in (list(r) + [""]*22)[:22]] for r in rev_all_trs], ensure_ascii=False)
+
+        # Listes déroulantes filtre
+        all_postes_rev  = sorted(set(str(r[1][2] if isinstance(r,(list,tuple)) and len(r)==2 else r[2] or "") for r in rev_all_data if r) - {""})
+        all_pilotes_rev = sorted(set(str(r[1][3] if isinstance(r,(list,tuple)) and len(r)==2 else r[3] or "") for r in rev_all_data if r) - {""})
+        rev_poste_opts  = "\n".join(f'<option value="{_esc(p)}">{_esc(p)}</option>' for p in all_postes_rev)
+        rev_pilote_opts = "\n".join(f'<option value="{_esc(p)}">{_esc(p)}</option>' for p in all_pilotes_rev)
+
+        rev_last_update = _dt.datetime.fromtimestamp(self._review_cache_ts).strftime("%d/%m/%Y %H:%M") if self._review_cache_ts else "—"
+
         # ── HTML complet ──────────────────────────────────────────────────────
         html = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="60">
-<title>KPI-ORC — Revue de poste</title>
+<meta http-equiv="refresh" content="30">
+<title>KPI-ORC — Dashboard & Supervision</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
@@ -7513,6 +7786,113 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: 
 .hdr h1 {{ font-size: 1.35em; font-weight: 800; }}
 .hdr .meta {{ font-size: 0.78em; color: rgba(255,255,255,0.75); margin-top: 2px; }}
 .countdown {{ font-size: 0.75em; color: #fbbf24; margin-top: 4px; }}
+
+/* ── Onglets ── */
+.tab-bar {{ background: #1e3a5f; display: flex; gap: 0; border-bottom: 3px solid #fbbf24; }}
+.tab-btn {{ padding: 12px 32px; border: none; background: transparent; color: rgba(255,255,255,0.6);
+            font-size: 0.9em; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
+            text-transform: uppercase; transition: all 0.2s; border-bottom: 3px solid transparent;
+            margin-bottom: -3px; }}
+.tab-btn:hover {{ color: white; background: rgba(255,255,255,0.08); }}
+.tab-btn.active {{ color: #fbbf24; border-bottom-color: #fbbf24; background: rgba(251,191,36,0.1); }}
+.tab-content {{ display: none; }}
+.tab-content.visible {{ display: block; }}
+
+/* ── Supervision ── */
+.sup-status-bar {{ padding: 18px 28px; display: flex; align-items: center; gap: 16px;
+                   border-bottom: 3px solid; transition: all 0.5s; }}
+.sup-status-icon {{ font-size: 2.2em; }}
+.sup-status-text {{ font-size: 1.6em; font-weight: 900; letter-spacing: 1px; }}
+.sup-status-sub  {{ font-size: 0.82em; opacity: 0.75; margin-top: 3px; }}
+
+.alarm-overlay {{ background: linear-gradient(135deg, #7f1d1d, #dc2626);
+                  color: white; padding: 20px 28px; display: flex; align-items: center; gap: 20px;
+                  animation: alarmPulse 1s infinite; border-bottom: 4px solid #fbbf24; }}
+.alarm-icon {{ font-size: 3em; animation: alarmShake 0.5s infinite; }}
+.alarm-title {{ font-size: 1.4em; font-weight: 900; letter-spacing: 1px; }}
+.alarm-detail {{ font-size: 1em; opacity: 0.9; margin-top: 4px; }}
+.alarm-timer {{ font-size: 0.82em; color: #fbbf24; margin-top: 6px; font-weight: 600; }}
+@keyframes alarmPulse {{ 0%,100% {{ opacity:1; }} 50% {{ opacity:0.82; }} }}
+@keyframes alarmShake {{
+  0%,100% {{ transform: rotate(0deg); }}
+  20%     {{ transform: rotate(-8deg); }}
+  60%     {{ transform: rotate(8deg); }}
+}}
+
+.sup-grid {{ display: grid; grid-template-columns: 340px 1fr; gap: 20px;
+             padding: 20px 28px; }}
+.sup-left {{ display: flex; flex-direction: column; gap: 16px; }}
+.sup-right {{ display: flex; flex-direction: column; gap: 16px; }}
+
+.sup-card {{ background: white; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+             border: 1px solid #e2e8f0; overflow: hidden; }}
+.sup-card-hdr {{ background: #1e3a5f; color: white; padding: 10px 16px;
+                 font-size: 0.8em; font-weight: 700; text-transform: uppercase;
+                 letter-spacing: 0.6px; display: flex; align-items: center; gap: 8px; }}
+.sup-card-body {{ padding: 16px; }}
+
+.sup-trs-big {{ font-size: 3.2em; font-weight: 900; text-align: center; padding: 12px 0 4px; }}
+.sup-trs-label {{ text-align: center; font-size: 0.72em; color: #94a3b8;
+                  text-transform: uppercase; letter-spacing: 1px; padding-bottom: 12px; }}
+.sup-kpi-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+                 background: #f1f5f9; border-top: 1px solid #f1f5f9; }}
+.sup-kpi-cell {{ background: white; padding: 10px 12px; }}
+.sup-kpi-lbl  {{ font-size: 0.63em; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; }}
+.sup-kpi-val  {{ font-size: 1.0em; font-weight: 700; color: #1e3a5f; margin-top: 3px; }}
+
+.active-stop-card {{ background: white; border-left: 5px solid; border-radius: 8px;
+                     padding: 12px 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                     display: flex; flex-direction: column; gap: 4px; }}
+.stop-cat {{ font-size: 0.65em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; }}
+.stop-lbl {{ font-size: 0.95em; font-weight: 700; color: #1e3a5f; }}
+.stop-dur {{ font-size: 1.3em; font-weight: 900; font-variant-numeric: tabular-nums; }}
+.active-stops-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr));
+                      gap: 10px; padding: 14px 16px; }}
+
+/* ── Revue complète ── */
+.rev-filters {{ background: #1e3a5f; padding: 14px 28px; display: flex; align-items: center;
+                gap: 16px; flex-wrap: wrap; }}
+.rev-filter-group {{ display: flex; align-items: center; gap: 6px; }}
+.rev-filter-group label {{ color: rgba(255,255,255,0.75); font-size: 0.8em; font-weight: 600;
+                           text-transform: uppercase; white-space: nowrap; }}
+.rev-filter-group input, .rev-filter-group select {{
+  padding: 5px 10px; border: none; border-radius: 6px; font-size: 0.85em;
+  background: rgba(255,255,255,0.12); color: white; outline: none;
+  border: 1px solid rgba(255,255,255,0.2); }}
+.rev-filter-group input[type=date] {{ color-scheme: dark; }}
+.rev-filter-group select option {{ background: #1e3a5f; }}
+.rev-btn {{ padding: 6px 18px; background: #fbbf24; color: #1e3a5f; border: none;
+            border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 0.85em;
+            text-transform: uppercase; transition: background 0.15s; }}
+.rev-btn:hover {{ background: #f59e0b; }}
+.rev-last-update {{ font-size: 0.72em; color: rgba(255,255,255,0.5); margin-left: auto; }}
+
+.rev-kpi-row {{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
+                padding: 16px 28px; background: white; border-bottom: 1px solid #e2e8f0; }}
+.rev-kpi-card {{ background: #f8fafc; border-radius: 10px; padding: 12px 14px;
+                 border: 1px solid #e2e8f0; text-align: center; }}
+.rev-kpi-num  {{ font-size: 1.6em; font-weight: 800; color: #1e3a5f; }}
+.rev-kpi-lbl  {{ font-size: 0.67em; color: #94a3b8; text-transform: uppercase;
+                 letter-spacing: 0.4px; margin-top: 2px; }}
+
+.rev-body {{ padding: 20px 28px; }}
+.rev-charts-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
+                    margin-bottom: 24px; }}
+.rev-charts-grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+                      margin-bottom: 24px; }}
+.rev-chart-card {{ background: white; border-radius: 12px; padding: 18px;
+                   box-shadow: 0 2px 10px rgba(0,0,0,0.07); border: 1px solid #e2e8f0; }}
+.rev-chart-title {{ font-size: 0.8em; font-weight: 700; color: #1e3a5f; margin-bottom: 14px;
+                    text-transform: uppercase; letter-spacing: 0.5px; display: flex;
+                    justify-content: space-between; align-items: center; }}
+.rev-tbl-section {{ background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+                    border: 1px solid #e2e8f0; margin-bottom: 20px; overflow: hidden; }}
+.rev-tbl-hdr {{ background: #1e3a5f; color: white; padding: 12px 18px;
+                font-size: 0.85em; font-weight: 700; text-transform: uppercase;
+                letter-spacing: 0.5px; display: flex; align-items: center; justify-content: space-between; }}
+.rev-tbl-wrap {{ overflow-x: auto; max-height: 420px; overflow-y: auto; }}
+.rev-count {{ background: rgba(255,255,255,0.2); border-radius: 10px; padding: 2px 8px;
+              font-size: 0.75em; }}
 
 .section {{ padding: 20px 28px; }}
 .section + .section {{ border-top: 2px solid #e2e8f0; }}
@@ -7590,14 +7970,23 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 
 <div class="hdr">
   <div>
-    <h1>&#128202; KPI-ORC &mdash; Revue de poste quotidienne</h1>
-    <div class="meta">3 derniers postes &middot; {now_str}</div>
+    <h1>&#128202; KPI-ORC</h1>
+    <div class="meta">{now_str}</div>
   </div>
   <div style="text-align:right">
-    <div class="meta">Auto-refresh actif</div>
-    <div class="countdown" id="cdown">&#8635; Mise &agrave; jour dans 60s</div>
+    <div class="meta">Auto-refresh 30s</div>
+    <div class="countdown" id="cdown">&#8635; Mise &agrave; jour dans 30s</div>
   </div>
 </div>
+
+<div class="tab-bar">
+  <button class="tab-btn" id="btn-dashboard" onclick="showTab('dashboard')">&#128202; Dashboard</button>
+  <button class="tab-btn" id="btn-supervision" onclick="showTab('supervision')">&#9881; Supervision de production</button>
+  <button class="tab-btn" id="btn-review" onclick="showTab('review')">&#128269; Revue compl&egrave;te (Directeur)</button>
+</div>
+
+<!-- ══════════════════ ONGLET DASHBOARD ══════════════════ -->
+<div class="tab-content" id="tab-dashboard">
 
 <!-- ═══════════════════════ SECTION 1 : POSTES ═══════════════════════ -->
 <div class="section">
@@ -7647,13 +8036,292 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </div>
 
 <div class="footer">
-  KPI-ORC &bull; G&eacute;n&eacute;r&eacute; le {now_str} &bull; Actualisation automatique toutes les 60 secondes
+  KPI-ORC &bull; G&eacute;n&eacute;r&eacute; le {now_str} &bull; Actualisation automatique toutes les 30 secondes
 </div>
 
+</div><!-- /tab-dashboard -->
+
+<!-- ══════════════════ ONGLET SUPERVISION ══════════════════ -->
+<div class="tab-content" id="tab-supervision">
+
+{alert_html}
+
+<div class="sup-status-bar" style="background:{sup_status_bg};border-color:{sup_status_color};color:{sup_status_color}">
+  <div class="sup-status-icon">{sup_status_icon}</div>
+  <div>
+    <div class="sup-status-text">{_esc(sup_status)}</div>
+    <div class="sup-status-sub">{_esc(sup_poste)} &nbsp;&bull;&nbsp; Pilote : {_esc(sup_pilot)} &nbsp;&bull;&nbsp; Session : {sup_session_dur} &nbsp;&bull;&nbsp; OF ce poste : {sup_of_count}</div>
+  </div>
+</div>
+
+<div class="sup-grid">
+  <!-- Colonne gauche -->
+  <div class="sup-left">
+
+    <!-- TRS live -->
+    <div class="sup-card">
+      <div class="sup-card-hdr">&#128200; TRS Poste en cours (estimé)</div>
+      <div class="sup-trs-big" style="color:{sup_trs_color}">{_esc(sup_trs_display)}</div>
+      <div class="sup-trs-label">Taux de Rendement Synthétique</div>
+      <div class="sup-kpi-grid">
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Équivalence totale</div><div class="sup-kpi-val">{sup_equiv_tot:.1f}</div></div>
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Qté produite</div><div class="sup-kpi-val">{sup_qte_tot}</div></div>
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">OF complétés</div><div class="sup-kpi-val">{sup_of_count}</div></div>
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Durée session</div><div class="sup-kpi-val">{sup_session_dur}</div></div>
+      </div>
+    </div>
+
+    <!-- Infos OF actuel -->
+    <div class="sup-card">
+      <div class="sup-card-hdr">&#128203; OF en cours</div>
+      <div class="sup-kpi-grid">
+        <div class="sup-kpi-cell" style="grid-column:1/-1"><div class="sup-kpi-lbl">Numéro OF</div><div class="sup-kpi-val" style="font-size:1.3em">{_esc(sup_of_num)}</div></div>
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Taille</div><div class="sup-kpi-val">{_esc(sup_taille)}</div></div>
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Type produit</div><div class="sup-kpi-val">{_esc(sup_type_prod)}</div></div>
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Code produit</div><div class="sup-kpi-val">{_esc(sup_code)}</div></div>
+        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Durée OF actuel</div><div class="sup-kpi-val">{sup_of_dur}</div></div>
+      </div>
+    </div>
+
+    <!-- Historique OF session -->
+    <div class="sup-card">
+      <div class="sup-card-hdr">&#128336; Historique OF cette session</div>
+      <div style="padding:0">
+        <table>
+          <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Durée</th></tr></thead>
+          <tbody>{of_periods_html}</tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /sup-left -->
+
+  <!-- Colonne droite -->
+  <div class="sup-right">
+
+    <!-- Arrêts actifs -->
+    <div class="sup-card">
+      <div class="sup-card-hdr" style="{'background:#dc2626' if has_active_stop else ''}">
+        &#9888; Arrêts actifs {'— ' + str(len(active_stops_info)) + ' en cours' if active_stops_info else '— Aucun'}
+      </div>
+      {f'<div class="active-stops-grid">{active_stops_html}</div>' if active_stops_info
+        else '<div style="padding:20px;text-align:center;color:#16a34a;font-weight:700;font-size:1.05em">&#10003; Aucun arrêt en cours</div>'}
+    </div>
+
+    <!-- Déclarations d'aujourd'hui -->
+    <div class="sup-card">
+      <div class="sup-card-hdr">&#128221; D&eacute;clarations du poste ({len(sup_decls)} OF)</div>
+      <div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
+        <table>
+          <thead><tr>
+            <th>OF</th><th>D&eacute;but</th><th>Fin</th>
+            <th>Taille</th><th>Code</th><th>Type</th>
+            <th>Qte Fab</th><th>Qte Emb</th>
+            <th>Equiv</th><th>Dur&eacute;e</th>
+            <th>Cad/h</th><th>TRS of</th>
+          </tr></thead>
+          <tbody>{sup_decl_rows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Événements du jour -->
+    <div class="sup-card">
+      <div class="sup-card-hdr">&#128308; &Eacute;v&eacute;nements &amp; Arr&ecirc;ts ({len(sup_evts_today)} au total)</div>
+      <div class="tbl-wrap" style="max-height:260px;overflow-y:auto">
+        <table>
+          <thead><tr>
+            <th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
+          </tr></thead>
+          <tbody>{sup_evts_rows}</tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /sup-right -->
+</div><!-- /sup-grid -->
+
+<div class="footer">
+  KPI-ORC Supervision &bull; {now_str} &bull; Rafra&icirc;chissement automatique 30s
+</div>
+
+</div><!-- /tab-supervision -->
+
+<!-- ══════════════════ ONGLET REVUE COMPLÈTE ══════════════════ -->
+<div class="tab-content" id="tab-review">
+
+<div class="rev-filters">
+  <div class="rev-filter-group">
+    <label>Du</label>
+    <input type="date" id="dtStart">
+  </div>
+  <div class="rev-filter-group">
+    <label>Au</label>
+    <input type="date" id="dtEnd">
+  </div>
+  <div class="rev-filter-group">
+    <label>Poste</label>
+    <select id="fPoste"><option value="">Tous les postes</option>{rev_poste_opts}</select>
+  </div>
+  <div class="rev-filter-group">
+    <label>Pilote</label>
+    <select id="fPilote"><option value="">Tous les pilotes</option>{rev_pilote_opts}</select>
+  </div>
+  <button class="rev-btn" onclick="applyFilters()">&#128260; Actualiser</button>
+  <div class="rev-last-update">Données chargées le {rev_last_update}</div>
+</div>
+
+<div class="rev-kpi-row">
+  <div class="rev-kpi-card"><div class="rev-kpi-num" id="kpiNbPostes">—</div><div class="rev-kpi-lbl">Postes</div></div>
+  <div class="rev-kpi-card"><div class="rev-kpi-num" id="kpiNbOF">—</div><div class="rev-kpi-lbl">OF déclarés</div></div>
+  <div class="rev-kpi-card"><div class="rev-kpi-num" id="kpiTrsAvg" style="color:#1e3a5f">—</div><div class="rev-kpi-lbl">TRS moyen</div></div>
+  <div class="rev-kpi-card"><div class="rev-kpi-num" id="kpiQteTot">—</div><div class="rev-kpi-lbl">Qté produite</div></div>
+  <div class="rev-kpi-card"><div class="rev-kpi-num" id="kpiEquivTot">—</div><div class="rev-kpi-lbl">Équivalence</div></div>
+  <div class="rev-kpi-card"><div class="rev-kpi-num" id="kpiNbArrets">—</div><div class="rev-kpi-lbl">Arrêts déclarés</div></div>
+</div>
+
+<div class="rev-body">
+
+  <!-- Ligne 1 : TRS + Répartition temps -->
+  <div class="rev-charts-grid">
+    <div class="rev-chart-card">
+      <div class="rev-chart-title">TRS par poste (%) <span id="lblTRS"></span></div>
+      <canvas id="revChartTRS" height="220"></canvas>
+    </div>
+    <div class="rev-chart-card">
+      <div class="rev-chart-title">Répartition du temps (min) <span id="lblTemps"></span></div>
+      <canvas id="revChartTemps" height="220"></canvas>
+    </div>
+    <div class="rev-chart-card">
+      <div class="rev-chart-title">Pareto arrêts par type (min)</div>
+      <canvas id="revChartPareto" height="220"></canvas>
+    </div>
+  </div>
+
+  <!-- Ligne 2 : Cadence + Poste + Pilote -->
+  <div class="rev-charts-grid">
+    <div class="rev-chart-card">
+      <div class="rev-chart-title">Cadence/h par OF (moy)</div>
+      <canvas id="revChartCadence" height="220"></canvas>
+    </div>
+    <div class="rev-chart-card">
+      <div class="rev-chart-title">TRS moyen par poste</div>
+      <canvas id="revChartByPoste" height="220"></canvas>
+    </div>
+    <div class="rev-chart-card">
+      <div class="rev-chart-title">TRS moyen par pilote</div>
+      <canvas id="revChartByPilote" height="220"></canvas>
+    </div>
+  </div>
+
+  <!-- Ligne 3 : Pauses/Nettoyages + Débordements + OF par jour -->
+  <div class="rev-charts-grid">
+    <div class="rev-chart-card">
+      <div class="rev-chart-title">Pauses &amp; Nettoyages (min/jour)</div>
+      <canvas id="revChartPauses" height="220"></canvas>
+    </div>
+    <div class="rev-chart-card">
+      <div class="rev-chart-title">Débordements &amp; Changements série</div>
+      <canvas id="revChartDebord" height="220"></canvas>
+    </div>
+    <div class="rev-chart-card">
+      <div class="rev-chart-title">Nb OF par jour</div>
+      <canvas id="revChartOFJour" height="220"></canvas>
+    </div>
+  </div>
+
+  <!-- Tableau résumé postes (TRS) -->
+  <div class="rev-tbl-section">
+    <div class="rev-tbl-hdr">
+      &#127942; R&eacute;sum&eacute; des postes (depuis feuille TRS)
+      <span class="rev-count" id="cntTRS">0</span>
+    </div>
+    <div class="rev-tbl-wrap">
+      <table id="revTblTRS">
+        <thead><tr>
+          <th>Date</th><th>Poste</th><th>Pilote</th><th>Co-Pilote</th><th>Nb Pers</th>
+          <th>T. Ouv</th><th>T. D&eacute;cl</th><th>Écart</th><th>T. Marche</th>
+          <th>Pannes</th><th>Ratt.</th><th>Pauses</th><th>R&eacute;unions</th>
+          <th>Nb OF</th><th>Qte</th><th>Equiv</th><th>Moy/OF</th>
+          <th style="min-width:70px">TRS</th>
+          <th>Arr. Prévus</th><th>D&eacute;bord.</th>
+        </tr></thead>
+        <tbody id="bodyTRS"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Tableau détail OF -->
+  <div class="rev-tbl-section">
+    <div class="rev-tbl-hdr">
+      &#128203; D&eacute;tail de tous les OF
+      <span class="rev-count" id="cntOF">0</span>
+    </div>
+    <div class="rev-tbl-wrap">
+      <table id="revTblOF">
+        <thead><tr>
+          <th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th>
+          <th>D&eacute;but</th><th>Fin</th><th>Taille</th><th>Code</th><th>Type</th>
+          <th>Qte Fab</th><th>Qte Emb</th><th>Equiv</th><th>Dur&eacute;e</th>
+          <th>Cad/h</th><th>Cad/h/pers</th>
+          <th>Chgt S&eacute;rie</th><th>Mq MP</th><th>Mq Pers</th><th>Nettoyage</th>
+          <th>Commentaire</th>
+        </tr></thead>
+        <tbody id="bodyOF"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Tableau tous événements -->
+  <div class="rev-tbl-section">
+    <div class="rev-tbl-hdr">
+      &#9888; Tous les &eacute;v&eacute;nements &amp; arr&ecirc;ts
+      <span class="rev-count" id="cntEvts">0</span>
+    </div>
+    <div class="rev-tbl-wrap">
+      <table id="revTblEvts">
+        <thead><tr>
+          <th>Type</th><th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th>
+          <th>Taille</th><th>Type Prod</th>
+          <th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
+        </tr></thead>
+        <tbody id="bodyEvts"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /rev-body -->
+
+<div class="footer">
+  KPI-ORC Revue Compl&egrave;te &bull; Donn&eacute;es au {rev_last_update} &bull; Auto-refresh 8h
+</div>
+
+</div><!-- /tab-review -->
+
 <script>
+function showTab(name) {{
+  document.querySelectorAll('.tab-content').forEach(function(el) {{
+    el.classList.remove('visible');
+  }});
+  document.querySelectorAll('.tab-btn').forEach(function(el) {{
+    el.classList.remove('active');
+  }});
+  document.getElementById('tab-' + name).classList.add('visible');
+  document.getElementById('btn-' + name).classList.add('active');
+  try {{ localStorage.setItem('kpi_orc_tab', name); }} catch(e) {{}}
+}}
+
 (function() {{
-  var s = 60, el = document.getElementById('cdown');
-  setInterval(function() {{ s--; if(s<=0)s=60; el.textContent='\\u21bb Mise \\u00e0 jour dans '+s+'s'; }}, 1000);
+  var saved = '';
+  try {{ saved = localStorage.getItem('kpi_orc_tab') || ''; }} catch(e) {{}}
+  var hash = (location.hash || '').replace('#','');
+  showTab(hash || saved || 'dashboard');
+}})();
+
+// Countdown 30s
+(function() {{
+  var s = 30, el = document.getElementById('cdown');
+  setInterval(function() {{ s--; if(s<=0)s=30; el.textContent='\\u21bb Mise \\u00e0 jour dans '+s+'s'; }}, 1000);
 }})();
 
 new Chart(document.getElementById('chartTRS'), {{
@@ -7721,6 +8389,456 @@ new Chart(document.getElementById('chartPareto'), {{
 
 {gauge_charts_js}
 {cadence_charts_js}
+
+// ═══════════════ REVUE COMPLÈTE — données & logique ═══════════════
+const REV_DATA = {rev_data_js};
+const REV_EVTS = {rev_evts_js};
+const REV_TRS  = {rev_trs_js};
+
+var revCharts = {{}};
+
+function parseRevDate(s) {{
+  if (!s) return null;
+  var p = String(s).trim().split('/');
+  if (p.length === 3) return new Date(parseInt(p[2]), parseInt(p[1])-1, parseInt(p[0]));
+  p = String(s).trim().split('-');
+  if (p.length === 3) return new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2]));
+  return null;
+}}
+
+function isoDate(d) {{
+  if (!d) return '';
+  var m = ('0'+(d.getMonth()+1)).slice(-2);
+  var dd = ('0'+d.getDate()).slice(-2);
+  return d.getFullYear()+'-'+m+'-'+dd;
+}}
+
+function trsColor(v) {{
+  return v >= 80 ? '#16a34a' : (v >= 60 ? '#d97706' : '#dc2626');
+}}
+
+function hmsToMin(s) {{
+  if (!s) return 0;
+  var p = String(s).split(':');
+  if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60;
+  return 0;
+}}
+
+function parseTRS(s) {{
+  if (!s) return 0;
+  return parseFloat(String(s).replace('%','').replace(',','.') || '0') || 0;
+}}
+
+function badgeEvt(label) {{
+  var l = String(label).toLowerCase();
+  var cls = 'badge-other';
+  if (l.indexOf('pb')>=0||l.indexOf('panne')>=0) cls='badge-pb';
+  else if (l.indexOf('ratt')>=0) cls='badge-ratt';
+  else if (l.indexOf('nettoyage')>=0) cls='badge-nett';
+  else if (l.indexOf('pause')>=0) cls='badge-pause';
+  else if (l.indexOf('serie')>=0||l.indexOf('série')>=0||l.indexOf('chgt')>=0) cls='badge-chgt';
+  return '<span class="badge '+cls+'">'+esc(label)+'</span>';
+}}
+
+function esc(s) {{
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}}
+
+function getFilters() {{
+  var startVal = document.getElementById('dtStart').value;
+  var endVal   = document.getElementById('dtEnd').value;
+  var poste    = document.getElementById('fPoste').value;
+  var pilote   = document.getElementById('fPilote').value;
+  var startDt  = startVal ? new Date(startVal) : null;
+  var endDt    = endVal   ? new Date(endVal+'T23:59:59') : null;
+  return {{startDt:startDt, endDt:endDt, poste:poste, pilote:pilote}};
+}}
+
+function filterData(f) {{
+  var data = REV_DATA.filter(function(r) {{
+    var dt = parseRevDate(r[1]);
+    if (f.startDt && dt && dt < f.startDt) return false;
+    if (f.endDt   && dt && dt > f.endDt)   return false;
+    if (f.poste   && r[2] !== f.poste)      return false;
+    if (f.pilote  && r[3] !== f.pilote)     return false;
+    return true;
+  }});
+  var evts = REV_EVTS.filter(function(r) {{
+    var dt = parseRevDate(r[2]);
+    if (f.startDt && dt && dt < f.startDt) return false;
+    if (f.endDt   && dt && dt > f.endDt)   return false;
+    if (f.poste   && r[3] !== f.poste)      return false;
+    if (f.pilote  && r[4] !== f.pilote)     return false;
+    return true;
+  }});
+  var trs = REV_TRS.filter(function(r) {{
+    var dt = parseRevDate(r[0]);
+    if (f.startDt && dt && dt < f.startDt) return false;
+    if (f.endDt   && dt && dt > f.endDt)   return false;
+    if (f.poste   && r[1] !== f.poste)      return false;
+    if (f.pilote  && r[2] !== f.pilote)     return false;
+    return true;
+  }});
+  return {{data:data, evts:evts, trs:trs}};
+}}
+
+function destroyChart(id) {{
+  if (revCharts[id]) {{ try {{ revCharts[id].destroy(); }} catch(e) {{}} revCharts[id]=null; }}
+}}
+
+function makeChart(id, cfg) {{
+  destroyChart(id);
+  var el = document.getElementById(id);
+  if (!el) return;
+  revCharts[id] = new Chart(el, cfg);
+}}
+
+function applyFilters() {{
+  var f = getFilters();
+  var d = filterData(f);
+  updateKPIs(d);
+  updateCharts(d);
+  updateTables(d);
+}}
+
+function updateKPIs(d) {{
+  // Nb postes (lignes TRS)
+  document.getElementById('kpiNbPostes').textContent = d.trs.length;
+  // Nb OF
+  document.getElementById('kpiNbOF').textContent = d.data.length;
+  // TRS moyen
+  var trsVals = d.trs.map(function(r){{return parseTRS(r[19]);}}).filter(function(v){{return v>0;}});
+  var trsAvg = trsVals.length ? (trsVals.reduce(function(a,b){{return a+b;}},0)/trsVals.length).toFixed(1)+'%' : '—';
+  var trsEl = document.getElementById('kpiTrsAvg');
+  trsEl.textContent = trsAvg;
+  if (trsVals.length) trsEl.style.color = trsColor(parseFloat(trsAvg));
+  // Qté produite
+  var qte = d.data.reduce(function(a,r){{return a+(parseInt(r[13])||0);}},0);
+  document.getElementById('kpiQteTot').textContent = qte.toLocaleString('fr-FR');
+  // Équivalence
+  var equiv = d.data.reduce(function(a,r){{return a+(parseFloat(String(r[15]).replace(',','.'))||0);}},0);
+  document.getElementById('kpiEquivTot').textContent = equiv.toFixed(1);
+  // Arrêts
+  document.getElementById('kpiNbArrets').textContent = d.evts.length;
+}}
+
+function updateCharts(d) {{
+  // — Chart TRS par poste (en ordre chronologique)
+  var trsLabels = d.trs.map(function(r){{return r[0].slice(0,5)+'  '+r[1];}});
+  var trsVals   = d.trs.map(function(r){{return parseTRS(r[19]);}});
+  var trsColors = trsVals.map(function(v){{return trsColor(v);}});
+  makeChart('revChartTRS', {{
+    type:'bar',
+    data:{{labels:trsLabels, datasets:[{{
+      label:'TRS %', data:trsVals, backgroundColor:trsColors,
+      borderRadius:4, borderSkipped:false}}]}},
+    options:{{
+      indexAxis:'y',
+      plugins:{{legend:{{display:false}},
+        tooltip:{{callbacks:{{label:function(c){{return c.raw.toFixed(1)+'%';}}}}}}
+      }},
+      scales:{{
+        x:{{min:0,max:100,grid:{{color:'#f1f5f9'}},ticks:{{callback:function(v){{return v+'%';}}}}}},
+        y:{{grid:{{display:false}},ticks:{{font:{{size:9}}}}}}
+      }}
+    }}
+  }});
+
+  // — Chart Répartition temps
+  var tempsLabels = d.trs.map(function(r){{return r[0].slice(0,5)+'  '+r[1];}});
+  makeChart('revChartTemps', {{
+    type:'bar',
+    data:{{
+      labels:tempsLabels,
+      datasets:[
+        {{label:'Production', data:d.trs.map(function(r){{return hmsToMin(r[8]);}}), backgroundColor:'#16a34a',borderWidth:0}},
+        {{label:'Pannes',     data:d.trs.map(function(r){{return hmsToMin(r[11]);}}),backgroundColor:'#dc2626',borderWidth:0}},
+        {{label:'Rattrapages',data:d.trs.map(function(r){{return hmsToMin(r[12]);}}),backgroundColor:'#d97706',borderWidth:0}},
+        {{label:'Pauses',     data:d.trs.map(function(r){{return hmsToMin(r[13]);}}),backgroundColor:'#2563eb',borderWidth:0}},
+        {{label:'Réunions',   data:d.trs.map(function(r){{return hmsToMin(r[14]);}}),backgroundColor:'#7c3aed',borderWidth:0}},
+        {{label:'Écart',      data:d.trs.map(function(r){{return hmsToMin(r[7]); }}),backgroundColor:'#94a3b8',borderWidth:0}}
+      ]
+    }},
+    options:{{
+      indexAxis:'y',
+      scales:{{
+        x:{{stacked:true,grid:{{color:'#f1f5f9'}},ticks:{{callback:function(v){{return v+'m';}}}}}},
+        y:{{stacked:true,grid:{{display:false}},ticks:{{font:{{size:9}}}}}}
+      }},
+      plugins:{{legend:{{position:'bottom',labels:{{boxWidth:10,font:{{size:9}}}}}}}}
+    }}
+  }});
+
+  // — Pareto arrêts
+  var stopTotals = {{}};
+  d.evts.forEach(function(r) {{
+    var lbl = String(r[0]||'').trim();
+    if (!lbl) return;
+    stopTotals[lbl] = (stopTotals[lbl]||0) + hmsToMin(r[18]);
+  }});
+  var pSorted = Object.entries(stopTotals).sort(function(a,b){{return b[1]-a[1];}}).slice(0,15);
+  var pLabels = pSorted.map(function(x){{return x[0];}});
+  var pVals   = pSorted.map(function(x){{return Math.round(x[1]*10)/10;}});
+  var pColors = pLabels.map(function(l){{
+    var ll=l.toLowerCase();
+    if(ll.indexOf('pb')>=0||ll.indexOf('panne')>=0) return '#dc2626';
+    if(ll.indexOf('ratt')>=0) return '#d97706';
+    if(ll.indexOf('nettoyage')>=0) return '#0284c7';
+    if(ll.indexOf('pause')>=0) return '#2563eb';
+    if(ll.indexOf('serie')>=0||ll.indexOf('série')>=0) return '#7c3aed';
+    return '#64748b';
+  }});
+  makeChart('revChartPareto', {{
+    type:'bar',
+    data:{{labels:pLabels, datasets:[{{label:'min',data:pVals,backgroundColor:pColors,borderRadius:4,borderSkipped:false}}]}},
+    options:{{
+      indexAxis:'y',
+      plugins:{{legend:{{display:false}}}},
+      scales:{{
+        x:{{grid:{{color:'#f1f5f9'}},ticks:{{callback:function(v){{return v+'m';}}}}}},
+        y:{{grid:{{display:false}},ticks:{{font:{{size:9}}}}}}
+      }}
+    }}
+  }});
+
+  // — Cadence/h par OF (scatter by date)
+  var cadData = d.data.map(function(r){{
+    return {{x:parseRevDate(r[1]),y:parseFloat(String(r[19]).replace(',','.'))||0,of:r[0]}};
+  }}).filter(function(x){{return x.x && x.y>0;}});
+  cadData.sort(function(a,b){{return a.x-b.x;}});
+  makeChart('revChartCadence', {{
+    type:'line',
+    data:{{
+      labels:cadData.map(function(d){{return (d.x?String(d.x.getDate()).padStart(2,'0')+'/'+(String(d.x.getMonth()+1).padStart(2,'0')):'')+'  '+d.of;}}),
+      datasets:[{{label:'Cad/h',data:cadData.map(function(d){{return d.y;}}),
+        borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,0.08)',
+        borderWidth:2,pointRadius:3,tension:0.3,fill:true}}]
+    }},
+    options:{{
+      plugins:{{legend:{{display:false}}}},
+      scales:{{
+        x:{{grid:{{display:false}},ticks:{{font:{{size:8}},maxRotation:45}}}},
+        y:{{grid:{{color:'#f1f5f9'}}}}
+      }}
+    }}
+  }});
+
+  // — TRS par poste (agrégé)
+  var byPoste = {{}};
+  d.trs.forEach(function(r) {{
+    var p = r[1]; var v = parseTRS(r[19]);
+    if (!byPoste[p]) byPoste[p] = [];
+    if (v > 0) byPoste[p].push(v);
+  }});
+  var bpLabels = Object.keys(byPoste).sort();
+  var bpVals   = bpLabels.map(function(p){{
+    var vals=byPoste[p]; return vals.length?(vals.reduce(function(a,b){{return a+b;}},0)/vals.length).toFixed(1):0;
+  }});
+  makeChart('revChartByPoste', {{
+    type:'bar',
+    data:{{labels:bpLabels, datasets:[{{label:'TRS moy %',data:bpVals,
+      backgroundColor:bpVals.map(function(v){{return trsColor(parseFloat(v))+'cc';}}),
+      borderRadius:6,borderSkipped:false}}]}},
+    options:{{
+      plugins:{{legend:{{display:false}},
+        tooltip:{{callbacks:{{label:function(c){{return c.raw+'%';}}}}}}
+      }},
+      scales:{{
+        x:{{grid:{{display:false}}}},
+        y:{{min:0,max:100,grid:{{color:'#f1f5f9'}},ticks:{{callback:function(v){{return v+'%';}}}}}}
+      }}
+    }}
+  }});
+
+  // — TRS par pilote
+  var byPilote = {{}};
+  d.trs.forEach(function(r) {{
+    var p = r[2]; var v = parseTRS(r[19]);
+    if (!byPilote[p]) byPilote[p] = [];
+    if (v > 0) byPilote[p].push(v);
+  }});
+  var pilLabels = Object.keys(byPilote).sort();
+  var pilVals   = pilLabels.map(function(p){{
+    var vals=byPilote[p]; return vals.length?(vals.reduce(function(a,b){{return a+b;}},0)/vals.length).toFixed(1):0;
+  }});
+  makeChart('revChartByPilote', {{
+    type:'bar',
+    data:{{labels:pilLabels, datasets:[{{label:'TRS moy %',data:pilVals,
+      backgroundColor:pilVals.map(function(v){{return trsColor(parseFloat(v))+'cc';}}),
+      borderRadius:6,borderSkipped:false}}]}},
+    options:{{
+      plugins:{{legend:{{display:false}},
+        tooltip:{{callbacks:{{label:function(c){{return c.raw+'%';}}}}}}
+      }},
+      scales:{{
+        x:{{grid:{{display:false}},ticks:{{font:{{size:9}}}}}},
+        y:{{min:0,max:100,grid:{{color:'#f1f5f9'}},ticks:{{callback:function(v){{return v+'%';}}}}}}
+      }}
+    }}
+  }});
+
+  // — Pauses & Nettoyages par jour
+  var pauseByDate = {{}};
+  d.evts.forEach(function(r) {{
+    var dt = String(r[2]).slice(0,5);
+    var lbl = String(r[0]).toLowerCase();
+    if (!pauseByDate[dt]) pauseByDate[dt] = {{pause:0, nett:0}};
+    var dur = hmsToMin(r[18]);
+    if (lbl.indexOf('pause')>=0) pauseByDate[dt].pause += dur;
+    else if (lbl.indexOf('nettoyage')>=0) pauseByDate[dt].nett += dur;
+  }});
+  var pdDates = Object.keys(pauseByDate).sort();
+  makeChart('revChartPauses', {{
+    type:'bar',
+    data:{{
+      labels:pdDates,
+      datasets:[
+        {{label:'Pauses (min)', data:pdDates.map(function(d){{return Math.round(pauseByDate[d].pause*10)/10;}}), backgroundColor:'#2563ebcc',borderRadius:4,borderWidth:0}},
+        {{label:'Nettoyages (min)', data:pdDates.map(function(d){{return Math.round(pauseByDate[d].nett*10)/10;}}), backgroundColor:'#0284c7cc',borderRadius:4,borderWidth:0}}
+      ]
+    }},
+    options:{{
+      scales:{{
+        x:{{grid:{{display:false}},ticks:{{font:{{size:9}}}}}},
+        y:{{grid:{{color:'#f1f5f9'}},ticks:{{callback:function(v){{return v+'m';}}}}}}
+      }},
+      plugins:{{legend:{{position:'bottom',labels:{{boxWidth:10,font:{{size:9}}}}}}}}
+    }}
+  }});
+
+  // — Débordements & Changements série
+  var debByDate = {{}};
+  d.trs.forEach(function(r) {{
+    var dt = String(r[0]).slice(0,5);
+    if (!debByDate[dt]) debByDate[dt] = {{deb:0, chgt:0}};
+    debByDate[dt].deb  += hmsToMin(r[10]);
+    debByDate[dt].chgt += hmsToMin(r[9]);
+  }});
+  d.data.forEach(function(r) {{
+    var dt = String(r[1]).slice(0,5);
+    if (!debByDate[dt]) debByDate[dt] = {{deb:0, chgt:0}};
+    if (String(r[29]).trim() && String(r[29]).trim() !== '0') debByDate[dt].chgt += 1;
+  }});
+  var dbDates = Object.keys(debByDate).sort();
+  makeChart('revChartDebord', {{
+    type:'bar',
+    data:{{
+      labels:dbDates,
+      datasets:[
+        {{label:'Débord. (min)', data:dbDates.map(function(d){{return Math.round(debByDate[d].deb*10)/10;}}), backgroundColor:'#dc2626cc',borderRadius:4,borderWidth:0}},
+        {{label:'Chgt série (nb)', data:dbDates.map(function(d){{return debByDate[d].chgt;}}), backgroundColor:'#7c3aedcc',borderRadius:4,borderWidth:0}}
+      ]
+    }},
+    options:{{
+      scales:{{
+        x:{{grid:{{display:false}},ticks:{{font:{{size:9}}}}}},
+        y:{{grid:{{color:'#f1f5f9'}}}}
+      }},
+      plugins:{{legend:{{position:'bottom',labels:{{boxWidth:10,font:{{size:9}}}}}}}}
+    }}
+  }});
+
+  // — Nb OF par jour
+  var ofByDate = {{}};
+  d.data.forEach(function(r) {{
+    var dt = String(r[1]).slice(0,5);
+    ofByDate[dt] = (ofByDate[dt]||0) + 1;
+  }});
+  var ofDates = Object.keys(ofByDate).sort();
+  makeChart('revChartOFJour', {{
+    type:'bar',
+    data:{{labels:ofDates, datasets:[{{label:'Nb OF',data:ofDates.map(function(d){{return ofByDate[d];}}) ,
+      backgroundColor:'#1e3a5fcc',borderRadius:4,borderSkipped:false,borderWidth:0}}]}},
+    options:{{
+      plugins:{{legend:{{display:false}}}},
+      scales:{{
+        x:{{grid:{{display:false}},ticks:{{font:{{size:9}}}}}},
+        y:{{grid:{{color:'#f1f5f9'}},ticks:{{stepSize:1}}}}
+      }}
+    }}
+  }});
+}}
+
+function updateTables(d) {{
+  // TRS table
+  var bTRS = document.getElementById('bodyTRS');
+  if (bTRS) {{
+    document.getElementById('cntTRS').textContent = d.trs.length;
+    var rows = d.trs.slice().reverse().map(function(r) {{
+      var tv = parseTRS(r[19]);
+      var tc = trsColor(tv);
+      return '<tr>'
+        +'<td>'+esc(r[0])+'</td><td><b>'+esc(r[1])+'</b></td><td>'+esc(r[2])+'</td><td>'+esc(r[3])+'</td><td>'+esc(r[4])+'</td>'
+        +'<td>'+esc(r[5])+'</td><td>'+esc(r[6])+'</td><td>'+esc(r[7])+'</td><td>'+esc(r[8])+'</td>'
+        +'<td style="color:#dc2626">'+esc(r[11])+'</td>'
+        +'<td style="color:#d97706">'+esc(r[12])+'</td>'
+        +'<td>'+esc(r[13])+'</td><td>'+esc(r[14])+'</td>'
+        +'<td style="color:#2563eb;font-weight:700">'+esc(r[15])+'</td>'
+        +'<td>'+esc(r[16])+'</td><td>'+esc(r[17])+'</td><td>'+esc(r[18])+'</td>'
+        +'<td style="color:'+tc+';font-weight:800;font-size:1.05em">'+esc(r[19])+'</td>'
+        +'<td>'+esc(r[9])+'</td><td style="color:#dc2626">'+esc(r[10])+'</td>'
+        +'</tr>';
+    }});
+    bTRS.innerHTML = rows.join('') || '<tr><td colspan="20" class="empty">Aucun poste</td></tr>';
+  }}
+
+  // OF table
+  var bOF = document.getElementById('bodyOF');
+  if (bOF) {{
+    document.getElementById('cntOF').textContent = d.data.length;
+    var rows = d.data.slice().reverse().map(function(r) {{
+      return '<tr>'
+        +'<td><b>'+esc(r[0])+'</b></td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'</td><td>'+esc(r[3])+'</td>'
+        +'<td>'+esc(r[17])+'</td><td>'+esc(r[18])+'</td>'
+        +'<td>'+esc(r[6])+'</td><td>'+esc(r[7])+'</td><td>'+esc(r[8])+'</td>'
+        +'<td>'+esc(r[13])+'</td><td>'+esc(r[14])+'</td><td>'+esc(r[15])+'</td><td>'+esc(r[16])+'</td>'
+        +'<td><b>'+esc(r[19])+'</b></td><td>'+esc(r[20])+'</td>'
+        +'<td>'+esc(r[29])+'</td><td>'+esc(r[30])+'</td><td>'+esc(r[31])+'</td><td>'+esc(r[32])+'</td>'
+        +'<td style="max-width:180px;white-space:normal">'+esc(r[56])+'</td>'
+        +'</tr>';
+    }});
+    bOF.innerHTML = rows.join('') || '<tr><td colspan="20" class="empty">Aucun OF</td></tr>';
+  }}
+
+  // Events table
+  var bEvts = document.getElementById('bodyEvts');
+  if (bEvts) {{
+    document.getElementById('cntEvts').textContent = d.evts.length;
+    var rows = d.evts.slice().reverse().map(function(r) {{
+      return '<tr>'
+        +'<td>'+badgeEvt(r[0])+'</td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'</td>'
+        +'<td>'+esc(r[3])+'</td><td>'+esc(r[4])+'</td>'
+        +'<td>'+esc(r[7])+'</td><td>'+esc(r[8])+'</td>'
+        +'<td>'+esc(r[16])+'</td><td>'+esc(r[17])+'</td>'
+        +'<td><b>'+esc(r[18])+'</b></td>'
+        +'<td style="max-width:180px;white-space:normal">'+esc(r[19])+'</td>'
+        +'</tr>';
+    }});
+    bEvts.innerHTML = rows.join('') || '<tr><td colspan="11" class="empty">Aucun événement</td></tr>';
+  }}
+}}
+
+// Initialisation de la revue au chargement de l'onglet
+(function() {{
+  // Dates par défaut : 30 derniers jours
+  var today = new Date();
+  var m30   = new Date(today); m30.setDate(m30.getDate()-30);
+  document.getElementById('dtStart').value = isoDate(m30);
+  document.getElementById('dtEnd').value   = isoDate(today);
+  // Déclencher les filtres si l'onglet review est actif
+  if (document.getElementById('tab-review').classList.contains('visible')) {{
+    applyFilters();
+  }}
+}})();
+
+// Appliquer filtres quand on active l'onglet review
+var _origShowTab = showTab;
+showTab = function(name) {{
+  _origShowTab(name);
+  if (name === 'review') {{
+    setTimeout(function() {{ applyFilters(); }}, 50);
+  }}
+}};
 </script>
 </body>
 </html>"""
@@ -7867,6 +8985,7 @@ new Chart(document.getElementById('chartPareto'), {{
                     self._write_rows_to_events_sheet(wb, events_rows)
                     wb.save(path)
                     self._wb_mtime_cache = os.path.getmtime(path)
+                    self._copy_excel_for_dashboard(path)
                     try:
                         os.remove(PENDING_FILE)
                     except Exception:
@@ -7982,6 +9101,38 @@ new Chart(document.getElementById('chartPareto'), {{
             except Exception:
                 self._invalidate_wb_cache()
         threading.Thread(target=_bg, daemon=True).start()
+
+
+    # ── Copie dashboard ───────────────────────────────────────────────────────
+    def _dashboard_copy_path(self):
+        """Retourne le chemin de la copie dashboard (à côté de l'Excel principal)."""
+        path = self.cfg.get("db_path", "")
+        if not path:
+            return ""
+        base, ext = os.path.splitext(path)
+        return base + "_dashboard" + (ext or ".xlsx")
+
+    def _copy_excel_for_dashboard(self, source_path=None):
+        """Copie le fichier Excel vers la copie dashboard après chaque écriture."""
+        import shutil
+        if source_path is None:
+            source_path = self.cfg.get("db_path", "")
+        if not source_path or not os.path.exists(source_path):
+            return
+        dst = self._dashboard_copy_path()
+        if not dst:
+            return
+        try:
+            shutil.copy2(source_path, dst)
+        except Exception:
+            pass
+
+    def _get_read_path(self):
+        """Retourne la copie dashboard si elle existe, sinon le fichier principal."""
+        copy = self._dashboard_copy_path()
+        if copy and os.path.exists(copy):
+            return copy
+        return self.cfg.get("db_path", "")
 
 
 if __name__ == "__main__":
