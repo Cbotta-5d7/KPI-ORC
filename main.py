@@ -2333,6 +2333,7 @@ Arrêts imputés au TRS (temps perdu) :
                                "Taille produit", "Type de produit", "Equivalence Coef",
                                "Postes", "Nb personnes", "Prod de reference", "Fibres"]
                     ws_l.append(headers)
+                    self._format_row(ws_l, 1)
                     max_r = max(len(pil_names_ref), len(cop_items_ref),
                                 len(taille_vals) if taille_vals else 0, 1)
                     for i in range(max_r):
@@ -2349,6 +2350,7 @@ Arrêts imputés au TRS (temps perdu) :
                             fibres_vals[i]   if i < len(fibres_vals)    else None,
                         ]
                         ws_l.append(row_data)
+                        self._format_row(ws_l, ws_l.max_row)
                     wb_s.save(path)
                     wb_s.close()
                     self._load_lists()  # Recharger
@@ -6408,6 +6410,7 @@ Arrêts imputés au TRS (temps perdu) :
                                 nd_row[18] = fmt(int(non_declare_s))
                                 nd_row[19] = f"Durée théorique {fmt(duree_theorique_s)}"
                                 ws_e.append(nd_row)
+                                self._format_row(ws_e, ws_e.max_row)
                                 wb.save(path)
                     except Exception as ex:
                         _toast(self.root, f"Erreur Excel : {ex}", bg=C_RED, duration=3000)
@@ -6796,6 +6799,7 @@ Arrêts imputés au TRS (temps perdu) :
                            "Total pauses", "Total réunions", "Nombre d'OF",
                            "Qté produite réel", "Équivalence", "Nb moyen pièces/OF", "TRS poste"]
             ws_trs.append(trs_headers)
+            self._format_row(ws_trs, 1)
         else:
             ws_trs = wb["TRS"]
 
@@ -6819,8 +6823,10 @@ Arrêts imputés au TRS (temps perdu) :
         if existing_row_idx:
             for ci, val in enumerate(trs_row, start=1):
                 ws_trs.cell(existing_row_idx, ci).value = val
+            self._format_row(ws_trs, existing_row_idx)
         else:
             ws_trs.append(trs_row)
+            self._format_row(ws_trs, ws_trs.max_row)
 
     def _calc_equiv(self, qte, taille, type_prod):
         """Cherche le coef d'equivalence pour type_prod dans la colonne Equivalence coef."""
