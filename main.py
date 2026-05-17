@@ -3355,21 +3355,34 @@ Arrêts imputés au TRS (temps perdu) :
         last_dt_str = ""
         pilot_trs   = 0.0
 
-        pilots_seen = []
-        for row in rows:
-            p = str(row[3] or "").strip()
-            d = _row_date(row[1])
-            if d == today and p and p not in pilots_seen:
-                pilots_seen.append(p)
+        # Borne depuis connexion (gère postes de nuit chevauchant minuit)
+        login_cutoff = self._login_time or (
+            datetime.datetime.now() - datetime.timedelta(hours=12))
+
+        def _row_dt_main(row):
+            try:
+                return datetime.datetime.strptime(
+                    f"{_row_date(row[1])} {_row_time(row[17])}", "%d/%m/%Y %H:%M:%S")
+            except Exception:
+                return None
+
         last_pilot = (self._logged_in_pilot if self._logged_in_pilot
-                      else (pilots_seen[-1] if pilots_seen else ""))
+                      else "")
+        if not last_pilot:
+            for row in reversed(rows):
+                dt = _row_dt_main(row)
+                if dt and dt >= login_cutoff:
+                    p = str(row[3] or "").strip()
+                    if p:
+                        last_pilot = p
+                        break
 
         prod_ref = self._get_prod_ref()
         tot_eq, tot_s = 0.0, 0.0
         for row in rows:
-            d = _row_date(row[1])
+            dt = _row_dt_main(row)
             p = str(row[3] or "").strip()
-            if d != today or p != last_pilot:
+            if not dt or dt < login_cutoff or p != last_pilot:
                 continue
             try:
                 tot_eq += float(str(row[15] or 0).replace(",", "."))
@@ -3492,6 +3505,9 @@ Arrêts imputés au TRS (temps perdu) :
         path   = self.cfg.get("db_path", "")
         cutoff = datetime.datetime.now() - datetime.timedelta(hours=12)
 
+        # Si le pilote vient de se connecter, ne montrer que ses données depuis sa connexion
+        login_cutoff = self._login_time if self._login_time else cutoff
+
         def _row_dt(row):
             try:
                 return datetime.datetime.strptime(
@@ -3511,12 +3527,15 @@ Arrêts imputés au TRS (temps perdu) :
                         last_pilot = p
                         break
 
-        # Pilote précédent = dernier différent de last_pilot dans les rows
+        # Pilote précédent = dernier différent de last_pilot AVANT la connexion actuelle
         prev_pilot = None
         for row in reversed(rows):
             dt = _row_dt(row)
             p  = str(row[3] or "").strip()
-            if p and p != last_pilot:
+            if not dt or not p or p == last_pilot:
+                continue
+            # Le poste précédent doit être antérieur à la connexion du pilote actuel
+            if dt < login_cutoff:
                 prev_pilot = p
                 break
 
@@ -3527,8 +3546,16 @@ Arrêts imputés au TRS (temps perdu) :
         for row in rows:
             dt = _row_dt(row)
             p  = str(row[3] or "").strip()
-            if not dt or dt < cutoff or p not in totals:
+            if not dt or p not in totals:
                 continue
+            if p == last_pilot:
+                # Poste en cours : depuis la connexion (gère minuit)
+                if dt < login_cutoff:
+                    continue
+            else:
+                # Poste précédent : entre 24h avant et la connexion actuelle
+                if dt >= login_cutoff or dt < cutoff:
+                    continue
             try:
                 totals[p]["eq"] += float(str(row[15] or 0).replace(",", "."))
                 totals[p]["s"]  += _hms_to_sec(_row_time(row[16]) or "00:00:00")
