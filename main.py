@@ -6315,6 +6315,7 @@ Arrêts imputés au TRS (temps perdu) :
                             _total_decl_f, duree_theorique_s,
                             _prevu_f, _depasse_f)
                         wb.save(path)
+                        wb.close()
                     trs_fresh = []
                     try:
                         wb2 = load_workbook(path, read_only=True, data_only=True)
@@ -6323,7 +6324,7 @@ Arrêts imputés au TRS (temps perdu) :
                             hdrs = [c.value for c in next(ws_t.iter_rows(max_row=1))]
                             for r in ws_t.iter_rows(min_row=2, values_only=True):
                                 if any(r):
-                                    trs_fresh.append(dict(zip(hdrs, r)))
+                                    trs_fresh.append(list(r))
                         wb2.close()
                     except Exception:
                         pass
@@ -7228,7 +7229,17 @@ Arrêts imputés au TRS (temps perdu) :
 
     def _ensure_events_sheet(self, wb):
         if "Evenements" not in wb.sheetnames:
-            wb.create_sheet("Evenements")
+            ws = wb.create_sheet("Evenements")
+            for i, h in enumerate(EVT_HEADERS, start=1):
+                ws.cell(1, i).value = h
+            self._format_row(ws, 1)
+        else:
+            ws = wb["Evenements"]
+            existing = [ws.cell(1, i).value for i in range(1, len(EVT_HEADERS) + 1)]
+            if existing != EVT_HEADERS:
+                for i, h in enumerate(EVT_HEADERS, start=1):
+                    ws.cell(1, i).value = h
+                self._format_row(ws, 1)
         return wb["Evenements"]
 
     def _ensure_data_sheet(self, wb):
@@ -7236,6 +7247,12 @@ Arrêts imputés au TRS (temps perdu) :
             ws = wb.create_sheet("Data", 0)
             for i, h in enumerate(DATA_HEADERS, start=1):
                 ws.cell(1, i).value = h
+            self._format_row(ws, 1)
+        else:
+            ws = wb["Data"]
+            for i, h in enumerate(DATA_HEADERS, start=1):
+                if ws.cell(1, i).value is None:
+                    ws.cell(1, i).value = h
         return wb["Data"]
 
     def _write_events_to_wb(self, wb, v):
