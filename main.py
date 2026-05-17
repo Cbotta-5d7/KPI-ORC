@@ -1652,41 +1652,59 @@ class App:
             return
         self._invalidate_wb_cache()
         self._load_lists()
+        _toast(self.root, "⏳  Lecture du fichier Excel…", bg=NAVY_L, duration=1500)
 
         def _bg():
-            rows, events, trs_data = [], [], []
+            rows, events, trs_data = None, None, None
+            ok = False
             try:
                 wb = load_workbook(path, read_only=True, data_only=True)
+                rows = []
                 if "Data" in wb.sheetnames:
                     ws = wb["Data"]
                     min_r = 2 if str(ws.cell(1, 1).value or "").strip().upper() == "OF" else 1
                     for i, r in enumerate(ws.iter_rows(min_row=min_r, values_only=True), start=min_r):
                         if any(r):
                             rows.append((i, list(r) + [None] * 60))
+                events = []
                 if "Evenements" in wb.sheetnames:
                     ws_e = wb["Evenements"]
                     for r in ws_e.iter_rows(min_row=2, values_only=True):
                         if r and any(r):
                             events.append(list(r))
+                trs_data = []
                 if "TRS" in wb.sheetnames:
                     ws_t = wb["TRS"]
                     for r in ws_t.iter_rows(min_row=2, values_only=True):
                         if r and any(r):
                             trs_data.append(list(r))
                 wb.close()
-            except Exception:
-                pass
-            final = rows[-50:] if len(rows) > 50 else rows
-            self.root.after(0, lambda: self._on_refresh_done(final, events, trs_data))
+                ok = True
+            except Exception as e:
+                self.root.after(0, lambda err=str(e): _toast(
+                    self.root, f"⚠  Erreur lecture Excel : {err}", bg=C_RED, duration=3000))
+            if ok:
+                self.root.after(0, lambda: self._on_refresh_done(rows, events, trs_data))
 
         threading.Thread(target=_bg, daemon=True).start()
 
     def _on_refresh_done(self, rows, events, trs_data):
         """Appelé depuis le thread principal après relecture complète du fichier Excel."""
-        self._apply_fresh_data(rows, events=events, trs_data=trs_data)
+        # Mise à jour des caches
+        if rows is not None:
+            self._data_rows_cache = rows
+        if events is not None:
+            self._events_cache = events
+        if trs_data is not None:
+            self._trs_cache = trs_data
+        # Refresh de tous les onglets visibles
+        self._refresh_table()
+        self._refresh_main_kpi()
+        self._refresh_events_tab()
+        self._refresh_postes_tab()
         if self._mode == "production":
             self._refresh_stops_recap()
-        _toast(self.root, "✔  Données Excel actualisées", bg=GREEN, duration=2000)
+        _toast(self.root, "✔  Données actualisées", bg=GREEN, duration=2000)
 
     def _confirm_quit(self):
         """Vérifie que tout est en ordre avant de quitter l'application."""
