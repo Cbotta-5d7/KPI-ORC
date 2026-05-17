@@ -170,7 +170,7 @@ def load_cfg():
         with open(CONFIG_FILE) as f:
             return json.load(f)
     except Exception:
-        return {"db_path": ""}
+        return {"db_path": "", "reports_dir": ""}
 
 
 def save_cfg(cfg):
@@ -912,6 +912,16 @@ class App:
 
         # ── Étape 3 : saisie / confirmation de la référence de production ──────
         self._ask_prod_ref()
+
+        # ── Étape 4 : dossier d'export PDF ────────────────────────────────────
+        cur_dir = self.cfg.get("reports_dir", "") or os.path.dirname(p)
+        rep_dir = filedialog.askdirectory(
+            title="Dossier d'export des rapports PDF (laisser vide pour annuler)",
+            initialdir=cur_dir)
+        if rep_dir:
+            self.cfg["reports_dir"] = rep_dir
+            save_cfg(self.cfg)
+            _toast(self.root, f"📁 Rapports PDF → {rep_dir}", bg=GREEN, duration=3000)
 
     def _ask_prod_ref(self):
         """Dialogue pour saisir/confirmer la référence production 8h (I2 Listes)."""
@@ -6150,6 +6160,325 @@ Arrêts imputés au TRS (temps perdu) :
 
         threading.Thread(target=_bg_write_then_read, daemon=True).start()
 
+    # ── Génération PDF rapport fin de poste ───────────────────────────────────
+    def _generate_fin_de_poste_pdf(self, pilot, poste_nom, login_dt, now_dt,
+                                    total_prod_s, total_panne_s, total_ratt_s,
+                                    total_pause_s, total_reunion_s, non_declare_s,
+                                    nb_of, total_qte, total_equiv, trs_poste,
+                                    duree_theorique_s, avg_of_poste, shift_dates):
+        """Génère un PDF complet du rapport de fin de poste dans reports_dir."""
+        import tempfile, importlib
+        reports_dir = self.cfg.get("reports_dir", "")
+        if not reports_dir or not os.path.isdir(reports_dir):
+            return  # dossier non configuré, on skip silencieusement
+
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib import colors
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import cm
+            from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                             Table, TableStyle, HRFlowable, Image as RLImage)
+            from reportlab.lib.enums import TA_CENTER, TA_LEFT
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            import matplotlib.patches as mpatches
+        except ImportError as e:
+            self.root.after(0, lambda: _toast(self.root, f"PDF impossible : {e}", bg=C_RED, duration=3000))
+            return
+
+        safe_pilot  = "".join(c if c.isalnum() or c in "-_ " else "_" for c in pilot)
+        safe_poste  = "".join(c if c.isalnum() or c in "-_ " else "_" for c in poste_nom)
+        date_str    = now_dt.strftime("%Y-%m-%d")
+        fname       = f"{date_str}_{safe_poste}_{safe_pilot}_rapport.pdf"
+        fpath       = os.path.join(reports_dir, fname)
+        tmp_imgs    = []
+
+        styles = getSampleStyleSheet()
+        H1 = ParagraphStyle("H1", fontSize=16, fontName="Helvetica-Bold",
+                             textColor=colors.HexColor("#0d2040"), spaceAfter=6)
+        H2 = ParagraphStyle("H2", fontSize=12, fontName="Helvetica-Bold",
+                             textColor=colors.HexColor("#1e3a5f"), spaceAfter=4,
+                             spaceBefore=14)
+        BODY = ParagraphStyle("BODY", fontSize=9, fontName="Helvetica", spaceAfter=2)
+        ALERT = ParagraphStyle("ALERT", fontSize=12, fontName="Helvetica-Bold",
+                               textColor=colors.HexColor("#92400e"),
+                               backColor=colors.HexColor("#fff3cd"),
+                               borderPad=6, spaceAfter=8)
+
+        tbl_style = TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+            ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+            ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",   (0, 0), (-1, -1), 9),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+             [colors.HexColor("#f0f4fb"), colors.white]),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#c8d4e8")),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING",  (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING",   (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
+        ])
+
+        story = []
+
+        # ── Bandeau titre ────────────────────────────────────────────────────
+        story.append(Paragraph("KPI-ORC — Rapport de fin de poste", H1))
+        story.append(HRFlowable(width="100%", thickness=2,
+                                color=colors.HexColor("#0d2040")))
+        story.append(Spacer(1, 6))
+
+        # Infos en-tête
+        info_data = [
+            ["Pilote", pilot or "—", "Poste", poste_nom or "—"],
+            ["Date", now_dt.strftime("%d/%m/%Y"), "Heure clôture", now_dt.strftime("%H:%M:%S")],
+            ["Connexion", login_dt.strftime("%d/%m/%Y %H:%M") if login_dt else "—",
+             "Durée théorique", fmt(int(duree_theorique_s))],
+        ]
+        info_tbl = Table(info_data, colWidths=[3*cm, 5*cm, 3*cm, 5*cm])
+        info_tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+            ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#c8d4e8")),
+            ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#eef2fb")),
+            ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#eef2fb")),
+            ("TOPPADDING",   (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
+        ]))
+        story.append(info_tbl)
+        story.append(Spacer(1, 10))
+
+        # ── Alerte durée ─────────────────────────────────────────────────────
+        total_declare_s = total_prod_s + total_panne_s + total_ratt_s + total_pause_s + total_reunion_s
+        delta_s = total_declare_s - duree_theorique_s
+        if abs(delta_s) > 300:
+            if delta_s < 0:
+                msg_pdf = (f"⚠  Attention : le pilote a déclaré "
+                           f"{fmt(abs(int(delta_s)))} de moins par rapport au poste théorique "
+                           f"({fmt(int(duree_theorique_s))}).")
+            else:
+                msg_pdf = (f"⚠  Attention : le pilote a déclaré "
+                           f"{fmt(int(delta_s))} de plus par rapport au poste théorique.")
+            story.append(Paragraph(msg_pdf, ALERT))
+
+        # ── Résumé KPIs ──────────────────────────────────────────────────────
+        story.append(Paragraph("Résumé du poste", H2))
+        trs_str = f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"
+        kpi_data = [
+            ["Indicateur", "Valeur"],
+            ["TRS du poste",            trs_str],
+            ["Nombre d'OF déclarés",     str(nb_of)],
+            ["Quantité fabriquée",        str(total_qte)],
+            ["Équivalence totale",        f"{total_equiv:.0f}"],
+            ["Nbre moyen pièces/OF",      f"{avg_of_poste:.1f}" if nb_of > 0 else "—"],
+            ["Total production",          fmt(int(total_prod_s))],
+            ["Total arrêts panne",        fmt(int(total_panne_s))],
+            ["Total rattrapages",         fmt(int(total_ratt_s))],
+            ["Total pauses",              fmt(int(total_pause_s))],
+            ["Total réunions",            fmt(int(total_reunion_s))],
+            ["Durée non déclarée",        fmt(int(non_declare_s))],
+        ]
+        kpi_tbl = Table(kpi_data, colWidths=[9*cm, 7*cm])
+        kpi_tbl.setStyle(tbl_style)
+        story.append(kpi_tbl)
+        story.append(Spacer(1, 12))
+
+        # ── Graphique 1 : Pareto arrêts ───────────────────────────────────────
+        rows_all = [r for _, r in self._data_rows_cache]
+        stop_totals = {}
+        for row in rows_all:
+            try:
+                dt_r = datetime.datetime.strptime(
+                    f"{_row_date(row[1])} {_row_time(row[17])}", "%d/%m/%Y %H:%M:%S")
+                if row[3] != pilot or dt_r < (login_dt or now_dt - datetime.timedelta(hours=24)):
+                    continue
+            except Exception:
+                continue
+            for ci in range(33, 56):
+                if ci < len(row) and row[ci]:
+                    key = EVENTS[ci - 33][1] if ci - 33 < len(EVENTS) else f"col{ci}"
+                    label = EVENTS[ci - 33][0] if ci - 33 < len(EVENTS) else f"Arrêt {ci}"
+                    s = _hms_to_sec(str(row[ci]))
+                    if s > 0:
+                        stop_totals[label] = stop_totals.get(label, 0) + s
+
+        if stop_totals:
+            sorted_stops = sorted(stop_totals.items(), key=lambda x: -x[1])[:12]
+            labels_s = [s[0][:22] for s in sorted_stops]
+            values_s = [s[1] / 60 for s in sorted_stops]
+            fig1, ax1 = plt.subplots(figsize=(7, 3.5))
+            colors_bar = ["#e74c3c" if i == 0 else "#e8855a" if i < 3 else "#f0b97c"
+                          for i in range(len(labels_s))]
+            bars = ax1.barh(labels_s[::-1], values_s[::-1], color=colors_bar[::-1])
+            ax1.set_xlabel("Minutes")
+            ax1.set_title("Pareto des arrêts (minutes)", fontsize=11, fontweight="bold")
+            ax1.bar_label(bars, fmt="%.1f", padding=3, fontsize=8)
+            ax1.set_facecolor("#f8faff")
+            fig1.patch.set_facecolor("white")
+            fig1.tight_layout()
+            tmp1 = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            fig1.savefig(tmp1.name, dpi=120, bbox_inches="tight")
+            plt.close(fig1)
+            tmp_imgs.append(tmp1.name)
+            story.append(Paragraph("Pareto des perturbations / arrêts", H2))
+            story.append(RLImage(tmp1.name, width=14*cm, height=7*cm))
+            story.append(Spacer(1, 10))
+
+        # ── Graphique 2 : Prod réelle vs théorique ────────────────────────────
+        prod_theorique = (self._get_prod_ref() * duree_theorique_s / 28800.0
+                          if duree_theorique_s > 0 else 0)
+        if prod_theorique > 0 or total_equiv > 0:
+            fig2, ax2 = plt.subplots(figsize=(5, 3))
+            cats   = ["Production\nthéorique", "Équivalence\nréelle"]
+            vals   = [prod_theorique, total_equiv]
+            cols2  = ["#1e3a5f", "#27ae60" if total_equiv >= prod_theorique else "#e74c3c"]
+            ax2.bar(cats, vals, color=cols2, width=0.5, edgecolor="white")
+            for i, v in enumerate(vals):
+                ax2.text(i, v + max(vals) * 0.02, f"{v:.0f}", ha="center",
+                         fontsize=10, fontweight="bold")
+            ax2.set_title("Production réelle vs théorique", fontsize=11, fontweight="bold")
+            ax2.set_facecolor("#f8faff")
+            ax2.set_ylabel("Équivalences")
+            fig2.patch.set_facecolor("white")
+            fig2.tight_layout()
+            tmp2 = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            fig2.savefig(tmp2.name, dpi=120, bbox_inches="tight")
+            plt.close(fig2)
+            tmp_imgs.append(tmp2.name)
+            story.append(Paragraph("Production réelle vs théorique", H2))
+            story.append(RLImage(tmp2.name, width=10*cm, height=6*cm))
+            story.append(Spacer(1, 10))
+
+        # ── Graphique 3 : Timeline ────────────────────────────────────────────
+        if self._of_periods or self._tl_events:
+            fig3, ax3 = plt.subplots(figsize=(14, 2.5))
+            if login_dt and now_dt > login_dt:
+                t0 = login_dt.timestamp()
+                t1 = now_dt.timestamp()
+                span = max(t1 - t0, 1)
+                def _pct(dt): return (dt.timestamp() - t0) / span * 100
+                # Fond
+                ax3.barh(0, 100, left=0, height=0.6, color="#e8edf5", edgecolor="none")
+                # Périodes OF
+                for p in self._of_periods:
+                    ps = p.get("start"); pe = p.get("end") or now_dt
+                    if ps:
+                        x0, x1 = _pct(ps), _pct(pe)
+                        ax3.barh(0, x1 - x0, left=x0, height=0.5,
+                                 color="#27ae60", edgecolor="white", linewidth=0.5)
+                # Arrêts
+                for ev in self._tl_events:
+                    if ev.get("cat") in ("ratt", "pb"):
+                        es = ev.get("start"); ee = ev.get("end") or now_dt
+                        if es:
+                            x0, x1 = _pct(es), _pct(ee)
+                            color_ev = "#e74c3c" if ev["cat"] == "pb" else "#f39c12"
+                            ax3.barh(0, max(x1 - x0, 0.3), left=x0, height=0.5,
+                                     color=color_ev, edgecolor="white", linewidth=0.5)
+                # Pauses
+                for ps, pe in self._pause_periods:
+                    x0, x1 = _pct(ps), _pct(pe)
+                    ax3.barh(0, max(x1 - x0, 0.3), left=x0, height=0.5,
+                             color="#3b82f6", edgecolor="white", linewidth=0.5)
+
+                # Légende
+                legend_patches = [
+                    mpatches.Patch(color="#27ae60", label="Production"),
+                    mpatches.Patch(color="#e74c3c", label="Panne"),
+                    mpatches.Patch(color="#f39c12", label="Rattrapage"),
+                    mpatches.Patch(color="#3b82f6", label="Pause"),
+                ]
+                ax3.legend(handles=legend_patches, loc="upper right",
+                           fontsize=8, ncol=4, framealpha=0.8)
+                # Axes : heures
+                n_ticks = 8
+                tick_ts  = [t0 + i * span / n_ticks for i in range(n_ticks + 1)]
+                tick_pct = [i * 100 / n_ticks for i in range(n_ticks + 1)]
+                tick_lbl = [datetime.datetime.fromtimestamp(t).strftime("%H:%M")
+                            for t in tick_ts]
+                ax3.set_xticks(tick_pct)
+                ax3.set_xticklabels(tick_lbl, fontsize=7)
+                ax3.set_yticks([])
+                ax3.set_xlim(0, 100)
+                ax3.set_title("Chronologie du poste", fontsize=11, fontweight="bold")
+                ax3.set_facecolor("#f8faff")
+                fig3.patch.set_facecolor("white")
+                fig3.tight_layout()
+                tmp3 = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                fig3.savefig(tmp3.name, dpi=120, bbox_inches="tight")
+                plt.close(fig3)
+                tmp_imgs.append(tmp3.name)
+                story.append(Paragraph("Chronologie du poste", H2))
+                story.append(RLImage(tmp3.name, width=16*cm, height=4*cm))
+                story.append(Spacer(1, 10))
+
+        # ── Table des OFs ─────────────────────────────────────────────────────
+        of_rows_pdf = []
+        for row in rows_all:
+            try:
+                dt_r = datetime.datetime.strptime(
+                    f"{_row_date(row[1])} {_row_time(row[17])}", "%d/%m/%Y %H:%M:%S")
+                if str(row[3] or "").strip() != pilot:
+                    continue
+                if login_dt and dt_r < login_dt:
+                    continue
+            except Exception:
+                continue
+            of_rows_pdf.append(row)
+
+        if of_rows_pdf:
+            story.append(Paragraph("Détail des OF déclarés", H2))
+            of_hdr = ["N° OF", "Poste", "H.Début", "H.Fin", "Durée",
+                      "Qté fab", "Qté emb", "Equiv", "TRS OF%"]
+            of_tbl_data = [of_hdr]
+            for row in of_rows_pdf:
+                trs_of = "—"
+                try:
+                    eq = float(str(row[15] or 0).replace(",", "."))
+                    prod_s = _hms_to_sec(_row_time(row[16]) or "")
+                    pr = self._get_prod_ref()
+                    if pr > 0 and prod_s > 0:
+                        trs_of = f"{eq / (pr * prod_s / 28800.0) * 100:.1f}%"
+                except Exception:
+                    pass
+                of_tbl_data.append([
+                    str(row[0] or "—"),
+                    str(row[2] or "—"),
+                    _row_time(row[17])[:5] if row[17] else "—",
+                    _row_time(row[18])[:5] if row[18] else "—",
+                    _row_time(row[16]) or "—",
+                    str(row[13] or "—"),
+                    str(row[14] or "—"),
+                    f"{float(str(row[15] or 0).replace(',', '.')):.0f}" if row[15] else "—",
+                    trs_of,
+                ])
+            col_w = [2.5*cm, 1.8*cm, 1.6*cm, 1.6*cm, 1.8*cm,
+                     1.5*cm, 1.5*cm, 1.5*cm, 1.8*cm]
+            of_table = Table(of_tbl_data, colWidths=col_w, repeatRows=1)
+            of_table.setStyle(tbl_style)
+            story.append(of_table)
+
+        # ── Génération PDF ───────────────────────────────────────────────────
+        doc = SimpleDocTemplate(fpath, pagesize=A4,
+                                leftMargin=1.5*cm, rightMargin=1.5*cm,
+                                topMargin=1.5*cm, bottomMargin=1.5*cm)
+        doc.build(story)
+
+        # Nettoyage images temporaires
+        for tmp in tmp_imgs:
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
+
+        self.root.after(0, lambda fp=fpath: _toast(
+            self.root, f"📄 PDF exporté : {os.path.basename(fp)}", bg=GREEN, duration=4000))
+
     def _show_fin_de_poste(self):
         """Affiche le récapitulatif complet du poste en cours."""
         now = datetime.datetime.now()
@@ -6302,18 +6631,30 @@ Arrêts imputés au TRS (temps perdu) :
         _ri("TRS du poste",          f"{trs_poste:.1f}%" if trs_poste >= 0 else "—",
             trs_col, bold=True)
 
-        # Alerte durée
+        # Alerte durée — bandeaux proéminent
         delta_s = total_declare_s - duree_theorique_s
         if abs(delta_s) > 300:
-            sign = "+" if delta_s > 0 else "-"
-            msg_alert = (f"⚠  Attention : votre poste devrait durer "
-                         f"{duree_theorique_min//60}h{duree_theorique_min%60:02d}min\n"
-                         f"   Vous avez déclaré {sign}{fmt(abs(delta_s))} par rapport au poste théorique.")
-            alrt = tk.Frame(li, bg="#fff3cd",
-                            highlightthickness=1, highlightbackground="#f5a623")
-            alrt.pack(fill="x", pady=(8, 0))
-            tk.Label(alrt, text=msg_alert, bg="#fff3cd", fg="#92400e",
-                     font=("Arial", 9, "bold"), justify="left", padx=8, pady=6).pack(anchor="w")
+            if delta_s < 0:
+                msg_line1 = "⚠  DURÉE INSUFFISANTE"
+                msg_line2 = (f"Vous avez déclaré {fmt(abs(int(delta_s)))} de moins "
+                             f"par rapport au poste théorique "
+                             f"({duree_theorique_min//60}h{duree_theorique_min%60:02d}min).")
+                alrt_bg, alrt_fg = "#fee2e2", "#991b1b"
+            else:
+                msg_line1 = "⚠  DURÉE DÉPASSÉE"
+                msg_line2 = (f"Vous avez déclaré {fmt(int(delta_s))} de plus "
+                             f"par rapport au poste théorique "
+                             f"({duree_theorique_min//60}h{duree_theorique_min%60:02d}min).")
+                alrt_bg, alrt_fg = "#fff3cd", "#92400e"
+            alrt = tk.Frame(li, bg=alrt_bg,
+                            highlightthickness=2, highlightbackground=alrt_fg)
+            alrt.pack(fill="x", pady=(10, 0))
+            tk.Label(alrt, text=msg_line1, bg=alrt_bg, fg=alrt_fg,
+                     font=("Arial", 14, "bold"), justify="center",
+                     padx=10, pady=(8, 2)).pack(fill="x")
+            tk.Label(alrt, text=msg_line2, bg=alrt_bg, fg=alrt_fg,
+                     font=("Arial", 11), justify="center",
+                     wraplength=320, padx=10, pady=(2, 10)).pack(fill="x")
 
         # ── Sauvegarde TRS + refresh onglet Postes ──────────────────────────────
         def _fin_de_poste_save_trs():
@@ -6422,6 +6763,19 @@ Arrêts imputés au TRS (temps perdu) :
                   padx=14, pady=8, cursor="hand2").pack(fill="x", pady=4)
 
         def _deconnecter_et_quitter():
+            # Générer le PDF en background avant de déconnecter
+            _pilot_snap   = pilot
+            _poste_snap   = poste_nom
+            _login_snap   = login_dt
+            _now_snap     = now
+            def _bg_pdf():
+                self._generate_fin_de_poste_pdf(
+                    _pilot_snap, _poste_snap, _login_snap, _now_snap,
+                    total_prod_s, total_panne_s, total_ratt_s,
+                    total_pause_s, total_reunion_s, non_declare_s,
+                    nb_of, total_qte, total_equiv, trs_poste,
+                    duree_theorique_s, avg_of_poste, _shift_dates)
+            threading.Thread(target=_bg_pdf, daemon=True).start()
             self._logged_in_pilot = None
             self._logged_in_poste = None
             self._login_time      = None
