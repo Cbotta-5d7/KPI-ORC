@@ -3589,11 +3589,14 @@ Arrêts imputés au TRS (temps perdu) :
                 pass
 
         def _trs_from_cache(pilot_name):
-            """Lit le TRS poste depuis la feuille TRS (même valeur que l'onglet Postes)."""
+            """Lit le TRS poste depuis la feuille TRS (même valeur que l'onglet Postes).
+            Colonnes: 0=Date, 1=Poste, 2=Pilote, 14=TRS poste"""
             for row in reversed(getattr(self, "_trs_cache", [])):
-                if str(row.get("Pilote", "")).strip() == pilot_name:
+                if not row or len(row) < 15:
+                    continue
+                if str(row[2] or "").strip() == pilot_name:
                     try:
-                        return float(str(row.get("TRS poste", "") or "").replace("%", "").replace(",", ".").strip())
+                        return float(str(row[14] or "").replace("%", "").replace(",", ".").strip())
                     except Exception:
                         pass
             return 0.0
