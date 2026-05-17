@@ -6449,6 +6449,10 @@ Arrêts imputés au TRS (temps perdu) :
                     if trs_fresh:
                         self._trs_cache = trs_fresh
                         self.root.after(0, self._refresh_postes_tab)
+                        try:
+                            self._generate_dashboard_html()
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             threading.Thread(target=_bg_trs, daemon=True).start()
