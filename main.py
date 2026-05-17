@@ -2059,7 +2059,6 @@ Arrêts imputés au TRS (temps perdu) :
             ("Grand nettoyage (minutes)",              "clean_grand_min",   60),
             ("Réunion tolérée par poste (minutes)",    "meeting_tol_min",    5),
             ("Temps de pause autorisé par poste (min)", "pause_max_min",    20),
-            ("Intervalle inter-OF ignoré (minutes)",   "inter_of_tol_min",   5),
             ("Mot de passe application",               "app_password",    "0000"),
             ("Mot de passe base de données",           "db_password",     "4594"),
             ("Mot de passe paramètres",                "settings_password","2026"),
@@ -4210,44 +4209,7 @@ Arrêts imputés au TRS (temps perdu) :
             if 30 < gap <= 28800:   # > 30s et <= 8h
                 self._inter_of_s = gap
                 do_changeof = False
-                _inter_of_tol = int(self.cfg.get("inter_of_tol_min", 5)) * 60
-                if gap < _inter_of_tol:
-                    # Intervalle court : proposer de le classer en "Changement de série"
-                    h2 = int(gap // 3600); m2 = int((gap % 3600) // 60); s2 = int(gap % 60)
-                    ts_short = f"{h2}h {m2:02d}min {s2:02d}s" if h2 else f"{m2}min {s2:02d}s"
-                    _alert_res = [False]
-                    _alert_var = tk.BooleanVar(value=False)
-                    self._modal_open = True
-                    ov_a = tk.Frame(self.root, bg=WHITE)
-                    ov_a.place(relx=0, rely=0, relwidth=1, relheight=1)
-                    ov_a.lift()
-                    tk.Frame(ov_a, bg=NAVY_L, height=6).pack(fill="x")
-                    tk.Label(ov_a, text="⏱  Intervalle inter-OF court",
-                             bg=WHITE, fg=NAVY, font=("Arial", 16, "bold")).pack(pady=(40, 4))
-                    tk.Label(ov_a,
-                             text=f"Durée depuis la fin de l'OF précédent : {ts_short}\n"
-                                  f"Ce temps impacte toujours le TRS.\n"
-                                  f"Voulez-vous le classer comme « Changement de série » ?",
-                             bg=WHITE, fg=DARK, font=("Arial", 12),
-                             justify="center").pack(pady=(0, 24))
-                    bf_a = tk.Frame(ov_a, bg=WHITE)
-                    bf_a.pack()
-                    def _a_oui():
-                        _alert_res[0] = True; ov_a.destroy(); _alert_var.set(True)
-                    def _a_non():
-                        _alert_res[0] = False; ov_a.destroy(); _alert_var.set(True)
-                    tk.Button(bf_a, text="✔  Oui — Changement de série",
-                              command=_a_oui, bg=GREEN, fg=WHITE,
-                              font=("Arial", 12, "bold"), relief="flat",
-                              padx=18, pady=10, cursor="hand2").pack(side="left", padx=8)
-                    tk.Button(bf_a, text="✕  Non — Ignorer",
-                              command=_a_non, bg=LGRAY, fg=DARK,
-                              font=("Arial", 12), relief="flat",
-                              padx=18, pady=10, cursor="hand2").pack(side="left", padx=8)
-                    self.root.wait_variable(_alert_var)
-                    self._modal_open = False
-                    do_changeof = _alert_res[0]
-                elif self._last_of_pilot and self._last_of_pilot != (self._logged_in_pilot or ""):
+                if self._last_of_pilot and self._last_of_pilot != (self._logged_in_pilot or ""):
                     h = int(gap // 3600)
                     m = int((gap % 3600) // 60)
                     ts = f"{h}h {m:02d}min" if h > 0 else f"{m}min"
@@ -4341,6 +4303,55 @@ Arrêts imputés au TRS (temps perdu) :
                         do_changeof = True
                     else:
                         do_changeof = False
+                else:
+                    # ── Popup changement d'OF : toujours affiché, temps modifiable ─
+                    h2 = int(gap // 3600); m2 = int((gap % 3600) // 60); s2 = int(gap % 60)
+                    _alert_var = tk.BooleanVar(value=False)
+                    self._modal_open = True
+                    ov_a = tk.Frame(self.root, bg=WHITE)
+                    ov_a.place(relx=0, rely=0, relwidth=1, relheight=1)
+                    ov_a.lift()
+                    tk.Frame(ov_a, bg=NAVY_L, height=6).pack(fill="x")
+                    tk.Label(ov_a, text="⏱  Changement d'OF — Temps inter-OF",
+                             bg=WHITE, fg=NAVY, font=("Arial", 16, "bold")).pack(pady=(36, 4))
+                    tk.Label(ov_a,
+                             text="Ce temps sera déclaré comme « Changement de série ».\n"
+                                  "Vous pouvez le modifier si nécessaire.",
+                             bg=WHITE, fg=DARK, font=("Arial", 12),
+                             justify="center").pack(pady=(0, 16))
+                    time_f = tk.Frame(ov_a, bg=WHITE)
+                    time_f.pack(pady=4)
+                    hv = tk.StringVar(value=str(h2))
+                    mv = tk.StringVar(value=str(m2))
+                    sv = tk.StringVar(value=str(s2))
+                    _estyle = dict(font=("Arial", 18, "bold"), width=3,
+                                   relief="solid", bd=1, justify="center")
+                    tk.Entry(time_f, textvariable=hv, **_estyle).pack(side="left", padx=2)
+                    tk.Label(time_f, text="h", bg=WHITE,
+                             font=("Arial", 14)).pack(side="left")
+                    tk.Entry(time_f, textvariable=mv, **_estyle).pack(side="left", padx=2)
+                    tk.Label(time_f, text="min", bg=WHITE,
+                             font=("Arial", 14)).pack(side="left")
+                    tk.Entry(time_f, textvariable=sv, **_estyle).pack(side="left", padx=2)
+                    tk.Label(time_f, text="sec", bg=WHITE,
+                             font=("Arial", 14)).pack(side="left")
+                    def _a_valider():
+                        try:
+                            new_gap = (int(hv.get() or 0) * 3600
+                                       + int(mv.get() or 0) * 60
+                                       + int(sv.get() or 0))
+                            self._inter_of_s = max(0, new_gap)
+                        except Exception:
+                            self._inter_of_s = gap
+                        ov_a.destroy()
+                        _alert_var.set(True)
+                    tk.Button(ov_a, text="✔  Valider — Changement de série",
+                              command=_a_valider, bg=GREEN, fg=WHITE,
+                              font=("Arial", 13, "bold"), relief="flat",
+                              padx=24, pady=12, cursor="hand2").pack(pady=(20, 0))
+                    self.root.wait_variable(_alert_var)
+                    self._modal_open = False
+                    do_changeof = True
                 if do_changeof:
                     self._write_changement_of_excel(self._last_of_end, now)
                     # Choisir la clé timeline : interposte si existante, sinon changeof
@@ -4844,8 +4855,19 @@ Arrêts imputés au TRS (temps perdu) :
                          padx=6, pady=3).grid(row=ri, column=1, sticky="nsew", padx=1, pady=0)
             return frame
 
+        TRS_HEADERS = [
+            "Date", "Poste", "Pilote", "Co-Pilote", "Nb Personnes",
+            "Total temps d'ouverture", "Total temps déclarés",
+            "Ecart ouverture/déclarés", "Total temps de marche",
+            "Total arrêts prévu", "Débordement arrêts prévu",
+            "Total arrêts (panne)", "Total arrêt rattrapage",
+            "Total pauses", "Total réunions",
+            "Nombre d'OF", "Nombre de pièce produites",
+            "Equivalence", "Nombre moyen de pièce par OF", "TRS",
+        ]
         make_tab("Onglet Data", DATA_HEADERS)
         make_tab("Onglet Evenements", EVT_HEADERS)
+        make_tab("Onglet TRS", TRS_HEADERS)
 
         listes_info = [
             ("Col A", "Pilotes  (liste déroulante pilote)"),
@@ -6183,7 +6205,9 @@ Arrêts imputés au TRS (temps perdu) :
             poste_nom = self._saved_form_data.get("poste", "")
 
         durees_cfg = self.cfg.get("postes_durees", {})
-        duree_theorique_min = durees_cfg.get(poste_nom, 480)  # défaut 8h
+        _override = getattr(self, "_fp_duree_override", None)
+        duree_theorique_min = _override if _override else durees_cfg.get(poste_nom, 480)
+        self._fp_duree_override = None
 
         pilot = self._logged_in_pilot or ""
 
@@ -6357,10 +6381,7 @@ Arrêts imputés au TRS (temps perdu) :
                     new_min = int(hv.get() or 0) * 60 + int(mv.get() or 0)
                     if new_min <= 0:
                         return
-                    durees_cfg2 = self.cfg.get("postes_durees", {})
-                    durees_cfg2[poste_nom] = new_min
-                    self.cfg["postes_durees"] = durees_cfg2
-                    save_cfg(self.cfg)
+                    self._fp_duree_override = new_min
                     dlg.destroy()
                     ov.destroy()
                     self._show_fin_de_poste()
@@ -6433,19 +6454,18 @@ Arrêts imputés au TRS (temps perdu) :
                       font=("Arial", 11, "bold"), relief="flat",
                       padx=18, pady=8, cursor="hand2").pack(side="right", padx=12, pady=8)
 
-        # ── Body — grille 4 lignes x 3 colonnes, tout visible ───────────────────
+        # ── Body — 3 colonnes : info (étroit) | TRS+KPI | Pareto — 3 lignes ────────
         body = tk.Frame(ov, bg="#0d2040")
         body.pack(fill="both", expand=True, padx=6, pady=4)
 
-        # Colonnes : info (col 0, 1) | gauge+kpi (col 2)
-        # Lignes   : résumé (0) | timeline (1) | analyses (2) | OF (3)
-        # Colonnes : info (col 0) | gauge+kpi (col 1)
-        # Lignes   : résumé (0) | timeline (1) | analyses (2) | OF (3)
-        body.columnconfigure(0, weight=2)
-        body.columnconfigure(1, weight=3)
-        body.rowconfigure(1, weight=2)   # timeline
-        body.rowconfigure(2, weight=3)   # analyses
-        body.rowconfigure(3, weight=2)   # OF table
+        # Colonnes : info étroit (0) | TRS+KPI (1) | Pareto (2)
+        # Lignes   : résumé+pareto (0) | timeline (1) | OF table (2)
+        body.columnconfigure(0, weight=1)   # info liste (étroite)
+        body.columnconfigure(1, weight=2)   # TRS jauge + KPI
+        body.columnconfigure(2, weight=2)   # Pareto
+        body.rowconfigure(0, weight=3)      # zone haute
+        body.rowconfigure(1, weight=0)      # timeline (hauteur fixe)
+        body.rowconfigure(2, weight=2)      # tableau OF
 
         # ── ZONE 0 gauche : tableau infos ───────────────────────────────────────
         info_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
@@ -6506,9 +6526,9 @@ Arrêts imputés au TRS (temps perdu) :
                      font=("Arial", 13, "bold"), justify="center",
                      padx=8, pady=6).pack(fill="x")
 
-        # ── ZONE 0 droite : jauge TRS + KPI cards ───────────────────────────────
+        # ── ZONE 0 milieu : jauge TRS + KPI cards ───────────────────────────────
         gauge_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
-        gauge_f.grid(row=0, column=1, sticky="nsew", padx=(3, 0), pady=(0, 3))
+        gauge_f.grid(row=0, column=1, sticky="nsew", padx=3, pady=(0, 3))
         tk.Frame(gauge_f, bg=NAVY_L, height=3).pack(fill="x")
         tk.Label(gauge_f, text="TRS du poste", bg=WHITE, fg=GRAY,
                  font=("Arial", 10, "bold")).pack(pady=(6, 0))
@@ -6574,9 +6594,9 @@ Arrêts imputés au TRS (temps perdu) :
         bar_cv.bind("<Configure>", _draw_bars)
         bar_cv.after(50, _draw_bars)
 
-        # ── ZONE 1 : Chronologie ─────────────────────────────────────────────────
+        # ── ZONE 1 : Chronologie (pleine largeur) ────────────────────────────────
         chron_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
-        chron_f.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(0, 3))
+        chron_f.grid(row=1, column=0, columnspan=3, sticky="nsew", pady=(0, 3))
         tk.Frame(chron_f, bg=NAVY_L, height=3).pack(fill="x")
         tk.Label(chron_f, text="Chronologie du poste", bg=WHITE, fg=NAVY,
                  font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(4, 0))
@@ -6675,29 +6695,23 @@ Arrêts imputés au TRS (temps perdu) :
             tk.Label(_clf, text=_cll, bg=WHITE, fg="#475569",
                      font=("Arial", 8)).pack(side="left", padx=(2, 0))
 
-        # ── ZONE 2 : Analyses ────────────────────────────────────────────────────
-        ana_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
-        ana_f.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(0, 3))
-        tk.Frame(ana_f, bg=NAVY_L, height=3).pack(fill="x")
-
+        # ── ZONE 0 droite : Pareto arrêts (barres verticales) ───────────────────
+        # Construire _stop_totals d'abord
         _stop_totals: dict = {}
         for _, row in self._data_rows_cache:
             rd = _row_date(row[1])
             if rd not in _shift_dates or str(row[3] or "").strip() != pilot:
                 continue
-            # Arrêts (colonnes 33-55)
             for ci in range(33, 56):
                 if ci < len(row) and row[ci]:
                     _lbl_s = EVENTS[ci-33][0] if (ci-33) < len(EVENTS) else f"Col{ci}"
                     sv = _hms_to_sec(str(row[ci]))
                     if sv > 0:
                         _stop_totals[_lbl_s] = _stop_totals.get(_lbl_s, 0) + sv
-            # Nettoyage (colonne AG = index 32)
             if len(row) > 32 and row[32]:
                 sv = _hms_to_sec(str(row[32]))
                 if sv > 0:
                     _stop_totals["Nettoyage"] = _stop_totals.get("Nettoyage", 0) + sv
-        # Pauses depuis _events_cache
         for _ev_r in self._events_cache:
             try:
                 if "pause" in str(_ev_r[0] or "").lower():
@@ -6709,20 +6723,16 @@ Arrêts imputés au TRS (temps perdu) :
                             _stop_totals["Pause pilote"] = _stop_totals.get("Pause pilote", 0) + sv
             except Exception:
                 pass
-        # Pauses en cours (pas encore dans _events_cache)
         if total_pause_s > 0 and "Pause pilote" not in _stop_totals:
             _stop_totals["Pause pilote"] = total_pause_s
 
-        _prod_theo = (self._get_prod_ref() * duree_theorique_s / 28800.0
-                      if duree_theorique_s > 0 else 0)
-
-        # Pareto pleine largeur
-        pareto_f = tk.Frame(ana_f, bg=WHITE)
-        pareto_f.pack(fill="both", expand=True, padx=6, pady=4)
+        pareto_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
+        pareto_f.grid(row=0, column=2, sticky="nsew", padx=(0, 0), pady=(0, 3))
+        tk.Frame(pareto_f, bg=NAVY_L, height=3).pack(fill="x")
         tk.Label(pareto_f, text="Pareto arrêts", bg=WHITE, fg=NAVY,
-                 font=("Arial", 9, "bold")).pack(anchor="w")
+                 font=("Arial", 9, "bold")).pack(anchor="w", padx=8, pady=(4, 0))
         pareto_cv = tk.Canvas(pareto_f, bg=WHITE, highlightthickness=0)
-        pareto_cv.pack(fill="both", expand=True)
+        pareto_cv.pack(fill="both", expand=True, padx=4, pady=4)
 
         _pareto_items = sorted(_stop_totals.items(), key=lambda x: -x[1])[:8]
         _pareto_colors = ["#dc2626","#ef4444","#f87171","#fb923c",
@@ -6731,54 +6741,59 @@ Arrêts imputés au TRS (temps perdu) :
 
         def _draw_pareto(event=None):
             pareto_cv.delete("all")
-            W = pareto_cv.winfo_width() or 700
-            H = pareto_cv.winfo_height() or 160
+            W = pareto_cv.winfo_width() or 300
+            H = pareto_cv.winfo_height() or 200
             if not _pareto_items:
-                pareto_cv.create_text(W // 2, H // 2, text="Aucun arrêt déclaré",
+                pareto_cv.create_text(W // 2, H // 2, text="Aucun arrêt",
                                       anchor="center", font=("Arial", 10), fill="#94a3b8")
                 return
-            pad_l = 130; pad_r = 60; pad_t = 4; pad_b = 4
-            bw2 = W - pad_l - pad_r
             n = len(_pareto_items)
-            row_h2 = (H - pad_t - pad_b) / n
-            bh2 = max(10, row_h2 * 0.6)
+            pad_t = 18; pad_b = 40; pad_l = 8; pad_r = 8
+            bar_zone_h = H - pad_t - pad_b
+            bar_zone_w = W - pad_l - pad_r
+            bar_w = max(10, bar_zone_w / n - 4)
             for i, ((lbl, val), col) in enumerate(zip(_pareto_items, _pareto_colors)):
-                y_mid = pad_t + i * row_h2 + row_h2 / 2
-                y0 = y_mid - bh2 / 2; y1 = y_mid + bh2 / 2
-                filled = int(bw2 * val / _pareto_max)
-                pareto_cv.create_rectangle(pad_l, y0, pad_l + bw2, y1,
+                x_ctr = pad_l + (i + 0.5) * bar_zone_w / n
+                bar_h = int(bar_zone_h * val / _pareto_max)
+                x0 = x_ctr - bar_w / 2; x1 = x_ctr + bar_w / 2
+                y0 = pad_t + bar_zone_h - bar_h; y1 = pad_t + bar_zone_h
+                pareto_cv.create_rectangle(x0, pad_t, x1, pad_t + bar_zone_h,
                                            fill="#f1f5f9", outline="", width=0)
-                pareto_cv.create_rectangle(pad_l, y0, pad_l + max(filled, 2), y1,
-                                           fill=col, outline="", width=0)
-                pareto_cv.create_text(pad_l - 6, y_mid, text=lbl[:22], anchor="e",
-                                      font=("Arial", 8), fill="#374151")
+                pareto_cv.create_rectangle(x0, y0, x1, y1, fill=col, outline="", width=0)
                 mins = val / 60
-                pareto_cv.create_text(pad_l + bw2 + 6, y_mid,
-                                      text=f"{mins:.0f} min", anchor="w",
-                                      font=("Arial", 8, "bold"), fill=col)
+                pareto_cv.create_text(x_ctr, y0 - 2,
+                                      text=f"{mins:.0f}m", anchor="s",
+                                      font=("Arial", 7, "bold"), fill=col)
+                short = lbl[:10]
+                pareto_cv.create_text(x_ctr, y1 + 2, text=short, anchor="n",
+                                      font=("Arial", 7), fill="#374151",
+                                      angle=0, width=int(bar_w + 10))
 
         pareto_cv.bind("<Configure>", _draw_pareto)
         pareto_cv.after(50, _draw_pareto)
 
-        # ── ZONE 3 : Détail OFs — grille de cartes ──────────────────────────────
-        of_f = tk.Frame(body, bg="#0d2040", highlightthickness=1, highlightbackground="#2d4a7a")
-        of_f.grid(row=3, column=0, columnspan=2, sticky="nsew")
+        # ── ZONE 2 : Tableau des OF déclarés (pleine largeur) ────────────────────
+        of_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
+        of_f.grid(row=2, column=0, columnspan=3, sticky="nsew")
         tk.Frame(of_f, bg=NAVY_L, height=3).pack(fill="x")
-        tk.Label(of_f, text="Détail des OF déclarés", bg="#0d2040", fg=WHITE,
+        tk.Label(of_f, text="Détail des OF déclarés", bg=WHITE, fg=NAVY,
                  font=("Arial", 9, "bold")).pack(anchor="w", padx=10, pady=(3, 2))
 
-        of_scroll_c = tk.Canvas(of_f, bg="#0d2040", highlightthickness=0)
-        of_scroll_sb = ttk.Scrollbar(of_f, orient="horizontal", command=of_scroll_c.xview)
-        of_scroll_c.configure(xscrollcommand=of_scroll_sb.set)
-        of_scroll_sb.pack(side="bottom", fill="x")
-        of_scroll_c.pack(fill="both", expand=True)
-        of_cards_f = tk.Frame(of_scroll_c, bg="#0d2040")
-        of_scroll_c.create_window((0, 0), window=of_cards_f, anchor="nw")
-        of_cards_f.bind("<Configure>",
-                        lambda e: of_scroll_c.configure(scrollregion=of_scroll_c.bbox("all")))
+        cols_of = ("N° OF","H.Début","H.Fin","Durée OF","Qté fab","Qté emb","Équiv","TRS OF","Arrêts","Ratt.")
+        tv = ttk.Treeview(of_f, columns=cols_of, show="headings", height=4)
+        cws = [90, 70, 70, 75, 65, 65, 65, 65, 80, 80]
+        for col, w in zip(cols_of, cws):
+            tv.heading(col, text=col)
+            tv.column(col, width=w, anchor="center", minwidth=50, stretch=True)
+        sb_of = ttk.Scrollbar(of_f, orient="vertical", command=tv.yview)
+        tv.configure(yscrollcommand=sb_of.set)
+        sb_of.pack(side="right", fill="y")
+        tv.pack(fill="both", expand=True)
+        tv.tag_configure("trs_hi",   background="#e6f7ee", foreground=GREEN)
+        tv.tag_configure("trs_warn", background="#fff7e6", foreground=ORANGE)
+        tv.tag_configure("trs_low",  background="#fde8e8", foreground=C_RED)
 
         pr_ref = self._get_prod_ref()
-        _of_card_col = 0
         for _, row in self._data_rows_cache:
             try:
                 if _row_date(row[1]) not in _shift_dates or str(row[3] or "").strip() != pilot:
@@ -6789,41 +6804,18 @@ Arrêts imputés au TRS (temps perdu) :
                             for ci in range(33, 38) if ci < len(row) and row[ci])
                 eq = float(str(row[15] or 0).replace(",", ".") or 0)
                 ps = _hms_to_sec(str(row[16] or ""))
-                trs_val = (eq / (pr_ref * ps / 28800) * 100) if (pr_ref > 0 and ps > 0 and eq > 0) else -1
-                trs_str = f"{trs_val:.0f}%" if trs_val >= 0 else "—"
-                trs_col = GREEN if trs_val >= 75 else (C_RATT if trs_val >= 50 else C_RED)
-
-                card = tk.Frame(of_cards_f, bg=WHITE,
-                                highlightthickness=1, highlightbackground="#334155",
-                                width=200)
-                card.grid(row=0, column=_of_card_col, sticky="nsew", padx=3, pady=3)
-                card.columnconfigure(0, weight=1)
-                of_cards_f.columnconfigure(_of_card_col, weight=0)
-
-                # Card header: OF number + TRS
-                ch = tk.Frame(card, bg=NAVY)
-                ch.pack(fill="x")
-                tk.Label(ch, text=f"OF {row[0] or '—'}", bg=NAVY, fg=WHITE,
-                         font=("Arial", 9, "bold"), anchor="w").pack(side="left", padx=6, pady=3)
-                tk.Label(ch, text=trs_str, bg=trs_col, fg=WHITE,
-                         font=("Arial", 9, "bold"), padx=4).pack(side="right", padx=4, pady=3)
-
-                # Card body: key fields in 2 columns
-                def _kv(parent, lbl, val, vc=DARK):
-                    f2 = tk.Frame(parent, bg=WHITE)
-                    f2.pack(fill="x", padx=4, pady=1)
-                    tk.Label(f2, text=lbl, bg=WHITE, fg=GRAY,
-                             font=("Arial", 7), width=10, anchor="w").pack(side="left")
-                    tk.Label(f2, text=str(val), bg=WHITE, fg=vc,
-                             font=("Arial", 8, "bold"), anchor="w").pack(side="left")
-                _kv(card, "Début",    str(row[17] or "—")[:8])
-                _kv(card, "Fin",      str(row[18] or "—")[:8])
-                _kv(card, "Durée",    str(row[16] or "—")[:8], NAVY_L)
-                _kv(card, "Qté fab",  str(row[13] or "—"), GREEN)
-                _kv(card, "Équiv",    f"{eq:.0f}" if eq else "—", "#7c3aed")
-                if arr_s: _kv(card, "Arrêts",  fmt(int(arr_s)), C_RED)
-                if rat_s: _kv(card, "Ratt.",   fmt(int(rat_s)), C_RATT)
-                _of_card_col += 1
+                trs_v = (eq / (pr_ref * ps / 28800) * 100) if (pr_ref > 0 and ps > 0 and eq > 0) else -1
+                trs_str = f"{trs_v:.0f}%" if trs_v >= 0 else "—"
+                tag = ("trs_hi",) if trs_v >= 75 else (("trs_warn",) if trs_v >= 55 else ("trs_low",))
+                tv.insert("", "end", tags=tag, values=(
+                    str(row[0] or "—"),
+                    str(row[17] or "—")[:8], str(row[18] or "—")[:8],
+                    str(row[16] or "—")[:8],
+                    str(row[13] or "—"), str(row[14] or "—"),
+                    f"{eq:.0f}" if eq else "—", trs_str,
+                    fmt(int(arr_s)) if arr_s else "—",
+                    fmt(int(rat_s)) if rat_s else "—",
+                ))
             except Exception:
                 pass
 
