@@ -7194,162 +7194,306 @@ Arrêts imputés au TRS (temps perdu) :
     # ── Dashboard HTML ────────────────────────────────────────────────────────
     def _generate_dashboard_html(self):
         """Génère KPI_Dashboard.html dans le même dossier que l'Excel."""
-        path = self.cfg.get("db_path", "")
-        if not path or not self._trs_cache:
-            return
-        out_dir = os.path.dirname(path)
-        if not out_dir:
-            out_dir = "."
-        html_path = os.path.join(out_dir, "KPI_Dashboard.html")
-
-        # 3 derniers postes (plus récent en premier)
-        last3 = list(self._trs_cache[-3:])[::-1]
-
+        import json as _json
         import datetime as _dt
 
-        now_str = _dt.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        path = self.cfg.get("db_path", "")
+        if not path:
+            return
+        out_dir = os.path.dirname(path) or "."
+        html_path = os.path.join(out_dir, "KPI_Dashboard.html")
+        now_str = _dt.datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
 
-        # ── Helpers ───────────────────────────────────────────────────────────
-        def _safe(v):
-            return str(v) if v is not None else "—"
+        # ── helpers ──────────────────────────────────────────────────────────
+        def _s(v):
+            s = str(v) if v is not None else ""
+            return s if s.strip() else "—"
 
-        def _trs_float(v):
+        def _hms_to_min(v):
             try:
-                return float(str(v).replace("%", "").replace("—", "0")
-                             .replace(",", ".").strip() or 0)
+                parts = str(v or "").strip().split(":")
+                if len(parts) == 3:
+                    return round(int(parts[0]) * 60 + int(parts[1]) + int(parts[2]) / 60, 1)
+            except Exception:
+                pass
+            return 0.0
+
+        def _trs_f(v):
+            try:
+                return float(str(v).replace("%", "").replace("—", "0").replace(",", ".").strip() or 0)
             except Exception:
                 return 0.0
 
-        def _date10(v):
-            s = str(v)
-            return s[:10] if len(s) >= 10 else s
+        def _esc(v):
+            return str(v or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
-        # ── Cartes postes (Tab 1) ─────────────────────────────────────────────
-        cards_html = ""
-        for row in last3:
-            date_val  = _safe(row[0])
-            poste_val = _safe(row[1])
-            pilote_val = _safe(row[2])
-            copilote_val = _safe(row[3])
-            nb_pers   = _safe(row[4])
-            t_ouv     = _safe(row[5])
-            t_decl    = _safe(row[6])
-            ecart     = _safe(row[7])
-            t_marche  = _safe(row[8])
-            arr_prev  = _safe(row[9])
-            debord    = _safe(row[10])
-            pannes    = _safe(row[11])
-            rattrap   = _safe(row[12])
-            pauses    = _safe(row[13])
-            reunions  = _safe(row[14])
-            nb_of     = _safe(row[15])
-            nb_pieces = _safe(row[16])
-            equiv     = _safe(row[17])
-            moy_of    = _safe(row[18])
-            trs_raw   = _safe(row[19])
+        def _trs_color(val):
+            return "#16a34a" if val >= 80 else ("#d97706" if val >= 60 else "#dc2626")
 
-            trs_val   = _trs_float(row[19])
-            trs_color = "#27ae60" if trs_val >= 80 else ("#f39c12" if trs_val >= 60 else "#e74c3c")
-            trs_deg   = trs_val * 1.8
-            gauge_style = (
-                f"background: conic-gradient({trs_color} {trs_deg:.1f}deg, "
-                f"#ddd {trs_deg:.1f}deg)"
-            )
+        def _badge_evt(label):
+            l = str(label).lower()
+            if "pb" in l or "panne" in l:
+                return f'<span class="badge badge-pb">{_esc(label)}</span>'
+            elif "ratt" in l:
+                return f'<span class="badge badge-ratt">{_esc(label)}</span>'
+            elif "nettoyage" in l:
+                return f'<span class="badge badge-nett">{_esc(label)}</span>'
+            elif "pause" in l:
+                return f'<span class="badge badge-pause">{_esc(label)}</span>'
+            elif "série" in l or "serie" in l or "chgt" in l or "changement" in l:
+                return f'<span class="badge badge-chgt">{_esc(label)}</span>'
+            return f'<span class="badge badge-other">{_esc(label)}</span>'
 
-            pilot_line = pilote_val
-            if copilote_val and copilote_val != "—":
-                pilot_line += f" / {copilote_val}"
+        # ── collect last 3 postes ─────────────────────────────────────────────
+        if not self._trs_cache:
+            return
+        last3 = list(self._trs_cache[-3:])[::-1]  # newest first
 
-            cards_html += f"""
-            <div class="card">
-              <div class="card-header">
-                <span class="card-date">{date_val}</span>
-                <span class="card-poste">{poste_val}</span>
-                <span class="card-pilot">{pilot_line}</span>
-                <span class="card-pers">{nb_pers} pers.</span>
-              </div>
-              <div class="gauge-section">
-                <div class="gauge-label">TRS</div>
-                <div class="gauge-wrap">
-                  <div class="gauge-bg" style="{gauge_style}"></div>
-                  <div class="gauge-text" style="color:{trs_color}">{trs_raw}</div>
-                </div>
-              </div>
-              <div class="kpi-grid">
-                <div class="kpi-item"><span class="kpi-label">Tps ouverture</span><span class="kpi-val">{t_ouv}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Tps marche</span><span class="kpi-val">{t_marche}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Tps déclarés</span><span class="kpi-val">{t_decl}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Ecart</span><span class="kpi-val">{ecart}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Arrêts prévus</span><span class="kpi-val">{arr_prev}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Débordement</span><span class="kpi-val">{debord}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Pannes</span><span class="kpi-val">{pannes}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Rattrapages</span><span class="kpi-val">{rattrap}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Pauses</span><span class="kpi-val">{pauses}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Réunions</span><span class="kpi-val">{reunions}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Nb OF</span><span class="kpi-val">{nb_of}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Moy pièces/OF</span><span class="kpi-val">{moy_of}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Qte produite</span><span class="kpi-val">{nb_pieces}</span></div>
-                <div class="kpi-item"><span class="kpi-label">Equivalence</span><span class="kpi-val">{equiv}</span></div>
-              </div>
-            </div>"""
-
-        # ── Tableau OF (Tab 2) ────────────────────────────────────────────────
-        # Collecter les OF des 3 derniers postes
-        of_rows_html = ""
-        of_rows_collected = []
+        postes = []
         for trs_row in last3:
-            date10  = _date10(trs_row[0])
-            poste_f = _safe(trs_row[1])
-            pilot_f = _safe(trs_row[2])
-            for _idx, rd in self._data_rows_cache:
+            if not trs_row or len(trs_row) < 20:
+                continue
+            p = {
+                "date":      _s(trs_row[0]),
+                "poste":     _s(trs_row[1]),
+                "pilote":    _s(trs_row[2]),
+                "copilote":  _s(trs_row[3]),
+                "nb_pers":   _s(trs_row[4]),
+                "t_ouv":     _s(trs_row[5]),  "t_ouv_m":  _hms_to_min(trs_row[5]),
+                "t_decl":    _s(trs_row[6]),  "t_decl_m": _hms_to_min(trs_row[6]),
+                "ecart":     _s(trs_row[7]),  "ecart_m":  _hms_to_min(trs_row[7]),
+                "t_marche":  _s(trs_row[8]),  "marche_m": _hms_to_min(trs_row[8]),
+                "arr_prev":  _s(trs_row[9]),
+                "debord":    _s(trs_row[10]),
+                "pannes":    _s(trs_row[11]), "pannes_m": _hms_to_min(trs_row[11]),
+                "ratt":      _s(trs_row[12]), "ratt_m":   _hms_to_min(trs_row[12]),
+                "pauses":    _s(trs_row[13]), "pauses_m": _hms_to_min(trs_row[13]),
+                "reunions":  _s(trs_row[14]), "reunions_m": _hms_to_min(trs_row[14]),
+                "nb_of":     _s(trs_row[15]),
+                "qte":       _s(trs_row[16]),
+                "equiv":     _s(trs_row[17]),
+                "moy_of":    _s(trs_row[18]),
+                "trs_raw":   _s(trs_row[19]),
+                "trs_val":   _trs_f(trs_row[19]),
+            }
+            d10 = str(trs_row[0] or "")[:10]
+            p["ofs"] = [rd for _, rd in self._data_rows_cache
+                        if str(rd[1] or "")[:10] == d10
+                        and str(rd[2] or "") == p["poste"]
+                        and str(rd[3] or "") == p["pilote"]]
+            p["evts"] = [r for r in self._events_cache
+                         if str(r[2] or "")[:10] == d10
+                         and str(r[3] or "") == p["poste"]
+                         and str(r[4] or "") == p["pilote"]]
+            postes.append(p)
+
+        if not postes:
+            return
+
+        # ── chart data ────────────────────────────────────────────────────────
+        chart_labels = [f"{p['date'][:5]}  {p['poste']}  {p['pilote']}" for p in postes]
+        chart_trs    = [round(p["trs_val"], 1) for p in postes]
+        chart_colors = [_trs_color(p["trs_val"]) for p in postes]
+        d_marche   = [p["marche_m"]  for p in postes]
+        d_pannes   = [p["pannes_m"]  for p in postes]
+        d_ratt     = [p["ratt_m"]    for p in postes]
+        d_pauses   = [p["pauses_m"]  for p in postes]
+        d_reunions = [p["reunions_m"] for p in postes]
+        d_ecart    = [p["ecart_m"]   for p in postes]
+
+        # pareto arrêts : sommer toutes les durées des événements
+        stop_totals = {}
+        for p in postes:
+            for ev in p["evts"]:
+                label = str(ev[0] or "").strip()
+                if not label:
+                    continue
+                dur_m = _hms_to_min(ev[18] if len(ev) > 18 else 0)
+                stop_totals[label] = stop_totals.get(label, 0.0) + dur_m
+        pareto_sorted = sorted(stop_totals.items(), key=lambda x: -x[1])[:12]
+        pareto_labels = [x[0] for x in pareto_sorted]
+        pareto_values = [round(x[1], 1) for x in pareto_sorted]
+
+        def _pareto_color(label):
+            l = label.lower()
+            if "pb" in l or "panne" in l:   return "#dc2626"
+            if "ratt" in l:                  return "#d97706"
+            if "nettoyage" in l:             return "#0284c7"
+            if "pause" in l:                 return "#2563eb"
+            if "série" in l or "serie" in l: return "#7c3aed"
+            return "#64748b"
+
+        pareto_colors = [_pareto_color(l) for l in pareto_labels]
+
+        # ── SECTION 1 : cartes postes ─────────────────────────────────────────
+        cards_html = ""
+        for i, p in enumerate(postes):
+            tc   = _trs_color(p["trs_val"])
+            logo = "🥇" if i == 0 else ("🥈" if i == 1 else "🥉")
+            cop  = f' / {_esc(p["copilote"])}' if p["copilote"] not in ("—", "") else ""
+            cards_html += f"""
+    <div class="card">
+      <div class="card-hdr">
+        <span class="badge-poste">{logo} {_esc(p['poste'])}</span>
+        <span class="badge-date">{_esc(p['date'])}</span>
+        <span class="pilot">{_esc(p['pilote'])}{cop}</span>
+        <span class="pers">{_esc(p['nb_pers'])} pers.</span>
+      </div>
+      <div class="card-body">
+        <div class="gauge-col">
+          <canvas id="gauge{i}" width="140" height="80"></canvas>
+          <div class="trs-val" style="color:{tc}">{_esc(p['trs_raw'])}</div>
+          <div class="trs-lbl">TRS</div>
+        </div>
+        <div class="kpi-col">
+          <div class="kpi-cell"><div class="kpi-lbl">Tps ouverture</div><div class="kpi-v">{_esc(p['t_ouv'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Tps marche</div><div class="kpi-v">{_esc(p['t_marche'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Tps déclarés</div><div class="kpi-v">{_esc(p['t_decl'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Écart</div><div class="kpi-v">{_esc(p['ecart'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Pannes</div><div class="kpi-v red">{_esc(p['pannes'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Rattrapages</div><div class="kpi-v amber">{_esc(p['ratt'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Pauses</div><div class="kpi-v">{_esc(p['pauses'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Réunions</div><div class="kpi-v">{_esc(p['reunions'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Nb OF</div><div class="kpi-v blue">{_esc(p['nb_of'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Moy pièces/OF</div><div class="kpi-v">{_esc(p['moy_of'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Qte produite</div><div class="kpi-v blue">{_esc(p['qte'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Équivalence</div><div class="kpi-v green">{_esc(p['equiv'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Arrêts prévus</div><div class="kpi-v">{_esc(p['arr_prev'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Débordement</div><div class="kpi-v red">{_esc(p['debord'])}</div></div>
+        </div>
+      </div>
+    </div>"""
+
+        # ── SECTION 3 : OF par poste ──────────────────────────────────────────
+        of_sections_html = ""
+        gauge_charts_js  = ""
+        cadence_charts_js = ""
+        for i, p in enumerate(postes):
+            of_rows = ""
+            cad_labels = []
+            cad_vals   = []
+            for rd in sorted(p["ofs"], key=lambda r: (str(r[1] or ""), str(r[17] or ""))):
                 try:
-                    rd_date  = _date10(rd[1])
-                    rd_poste = _safe(rd[2])
-                    rd_pilot = _safe(rd[3])
-                    if rd_date == date10 and rd_poste == poste_f and rd_pilot == pilot_f:
-                        of_rows_collected.append(rd)
+                    cad_lbl = str(rd[0] or "—")[:10]
+                    cad_v   = 0.0
+                    try:
+                        cad_v = float(str(rd[19] or "0").replace(",", ".") or 0)
+                    except Exception:
+                        pass
+                    cad_labels.append(cad_lbl)
+                    cad_vals.append(round(cad_v, 1))
+                    of_rows += f"""<tr>
+                      <td><b>{_esc(rd[0])}</b></td>
+                      <td>{_esc(rd[17])}</td><td>{_esc(rd[18])}</td>
+                      <td>{_esc(rd[6])}</td><td>{_esc(rd[7])}</td><td>{_esc(rd[8])}</td>
+                      <td>{_esc(rd[13])}</td><td>{_esc(rd[14])}</td>
+                      <td>{_esc(rd[15])}</td><td>{_esc(rd[16])}</td>
+                      <td><b>{_esc(rd[19])}</b></td><td>{_esc(rd[20])}</td>
+                      <td>{_esc(rd[29])}</td>
+                      <td>{_esc(rd[30])}</td><td>{_esc(rd[31])}</td>
+                      <td>{_esc(rd[32])}</td>
+                      <td style="max-width:180px;white-space:normal">{_esc(rd[56])}</td>
+                    </tr>"""
                 except Exception:
                     continue
+            if not of_rows:
+                of_rows = '<tr><td colspan="17" class="empty">Aucun OF pour ce poste</td></tr>'
 
-        # tri : plus récent en premier (par date puis heure début)
-        def _sort_key(rd):
+            tc = _trs_color(p["trs_val"])
+            of_sections_html += f"""
+    <div class="of-section">
+      <div class="of-subtitle" style="border-color:{tc}">
+        {_esc(p['poste'])} — {_esc(p['date'])} — {_esc(p['pilote'])}
+        &nbsp;·&nbsp; {_esc(p['nb_of'])} OF &nbsp;·&nbsp; {_esc(p['qte'])} pièces &nbsp;·&nbsp; TRS : <b style="color:{tc}">{_esc(p['trs_raw'])}</b>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 280px;gap:14px;align-items:start">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>OF</th><th>Début</th><th>Fin</th>
+              <th>Taille</th><th>Code</th><th>Type</th>
+              <th>Qte Fab</th><th>Qte Emb</th>
+              <th>Equiv</th><th>Durée</th>
+              <th>Cad/h</th><th>Cad/h/pers</th>
+              <th>Chgt série</th>
+              <th>Mq MP</th><th>Mq Pers</th>
+              <th>Nettoyage</th>
+              <th>Commentaire</th>
+            </tr></thead>
+            <tbody>{of_rows}</tbody>
+          </table>
+        </div>
+        <div class="chart-card" style="padding:12px">
+          <div class="chart-title">Cadence/h par OF</div>
+          <canvas id="cad{i}" height="200"></canvas>
+        </div>
+      </div>
+    </div>"""
+
+            cadence_charts_js += f"""
+new Chart(document.getElementById('cad{i}'), {{
+  type: 'bar',
+  data: {{
+    labels: {_json.dumps(cad_labels)},
+    datasets: [{{ label: 'Cad/h', data: {_json.dumps(cad_vals)},
+      backgroundColor: '{tc}cc', borderColor: '{tc}', borderWidth: 1,
+      borderRadius: 4, borderSkipped: false }}]
+  }},
+  options: {{
+    plugins: {{ legend: {{ display: false }} }},
+    scales: {{
+      x: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 9 }} }} }},
+      y: {{ grid: {{ color: '#f1f5f9' }} }}
+    }}
+  }}
+}});"""
+
+            # gauge TRS mini (doughnut half)
+            tv = p["trs_val"]
+            gauge_charts_js += f"""
+new Chart(document.getElementById('gauge{i}'), {{
+  type: 'doughnut',
+  data: {{
+    datasets: [{{
+      data: [{round(tv,1)}, {round(100-tv,1)}],
+      backgroundColor: ['{tc}', '#e2e8f0'],
+      borderWidth: 0,
+      circumference: 180,
+      rotation: 270
+    }}]
+  }},
+  options: {{
+    cutout: '70%',
+    plugins: {{ legend: {{ display: false }}, tooltip: {{ enabled: false }} }},
+    animation: {{ duration: 800 }}
+  }}
+}});"""
+
+        # ── SECTION 4 : tous les événements ──────────────────────────────────
+        all_evts = []
+        for p in postes:
+            for ev in p["evts"]:
+                all_evts.append((p["date"], p["poste"], p["pilote"], ev))
+        all_evts.sort(key=lambda x: (x[0], str(x[3][2] if len(x[3]) > 2 else ""), str(x[3][16] if len(x[3]) > 16 else "")))
+
+        evts_html = ""
+        for _pd, _pp, _pil, ev in all_evts:
             try:
-                return (str(rd[1]), str(rd[17]))
-            except Exception:
-                return ("", "")
-
-        of_rows_collected.sort(key=_sort_key, reverse=True)
-
-        for rd in of_rows_collected:
-            try:
-                of_no   = _safe(rd[0])
-                of_date = _safe(rd[1])
-                of_post = _safe(rd[2])
-                of_pil  = _safe(rd[3])
-                of_tail = _safe(rd[6])
-                of_code = _safe(rd[7])
-                of_type = _safe(rd[8])
-                of_qfab = _safe(rd[13])
-                of_qemb = _safe(rd[14])
-                of_equi = _safe(rd[15])
-                of_dur  = _safe(rd[16])
-                of_cad  = _safe(rd[19])
-                of_cadp = _safe(rd[20])
-                of_chgt = _safe(rd[29])
-                of_comm = _safe(rd[56])
+                evts_html += f"""<tr>
+                  <td>{_badge_evt(ev[0])}</td>
+                  <td>{_esc(ev[1])}</td>
+                  <td>{_esc(ev[2])}</td>
+                  <td>{_esc(ev[3])}</td>
+                  <td>{_esc(ev[4])}</td>
+                  <td>{_esc(ev[16] if len(ev) > 16 else '')}</td>
+                  <td>{_esc(ev[17] if len(ev) > 17 else '')}</td>
+                  <td><b>{_esc(ev[18] if len(ev) > 18 else '')}</b></td>
+                  <td style="max-width:200px;white-space:normal">{_esc(ev[19] if len(ev) > 19 else '')}</td>
+                </tr>"""
             except Exception:
                 continue
-            of_rows_html += f"""
-              <tr>
-                <td>{of_no}</td><td>{of_date}</td><td>{of_post}</td><td>{of_pil}</td>
-                <td>{of_tail}</td><td>{of_code}</td><td>{of_type}</td>
-                <td>{of_qfab}</td><td>{of_qemb}</td><td>{of_equi}</td>
-                <td>{of_dur}</td><td>{of_cad}</td><td>{of_cadp}</td>
-                <td>{of_chgt}</td><td>{of_comm}</td>
-              </tr>"""
-
-        if not of_rows_html:
-            of_rows_html = '<tr><td colspan="15" style="text-align:center;color:#aaa;">Aucun OF trouvé</td></tr>'
+        if not evts_html:
+            evts_html = '<tr><td colspan="9" class="empty">Aucun événement enregistré</td></tr>'
 
         # ── HTML complet ──────────────────────────────────────────────────────
         html = f"""<!DOCTYPE html>
@@ -7357,129 +7501,233 @@ Arrêts imputés au TRS (temps perdu) :
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="refresh" content="60">
-<title>KPI-ORC Dashboard</title>
+<title>KPI-ORC — Revue de poste</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-  *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{ font-family: Arial, sans-serif; background: #0d2040; color: #ecf0f1; min-height: 100vh; }}
-  /* Header */
-  .header {{ background: #1e3a5f; padding: 14px 24px; display: flex; align-items: center;
-             justify-content: space-between; position: sticky; top: 0; z-index: 100;
-             box-shadow: 0 2px 8px rgba(0,0,0,0.4); }}
-  .header h1 {{ font-size: 1.5em; color: #fff; }}
-  .header .meta {{ font-size: 0.82em; color: #aac; text-align: right; }}
-  .countdown {{ font-size: 0.78em; color: #f39c12; margin-top: 2px; }}
-  /* Tabs */
-  .tabs {{ display: flex; background: #0d2040; padding: 0 20px; border-bottom: 2px solid #1e3a5f; }}
-  .tab-btn {{ padding: 12px 28px; cursor: pointer; color: #aac; font-size: 0.95em;
-              border: none; background: transparent; border-bottom: 3px solid transparent;
-              transition: all .2s; }}
-  .tab-btn.active {{ color: #fff; border-bottom-color: #27ae60; font-weight: bold; }}
-  .tab-btn:hover {{ color: #ecf0f1; }}
-  /* Tab content */
-  .tab-content {{ display: none; padding: 20px; }}
-  .tab-content.active {{ display: block; }}
-  /* Cards */
-  .cards-wrap {{ display: flex; flex-wrap: wrap; gap: 18px; justify-content: flex-start; }}
-  .card {{ background: #1e3a5f; border-radius: 12px; flex: 1 1 280px; max-width: 400px;
-           box-shadow: 0 4px 16px rgba(0,0,0,0.35); overflow: hidden; }}
-  .card-header {{ background: #0d2040; padding: 10px 14px; display: flex;
-                  flex-wrap: wrap; gap: 6px; align-items: center; }}
-  .card-date  {{ color: #f39c12; font-weight: bold; font-size: 0.9em; }}
-  .card-poste {{ background: #27ae60; color: #fff; border-radius: 4px; padding: 2px 8px;
-                 font-size: 0.85em; font-weight: bold; }}
-  .card-pilot {{ color: #ecf0f1; font-size: 0.88em; flex: 1; }}
-  .card-pers  {{ color: #aac; font-size: 0.82em; }}
-  /* Gauge */
-  .gauge-section {{ text-align: center; padding: 18px 0 10px; }}
-  .gauge-label {{ color: #aac; font-size: 0.8em; margin-bottom: 4px; letter-spacing: 1px; text-transform: uppercase; }}
-  .gauge-wrap {{ position: relative; width: 160px; height: 80px; overflow: hidden; margin: auto; }}
-  .gauge-bg   {{ width: 160px; height: 160px; border-radius: 50%;
-                 clip-path: polygon(0 0, 100% 0, 100% 50%, 0 50%); }}
-  .gauge-text {{ position: absolute; bottom: 0; width: 100%; text-align: center;
-                 font-size: 1.9em; font-weight: bold; line-height: 1; }}
-  /* KPI Grid */
-  .kpi-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
-               background: #0d2040; border-top: 1px solid #0d2040; }}
-  .kpi-item {{ background: #1e3a5f; padding: 8px 12px; display: flex;
-               flex-direction: column; gap: 2px; }}
-  .kpi-label {{ font-size: 0.72em; color: #aac; text-transform: uppercase; letter-spacing: 0.5px; }}
-  .kpi-val   {{ font-size: 0.95em; color: #ecf0f1; font-weight: bold; }}
-  /* OF Table */
-  .of-title {{ font-size: 1.1em; color: #ecf0f1; margin-bottom: 14px; font-weight: bold; }}
-  .of-wrap {{ overflow-x: auto; border-radius: 8px; }}
-  table {{ width: 100%; border-collapse: collapse; font-size: 0.84em; }}
-  thead tr {{ background: #1e3a5f; position: sticky; top: 60px; z-index: 10; }}
-  thead th {{ padding: 10px 10px; text-align: left; color: #ecf0f1; font-weight: bold;
-              border-bottom: 2px solid #27ae60; white-space: nowrap; }}
-  tbody tr:nth-child(even) {{ background: #162d4a; }}
-  tbody tr:nth-child(odd)  {{ background: #1a3352; }}
-  tbody tr:hover {{ background: #1e3a5f; }}
-  tbody td {{ padding: 8px 10px; color: #ecf0f1; border-bottom: 1px solid #0d2040;
-              white-space: nowrap; }}
+*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1a2332; font-size: 14px; }}
+
+.hdr {{ background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%); color: white;
+        padding: 14px 28px; display: flex; align-items: center; justify-content: space-between;
+        position: sticky; top: 0; z-index: 200; box-shadow: 0 3px 16px rgba(0,0,0,0.3); }}
+.hdr h1 {{ font-size: 1.35em; font-weight: 800; }}
+.hdr .meta {{ font-size: 0.78em; color: rgba(255,255,255,0.75); margin-top: 2px; }}
+.countdown {{ font-size: 0.75em; color: #fbbf24; margin-top: 4px; }}
+
+.section {{ padding: 20px 28px; }}
+.section + .section {{ border-top: 2px solid #e2e8f0; }}
+.sec-title {{ font-size: 1.05em; font-weight: 700; color: #1e3a5f; margin-bottom: 16px;
+              padding-left: 12px; border-left: 4px solid #2563eb; display: flex; align-items: center; gap: 8px; }}
+
+/* Cards */
+.cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; }}
+.card {{ background: white; border-radius: 14px; box-shadow: 0 3px 16px rgba(0,0,0,0.09);
+         overflow: hidden; border: 1px solid #e2e8f0; }}
+.card-hdr {{ background: linear-gradient(90deg, #1e3a5f, #274e7f); color: white;
+             padding: 10px 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
+.badge-poste {{ background: #16a34a; border-radius: 6px; padding: 3px 10px;
+                font-weight: 700; font-size: 0.88em; white-space: nowrap; }}
+.badge-date {{ background: rgba(255,255,255,0.15); border-radius: 6px; padding: 3px 9px;
+               font-size: 0.82em; color: #fbbf24; font-weight: 600; }}
+.pilot {{ font-size: 0.86em; flex: 1; }}
+.pers  {{ font-size: 0.78em; color: rgba(255,255,255,0.65); }}
+
+.card-body {{ display: grid; grid-template-columns: 160px 1fr; }}
+.gauge-col {{ padding: 16px 8px 12px; display: flex; flex-direction: column;
+              align-items: center; justify-content: center; border-right: 1px solid #f0f4f8;
+              background: #fafbfc; }}
+.trs-val {{ font-size: 1.5em; font-weight: 800; margin-top: 6px; }}
+.trs-lbl {{ font-size: 0.68em; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }}
+
+.kpi-col {{ display: grid; grid-template-columns: 1fr 1fr; }}
+.kpi-cell {{ padding: 7px 11px; border-right: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9; }}
+.kpi-cell:nth-child(even) {{ border-right: none; }}
+.kpi-lbl {{ font-size: 0.65em; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; }}
+.kpi-v   {{ font-size: 0.88em; font-weight: 700; color: #1e3a5f; margin-top: 2px; }}
+.kpi-v.red {{ color: #dc2626; }}
+.kpi-v.amber {{ color: #d97706; }}
+.kpi-v.green {{ color: #16a34a; }}
+.kpi-v.blue {{ color: #2563eb; }}
+
+/* Charts */
+.charts-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }}
+.chart-card {{ background: white; border-radius: 12px; padding: 18px;
+               box-shadow: 0 2px 10px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }}
+.chart-title {{ font-size: 0.8em; font-weight: 700; color: #1e3a5f; margin-bottom: 14px;
+                text-transform: uppercase; letter-spacing: 0.5px; }}
+
+/* OF sections */
+.of-section {{ margin-bottom: 28px; }}
+.of-subtitle {{ font-size: 0.9em; font-weight: 700; color: #1e3a5f; margin-bottom: 12px;
+                padding: 8px 14px; background: #eff6ff; border-radius: 8px;
+                border-left: 4px solid #2563eb; }}
+.tbl-wrap {{ overflow-x: auto; border-radius: 10px; border: 1px solid #e2e8f0; }}
+table {{ width: 100%; border-collapse: collapse; font-size: 0.78em; }}
+thead tr {{ background: #1e3a5f; }}
+thead th {{ padding: 9px 10px; color: white; text-align: left; font-weight: 600;
+            white-space: nowrap; border-right: 1px solid rgba(255,255,255,0.12); }}
+tbody tr:nth-child(even) {{ background: #f8fafc; }}
+tbody tr:hover {{ background: #eff6ff; transition: background 0.15s; }}
+tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: nowrap;
+            border-right: 1px solid #f1f5f9; }}
+
+/* Badges événements */
+.badge {{ display: inline-block; border-radius: 5px; padding: 2px 8px;
+          font-size: 0.76em; font-weight: 600; white-space: nowrap; }}
+.badge-pb    {{ background: #fee2e2; color: #dc2626; }}
+.badge-ratt  {{ background: #fef3c7; color: #d97706; }}
+.badge-nett  {{ background: #e0f2fe; color: #0284c7; }}
+.badge-pause {{ background: #f0fdf4; color: #16a34a; }}
+.badge-chgt  {{ background: #f5f3ff; color: #7c3aed; }}
+.badge-other {{ background: #f1f5f9; color: #475569; }}
+
+.empty {{ text-align: center; padding: 20px; color: #94a3b8; font-style: italic; }}
+.footer {{ text-align: center; padding: 14px; font-size: 0.72em; color: #94a3b8;
+           border-top: 1px solid #e2e8f0; background: white; margin-top: 8px; }}
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>&#128202; KPI-ORC Dashboard</h1>
-  <div class="meta">
-    Dernière mise à jour : {now_str}
-    <div class="countdown" id="cd">Mise à jour dans 60s</div>
+
+<div class="hdr">
+  <div>
+    <h1>&#128202; KPI-ORC &mdash; Revue de poste quotidienne</h1>
+    <div class="meta">3 derniers postes &middot; {now_str}</div>
+  </div>
+  <div style="text-align:right">
+    <div class="meta">Auto-refresh actif</div>
+    <div class="countdown" id="cdown">&#8635; Mise &agrave; jour dans 60s</div>
   </div>
 </div>
 
-<div class="tabs">
-  <button class="tab-btn active" onclick="showTab('postes',this)">&#128202; Postes</button>
-  <button class="tab-btn" onclick="showTab('of',this)">&#128203; Détail des OF</button>
-</div>
-
-<div id="postes" class="tab-content active">
-  <div class="cards-wrap">
-    {cards_html}
+<!-- ═══════════════════════ SECTION 1 : POSTES ═══════════════════════ -->
+<div class="section">
+  <div class="sec-title">&#127942; R&eacute;sum&eacute; des 3 derniers postes</div>
+  <div class="cards">
+{cards_html}
   </div>
 </div>
 
-<div id="of" class="tab-content">
-  <p class="of-title">OF des 3 derniers postes</p>
-  <div class="of-wrap">
+<!-- ═══════════════════════ SECTION 2 : GRAPHIQUES ═══════════════════════ -->
+<div class="section">
+  <div class="sec-title">&#128200; Analyse comparative</div>
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="chart-title">TRS par poste (%)</div>
+      <canvas id="chartTRS" height="200"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">R&eacute;partition du temps (min)</div>
+      <canvas id="chartTemps" height="200"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Par&eacute;to arr&ecirc;ts (min)</div>
+      <canvas id="chartPareto" height="200"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ SECTION 3 : OF PAR POSTE ═══════════════════════ -->
+<div class="section">
+  <div class="sec-title">&#128203; D&eacute;tail des OF par poste</div>
+{of_sections_html}
+</div>
+
+<!-- ═══════════════════════ SECTION 4 : ÉVÉNEMENTS ═══════════════════════ -->
+<div class="section">
+  <div class="sec-title">&#9888; Tous les &eacute;v&eacute;nements et arr&ecirc;ts</div>
+  <div class="tbl-wrap">
     <table>
-      <thead>
-        <tr>
-          <th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th>
-          <th>Taille</th><th>Code Produit</th><th>Type Produit</th>
-          <th>Qte Fab</th><th>Qte Emb</th><th>Equivalence</th>
-          <th>Durée OF</th><th>Cadence/h</th><th>Cadence/h/pers</th>
-          <th>Chgt Série</th><th>Commentaire</th>
-        </tr>
-      </thead>
-      <tbody>
-        {of_rows_html}
-      </tbody>
+      <thead><tr>
+        <th>Type</th><th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th>
+        <th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
+      </tr></thead>
+      <tbody>{evts_html}</tbody>
     </table>
   </div>
 </div>
 
+<div class="footer">
+  KPI-ORC &bull; G&eacute;n&eacute;r&eacute; le {now_str} &bull; Actualisation automatique toutes les 60 secondes
+</div>
+
 <script>
-function showTab(id, btn) {{
-  document.querySelectorAll('.tab-content').forEach(function(t){{t.classList.remove('active');}});
-  document.querySelectorAll('.tab-btn').forEach(function(b){{b.classList.remove('active');}});
-  document.getElementById(id).classList.add('active');
-  btn.classList.add('active');
-}}
 (function() {{
-  var secs = 60;
-  var el = document.getElementById('cd');
-  setInterval(function() {{
-    secs--;
-    if (secs <= 0) secs = 60;
-    el.textContent = 'Mise à jour dans ' + secs + 's';
-  }}, 1000);
+  var s = 60, el = document.getElementById('cdown');
+  setInterval(function() {{ s--; if(s<=0)s=60; el.textContent='\\u21bb Mise \\u00e0 jour dans '+s+'s'; }}, 1000);
 }})();
+
+new Chart(document.getElementById('chartTRS'), {{
+  type: 'bar',
+  data: {{
+    labels: {_json.dumps(chart_labels)},
+    datasets: [{{
+      label: 'TRS %', data: {_json.dumps(chart_trs)},
+      backgroundColor: {_json.dumps(chart_colors)},
+      borderRadius: 6, borderSkipped: false
+    }}]
+  }},
+  options: {{
+    indexAxis: 'y',
+    plugins: {{ legend: {{ display: false }},
+      tooltip: {{ callbacks: {{ label: function(c) {{ return c.raw.toFixed(1)+'%'; }} }} }} }},
+    scales: {{
+      x: {{ min:0, max:100, grid: {{ color:'#f1f5f9' }}, ticks: {{ callback: function(v){{ return v+'%'; }} }} }},
+      y: {{ grid: {{ display:false }} }}
+    }}
+  }}
+}});
+
+new Chart(document.getElementById('chartTemps'), {{
+  type: 'bar',
+  data: {{
+    labels: {_json.dumps(chart_labels)},
+    datasets: [
+      {{ label:'Production',  data:{_json.dumps(d_marche)},  backgroundColor:'#16a34a', borderWidth:0 }},
+      {{ label:'Pannes',      data:{_json.dumps(d_pannes)},  backgroundColor:'#dc2626', borderWidth:0 }},
+      {{ label:'Rattrapages', data:{_json.dumps(d_ratt)},    backgroundColor:'#d97706', borderWidth:0 }},
+      {{ label:'Pauses',      data:{_json.dumps(d_pauses)},  backgroundColor:'#2563eb', borderWidth:0 }},
+      {{ label:'R\\u00e9unions',    data:{_json.dumps(d_reunions)},backgroundColor:'#7c3aed', borderWidth:0 }},
+      {{ label:'\\u00c9cart',       data:{_json.dumps(d_ecart)},   backgroundColor:'#94a3b8', borderWidth:0 }}
+    ]
+  }},
+  options: {{
+    indexAxis: 'y',
+    scales: {{
+      x: {{ stacked:true, grid:{{ color:'#f1f5f9' }}, ticks:{{ callback:function(v){{ return v+'min'; }} }} }},
+      y: {{ stacked:true, grid:{{ display:false }} }}
+    }},
+    plugins: {{ legend:{{ position:'bottom', labels:{{ boxWidth:12, font:{{ size:10 }} }} }} }}
+  }}
+}});
+
+new Chart(document.getElementById('chartPareto'), {{
+  type: 'bar',
+  data: {{
+    labels: {_json.dumps(pareto_labels)},
+    datasets: [{{
+      label: 'Minutes', data: {_json.dumps(pareto_values)},
+      backgroundColor: {_json.dumps(pareto_colors)},
+      borderRadius: 4, borderSkipped: false
+    }}]
+  }},
+  options: {{
+    plugins: {{ legend:{{ display:false }} }},
+    scales: {{
+      x: {{ grid:{{ display:false }}, ticks:{{ font:{{ size:9 }}, maxRotation:40 }} }},
+      y: {{ grid:{{ color:'#f1f5f9' }}, ticks:{{ callback:function(v){{ return v+'m'; }} }} }}
+    }}
+  }}
+}});
+
+{gauge_charts_js}
+{cadence_charts_js}
 </script>
 </body>
 </html>"""
 
         with open(html_path, "w", encoding="utf-8") as fh:
             fh.write(html)
+
 
     # ── Loading overlay ───────────────────────────────────────────────────────
     def _show_loading(self, msg="Chargement…"):
