@@ -4724,7 +4724,7 @@ Arrêts imputés au TRS (temps perdu) :
         self._modal_open = True
         win = tk.Toplevel(self.root)
         win.title("Structure du fichier Excel")
-        win.geometry("680x540")
+        win.geometry("900x580")
         win.configure(bg=WHITE)
         win.attributes("-topmost", True)
         win.bind("<Destroy>", lambda e: setattr(self, "_modal_open", False) if e.widget is win else None)
@@ -4779,7 +4779,6 @@ Arrêts imputés au TRS (temps perdu) :
                         elif sys.platform == "darwin":
                             _sp.Popen(["open", path])
                         else:
-                            # Linux : essayer plusieurs lanceurs
                             launched = False
                             for cmd in ["xdg-open", "libreoffice", "soffice",
                                         "gnome-open", "kde-open"]:
@@ -4806,7 +4805,7 @@ Arrêts imputés au TRS (temps perdu) :
 
         tk.Button(hdr, text="📝  Modifier les listes Excel", bg=GREEN, fg=WHITE,
                   font=("Arial", 11, "bold"), relief="flat", cursor="hand2",
-                  padx=16, pady=6, wraplength=0,
+                  padx=16, pady=6,
                   command=_open_listes).pack(side="right", padx=16, pady=8)
 
         nb = ttk.Notebook(win)
@@ -4820,7 +4819,8 @@ Arrêts imputés au TRS (temps perdu) :
                 letters = chr(65 + r) + letters
             return letters
 
-        def make_tab(label, headers, extra_rows=None):
+        def make_tab(label, col_specs):
+            # col_specs: list of (name, description) — col letter auto-assigned from index
             frame = tk.Frame(nb, bg=WHITE)
             nb.add(frame, text=f"  {label}  ")
             cv = tk.Canvas(frame, bg=WHITE, highlightthickness=0)
@@ -4830,84 +4830,193 @@ Arrêts imputés au TRS (temps perdu) :
             cv.pack(side="left", fill="both", expand=True)
             inner = tk.Frame(cv, bg=WHITE)
             cv.create_window((0, 0), window=inner, anchor="nw")
-            inner.bind("<Configure>", lambda e: cv.configure(
-                scrollregion=cv.bbox("all")))
-
-            # En-tête colonnes
-            tk.Label(inner, text="Col", bg=LGRAY, fg=NAVY,
-                     font=("Arial", 9, "bold"), width=5,
-                     relief="flat", padx=4, pady=4).grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
-            tk.Label(inner, text="Nom de la colonne", bg=LGRAY, fg=NAVY,
-                     font=("Arial", 9, "bold"),
-                     relief="flat", padx=4, pady=4, anchor="w").grid(row=0, column=1, sticky="nsew", padx=1, pady=1)
+            inner.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
             inner.columnconfigure(1, weight=1)
-
-            rows = [(col_letter(i), h) for i, h in enumerate(headers)]
-            if extra_rows:
-                rows += extra_rows
-            for ri, (col, name) in enumerate(rows, start=1):
+            inner.columnconfigure(2, weight=2)
+            # En-têtes
+            for ci, txt in enumerate(["Col", "Nom de la colonne", "Description / Calcul"]):
+                tk.Label(inner, text=txt, bg=LGRAY, fg=NAVY,
+                         font=("Arial", 9, "bold"),
+                         relief="flat", padx=4, pady=4,
+                         anchor="w" if ci > 0 else "center",
+                         width=5 if ci == 0 else 0).grid(
+                         row=0, column=ci, sticky="nsew", padx=1, pady=1)
+            for ri, (name, desc) in enumerate(col_specs, start=1):
                 bg = WHITE if ri % 2 == 0 else BG
-                tk.Label(inner, text=col, bg=bg, fg=GRAY,
+                tk.Label(inner, text=col_letter(ri - 1), bg=bg, fg=GRAY,
                          font=("Arial", 9, "bold"), width=5,
-                         anchor="center", padx=4, pady=3).grid(row=ri, column=0, sticky="nsew", padx=1, pady=0)
+                         anchor="center", padx=4, pady=3).grid(
+                         row=ri, column=0, sticky="nsew", padx=1, pady=0)
                 tk.Label(inner, text=name, bg=bg, fg=DARK,
-                         font=("Arial", 9), anchor="w",
+                         font=("Arial", 9, "bold"), anchor="w",
                          padx=6, pady=3).grid(row=ri, column=1, sticky="nsew", padx=1, pady=0)
+                tk.Label(inner, text=desc, bg=bg, fg="#555555",
+                         font=("Arial", 8), anchor="w",
+                         padx=6, pady=3, wraplength=340).grid(
+                         row=ri, column=2, sticky="nsew", padx=1, pady=0)
             return frame
 
-        TRS_HEADERS = [
-            "Date", "Poste", "Pilote", "Co-Pilote", "Nb Personnes",
-            "Total temps d'ouverture", "Total temps déclarés",
-            "Ecart ouverture/déclarés", "Total temps de marche",
-            "Total arrêts prévu", "Débordement arrêts prévu",
-            "Total arrêts (panne)", "Total arrêt rattrapage",
-            "Total pauses", "Total réunions",
-            "Nombre d'OF", "Nombre de pièce produites",
-            "Equivalence", "Nombre moyen de pièce par OF", "TRS",
+        DATA_SPECS = [
+            ("OF",                              "Numéro de l'ordre de fabrication"),
+            ("Date",                            "Date de déclaration (JJ/MM/AAAA)"),
+            ("Poste",                           "Nom du poste de travail"),
+            ("Pilote",                          "Pilote principal du poste"),
+            ("Co-Pilote",                       "Co-pilote associé"),
+            ("Nb Personnes",                    "Nombre de personnes sur le poste"),
+            ("Taille",                          "Taille du produit fabriqué"),
+            ("Code Produit",                    "Code article du produit"),
+            ("Type Produit",                    "Gamme / type de produit"),
+            ("Poids Garnissage",                "Poids du garnissage (kg)"),
+            ("Fibre",                           "Type de fibre utilisée"),
+            ("OF Taie",                         "Numéro OF de la taie associée"),
+            ("Traca Fibre",                     "Traçabilité fibre (numéro de lot)"),
+            ("Qte Fabriquee",                   "Quantité de pièces produites déclarées"),
+            ("Qte Emballee",                    "Quantité de pièces emballées"),
+            ("Equivalence",                     "Qte Fabriquée × coef (Listes col F) ÷ (Prod réf × Durée / 28800)"),
+            ("Duree OF",                        "Durée totale OF + changement de série (HH:MM:SS)"),
+            ("Heure Debut",                     "Heure de début production (HH:MM:SS)"),
+            ("Heure Fin",                       "Heure de fin production (HH:MM:SS)"),
+            ("Cadence/heure",                   "Qte Fabriquée ÷ Durée OF en heures"),
+            ("Cadence/h/pers",                  "Cadence/heure ÷ Nb Personnes"),
+            ("Kit",                             "Kit inclus (Oui / Non)"),
+            ("Ref Taie",                        "Référence de la taie"),
+            ("Qte Initiale Taie",               "Stock initial de taies au départ de l'OF"),
+            ("Nb Taie 2nd Choix",               "Nombre de taies classées 2nd choix"),
+            ("Nb Defaut Couture",               "Nombre de défauts couture détectés"),
+            ("Mq Taie",                         "Pièces en attente : manque taie"),
+            ("Mq Housse/Encart",                "Pièces en attente : manque housse ou encart"),
+            ("Nb PP Cousue",                    "Nombre de points plastiques cousus"),
+            ("Changement de Serie",             "Durée changement de série inter-OF (HH:MM:SS)"),
+            ("Temps Arret Manquant MP",         "Durée arrêt manque matière première (HH:MM:SS)"),
+            ("Temps Arret Manquant Pers/Réu.",  "Durée manque personnel ou réunion (HH:MM:SS)"),
+            ("Nettoyage Fin de Poste",          "Durée nettoyage déclaré sur ce poste (HH:MM:SS)"),
+            ("Ratt Pochon/Fibre",               "Rattrapage pochon / fibre (HH:MM:SS)"),
+            ("Ratt Couture",                    "Rattrapage couture (HH:MM:SS)"),
+            ("Ratt Emballage",                  "Rattrapage emballage (HH:MM:SS)"),
+            ("Ratt Presse Souder",              "Rattrapage presse souder (HH:MM:SS)"),
+            ("Ratt Presse ZIP",                 "Rattrapage presse ZIP (HH:MM:SS)"),
+            ("PB Chargeuse",                    "Arrêt panne Chargeuse (HH:MM:SS)"),
+            ("PB Carde",                        "Arrêt panne Carde (HH:MM:SS)"),
+            ("PB Etaleur/Tour",                 "Arrêt panne Etaleur/Tour (HH:MM:SS)"),
+            ("PB Coupe/Circ",                   "Arrêt panne Coupe/Circ (HH:MM:SS)"),
+            ("PB Tapis Bascule",                "Arrêt panne Tapis Bascule (HH:MM:SS)"),
+            ("PB Enrouleur Pochon",             "Arrêt panne Enrouleur Pochon (HH:MM:SS)"),
+            ("PB Pesee/Tapis 2",                "Arrêt panne Pesée/Tapis 2 (HH:MM:SS)"),
+            ("PB Deviation/Table",              "Arrêt panne Déviation/Table (HH:MM:SS)"),
+            ("PB Enfileur Pochon",              "Arrêt panne Enfileur Pochon (HH:MM:SS)"),
+            ("PB Kinna/Stroebel",               "Arrêt panne Kinna/Stroebel (HH:MM:SS)"),
+            ("PB Tapeuse",                      "Arrêt panne Tapeuse (HH:MM:SS)"),
+            ("PB Table Rot/Twin",               "Arrêt panne Table Rot/Twin (HH:MM:SS)"),
+            ("PB Enfileuse H1",                 "Arrêt panne Enfileuse H1 (HH:MM:SS)"),
+            ("PB Enfileuse Traversin",          "Arrêt panne Enfileuse Traversin (HH:MM:SS)"),
+            ("PB Presse ORC",                   "Arrêt panne Presse ORC (HH:MM:SS)"),
+            ("PB Presse Housse ZIP",            "Arrêt panne Presse Housse ZIP (HH:MM:SS)"),
+            ("PB Cercleuse",                    "Arrêt panne Cercleuse (HH:MM:SS)"),
+            ("PB Enrouleuse Traversin",         "Arrêt panne Enrouleuse Traversin (HH:MM:SS)"),
+            ("Commentaire",                     "Commentaire libre du pilote"),
+            ("Temps Interposte",                "Durée inter-poste : même OF, pilote différent (HH:MM:SS)"),
         ]
-        make_tab("Onglet Data", DATA_HEADERS)
-        make_tab("Onglet Evenements", EVT_HEADERS)
-        make_tab("Onglet TRS", TRS_HEADERS)
 
-        listes_info = [
-            ("Col A", "Pilotes  (liste déroulante pilote)"),
-            ("Col B", "Co-pilotes  (liste déroulante co-pilote)"),
-            ("Col C", "Postes  (liste déroulante poste)"),
-            ("Col D", "Taille produit  (liste déroulante taille)"),
-            ("Col E", "Type produit  (liste déroulante type produit)"),
-            ("Col F", "Fibre  (liste déroulante fibre)"),
-            ("Col G", "Nb personnes  (liste déroulante nb personnes)"),
-            ("Col H", "Code produit  (liste déroulante code produit)"),
-            ("Col I", "Equivalence coef  (coef par type produit, ligne 1 = en-tête)"),
-            ("I2", "★  Référence production 8h  ← valeur lue pour le calcul TRS"),
-            ("Col J", "Mots de passe pilotes  (même ordre que col A)"),
+        EVT_SPECS = [
+            ("Evenement",       "Type d'événement (Rattrapage, PB Technique, Pause pilote, Chgt de série…)"),
+            ("OF",              "Numéro de l'OF en cours lors de l'événement"),
+            ("Date",            "Date de l'événement (JJ/MM/AAAA)"),
+            ("Poste",           "Nom du poste de travail"),
+            ("Pilote",          "Pilote déclarant"),
+            ("Co-Pilote",       "Co-pilote associé"),
+            ("Nb Personnes",    "Nombre de personnes lors de l'événement"),
+            ("Taille",          "Taille du produit en cours"),
+            ("Type Produit",    "Gamme / type de produit"),
+            ("Code Produit",    "Code article"),
+            ("Fibre",           "Type de fibre"),
+            ("Poids Garnissage","Poids du garnissage (kg)"),
+            ("OF Taie",         "Numéro OF taie associé"),
+            ("Traca Fibre",     "Traçabilité fibre (lot)"),
+            ("Ref Taie",        "Référence taie"),
+            ("Kit",             "Kit inclus (Oui/Non)"),
+            ("Heure Debut",     "Heure de début de l'événement (HH:MM:SS)"),
+            ("Heure Fin",       "Heure de fin de l'événement (HH:MM:SS)"),
+            ("Duree",           "Durée calculée = Heure Fin − Heure Debut (HH:MM:SS)"),
+            ("Commentaire",     "Commentaire libre"),
         ]
-        frame = tk.Frame(nb, bg=WHITE)
-        nb.add(frame, text="  Onglet Listes  ")
-        cv = tk.Canvas(frame, bg=WHITE, highlightthickness=0)
-        sb = ttk.Scrollbar(frame, orient="vertical", command=cv.yview)
-        cv.configure(yscrollcommand=sb.set)
-        sb.pack(side="right", fill="y")
-        cv.pack(side="left", fill="both", expand=True)
-        inner = tk.Frame(cv, bg=WHITE)
-        cv.create_window((0, 0), window=inner, anchor="nw")
-        inner.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
-        inner.columnconfigure(1, weight=1)
-        tk.Label(inner, text="Cellule", bg=LGRAY, fg=NAVY,
-                 font=("Arial", 9, "bold"), width=8,
-                 relief="flat", padx=4, pady=4).grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
-        tk.Label(inner, text="Contenu", bg=LGRAY, fg=NAVY,
-                 font=("Arial", 9, "bold"),
-                 relief="flat", padx=4, pady=4, anchor="w").grid(row=0, column=1, sticky="nsew", padx=1, pady=1)
-        for ri, (col, desc) in enumerate(listes_info, start=1):
+
+        TRS_SPECS = [
+            ("Date",                        "Date du poste (JJ/MM/AAAA)"),
+            ("Poste",                       "Nom du poste de travail"),
+            ("Pilote",                      "Pilote principal du poste"),
+            ("Co-Pilote",                   "Co-pilote associé"),
+            ("Nb Personnes",                "Nombre de personnes sur le poste"),
+            ("Total temps d'ouverture",     "Durée théorique du poste, paramétré dans Paramètres (HH:MM:SS)"),
+            ("Total temps déclarés",        "Somme : production + arrêts + pauses + réunions (HH:MM:SS)"),
+            ("Ecart ouverture/déclarés",    "max(0, F − G) — temps non déclaré (HH:MM:SS)"),
+            ("Total temps de marche",       "Somme des durées OF de production pure (HH:MM:SS)"),
+            ("Total arrêts prévu",          "Pauses ≤ tolérance + réunions ≤ tolérance (HH:MM:SS)"),
+            ("Débordement arrêts prévu",    "Dépassement des tolérances pause/réunion (HH:MM:SS)"),
+            ("Total arrêts (panne)",        "Somme tous les PB techniques du poste (HH:MM:SS)"),
+            ("Total arrêt rattrapage",      "Somme tous les rattrapages du poste (HH:MM:SS)"),
+            ("Total pauses",                "Durée totale pauses pilote (HH:MM:SS)"),
+            ("Total réunions",              "Durée totale réunions / manque personnel (HH:MM:SS)"),
+            ("Nombre d'OF",                 "Nombre d'OF déclarés sur le poste"),
+            ("Nombre de pièce produites",   "Somme des quantités fabriquées (tous OF)"),
+            ("Equivalence",                 "Somme des équivalences de tous les OF"),
+            ("Nombre moyen de pièce par OF","R / P — moyenne pièces par OF"),
+            ("TRS",                         "Equivalence / (Prod réf × Temps ouverture / 28800) × 100 (%)"),
+        ]
+
+        make_tab("Onglet Data", DATA_SPECS)
+        make_tab("Onglet Evenements", EVT_SPECS)
+        make_tab("Onglet TRS", TRS_SPECS)
+
+        # ── Onglet Listes (structure réelle du fichier Excel) ─────────────────
+        LISTES_SPECS = [
+            ("Pilotes",             "Noms des pilotes (liste déroulante pilote)"),
+            ("Mots de passe pilote","Mot de passe de chaque pilote (même ordre que col A)"),
+            ("Co-pilotes",          "Noms des co-pilotes (liste déroulante)"),
+            ("Taille produit",      "Valeurs de taille produit (liste déroulante)"),
+            ("Type de produit",     "Gammes / types de produit (liste déroulante)"),
+            ("Equivalence Coef",    "Coefficients d'équivalence par type produit (ligne 1 = en-tête)"),
+            ("Postes",              "Noms des postes de travail (liste déroulante)"),
+            ("Nb personnes",        "Valeurs nb personnes (liste déroulante)"),
+            ("Prod de reference",   "★  Prod réf 8h — I2 = valeur lue pour le calcul TRS et cadences"),
+            ("Fibres",              "Types de fibre (liste déroulante)"),
+        ]
+        frame_l = tk.Frame(nb, bg=WHITE)
+        nb.add(frame_l, text="  Onglet Listes  ")
+        cv_l = tk.Canvas(frame_l, bg=WHITE, highlightthickness=0)
+        sb_l = ttk.Scrollbar(frame_l, orient="vertical", command=cv_l.yview)
+        cv_l.configure(yscrollcommand=sb_l.set)
+        sb_l.pack(side="right", fill="y")
+        cv_l.pack(side="left", fill="both", expand=True)
+        inner_l = tk.Frame(cv_l, bg=WHITE)
+        cv_l.create_window((0, 0), window=inner_l, anchor="nw")
+        inner_l.bind("<Configure>", lambda e: cv_l.configure(scrollregion=cv_l.bbox("all")))
+        inner_l.columnconfigure(1, weight=1)
+        inner_l.columnconfigure(2, weight=2)
+        for ci, txt in enumerate(["Col", "Nom de la colonne", "Description"]):
+            tk.Label(inner_l, text=txt, bg=LGRAY, fg=NAVY,
+                     font=("Arial", 9, "bold"),
+                     relief="flat", padx=4, pady=4,
+                     anchor="w" if ci > 0 else "center",
+                     width=5 if ci == 0 else 0).grid(
+                     row=0, column=ci, sticky="nsew", padx=1, pady=1)
+        for ri, (name, desc) in enumerate(LISTES_SPECS, start=1):
             bg = WHITE if ri % 2 == 0 else BG
-            fg_col = GREEN if col == "I2" else GRAY
-            tk.Label(inner, text=col, bg=bg, fg=fg_col,
-                     font=("Arial", 9, "bold"), width=8,
-                     anchor="center", padx=4, pady=3).grid(row=ri, column=0, sticky="nsew", padx=1, pady=0)
-            tk.Label(inner, text=desc, bg=bg, fg=DARK,
-                     font=("Arial", 9), anchor="w",
-                     padx=6, pady=3).grid(row=ri, column=1, sticky="nsew", padx=1, pady=0)
+            is_i2 = (ri == 9)  # Prod de reference = col I (index 8, ri=9)
+            clet = col_letter(ri - 1)
+            fg_col = GREEN if is_i2 else GRAY
+            tk.Label(inner_l, text=clet, bg=bg, fg=fg_col,
+                     font=("Arial", 9, "bold"), width=5,
+                     anchor="center", padx=4, pady=3).grid(
+                     row=ri, column=0, sticky="nsew", padx=1, pady=0)
+            tk.Label(inner_l, text=name, bg=bg,
+                     fg=GREEN if is_i2 else DARK,
+                     font=("Arial", 9, "bold" if is_i2 else "normal"),
+                     anchor="w", padx=6, pady=3).grid(
+                     row=ri, column=1, sticky="nsew", padx=1, pady=0)
+            tk.Label(inner_l, text=desc, bg=bg, fg="#555555",
+                     font=("Arial", 8), anchor="w",
+                     padx=6, pady=3, wraplength=340).grid(
+                     row=ri, column=2, sticky="nsew", padx=1, pady=0)
 
     # ── Panneau droit : arrets actifs + boutons ───────────────────────────────
     def _build_right_panel(self, parent):
