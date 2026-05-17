@@ -6574,59 +6574,96 @@ Arrêts imputés au TRS (temps perdu) :
         tk.Label(chron_f, text="Chronologie du poste", bg=WHITE, fg=NAVY,
                  font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(4, 0))
 
-        chron_cv = tk.Canvas(chron_f, bg=WHITE, height=56, highlightthickness=0)
-        chron_cv.pack(fill="x", padx=10, pady=(2, 0))
-
-        chron_leg = tk.Frame(chron_f, bg=WHITE)
-        chron_leg.pack(anchor="w", padx=10, pady=(2, 4))
-        for _ll, _lc in [("Production","#16a34a"),("Panne","#dc2626"),
-                          ("Rattrapage","#f59e0b"),("Pause","#3b82f6"),("Réunion","#8b5cf6")]:
-            _lf = tk.Frame(chron_leg, bg=WHITE)
-            _lf.pack(side="left", padx=(0, 8))
-            tk.Frame(_lf, bg=_lc, width=12, height=10).pack(side="left")
-            tk.Label(_lf, text=_ll, bg=WHITE, fg="#475569", font=("Arial", 8)).pack(side="left", padx=(2, 0))
+        # Canvas plus haut pour accueillir la légende intégrée et les labels OF
+        chron_cv = tk.Canvas(chron_f, bg=WHITE, height=86, highlightthickness=0)
+        chron_cv.pack(fill="x", padx=10, pady=(2, 4))
 
         _ct0 = login_dt.timestamp()
         _ct1 = now.timestamp()
         _cspan = max(_ct1 - _ct0, 1)
 
+        _chron_legend = [
+            ("Production", "#16a34a"),
+            ("Panne",      "#dc2626"),
+            ("Rattrapage", "#f59e0b"),
+            ("Pause",      "#3b82f6"),
+            ("Réunion",    "#8b5cf6"),
+        ]
+
         def _draw_chron(event=None):
             chron_cv.delete("all")
             W = chron_cv.winfo_width() or 700
-            pad_l = 44; pad_r = 12; bar_y = 8; bar_h = 24
+            H = chron_cv.winfo_height() or 86
+            pad_l = 44; pad_r = 12
+            of_lbl_h = 14   # hauteur zone labels OF (en haut)
+            bar_y = of_lbl_h + 4; bar_h = 22
+            tick_h = 14     # hauteur zone ticks + heures
+            leg_h = 14      # hauteur légende (en bas)
             bw = W - pad_l - pad_r
 
             def _px(ts):
                 return pad_l + (ts - _ct0) / _cspan * bw
 
+            # Fond de la barre
             chron_cv.create_rectangle(pad_l, bar_y, pad_l + bw, bar_y + bar_h,
                                       fill="#e2e8f0", outline="", width=0)
+
+            # Périodes OF (production)
             for p in self._of_periods:
                 ps2 = p.get("start"); pe2 = p.get("end") or now
+                of_label = str(p.get("of_num", "") or "")
                 if ps2 and ps2 >= login_dt:
                     x0 = _px(ps2.timestamp()); x1 = _px(min(pe2, now).timestamp())
                     chron_cv.create_rectangle(x0, bar_y, max(x1, x0 + 2), bar_y + bar_h,
                                               fill="#16a34a", outline="", width=0)
+                    # Numéro OF centré sur la période, tronqué si trop étroit
+                    seg_w = max(x1, x0 + 2) - x0
+                    if of_label and seg_w > 20:
+                        short = of_label[-6:] if len(of_label) > 6 else of_label
+                        chron_cv.create_text((x0 + max(x1, x0 + 2)) / 2, bar_y + bar_h / 2,
+                                             text=short, anchor="center",
+                                             font=("Arial", 7, "bold"), fill=WHITE)
+                    # Trait de délimitation OF
+                    chron_cv.create_line(x0, bar_y, x0, bar_y + bar_h,
+                                        fill="white", width=1)
+
+            # Arrêts / rattrapages
             for ev in self._tl_events:
                 cat = ev.get("cat", "")
                 es = ev.get("start"); ee = ev.get("end") or now
-                if es and es >= login_dt and cat in ("ratt","pb","pause","reunion"):
-                    _cat_col = {"pb":"#dc2626","ratt":"#f59e0b","pause":"#3b82f6","reunion":"#8b5cf6"}.get(cat,"#94a3b8")
+                if es and es >= login_dt and cat in ("ratt", "pb", "pause", "reunion"):
+                    _cat_col = {"pb": "#dc2626", "ratt": "#f59e0b",
+                                "pause": "#3b82f6", "reunion": "#8b5cf6"}.get(cat, "#94a3b8")
                     x0 = _px(es.timestamp()); x1 = _px(min(ee, now).timestamp())
                     chron_cv.create_rectangle(x0, bar_y, max(x1, x0 + 2), bar_y + bar_h,
                                               fill=_cat_col, outline="", width=0)
+
+            # Pauses
             for ps2, pe2 in self._pause_periods:
                 if ps2 >= login_dt:
                     x0 = _px(ps2.timestamp()); x1 = _px(min(pe2, now).timestamp())
                     chron_cv.create_rectangle(x0, bar_y, max(x1, x0 + 2), bar_y + bar_h,
                                               fill="#3b82f6", outline="", width=0)
+
+            # Ticks horaires
+            tick_y = bar_y + bar_h
             n_ticks = 8
             for i in range(n_ticks + 1):
                 tx = pad_l + i * bw / n_ticks
                 t_str = datetime.datetime.fromtimestamp(_ct0 + i * _cspan / n_ticks).strftime("%H:%M")
-                chron_cv.create_line(tx, bar_y + bar_h, tx, bar_y + bar_h + 4, fill="#94a3b8")
-                chron_cv.create_text(tx, bar_y + bar_h + 12, text=t_str, anchor="center",
+                chron_cv.create_line(tx, tick_y, tx, tick_y + 4, fill="#94a3b8")
+                chron_cv.create_text(tx, tick_y + 10, text=t_str, anchor="center",
                                      font=("Arial", 7), fill="#64748b")
+
+            # Légende en bas à gauche
+            leg_y = H - 2
+            lx = pad_l
+            for leg_lbl, leg_col in _chron_legend:
+                chron_cv.create_rectangle(lx, leg_y - 9, lx + 10, leg_y - 1,
+                                          fill=leg_col, outline="", width=0)
+                chron_cv.create_text(lx + 12, leg_y - 5, text=leg_lbl, anchor="w",
+                                     font=("Arial", 7), fill="#475569")
+                lx += len(leg_lbl) * 5 + 22
 
         chron_cv.bind("<Configure>", _draw_chron)
         chron_cv.after(50, _draw_chron)
@@ -6651,15 +6688,9 @@ Arrêts imputés au TRS (temps perdu) :
         _prod_theo = (self._get_prod_ref() * duree_theorique_s / 28800.0
                       if duree_theorique_s > 0 else 0)
 
-        ana_body = tk.Frame(ana_f, bg=WHITE)
-        ana_body.pack(fill="both", expand=True, padx=6, pady=4)
-        ana_body.columnconfigure(0, weight=1)
-        ana_body.columnconfigure(1, weight=1)
-        ana_body.rowconfigure(0, weight=1)
-
-        # Left panel: Pareto arrêts
-        pareto_f = tk.Frame(ana_body, bg=WHITE)
-        pareto_f.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        # Pareto pleine largeur
+        pareto_f = tk.Frame(ana_f, bg=WHITE)
+        pareto_f.pack(fill="both", expand=True, padx=6, pady=4)
         tk.Label(pareto_f, text="Pareto arrêts", bg=WHITE, fg=NAVY,
                  font=("Arial", 9, "bold")).pack(anchor="w")
         pareto_cv = tk.Canvas(pareto_f, bg=WHITE, highlightthickness=0)
@@ -6672,17 +6703,17 @@ Arrêts imputés au TRS (temps perdu) :
 
         def _draw_pareto(event=None):
             pareto_cv.delete("all")
-            W = pareto_cv.winfo_width() or 340
+            W = pareto_cv.winfo_width() or 700
             H = pareto_cv.winfo_height() or 160
             if not _pareto_items:
                 pareto_cv.create_text(W // 2, H // 2, text="Aucun arrêt déclaré",
                                       anchor="center", font=("Arial", 10), fill="#94a3b8")
                 return
-            pad_l = 100; pad_r = 46; pad_t = 4; pad_b = 4
+            pad_l = 130; pad_r = 60; pad_t = 4; pad_b = 4
             bw2 = W - pad_l - pad_r
             n = len(_pareto_items)
             row_h2 = (H - pad_t - pad_b) / n
-            bh2 = max(8, row_h2 * 0.6)
+            bh2 = max(10, row_h2 * 0.6)
             for i, ((lbl, val), col) in enumerate(zip(_pareto_items, _pareto_colors)):
                 y_mid = pad_t + i * row_h2 + row_h2 / 2
                 y0 = y_mid - bh2 / 2; y1 = y_mid + bh2 / 2
@@ -6691,53 +6722,15 @@ Arrêts imputés au TRS (temps perdu) :
                                            fill="#f1f5f9", outline="", width=0)
                 pareto_cv.create_rectangle(pad_l, y0, pad_l + max(filled, 2), y1,
                                            fill=col, outline="", width=0)
-                pareto_cv.create_text(pad_l - 4, y_mid, text=lbl[:18], anchor="e",
-                                      font=("Arial", 7), fill="#374151")
-                pareto_cv.create_text(pad_l + bw2 + 4, y_mid,
-                                      text=f"{val/60:.0f}m", anchor="w",
-                                      font=("Arial", 7, "bold"), fill=col)
+                pareto_cv.create_text(pad_l - 6, y_mid, text=lbl[:22], anchor="e",
+                                      font=("Arial", 8), fill="#374151")
+                mins = val / 60
+                pareto_cv.create_text(pad_l + bw2 + 6, y_mid,
+                                      text=f"{mins:.0f} min", anchor="w",
+                                      font=("Arial", 8, "bold"), fill=col)
 
         pareto_cv.bind("<Configure>", _draw_pareto)
         pareto_cv.after(50, _draw_pareto)
-
-        # Right panel: Prod réelle vs théorique
-        bar2_f = tk.Frame(ana_body, bg=WHITE)
-        bar2_f.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
-        tk.Label(bar2_f, text="Prod. réelle vs théorique (équiv.)", bg=WHITE, fg=NAVY,
-                 font=("Arial", 9, "bold")).pack(anchor="w")
-        bar2_cv = tk.Canvas(bar2_f, bg=WHITE, highlightthickness=0)
-        bar2_cv.pack(fill="both", expand=True)
-
-        def _draw_bar2(event=None):
-            bar2_cv.delete("all")
-            W = bar2_cv.winfo_width() or 220
-            H = bar2_cv.winfo_height() or 160
-            pad_t = 24; pad_b = 28; pad_l = 30; pad_r = 20
-            max_v = max(_prod_theo, total_equiv, 1)
-            bar_area_h = H - pad_t - pad_b
-            bar_section_w = (W - pad_l - pad_r) / 2
-            _b2_items = [("Théo.", _prod_theo, "#1e3a5f"),
-                         ("Réel", total_equiv,
-                          "#16a34a" if total_equiv >= _prod_theo * 0.9 else "#dc2626")]
-            for i, (lbl, val, col) in enumerate(_b2_items):
-                x_mid = pad_l + (i + 0.5) * bar_section_w
-                bh3 = int(bar_area_h * val / max_v) if max_v > 0 else 0
-                bw3 = max(int(bar_section_w * 0.5), 20)
-                x0 = x_mid - bw3 // 2; x1 = x_mid + bw3 // 2
-                y0 = H - pad_b - bh3; y1 = H - pad_b
-                bar2_cv.create_rectangle(x0, y0, x1, y1, fill=col, outline="white", width=1)
-                bar2_cv.create_text(x_mid, max(y0 - 4, pad_t), text=f"{val:.0f}",
-                                    anchor="s", font=("Arial", 9, "bold"), fill=col)
-                bar2_cv.create_text(x_mid, H - pad_b + 6, text=lbl,
-                                    anchor="n", font=("Arial", 8), fill="#374151")
-            if _prod_theo > 0:
-                pct2 = total_equiv / _prod_theo * 100
-                pct2_col = "#16a34a" if pct2 >= 90 else "#dc2626"
-                bar2_cv.create_text(W - pad_r, pad_t - 4, text=f"{pct2:.1f}%",
-                                    anchor="ne", font=("Arial", 12, "bold"), fill=pct2_col)
-
-        bar2_cv.bind("<Configure>", _draw_bar2)
-        bar2_cv.after(50, _draw_bar2)
 
         # ── ZONE 3 : Détail OFs ──────────────────────────────────────────────────
         of_f = tk.Frame(body, bg=WHITE, highlightthickness=1, highlightbackground="#2d4a7a")
