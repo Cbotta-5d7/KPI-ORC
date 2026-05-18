@@ -1297,9 +1297,16 @@ class App:
 
     # ── Timeline history ──────────────────────────────────────────────────────
     def _tl_open(self, key, cat):
+        # Numéro d'OF courant au moment de l'ouverture de l'événement
+        try:
+            _cur_of = self.fv["of_num"].get() if hasattr(self, "fv") and "of_num" in self.fv else ""
+        except Exception:
+            _cur_of = ""
         self._tl_events.append({
             "key": key, "cat": cat,
-            "start": datetime.datetime.now(), "end": None
+            "start": datetime.datetime.now(), "end": None,
+            "of_num": _cur_of,
+            "pilot": self._logged_in_pilot or "",
         })
         self._save_session()
         self._refresh_stops_recap()
@@ -7596,8 +7603,17 @@ new Chart(document.getElementById('gauge{i}'), {{
             except Exception:
                 pass
         sup_timers = session_data.get("timers", {})
-        sup_events = session_data.get("tl_events", [])
+        # Filtrer les live events par pilote connecté
+        _all_sup_events = session_data.get("tl_events", [])
+        if sup_pilot and sup_pilot != "—":
+            sup_events = [e for e in _all_sup_events
+                          if not e.get("pilot") or e.get("pilot") == sup_pilot]
+        else:
+            sup_events = _all_sup_events
         sup_of_count = int(session_data.get("of_count_shift", 0))
+
+        # Index of_periods pour retrouver le numéro d'OF de chaque événement
+        _of_periods_idx = session_data.get("of_periods", [])
 
         # Arrêts actifs
         EVENT_LABELS = {e[1]: e[0] for e in EVENTS}
@@ -7767,9 +7783,23 @@ new Chart(document.getElementById('gauge{i}'), {{
                 is_open2 = not ev.get("end")
                 row_style2 = ' style="background:#fee2e2"' if is_open2 else ""
                 open_badge2 = ' <span style="background:#dc2626;color:white;border-radius:4px;padding:1px 6px;font-size:0.72em">EN COURS</span>' if is_open2 else ""
+                # Numéro d'OF de l'événement : stocké directement, sinon retrouvé depuis of_periods
+                ev_of_num = str(ev.get("of_num") or "")
+                if not ev_of_num:
+                    try:
+                        ev_s_dt = datetime.datetime.fromisoformat(ev["start"])
+                        for _op in _of_periods_idx:
+                            _op_s = datetime.datetime.fromisoformat(_op["start"]) if _op.get("start") else None
+                            _op_e = datetime.datetime.fromisoformat(_op["end"]) if _op.get("end") else datetime.datetime.now()
+                            if _op_s and _op_s <= ev_s_dt <= _op_e:
+                                ev_of_num = str(_op.get("of_num") or "")
+                                break
+                    except Exception:
+                        pass
+                ev_of_num = ev_of_num or "—"
                 live_evts_rows += f"""<tr{row_style2}>
                   <td>{_badge_evt(lbl)}{open_badge2}</td>
-                  <td>{_esc(sup_of_num)}</td>
+                  <td>{_esc(ev_of_num)}</td>
                   <td>{start_s_str}</td>
                   <td>{end_s_str}</td>
                   <td><b>{dur_s_str}</b></td>
@@ -7971,7 +8001,7 @@ new Chart(document.getElementById('gauge{i}'), {{
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="30">
+<meta http-equiv="refresh" content="15">
 <title>KPI-ORC — Dashboard & Supervision</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
@@ -8172,8 +8202,8 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <div class="meta">{now_str}</div>
   </div>
   <div style="text-align:right">
-    <div class="meta">Auto-refresh 30s</div>
-    <div class="countdown" id="cdown">&#8635; Mise &agrave; jour dans 30s</div>
+    <div class="meta">Auto-refresh 15s</div>
+    <div class="countdown" id="cdown">&#8635; Mise &agrave; jour dans 15s</div>
   </div>
 </div>
 
@@ -8428,7 +8458,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </div>
 
 <div class="footer">
-  KPI-ORC Supervision &bull; {now_str} &bull; Rafra&icirc;chissement automatique 30s
+  KPI-ORC Supervision &bull; {now_str} &bull; Rafra&icirc;chissement automatique 15s
 </div>
 
 </div><!-- /tab-supervision -->
@@ -8604,10 +8634,10 @@ function showTab(name) {{
   showTab(hash || saved || 'dashboard');
 }})();
 
-// Countdown 30s
+// Countdown 15s
 (function() {{
-  var s = 30, el = document.getElementById('cdown');
-  setInterval(function() {{ s--; if(s<=0)s=30; el.textContent='\\u21bb Mise \\u00e0 jour dans '+s+'s'; }}, 1000);
+  var s = 15, el = document.getElementById('cdown');
+  setInterval(function() {{ s--; if(s<=0)s=15; el.textContent='\\u21bb Mise \\u00e0 jour dans '+s+'s'; }}, 1000);
 }})();
 
 new Chart(document.getElementById('chartTRS'), {{
