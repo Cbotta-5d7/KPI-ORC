@@ -8277,6 +8277,14 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: 
   20%     {{ transform: rotate(-8deg); }}
   60%     {{ transform: rotate(8deg); }}
 }}
+@keyframes supBlink {{
+  0%,49%{{ background:#dc2626; }}
+  50%,100%{{ background:#7f1d1d; }}
+}}
+@keyframes supPageBlink {{
+  0%,49%{{ background:#fca5a5; border:3px solid #dc2626; }}
+  50%,100%{{ background:#fee2e2; border:3px solid #ef4444; }}
+}}
 
 .sup-grid {{ display: grid; grid-template-columns: 340px 1fr; gap: 20px;
              padding: 20px 28px; }}
@@ -8510,19 +8518,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </div><!-- /tab-dashboard -->
 
 <!-- ══════════════════ ONGLET SUPERVISION ══════════════════ -->
-<div class="tab-content visible" id="tab-supervision">
-
-<style>
-@keyframes supBlink {{
-  0%,49%{{ background:#dc2626; }}
-  50%,100%{{ background:#7f1d1d; }}
-}}
-@keyframes supPageBlink {{
-  0%,49%{{ background:#fca5a5; border:3px solid #dc2626; }}
-  50%,100%{{ background:#fee2e2; border:3px solid #ef4444; }}
-}}
-</style>
-
+<div class="tab-content" id="tab-supervision">
 <div id="supPageWrap" style="{'animation:supPageBlink 0.7s step-start infinite;border-radius:8px;padding:2px;margin:2px;' if has_active_stop else ''}">
 
 <!-- HEADER 1 LIGNE -->
@@ -8862,7 +8858,7 @@ function showTab(name) {{
         return;
       }}
     }}
-    el.textContent = '\\u21bb Mise \\u00e0 jour dans ' + s + 's';
+    if (el) el.textContent = '\\u21bb Mise \\u00e0 jour dans ' + s + 's';
   }}, 1000);
 }})();
 
@@ -9528,7 +9524,10 @@ document.getElementById('ofDetailModal').addEventListener('click', function(e) {
   if (e.target === this) closeOfModal();
 }});
 
-// ── Graphiques supervision (Canvas 2D, pas de CDN) ──────────────────
+  }} catch(e) {{ console.warn('Chart init error:', e.message); }}
+}}
+
+// ── Graphiques supervision (Canvas 2D, global, pas de CDN) ────────────
 function _drawSupCharts() {{
   var supPie = document.getElementById('supPieChart');
   if (supPie) {{
@@ -9543,9 +9542,6 @@ function _drawSupCharts() {{
 }}
 _drawSupCharts();
 window.addEventListener('load', _drawSupCharts);
-
-  }} catch(e) {{ console.warn('Chart init error:', e.message); }}
-}}
 // ── Initialisation filtres avec persistance localStorage ───────────────
 (function() {{
   var today = new Date();
