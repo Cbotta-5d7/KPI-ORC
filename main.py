@@ -1132,6 +1132,7 @@ class App:
                 "of_changes":       changes_serial,
                 "form_data":        self._saved_form_data,
                 "logged_in_pilot":  self._logged_in_pilot,
+                "logged_in_poste":  self._logged_in_poste,
                 "inter_of_s":       self._inter_of_s,
                 "of_count_shift":   self._of_count_this_shift,
                 "pause_total_s":    self._pause_total_s,
@@ -1214,6 +1215,9 @@ class App:
             pilot = data.get("logged_in_pilot")
             if pilot:
                 self._logged_in_pilot = pilot
+            poste = data.get("logged_in_poste")
+            if poste:
+                self._logged_in_poste = poste
 
             self._inter_of_s          = float(data.get("inter_of_s", 0))
             self._of_count_this_shift = int(data.get("of_count_shift", 0))
@@ -7911,6 +7915,8 @@ new Chart(document.getElementById('gauge{i}'), {{
                                 break
                     except Exception:
                         pass
+                if not ev_of_num:
+                    ev_of_num = str(sup_form.get("of_num") or "")
                 ev_of_num = ev_of_num or "—"
                 live_evts_rows += f"""<tr{row_style2}>
                   <td>{_badge_evt(lbl)}{open_badge2}</td>
@@ -8162,9 +8168,9 @@ new Chart(document.getElementById('chartParetoPoste{i}'), {{
             empty = not val or val == '—'
             bg = '#f8fafc' if not empty else '#f1f5f9'
             vc = col if not empty else '#cbd5e1'
-            return (f'<div style="background:{bg};border:1px solid #e2e8f0;border-radius:4px;padding:2px 5px">'
-                    f'<div style="font-size:0.50em;color:#94a3b8;text-transform:uppercase;line-height:1.1">{label}</div>'
-                    f'<div style="font-weight:700;color:{vc};font-size:0.78em;line-height:1.2">{_esc(val or "—")}</div></div>')
+            return (f'<div style="background:{bg};border:1px solid #e2e8f0;border-radius:3px;padding:1px 4px">'
+                    f'<div style="font-size:0.47em;color:#94a3b8;text-transform:uppercase;line-height:1.0">{label}</div>'
+                    f'<div style="font-weight:700;color:{vc};font-size:0.68em;line-height:1.1">{_esc(val or "—")}</div></div>')
 
         prod_info_html = (
             _inf("Fibre", sup_fibre) +
@@ -8235,9 +8241,10 @@ function _drawHBar(canvas,labels,values,colors){{
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1a2332; font-size: 14px; }}
 
+#page-header {{ position: sticky; top: 0; z-index: 200; }}
 .hdr {{ background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%); color: white;
         padding: 14px 28px; display: flex; align-items: center; justify-content: space-between;
-        position: sticky; top: 0; z-index: 200; box-shadow: 0 3px 16px rgba(0,0,0,0.3); }}
+        box-shadow: 0 3px 16px rgba(0,0,0,0.3); }}
 .hdr h1 {{ font-size: 1.35em; font-weight: 800; }}
 .hdr .meta {{ font-size: 0.78em; color: rgba(255,255,255,0.75); margin-top: 2px; }}
 .countdown {{ font-size: 0.75em; color: #fbbf24; margin-top: 4px; }}
@@ -8423,6 +8430,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </head>
 <body>
 
+<div id="page-header">
 <div class="hdr">
   <div>
     <h1>&#128202; KPI-ORC</h1>
@@ -8439,6 +8447,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
   <button class="tab-btn" id="btn-dashboard" onclick="showTab('dashboard')">&#128202; R&eacute;cap 3 derniers postes</button>
   <button class="tab-btn" id="btn-review" onclick="showTab('review')">&#128218; Historique complet BDD</button>
 </div>
+</div><!-- /page-header -->
 
 <!-- ══════════════════ ONGLET DASHBOARD ══════════════════ -->
 <div class="tab-content" id="tab-dashboard">
@@ -8552,7 +8561,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </div>
 
 <!-- BODY 3 COLONNES -->
-<div style="display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px;padding:0 12px 8px;height:calc(100vh - 195px)">
+<div style="display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px;padding:0 12px 8px;height:calc(100vh - 310px)">
 
   <!-- COL GAUCHE : Détails produit + Arrêts -->
   <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
@@ -8599,7 +8608,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
         <div style="font-size:0.74em;display:flex;flex-direction:column;gap:4px">
           <div><span style="display:inline-block;width:10px;height:10px;background:#16a34a;border-radius:2px;margin-right:5px"></span>Production d&eacute;clar&eacute;e</div>
           <div><span style="display:inline-block;width:10px;height:10px;background:#dc2626;border-radius:2px;margin-right:5px"></span>Arr&ecirc;ts</div>
-          <div><span style="display:inline-block;width:10px;height:10px;background:#e2e8f0;border-radius:2px;margin-right:5px"></span>Reste du poste</div>
+          <div><span style="display:inline-block;width:10px;height:10px;background:#94a3b8;border-radius:2px;margin-right:5px"></span>Reste du poste</div>
         </div>
       </div>
     </div>
@@ -9522,12 +9531,15 @@ document.getElementById('ofDetailModal').addEventListener('click', function(e) {
 (function() {{
   var supPie = document.getElementById('supPieChart');
   if (supPie) {{
-    _drawDonut(supPie, {pie_values}, ['#16a34a','#dc2626','#e2e8f0']);
+    _drawDonut(supPie, {pie_values}, ['#16a34a','#dc2626','#94a3b8']);
   }}
-  var supPar = document.getElementById('supParetoChart');
-  if (supPar) {{
-    _drawHBar(supPar, {sup_par_labels}, {sup_par_values}, {sup_par_colors});
-  }}
+  // Pareto : délai pour que le flex container ait ses dimensions finales
+  setTimeout(function() {{
+    var supPar = document.getElementById('supParetoChart');
+    if (supPar) {{
+      _drawHBar(supPar, {sup_par_labels}, {sup_par_values}, {sup_par_colors});
+    }}
+  }}, 80);
 }})();
 
 // ── Initialisation filtres avec persistance localStorage ───────────────
