@@ -8197,7 +8197,7 @@ new Chart(document.getElementById('chartParetoPoste{i}'), {{
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="refresh" content="15">
-<title>KPI-ORC — Dashboard & Supervision</title>
+<title>KPI-ORC v5.23 — {now_str}</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" async onerror="window._chartJsOk=false"></script>
 <script>window._chartJsOk=(typeof Chart!=='undefined');
 // ── Charts supervision : Canvas 2D pur (pas de CDN) ──
@@ -8631,7 +8631,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <div class="sup-card" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
       <div class="sup-card-hdr">&#128200; Par&eacute;to arr&ecirc;ts &amp; &eacute;v&eacute;nements (min)</div>
       <div style="padding:8px;flex:1;min-height:0">
-        <canvas id="supParetoChart" style="width:100%;height:100%;display:block"></canvas>
+        <canvas id="supParetoChart" width="400" height="240" style="width:100%;height:240px;display:block"></canvas>
       </div>
     </div>
 
@@ -9539,19 +9539,20 @@ document.getElementById('ofDetailModal').addEventListener('click', function(e) {
 }});
 
 // ── Graphiques supervision (Canvas 2D pur, pas de CDN) ───────────────
-(function() {{
+function _drawSupCharts() {{
   var supPie = document.getElementById('supPieChart');
   if (supPie) {{
     _drawDonut(supPie, {pie_values}, ['#16a34a','#dc2626','#94a3b8']);
   }}
-  // Pareto : délai pour que le flex container ait ses dimensions finales
-  setTimeout(function() {{
-    var supPar = document.getElementById('supParetoChart');
-    if (supPar) {{
-      _drawHBar(supPar, {sup_par_labels}, {sup_par_values}, {sup_par_colors});
-    }}
-  }}, 80);
-}})();
+  var supPar = document.getElementById('supParetoChart');
+  if (supPar) {{
+    supPar.width  = supPar.offsetWidth  || 400;
+    supPar.height = supPar.offsetHeight || 240;
+    _drawHBar(supPar, {sup_par_labels}, {sup_par_values}, {sup_par_colors});
+  }}
+}}
+_drawSupCharts();
+window.addEventListener('load', _drawSupCharts);
 
 // ── Initialisation filtres avec persistance localStorage ───────────────
 (function() {{
