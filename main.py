@@ -7403,6 +7403,10 @@ Arrêts imputés au TRS (temps perdu) :
         now_str = _dt.datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
 
         # ── helpers ──────────────────────────────────────────────────────────
+        def _js_safe(s):
+            """Sanitise un JSON pour embarquement dans <script> : évite </script> et <!-- qui cassent le parser HTML."""
+            return s.replace("</", "<\\/").replace("<!--", "<\\!--")
+
         def _s(v):
             s = str(v) if v is not None else ""
             return s if s.strip() else "—"
@@ -7628,7 +7632,7 @@ Arrêts imputés au TRS (temps perdu) :
 new Chart(document.getElementById('cad{i}'), {{
   type: 'bar',
   data: {{
-    labels: {_json.dumps(cad_labels)},
+    labels: {_js_safe(_json.dumps(cad_labels))},
     datasets: [{{ label: 'Cad/h', data: {_json.dumps(cad_vals)},
       backgroundColor: '{tc}cc', borderColor: '{tc}', borderWidth: 1,
       borderRadius: 4, borderSkipped: false }}]
@@ -7975,7 +7979,7 @@ new Chart(document.getElementById('gauge{i}'), {{
             if "nettoyage" in ll: return "#0284c7"
             if "pause" in ll: return "#2563eb"
             return "#7c3aed"
-        sup_par_labels = _json.dumps([x[0] for x in sup_par_sorted], ensure_ascii=False)
+        sup_par_labels = _js_safe(_json.dumps([x[0] for x in sup_par_sorted], ensure_ascii=False))
         sup_par_values = _json.dumps([round(x[1], 1) for x in sup_par_sorted])
         sup_par_colors = _json.dumps([_par_col(x[0]) for x in sup_par_sorted])
 
@@ -8098,9 +8102,9 @@ new Chart(document.getElementById('gauge{i}'), {{
                 result[0] = _row_date(result[0])  # TRS col A = Date
             return [str(v or "") for v in result]
 
-        rev_data_js  = _json.dumps([_to_str_row(r) for r in rev_all_data], ensure_ascii=False)
-        rev_evts_js  = _json.dumps([_to_str_evt(r) for r in rev_all_evts], ensure_ascii=False)
-        rev_trs_js   = _json.dumps([_to_str_trs(r) for r in rev_all_trs], ensure_ascii=False)
+        rev_data_js  = _js_safe(_json.dumps([_to_str_row(r) for r in rev_all_data], ensure_ascii=False))
+        rev_evts_js  = _js_safe(_json.dumps([_to_str_evt(r) for r in rev_all_evts], ensure_ascii=False))
+        rev_trs_js   = _js_safe(_json.dumps([_to_str_trs(r) for r in rev_all_trs], ensure_ascii=False))
 
         # Listes déroulantes filtre
         all_postes_rev  = sorted(set(str(r[1][2] if isinstance(r,(list,tuple)) and len(r)==2 else r[2] or "") for r in rev_all_data if r) - {""})
@@ -8728,7 +8732,7 @@ function showTab(name) {{
 new Chart(document.getElementById('chartTRS'), {{
   type: 'bar',
   data: {{
-    labels: {_json.dumps(chart_labels)},
+    labels: {_js_safe(_json.dumps(chart_labels))},
     datasets: [{{
       label: 'TRS %', data: {_json.dumps(chart_trs)},
       backgroundColor: {_json.dumps(chart_colors)},
@@ -8749,7 +8753,7 @@ new Chart(document.getElementById('chartTRS'), {{
 new Chart(document.getElementById('chartTemps'), {{
   type: 'bar',
   data: {{
-    labels: {_json.dumps(chart_labels)},
+    labels: {_js_safe(_json.dumps(chart_labels))},
     datasets: [
       {{ label:'Production',  data:{_json.dumps(d_marche)},  backgroundColor:'#16a34a', borderWidth:0 }},
       {{ label:'Pannes',      data:{_json.dumps(d_pannes)},  backgroundColor:'#dc2626', borderWidth:0 }},
@@ -8772,7 +8776,7 @@ new Chart(document.getElementById('chartTemps'), {{
 new Chart(document.getElementById('chartPareto'), {{
   type: 'bar',
   data: {{
-    labels: {_json.dumps(pareto_labels)},
+    labels: {_js_safe(_json.dumps(pareto_labels))},
     datasets: [{{
       label: 'Minutes', data: {_json.dumps(pareto_values)},
       backgroundColor: {_json.dumps(pareto_colors)},
@@ -9233,7 +9237,7 @@ function updateTables(d) {{
 }}
 
 // DATA_HEADERS pour modal OF
-var DATA_HEADERS = {_json.dumps(DATA_HEADERS, ensure_ascii=False)};
+var DATA_HEADERS = {_js_safe(_json.dumps(DATA_HEADERS, ensure_ascii=False))};
 
 // ── Modal détail OF ────────────────────────────────────────────────────
 function openOfModal(rowData) {{
