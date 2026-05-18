@@ -9205,7 +9205,7 @@ function updateTables(d) {{
     document.getElementById('cntOF').textContent = d.data.length;
     window._revOfData = d.data.slice().reverse();
     var rows = window._revOfData.map(function(r, idx) {{
-      return '<tr style="cursor:pointer" title="Cliquer pour détails" onclick="var rd=window._revOfData['+idx+'];var p=rd.slice();while(p.length<60)p.push(\'\');openOfModal(p.slice(0,60))">'
+      return '<tr style="cursor:pointer" title="Cliquer pour détails" onclick="var rd=window._revOfData['+idx+'];var p=rd.slice();while(p.length<60)p.push(\\\'\\\');openOfModal(p.slice(0,60))">'
         +'<td><b>'+esc(r[0])+'</b></td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'</td><td>'+esc(r[3])+'</td>'
         +'<td>'+esc(r[17])+'</td><td>'+esc(r[18])+'</td>'
         +'<td>'+esc(r[6])+'</td><td>'+esc(r[7])+'</td><td>'+esc(r[8])+'</td>'
