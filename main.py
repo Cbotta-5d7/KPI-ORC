@@ -1952,11 +1952,9 @@ class App:
                         v.get("comment",""),
                         fmt(self._interposte_s) if self._interposte_s > 0 else "",  # BF
                     ]
-                    ok = self._write_excel(row, v)
-                    if not ok:
-                        self._save_pending_declaration(row, v)
                 except Exception:
                     pass
+            self._save_session()
             self.root.destroy()
 
         tk.Button(btn_frame,
@@ -7399,6 +7397,9 @@ Arrêts imputés au TRS (temps perdu) :
         def _esc(v):
             return str(v or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
+        def _js_safe(s):
+            return s.replace("</", "<\\/").replace("<!--", "<\\!--")
+
         def _trs_color(val):
             return "#16a34a" if val >= 80 else ("#d97706" if val >= 60 else "#dc2626")
 
@@ -8097,10 +8098,6 @@ new Chart(document.getElementById('gauge{i}'), {{
             if len(result) > 0:
                 result[0] = _row_date(result[0])  # TRS col A = Date
             return [str(v or "") for v in result]
-
-        def _js_safe(s):
-            """Sanitise un JSON pour embarquement dans <script> : évite </script> et <!-- qui cassent le parser HTML."""
-            return s.replace("</", "<\\/").replace("<!--", "<\\!--")
 
         rev_data_js  = _js_safe(_json.dumps([_to_str_row(r) for r in rev_all_data], ensure_ascii=False))
         rev_evts_js  = _js_safe(_json.dumps([_to_str_evt(r) for r in rev_all_evts], ensure_ascii=False))
