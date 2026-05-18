@@ -3,6 +3,45 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json, os, sys, datetime, math, threading
 from openpyxl import load_workbook
+
+# ── Serveur HTTP local pour édition OF depuis le dashboard HTML ───────────
+EDIT_SERVER_PORT = 7892
+
+def _start_edit_server(app):
+    import http.server, socketserver, json as _jhttp
+    class _H(http.server.BaseHTTPRequestHandler):
+        def do_OPTIONS(self):
+            self.send_response(200)
+            for k, v in [('Access-Control-Allow-Origin','*'),
+                         ('Access-Control-Allow-Methods','POST,OPTIONS'),
+                         ('Access-Control-Allow-Headers','Content-Type')]:
+                self.send_header(k, v)
+            self.end_headers()
+        def do_POST(self):
+            if self.path != '/edit':
+                self.send_response(404); self.end_headers(); return
+            try:
+                n = int(self.headers.get('Content-Length', 0))
+                payload = _jhttp.loads(self.rfile.read(n))
+                app.root.after(0, lambda p=payload: app._apply_html_edit(p))
+                self.send_response(200)
+                for k, v in [('Content-Type','application/json'),
+                              ('Access-Control-Allow-Origin','*')]:
+                    self.send_header(k, v)
+                self.end_headers()
+                self.wfile.write(b'{"ok":true}')
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Access-Control-Allow-Origin','*')
+                self.end_headers()
+                self.wfile.write(_jhttp.dumps({"error": str(e)}).encode())
+        def log_message(self, *a): pass
+    try:
+        srv = socketserver.TCPServer(("localhost", EDIT_SERVER_PORT), _H)
+        srv.daemon_threads = True
+        srv.serve_forever()
+    except Exception:
+        pass
 from openpyxl.styles import Alignment, Border, Side, PatternFill
 
 CONFIG_FILE  = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
@@ -739,6 +778,9 @@ class App:
 
         self._load_lists()
         self._load_history_from_excel()
+        # Démarrer le serveur d'édition HTML en arrière-plan
+        import threading as _thr
+        _thr.Thread(target=_start_edit_server, args=(self,), daemon=True).start()
 
         # ── Vérifier si une session était en cours ──────────────────────────
         if self._try_restore_session():
@@ -747,6 +789,43 @@ class App:
         self._show_main()
 
     # ── Historique depuis Excel (reconstruit la timeline au demarrage) ────────
+    def _apply_html_edit(self, payload):
+        """Applique une modification d'OF depuis le dashboard HTML."""
+        path = self.cfg.get("db_path", "")
+        if not path:
+            return
+        data = payload.get("data", [])
+        of_num_target = str(payload.get("of_num", "")).strip()
+        date_target   = _row_date(str(payload.get("date", "")).strip())
+        def _bg():
+            try:
+                with self._excel_lock:
+                    wb = load_workbook(path)
+                    ws = self._ensure_data_sheet(wb)
+                    target_row = None
+                    for row in ws.iter_rows(min_row=2):
+                        if (str(row[0].value or "").strip() == of_num_target and
+                                _row_date(str(row[1].value or "")) == date_target):
+                            target_row = row[0].row
+                            break
+                    if target_row is None:
+                        self.root.after(0, lambda: _toast(self.root,
+                            "⚠  OF introuvable dans l'Excel", bg="#d97706"))
+                        return
+                    for col_i, val in enumerate(data[:len(DATA_HEADERS)], start=1):
+                        ws.cell(row=target_row, column=col_i).value = val if val != "" else None
+                    self._safe_excel_save(wb, path)
+                    self._invalidate_wb_cache()
+                self.root.after(0, self._reload_and_refresh)
+                self.root.after(0, self._generate_dashboard_html)
+                self.root.after(0, lambda: _toast(self.root,
+                    "✔  Modifications sauvegardées dans Excel", bg="#16a34a", duration=3000))
+            except Exception as e:
+                err = str(e)
+                self.root.after(0, lambda: _toast(self.root, f"✘  Erreur: {err}", bg="#dc2626"))
+        import threading as _thr2
+        _thr2.Thread(target=_bg, daemon=True).start()
+
     def _load_history_from_excel(self):
         path = self.cfg.get("db_path", "")
         if not path or not os.path.exists(path):
@@ -4648,6 +4727,9 @@ Arrêts imputés au TRS (temps perdu) :
                 if key == "pilote" and self._logged_in_pilot:
                     var.set(self._logged_in_pilot)
                     cb.config(state="disabled")
+                if key == "poste" and self._logged_in_poste:
+                    var.set(self._logged_in_poste)
+                    cb.config(state="disabled")
             if adv:
                 ri[0] += 1
 
@@ -8375,7 +8457,13 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
   0%,49%{{ background:#dc2626; }}
   50%,100%{{ background:#7f1d1d; }}
 }}
+@keyframes supPageBlink {{
+  0%,49%{{ background:#fca5a5; border:3px solid #dc2626; }}
+  50%,100%{{ background:#fee2e2; border:3px solid #ef4444; }}
+}}
 </style>
+
+<div id="supPageWrap" style="{'animation:supPageBlink 0.7s step-start infinite;border-radius:8px;padding:2px;margin:2px;' if has_active_stop else ''}">
 
 <!-- HEADER 1 LIGNE -->
 <div id="supHdr" style="background:{hdr_bg};border:2px solid {sup_status_color};border-radius:10px;
@@ -8502,11 +8590,16 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 <!-- Modal détail OF (shared with dashboard) -->
 <div id="ofDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center">
   <div style="background:white;border-radius:16px;max-width:900px;width:95%;max-height:90vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column">
-    <div style="background:linear-gradient(135deg,#1e3a5f,#2c5282);color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:1.1em;font-weight:800">&#128203; D&eacute;tail de l'OF <span id="modalOfNum"></span></div>
+    <div style="background:linear-gradient(135deg,#1e3a5f,#2c5282);color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div style="font-size:1.1em;font-weight:800;flex:1">&#128203; D&eacute;tail de l'OF <span id="modalOfNum"></span></div>
+      <button id="modalEditBtn" onclick="startEditModal()" style="background:#d97706;border:none;color:white;border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:700;font-size:0.95em">&#9998; Modifier</button>
+      <button id="modalSaveBtn" onclick="saveEditModal()" style="display:none;background:#16a34a;border:none;color:white;border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:700;font-size:0.95em">&#10003; Sauvegarder</button>
+      <button id="modalCancelBtn" onclick="cancelEditModal()" style="display:none;background:#6b7280;border:none;color:white;border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:700;font-size:0.95em">&#10005; Annuler</button>
+      <span id="modalEditMsg" style="font-size:0.8em;opacity:0.8"></span>
       <button onclick="closeOfModal()" style="background:rgba(255,255,255,0.15);border:none;color:white;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700;font-size:1.1em">&#10005;</button>
     </div>
     <div id="modalBody" style="overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
+    <div id="modalEditBody" style="display:none;overflow-y:auto;padding:20px"></div>
   </div>
 </div>
 
@@ -8514,6 +8607,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
   KPI-ORC Supervision &bull; {now_str} &bull; Rafra&icirc;chissement automatique 15s
 </div>
 
+</div><!-- /supPageWrap -->
 </div><!-- /tab-supervision -->
 
 <!-- ══════════════════ ONGLET REVUE COMPLÈTE ══════════════════ -->
@@ -9184,7 +9278,8 @@ function updateTables(d) {{
   if (bOF) {{
     document.getElementById('cntOF').textContent = d.data.length;
     var rows = d.data.slice().reverse().map(function(r) {{
-      return '<tr>'
+      var rj = JSON.stringify(r).replace(/'/g,"&#39;");
+      return '<tr style="cursor:pointer" onclick="openOfModal(JSON.parse(this.dataset.row))" data-row=\''+rj+'\' title="Cliquer pour voir tous les détails">'
         +'<td><b>'+esc(r[0])+'</b></td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'</td><td>'+esc(r[3])+'</td>'
         +'<td>'+esc(r[17])+'</td><td>'+esc(r[18])+'</td>'
         +'<td>'+esc(r[6])+'</td><td>'+esc(r[7])+'</td><td>'+esc(r[8])+'</td>'
@@ -9219,11 +9314,17 @@ function updateTables(d) {{
 var DATA_HEADERS = {_json.dumps(DATA_HEADERS, ensure_ascii=False)};
 
 // ── Modal détail OF ────────────────────────────────────────────────────
+var _modalRowData = null;
 function openOfModal(rowData) {{
+  _modalRowData = rowData;
   var modal = document.getElementById('ofDetailModal');
   var body  = document.getElementById('modalBody');
   var numEl = document.getElementById('modalOfNum');
   numEl.textContent = rowData[0] || '';
+  document.getElementById('modalEditBtn').style.display = '';
+  document.getElementById('modalSaveBtn').style.display = 'none';
+  document.getElementById('modalCancelBtn').style.display = 'none';
+  document.getElementById('modalEditMsg').textContent = '';
   var html = '';
   var sections = [
     {{title:'Identification', color:'#1e3a5f', bg:'#eff6ff', indices:[0,1,2,3,4,5]}},
@@ -9256,6 +9357,87 @@ function openOfModal(rowData) {{
 
 function closeOfModal() {{
   document.getElementById('ofDetailModal').style.display = 'none';
+}}
+
+function startEditModal() {{
+  if (!_modalRowData) return;
+  var sections = [
+    {{title:'Identification', color:'#1e3a5f', bg:'#eff6ff', indices:[0,1,2,3,4,5]}},
+    {{title:'Produit', color:'#16a34a', bg:'#f0fdf4', indices:[6,7,8,9,10,11,12,21]}},
+    {{title:'Quantités & Qualité', color:'#7c3aed', bg:'#faf5ff', indices:[13,14,15,16,17,18,19,20,22,23,24,25,26,27,28]}},
+    {{title:'Durées & Arrêts', color:'#d97706', bg:'#fffbeb', indices:[29,30,31,32,33,34,35,36,37,57]}},
+    {{title:'Pannes', color:'#dc2626', bg:'#fef2f2', indices:[38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55]}},
+    {{title:'Commentaire', color:'#64748b', bg:'#f8fafc', indices:[56]}}
+  ];
+  var html = '<form id="editForm">';
+  sections.forEach(function(sec) {{
+    var secHtml = '';
+    sec.indices.forEach(function(i) {{
+      if (i >= DATA_HEADERS.length) return;
+      var val = (i < _modalRowData.length && _modalRowData[i] !== null && _modalRowData[i] !== undefined) ? _modalRowData[i] : '';
+      secHtml += '<div style="background:white;border-radius:6px;padding:8px 10px;border:1px solid #e2e8f0">'
+        + '<label style="display:block;font-size:0.62em;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:4px" for="ef_' + i + '">' + esc(DATA_HEADERS[i]) + '</label>'
+        + '<input id="ef_' + i + '" data-idx="' + i + '" type="text" value="' + esc(String(val)) + '" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:4px;padding:4px 6px;font-size:0.92em;font-family:inherit" />'
+        + '</div>';
+    }});
+    if (!secHtml) return;
+    html += '<div style="grid-column:1/-1;background:' + sec.bg + ';border-radius:10px;padding:12px;border-left:4px solid ' + sec.color + ';margin-bottom:4px">'
+      + '<div style="font-size:0.72em;font-weight:700;color:' + sec.color + ';text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">' + sec.title + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px">' + secHtml + '</div>'
+      + '</div>';
+  }});
+  html += '</form>';
+  document.getElementById('modalBody').style.display = 'none';
+  var eb = document.getElementById('modalEditBody');
+  eb.innerHTML = html;
+  eb.style.display = '';
+  document.getElementById('modalEditBtn').style.display = 'none';
+  document.getElementById('modalSaveBtn').style.display = '';
+  document.getElementById('modalCancelBtn').style.display = '';
+  document.getElementById('modalEditMsg').textContent = '';
+}}
+
+function cancelEditModal() {{
+  document.getElementById('modalBody').style.display = '';
+  document.getElementById('modalEditBody').style.display = 'none';
+  document.getElementById('modalEditBtn').style.display = '';
+  document.getElementById('modalSaveBtn').style.display = 'none';
+  document.getElementById('modalCancelBtn').style.display = 'none';
+  document.getElementById('modalEditMsg').textContent = '';
+}}
+
+function saveEditModal() {{
+  if (!_modalRowData) return;
+  var inputs = document.querySelectorAll('#editForm input[data-idx]');
+  var newData = _modalRowData.slice();
+  inputs.forEach(function(inp) {{
+    var idx = parseInt(inp.getAttribute('data-idx'), 10);
+    newData[idx] = inp.value;
+  }});
+  var ofNum = newData[0] || '';
+  var date  = newData[1] || '';
+  document.getElementById('modalSaveBtn').disabled = true;
+  document.getElementById('modalEditMsg').textContent = 'Sauvegarde...';
+  fetch('http://localhost:7892/edit', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{of_num: ofNum, date: date, data: newData}})
+  }}).then(function(r) {{ return r.json(); }}).then(function(res) {{
+    if (res.ok) {{
+      document.getElementById('modalEditMsg').textContent = '✔ Sauvegardé';
+      document.getElementById('modalEditMsg').style.color = '#16a34a';
+      _modalRowData = newData;
+      setTimeout(function() {{ cancelEditModal(); }}, 1200);
+    }} else {{
+      document.getElementById('modalEditMsg').textContent = '✘ Erreur: ' + (res.error || 'inconnue');
+      document.getElementById('modalEditMsg').style.color = '#dc2626';
+      document.getElementById('modalSaveBtn').disabled = false;
+    }}
+  }}).catch(function(err) {{
+    document.getElementById('modalEditMsg').textContent = '✘ ' + err;
+    document.getElementById('modalEditMsg').style.color = '#dc2626';
+    document.getElementById('modalSaveBtn').disabled = false;
+  }});
 }}
 
 document.getElementById('ofDetailModal').addEventListener('click', function(e) {{
