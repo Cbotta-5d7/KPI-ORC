@@ -8444,7 +8444,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </div>
 
 <div class="footer">
-  KPI-ORC &bull; G&eacute;n&eacute;r&eacute; le {now_str} &bull; Actualisation automatique toutes les 30 secondes
+  KPI-ORC &bull; G&eacute;n&eacute;r&eacute; le {now_str} &bull; Actualisation automatique toutes les 15 secondes
 </div>
 
 </div><!-- /tab-dashboard -->
@@ -8781,10 +8781,20 @@ function showTab(name) {{
   showTab(hash || saved || 'supervision');
 }})();
 
-// Countdown 15s
+// Countdown + reload JS (meta refresh fallback)
 (function() {{
   var s = 15, el = document.getElementById('cdown');
-  setInterval(function() {{ s--; if(s<=0)s=15; el.textContent='\\u21bb Mise \\u00e0 jour dans '+s+'s'; }}, 1000);
+  if (!el) return;
+  var iv = setInterval(function() {{
+    s--;
+    if (s <= 0) {{
+      clearInterval(iv);
+      el.textContent = '\\u21bb Rechargement...';
+      location.reload();
+    }} else {{
+      el.textContent = '\\u21bb Mise \\u00e0 jour dans ' + s + 's';
+    }}
+  }}, 1000);
 }})();
 
 new Chart(document.getElementById('chartTRS'), {{
