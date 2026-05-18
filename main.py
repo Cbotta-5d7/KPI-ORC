@@ -8004,7 +8004,14 @@ new Chart(document.getElementById('gauge{i}'), {{
         of_periods = session_data.get("of_periods", [])
         shift_total_s_tl = 8 * 3600
         if sup_of_start_dt:
-            shift_start_tl = sup_of_start_dt
+            # Référence = début du premier OF du quart (pas du dernier)
+            if of_periods:
+                try:
+                    shift_start_tl = datetime.datetime.fromisoformat(of_periods[0]["start"])
+                except Exception:
+                    shift_start_tl = sup_of_start_dt
+            else:
+                shift_start_tl = sup_of_start_dt
             now_s_tl = (datetime.datetime.now() - shift_start_tl).total_seconds()
             RY, RH = 8, 28  # Rail Y origin, height
             # Sépare rects et labels pour que les labels soient TOUJOURS au-dessus
@@ -8024,8 +8031,12 @@ new Chart(document.getElementById('gauge{i}'), {{
                 try:
                     s_op = datetime.datetime.fromisoformat(op["start"])
                     e_op = datetime.datetime.fromisoformat(op["end"]) if op.get("end") else datetime.datetime.now()
-                    xp2 = max(0.0, (s_op - shift_start_tl).total_seconds() / shift_total_s_tl * 100)
-                    wp2 = min(100.0 - xp2, (e_op - s_op).total_seconds() / shift_total_s_tl * 100)
+                    # Clamp : ni avant le début du quart, ni après maintenant
+                    s_op_c = max(s_op, shift_start_tl)
+                    e_op_c = min(e_op, datetime.datetime.now())
+                    if e_op_c <= s_op_c: continue
+                    xp2 = max(0.0, (s_op_c - shift_start_tl).total_seconds() / shift_total_s_tl * 100)
+                    wp2 = min(100.0 - xp2, (e_op_c - s_op_c).total_seconds() / shift_total_s_tl * 100)
                     if wp2 <= 0: continue
                     col_op = "#16a34a" if op.get("end") else "#22c55e"
                     of_lbl_tl = _esc(str(op.get("of_num") or "OF")[:14])
@@ -8039,6 +8050,8 @@ new Chart(document.getElementById('gauge{i}'), {{
                 try:
                     s_ev = datetime.datetime.fromisoformat(ev["start"])
                     e_ev = datetime.datetime.fromisoformat(ev["end"]) if ev.get("end") else datetime.datetime.now()
+                    e_ev = min(e_ev, datetime.datetime.now())
+                    if e_ev <= s_ev: continue
                     xp2 = max(0.0, (s_ev - shift_start_tl).total_seconds() / shift_total_s_tl * 100)
                     wp2 = min(100.0 - xp2, (e_ev - s_ev).total_seconds() / shift_total_s_tl * 100)
                     if wp2 <= 0: continue
