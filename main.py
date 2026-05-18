@@ -8126,15 +8126,11 @@ new Chart(document.getElementById('gauge{i}'), {{
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1a2332; font-size: 14px; }}
 
-.hdr {{ background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%); color: white;
-        padding: 14px 28px; display: flex; align-items: center; justify-content: space-between;
-        position: sticky; top: 0; z-index: 200; box-shadow: 0 3px 16px rgba(0,0,0,0.3); }}
-.hdr h1 {{ font-size: 1.35em; font-weight: 800; }}
-.hdr .meta {{ font-size: 0.78em; color: rgba(255,255,255,0.75); margin-top: 2px; }}
-.countdown {{ font-size: 0.75em; color: #fbbf24; margin-top: 4px; }}
-
 /* ── Onglets ── */
-.tab-bar {{ background: #1e3a5f; display: flex; gap: 0; border-bottom: 3px solid #fbbf24; }}
+.tab-bar {{ background: #1e3a5f; display: flex; gap: 0; border-bottom: 3px solid #fbbf24; align-items: center; }}
+.tab-logo {{ color: rgba(255,255,255,0.5); font-size: 0.72em; font-weight: 700; letter-spacing: 1px;
+             padding: 0 14px; white-space: nowrap; border-right: 1px solid rgba(255,255,255,0.15); }}
+.countdown {{ font-size: 0.65em; color: rgba(255,193,36,0.7); margin-left: auto; padding-right: 12px; white-space: nowrap; }}
 .tab-btn {{ padding: 12px 32px; border: none; background: transparent; color: rgba(255,255,255,0.6);
             font-size: 0.9em; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
             text-transform: uppercase; transition: all 0.2s; border-bottom: 3px solid transparent;
@@ -8325,21 +8321,12 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </head>
 <body>
 
-<div class="hdr">
-  <div>
-    <h1>&#128202; KPI-ORC</h1>
-    <div class="meta">{now_str}</div>
-  </div>
-  <div style="text-align:right">
-    <div class="meta">Auto-refresh 30s</div>
-    <div class="countdown" id="cdown">&#8635; Mise &agrave; jour dans 30s</div>
-  </div>
-</div>
-
 <div class="tab-bar">
+  <span class="tab-logo">KPI ORC1</span>
   <button class="tab-btn" id="btn-dashboard" onclick="showTab('dashboard')">&#128202; R&eacute;cap 3 derniers postes</button>
   <button class="tab-btn" id="btn-supervision" onclick="showTab('supervision')">&#9881; Supervision</button>
   <button class="tab-btn" id="btn-review" onclick="showTab('review')">&#128218; Historique complet BDD</button>
+  <span class="countdown" id="cdown">&#8635; 30s</span>
 </div>
 
 <!-- ══════════════════ ONGLET DASHBOARD ══════════════════ -->
@@ -8414,21 +8401,21 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     f'<b>{_esc(sup_poste)}</b> &bull; {_esc(sup_pilot)} &bull; Session {sup_session_dur}</div>'
     f'</div>'
   ) if has_active_stop else (
-    f'<div style="font-size:1.6em">&#9654;</div>'
+    f'<div style="font-size:2em">&#9654;</div>'
     f'<div style="flex:1">'
-    f'<div style="font-size:0.75em;font-weight:900;letter-spacing:2px;text-transform:uppercase;margin-bottom:2px">PRODUCTION EN COURS</div>'
-    f'<div style="font-size:0.82em;opacity:0.9">'
+    f'<div style="font-size:0.95em;font-weight:900;letter-spacing:2px;text-transform:uppercase;margin-bottom:2px">PRODUCTION EN COURS</div>'
+    f'<div style="font-size:1em;opacity:0.9">'
     f'<b>{_esc(sup_poste)}</b> &bull; &#128100; {_esc(sup_pilot)}'
     + (f' &bull; {_esc(sup_copilot)}' if sup_copilot not in ("—","") else "")
     + f' &bull; {_esc(sup_nb_pers)} pers. &bull; Session {sup_session_dur} &bull; {sup_of_count} OF'
     f'</div></div>'
     + (f'<div style="border-left:2px solid rgba(255,255,255,0.3);padding-left:12px">'
-       f'<div style="font-size:0.6em;text-transform:uppercase;opacity:0.75">OF EN COURS</div>'
-       f'<div style="font-size:1.5em;font-weight:900;line-height:1.1">{_esc(sup_of_num)}</div>'
-       f'<div style="font-size:0.72em;opacity:0.85">{_esc(sup_taille)} &bull; {_esc(sup_type_prod)} &bull; Code {_esc(sup_code)}</div>'
+       f'<div style="font-size:0.75em;text-transform:uppercase;opacity:0.75">OF EN COURS</div>'
+       f'<div style="font-size:1.8em;font-weight:900;line-height:1.1">{_esc(sup_of_num)}</div>'
+       f'<div style="font-size:0.85em;opacity:0.85">{_esc(sup_taille)} &bull; {_esc(sup_type_prod)} &bull; Code {_esc(sup_code)}</div>'
        f'</div>' if sup_prod_active else "")
-    + (f'<span style="background:rgba(255,255,255,0.18);border-radius:4px;padding:2px 7px;font-size:0.72em">{_esc(sup_fibre)}</span>' if sup_prod_active and sup_fibre else "")
-    + (f'<span style="background:rgba(255,255,255,0.18);border-radius:4px;padding:2px 7px;font-size:0.72em">Kit &#10003;</span>' if sup_kit else "")
+    + (f'<span style="background:rgba(255,255,255,0.18);border-radius:4px;padding:2px 7px;font-size:0.85em">{_esc(sup_fibre)}</span>' if sup_prod_active and sup_fibre else "")
+    + (f'<span style="background:rgba(255,255,255,0.18);border-radius:4px;padding:2px 7px;font-size:0.85em">Kit &#10003;</span>' if sup_kit else "")
   ) if sup_prod_active else (
     f'<div style="font-size:1.8em;opacity:0.6">&#9632;</div>'
     f'<div style="font-size:0.82em;opacity:0.75">Pas de session active &bull; {_esc(sup_poste)}</div>'
@@ -8466,7 +8453,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <div class="sup-card">
       <div class="sup-card-hdr">&#9685; R&eacute;partition (min)</div>
       <div style="padding:6px 8px;display:flex;align-items:center;gap:8px">
-        <canvas id="supPieChart" width="80" height="80" style="flex-shrink:0"></canvas>
+        <canvas id="supPieChart" width="55" height="55" style="flex-shrink:0"></canvas>
         <div style="font-size:0.68em;display:flex;flex-direction:column;gap:3px">
           <div><span style="display:inline-block;width:10px;height:10px;background:#16a34a;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Production</div>
           <div><span style="display:inline-block;width:10px;height:10px;background:#dc2626;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Arr&ecirc;ts</div>
