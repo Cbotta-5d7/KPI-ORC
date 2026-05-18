@@ -7991,13 +7991,13 @@ new Chart(document.getElementById('gauge{i}'), {{
         sup_par_values = _json.dumps([round(x[1], 1) for x in sup_par_sorted])
         sup_par_colors = _json.dumps([_par_col(x[0]) for x in sup_par_sorted])
 
-        # ── Camembert production/arrêts/reste ────────────────────────────────
-        shift_total_s = 8 * 3600
-        elapsed_sess_s = (datetime.datetime.now() - sup_of_start_dt).total_seconds() if sup_of_start_dt else 0
-        total_decl_s_pie = sum(_hms_to_sec(str(rd[16] or "0")) for rd in sup_decls)
-        total_stop_s_pie = sum(v * 60 for v in sup_pareto_dict.values())
-        prod_s_pie  = max(0.0, total_decl_s_pie - total_stop_s_pie)
-        remaining_s_pie = max(0.0, shift_total_s - elapsed_sess_s)
+        # ── Camembert poste entier : elapsed - arrêts - pauses ──────────────
+        shift_total_s   = 8 * 3600
+        elapsed_sess_s  = (datetime.datetime.now() - sup_of_start_dt).total_seconds() if sup_of_start_dt else 0
+        total_stop_s_pie  = sum(v * 60 for v in sup_pareto_dict.values())
+        pause_total_s_pie = float(session_data.get("pause_total_s") or 0)
+        prod_s_pie        = max(0.0, elapsed_sess_s - total_stop_s_pie - pause_total_s_pie)
+        remaining_s_pie   = max(0.0, shift_total_s - elapsed_sess_s)
         pie_values  = _json.dumps([round(prod_s_pie/60,1), round(total_stop_s_pie/60,1), round(remaining_s_pie/60,1)])
 
         # ── Timeline SVG 8h ─────────────────────────────────────────────────
@@ -8134,7 +8134,7 @@ new Chart(document.getElementById('gauge{i}'), {{
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="30">
+<meta http-equiv="refresh" content="{'8' if has_active_stop else '30'}">
 <title>KPI-ORC — Dashboard & Supervision</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
@@ -8335,8 +8335,8 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
            border-top: 1px solid #e2e8f0; background: white; margin-top: 8px; }}
 
 /* ── Alarme globale ── */
-body.alarm-bg {{ background: #fee2e2 !important; }}
-body.alarm-bg .tab-content.visible {{ background: #fef2f2; }}
+body.alarm-bg {{ background: #ef4444 !important; }}
+body.alarm-bg .tab-content.visible {{ background: #fee2e2; }}
 </style>
 </head>
 <body{' class="alarm-bg"' if has_active_stop else ''}>
