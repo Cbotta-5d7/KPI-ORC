@@ -4757,9 +4757,17 @@ Arrêts imputés au TRS (temps perdu) :
                 if key == "pilote" and self._logged_in_pilot:
                     var.set(self._logged_in_pilot)
                     cb.config(state="disabled")
+                    cell.config(bg="#e5e7eb")
+                    for w in cell.winfo_children():
+                        try: w.config(bg="#e5e7eb")
+                        except Exception: pass
                 if key == "poste" and self._logged_in_poste:
                     var.set(self._logged_in_poste)
                     cb.config(state="disabled")
+                    cell.config(bg="#e5e7eb")
+                    for w in cell.winfo_children():
+                        try: w.config(bg="#e5e7eb")
+                        except Exception: pass
             if adv:
                 ri[0] += 1
 
