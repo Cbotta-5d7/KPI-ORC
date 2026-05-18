@@ -8195,7 +8195,45 @@ new Chart(document.getElementById('chartParetoPoste{i}'), {{
 <meta charset="UTF-8">
 <meta http-equiv="refresh" content="15">
 <title>KPI-ORC — Dashboard & Supervision</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" onerror="window._chartJsOk=false"></script>
+<script>window._chartJsOk=(typeof Chart!=='undefined');
+// ── Charts supervision : Canvas 2D pur (pas de CDN) ──
+function _drawDonut(canvas,values,colors){{
+  var ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height,cx=w/2,cy=h/2;
+  var r=Math.min(w,h)/2-3,inner=r*0.62;
+  ctx.clearRect(0,0,w,h);
+  var total=values.reduce(function(a,b){{return a+b;}},0);
+  if(total<=0){{ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.arc(cx,cy,inner,0,Math.PI*2,true);ctx.fillStyle='#e2e8f0';ctx.fill();return;}}
+  var ang=-Math.PI/2;
+  for(var i=0;i<values.length;i++){{
+    var sl=values[i]/total*Math.PI*2;
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,ang,ang+sl);ctx.closePath();ctx.fillStyle=colors[i]||'#ccc';ctx.fill();
+    ang+=sl;
+  }}
+  ctx.beginPath();ctx.arc(cx,cy,inner,0,Math.PI*2);ctx.fillStyle='white';ctx.fill();
+}}
+function _drawHBar(canvas,labels,values,colors){{
+  var ctx=canvas.getContext('2d');
+  var w=canvas.offsetWidth||canvas.width||200,h=canvas.offsetHeight||canvas.height||200;
+  canvas.width=w;canvas.height=h;
+  ctx.clearRect(0,0,w,h);
+  if(!values||!values.length){{ctx.fillStyle='#94a3b8';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('Aucun événement',w/2,h/2);return;}}
+  var maxV=Math.max.apply(null,values)||1,n=values.length;
+  var barH=Math.min(26,(h-16)/n-4),lw=Math.min(100,w*0.38),bw=w-lw-36;
+  ctx.font='10px Segoe UI,sans-serif';
+  for(var i=0;i<n;i++){{
+    var y=8+i*(barH+5);
+    ctx.fillStyle='#475569';ctx.textAlign='right';
+    ctx.fillText((labels[i]||'').substring(0,16),lw-4,y+barH-3);
+    var fw=Math.max(2,values[i]/maxV*bw);
+    ctx.fillStyle=colors[i]||'#7c3aed';ctx.beginPath();
+    if(ctx.roundRect)ctx.roundRect(lw,y,fw,barH,3);else ctx.rect(lw,y,fw,barH);
+    ctx.fill();
+    ctx.fillStyle='#1e3a5f';ctx.textAlign='left';
+    ctx.fillText(values[i].toFixed(1)+'m',lw+fw+4,y+barH-3);
+  }}
+}}
+</script>
 <style>
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: #1a2332; font-size: 14px; }}
@@ -8587,7 +8625,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <div class="sup-card" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
       <div class="sup-card-hdr">&#128200; Par&eacute;to arr&ecirc;ts &amp; &eacute;v&eacute;nements (min)</div>
       <div style="padding:8px;flex:1;min-height:0">
-        <canvas id="supParetoChart" style="max-height:100%"></canvas>
+        <canvas id="supParetoChart" style="width:100%;height:100%;display:block"></canvas>
       </div>
     </div>
 
@@ -8824,6 +8862,7 @@ function showTab(name) {{
   }}, 1000);
 }})();
 
+try {{
 new Chart(document.getElementById('chartTRS'), {{
   type: 'bar',
   data: {{
@@ -8905,6 +8944,7 @@ new Chart(document.getElementById('chartParetoAll'), {{
   }}
 }});
 {pareto_poste_js}
+}} catch(e) {{ console.warn('Chart.js non disponible:', e.message); }}
 
 // ═══════════════ REVUE COMPLÈTE — données & logique ═══════════════
 const REV_DATA = {rev_data_js};
@@ -9481,44 +9521,15 @@ document.getElementById('ofDetailModal').addEventListener('click', function(e) {
   if (e.target === this) closeOfModal();
 }});
 
-// ── Graphiques supervision ────────────────────────────────────────────
+// ── Graphiques supervision (Canvas 2D pur, pas de CDN) ───────────────
 (function() {{
   var supPie = document.getElementById('supPieChart');
   if (supPie) {{
-    new Chart(supPie, {{
-      type: 'doughnut',
-      data: {{
-        labels: ['Production déclarée','Arrêts','Reste du poste'],
-        datasets: [{{ data: {pie_values}, backgroundColor: ['#16a34a','#dc2626','#e2e8f0'], borderWidth: 2, borderColor: 'white' }}]
-      }},
-      options: {{
-        responsive: false,
-        cutout: '65%',
-        plugins: {{
-          legend: {{ display: false }},
-          tooltip: {{ callbacks: {{ label: function(c) {{ return c.label+': '+c.raw+'min'; }} }} }}
-        }},
-        animation: {{ duration: 600 }}
-      }}
-    }});
+    _drawDonut(supPie, {pie_values}, ['#16a34a','#dc2626','#e2e8f0']);
   }}
   var supPar = document.getElementById('supParetoChart');
   if (supPar) {{
-    new Chart(supPar, {{
-      type: 'bar',
-      data: {{
-        labels: {sup_par_labels},
-        datasets: [{{ label: 'Durée (min)', data: {sup_par_values}, backgroundColor: {sup_par_colors}, borderRadius: 4, borderSkipped: false, borderWidth: 0 }}]
-      }},
-      options: {{
-        indexAxis: 'y',
-        plugins: {{ legend: {{ display: false }}, tooltip: {{ callbacks: {{ label: function(c) {{ return c.raw.toFixed(1)+' min'; }} }} }} }},
-        scales: {{
-          x: {{ grid: {{ color: '#f1f5f9' }}, ticks: {{ callback: function(v) {{ return v+'m'; }}, font: {{ size: 9 }} }} }},
-          y: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 9 }} }} }}
-        }}
-      }}
-    }});
+    _drawHBar(supPar, {sup_par_labels}, {sup_par_values}, {sup_par_colors});
   }}
 }})();
 
