@@ -8007,7 +8007,7 @@ new Chart(document.getElementById('gauge{i}'), {{
                 xp = h / 8 * 100
                 hh = (shift_start_tl.hour + h) % 24
                 tl_segs.append(f'<line x1="{xp:.1f}%" y1="4" x2="{xp:.1f}%" y2="20" stroke="#cbd5e1" stroke-width="1"/>')
-                tl_segs.append(f'<text x="{xp:.1f}%" y="32" text-anchor="middle" fill="#94a3b8" font-size="8">{hh:02d}h</text>')
+                tl_segs.append(f'<text x="{xp:.1f}%" y="34" text-anchor="middle" fill="#94a3b8" font-size="10">{hh:02d}h</text>')
             # OF periods (couche basse)
             for op in of_periods:
                 try:
@@ -8020,7 +8020,7 @@ new Chart(document.getElementById('gauge{i}'), {{
                     of_lbl_tl = _esc(str(op.get("of_num") or "OF")[:10])
                     tl_segs.append(f'<rect x="{xp2:.2f}%" y="4" width="{wp2:.2f}%" height="16" fill="{col_op}" rx="2" opacity="0.9"><title>{of_lbl_tl}</title></rect>')
                     if wp2 > 4:
-                        tl_segs.append(f'<text x="{(xp2+wp2/2):.2f}%" y="15" text-anchor="middle" fill="white" font-size="7" font-weight="700">{of_lbl_tl[:8]}</text>')
+                        tl_segs.append(f'<text x="{(xp2+wp2/2):.2f}%" y="15" text-anchor="middle" fill="white" font-size="9" font-weight="700">{of_lbl_tl[:8]}</text>')
                 except Exception:
                     pass
             # Événements (couche haute, bande fine en bas du rail)
@@ -8041,7 +8041,7 @@ new Chart(document.getElementById('gauge{i}'), {{
             now_pct_tl = min(100.0, now_s_tl / shift_total_s_tl * 100)
             tl_segs.append(f'<line x1="{now_pct_tl:.2f}%" y1="2" x2="{now_pct_tl:.2f}%" y2="22" stroke="#2563eb" stroke-width="2" stroke-dasharray="3,2"/>')
             tl_segs.append(f'<polygon points="{now_pct_tl:.2f}%,22 calc({now_pct_tl:.2f}% - 4px),28 calc({now_pct_tl:.2f}% + 4px),28" fill="#2563eb" opacity="0.8"/>')
-            timeline_svg = '<svg width="100%" height="36" style="overflow:visible;display:block">' + "".join(tl_segs) + '</svg>'
+            timeline_svg = '<svg width="100%" height="42" style="overflow:visible;display:block">' + "".join(tl_segs) + '</svg>'
         else:
             timeline_svg = '<div style="text-align:center;color:#94a3b8;padding:18px;font-style:italic">Aucune session active</div>'
 
@@ -8180,25 +8180,25 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: 
 .sup-card {{ background: white; border-radius: 8px; box-shadow: 0 1px 6px rgba(0,0,0,0.07);
              border: 1px solid #e2e8f0; overflow: hidden; }}
 .sup-card-hdr {{ background: #1e3a5f; color: white; padding: 6px 12px;
-                 font-size: 0.72em; font-weight: 700; text-transform: uppercase;
+                 font-size: 0.82em; font-weight: 700; text-transform: uppercase;
                  letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px; }}
 .sup-card-body {{ padding: 10px; }}
 
 .sup-trs-big {{ font-size: 2.4em; font-weight: 900; text-align: center; padding: 4px 0; }}
-.sup-trs-label {{ text-align: center; font-size: 0.68em; color: #94a3b8;
+.sup-trs-label {{ text-align: center; font-size: 0.80em; color: #94a3b8;
                   text-transform: uppercase; letter-spacing: 1px; padding-bottom: 4px; }}
 .sup-kpi-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
                  background: #f1f5f9; border-top: 1px solid #f1f5f9; }}
 .sup-kpi-cell {{ background: white; padding: 6px 10px; }}
-.sup-kpi-lbl  {{ font-size: 0.60em; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; }}
-.sup-kpi-val  {{ font-size: 0.92em; font-weight: 700; color: #1e3a5f; margin-top: 2px; }}
+.sup-kpi-lbl  {{ font-size: 0.72em; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; }}
+.sup-kpi-val  {{ font-size: 1.0em; font-weight: 700; color: #1e3a5f; margin-top: 2px; }}
 
 .active-stop-card {{ background: white; border-left: 5px solid; border-radius: 8px;
                      padding: 12px 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
                      display: flex; flex-direction: column; gap: 4px; }}
-.stop-cat {{ font-size: 0.65em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; }}
-.stop-lbl {{ font-size: 0.95em; font-weight: 700; color: #1e3a5f; }}
-.stop-dur {{ font-size: 1.3em; font-weight: 900; font-variant-numeric: tabular-nums; }}
+.stop-cat {{ font-size: 0.78em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; }}
+.stop-lbl {{ font-size: 1.0em; font-weight: 700; color: #1e3a5f; }}
+.stop-dur {{ font-size: 1.4em; font-weight: 900; font-variant-numeric: tabular-nums; }}
 .active-stops-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr));
                       gap: 10px; padding: 14px 16px; }}
 
@@ -8425,7 +8425,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 
 <!-- Timeline poste (8h) -->
 <div style="background:white;border-bottom:1px solid #e2e8f0;padding:4px 16px 6px">
-  <div style="font-size:0.65em;font-weight:700;color:#1e3a5f;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;display:flex;align-items:center;gap:10px">
+  <div style="font-size:0.82em;font-weight:700;color:#1e3a5f;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;display:flex;align-items:center;gap:10px">
     &#9654; Timeline du poste (8h)
     <span style="font-weight:400;color:#94a3b8"><span style="color:#16a34a">&#9632;</span> OF &nbsp;<span style="color:#dc2626">&#9632;</span> Pannes &nbsp;<span style="color:#d97706">&#9632;</span> Rattrapages &nbsp;<span style="color:#2563eb">│</span> Maintenant</span>
   </div>
@@ -8454,7 +8454,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
       <div class="sup-card-hdr">&#9685; R&eacute;partition (min)</div>
       <div style="padding:6px 8px;display:flex;align-items:center;gap:8px">
         <canvas id="supPieChart" width="55" height="55" style="flex-shrink:0"></canvas>
-        <div style="font-size:0.68em;display:flex;flex-direction:column;gap:3px">
+        <div style="font-size:0.82em;display:flex;flex-direction:column;gap:3px">
           <div><span style="display:inline-block;width:10px;height:10px;background:#16a34a;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Production</div>
           <div><span style="display:inline-block;width:10px;height:10px;background:#dc2626;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Arr&ecirc;ts</div>
           <div><span style="display:inline-block;width:10px;height:10px;background:#e2e8f0;border-radius:2px;margin-right:4px;vertical-align:middle"></span>Reste</div>
@@ -8480,7 +8480,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <div class="sup-card">
       <div class="sup-card-hdr" style="background:#7c3aed">&#128308; &Eacute;v&eacute;nement de l&apos;OF en cours ({len(sup_events)})</div>
       <div class="tbl-wrap" style="max-height:160px;overflow-y:auto">
-        <table style="font-size:0.82em">
+        <table style="font-size:0.92em">
           <thead><tr>
             <th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
           </tr></thead>
@@ -8493,7 +8493,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <div class="sup-card">
       <div class="sup-card-hdr">&#128203; &Eacute;v&eacute;nement des pr&eacute;c&eacute;dents OF du poste ({len(sup_evts_today)})</div>
       <div class="tbl-wrap" style="max-height:160px;overflow-y:auto">
-        <table style="font-size:0.82em">
+        <table style="font-size:0.92em">
           <thead><tr>
             <th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
           </tr></thead>
@@ -8506,7 +8506,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <div class="sup-card">
       <div class="sup-card-hdr">&#128221; Ofs d&eacute;clar&eacute;s sur ce poste ({len(sup_decls)} OF) <span style="font-size:0.75em;opacity:0.7">— cliquer pour d&eacute;tails</span></div>
       <div class="tbl-wrap" style="max-height:160px;overflow-y:auto">
-        <table id="supDeclTable" style="font-size:0.82em">
+        <table id="supDeclTable" style="font-size:0.92em">
           <thead><tr>
             <th>OF</th><th>D&eacute;but</th><th>Fin</th>
             <th>Taille</th><th>Code</th><th>Type</th>
