@@ -5676,9 +5676,13 @@ Arrêts imputés au TRS (temps perdu) :
                 except Exception:
                     pass
                 self._pause_overlay = None
-            # Refresh stops recap after pause ends (refresh only, don't rebuild)
+            # Refresh stops recap after pause ends
             try:
                 self._refresh_stops_recap()
+            except Exception:
+                pass
+            try:
+                self._generate_dashboard_html()
             except Exception:
                 pass
         else:
@@ -5686,6 +5690,10 @@ Arrêts imputés au TRS (temps perdu) :
             self._pause_start = datetime.datetime.now()
             self._is_paused = True
             self._show_pause_overlay()
+            try:
+                self._generate_dashboard_html()
+            except Exception:
+                pass
 
     def _write_pause_event(self, start_dt, end_dt):
         """Écrit une pause pilote dans l'onglet Evenements (mode hors production)."""
@@ -7865,7 +7873,7 @@ new Chart(document.getElementById('gauge{i}'), {{
                 dur_str = str(ev[18] if len(ev) > 18 else "")
                 is_open = not dur_str or dur_str.strip() in ("", "—", "00:00:00")
                 row_style = ' style="background:#fee2e2"' if is_open else ""
-                open_badge = ' <span style="background:#dc2626;color:white;border-radius:4px;padding:1px 6px;font-size:0.72em">EN COURS</span>' if is_open else ""
+                open_badge = ' <span class="badge-en-cours">EN COURS</span>' if is_open else ""
                 sup_evts_rows += f"""<tr{row_style}>
                   <td>{_badge_evt(ev[0])}{open_badge}</td>
                   <td>{_esc(ev[1])}</td>
@@ -7902,7 +7910,7 @@ new Chart(document.getElementById('gauge{i}'), {{
                     pass
                 is_open2 = not ev.get("end")
                 row_style2 = ' style="background:#fee2e2"' if is_open2 else ""
-                open_badge2 = ' <span style="background:#dc2626;color:white;border-radius:4px;padding:1px 6px;font-size:0.72em">EN COURS</span>' if is_open2 else ""
+                open_badge2 = ' <span class="badge-en-cours">EN COURS</span>' if is_open2 else ""
                 live_evts_rows += f"""<tr{row_style2}>
                   <td>{_badge_evt(lbl)}{open_badge2}</td>
                   <td>{_esc(sup_of_num)}</td>
@@ -8000,15 +8008,16 @@ new Chart(document.getElementById('gauge{i}'), {{
             now_s_tl = (datetime.datetime.now() - shift_start_tl).total_seconds()
             # Timeline ligne unique : fond gris = poste, OF = vert, events = rouge/orange sur fond, curseur = bleu
             tl_segs = []
+            RY, RH = 8, 26  # Rail Y origin, height
             # Fond du rail
-            tl_segs.append('<rect x="0" y="4" width="100%" height="16" fill="#f1f5f9" rx="3"/>')
-            # Graduations horaires
+            tl_segs.append(f'<rect x="0" y="{RY}" width="100%" height="{RH}" fill="#e2e8f0" rx="4"/>')
+            # Graduations horaires (lignes pointillées + étiquettes)
             for h in range(9):
                 xp = h / 8 * 100
                 hh = (shift_start_tl.hour + h) % 24
-                tl_segs.append(f'<line x1="{xp:.1f}%" y1="4" x2="{xp:.1f}%" y2="20" stroke="#cbd5e1" stroke-width="1"/>')
-                tl_segs.append(f'<text x="{xp:.1f}%" y="34" text-anchor="middle" fill="#94a3b8" font-size="10">{hh:02d}h</text>')
-            # OF periods (couche basse)
+                tl_segs.append(f'<line x1="{xp:.1f}%" y1="{RY}" x2="{xp:.1f}%" y2="{RY+RH}" stroke="rgba(0,0,0,0.12)" stroke-width="1" stroke-dasharray="3,3"/>')
+                tl_segs.append(f'<text x="{xp:.1f}%" y="{RY+RH+14}" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">{hh:02d}h</text>')
+            # OF periods — pleine hauteur du rail
             for op in of_periods:
                 try:
                     s_op = datetime.datetime.fromisoformat(op["start"])
@@ -8017,13 +8026,14 @@ new Chart(document.getElementById('gauge{i}'), {{
                     wp2 = min(100.0 - xp2, (e_op - s_op).total_seconds() / shift_total_s_tl * 100)
                     if wp2 <= 0: continue
                     col_op = "#16a34a" if op.get("end") else "#22c55e"
-                    of_lbl_tl = _esc(str(op.get("of_num") or "OF")[:10])
-                    tl_segs.append(f'<rect x="{xp2:.2f}%" y="4" width="{wp2:.2f}%" height="16" fill="{col_op}" rx="2" opacity="0.9"><title>{of_lbl_tl}</title></rect>')
-                    if wp2 > 4:
-                        tl_segs.append(f'<text x="{(xp2+wp2/2):.2f}%" y="15" text-anchor="middle" fill="white" font-size="9" font-weight="700">{of_lbl_tl[:8]}</text>')
+                    of_lbl_tl = _esc(str(op.get("of_num") or "OF")[:12])
+                    tl_segs.append(f'<rect x="{xp2:.2f}%" y="{RY}" width="{wp2:.2f}%" height="{RH}" fill="{col_op}" rx="2" opacity="0.88"><title>{of_lbl_tl}</title></rect>')
+                    if wp2 > 3:
+                        cy = RY + RH // 2 + 4
+                        tl_segs.append(f'<text x="{(xp2+wp2/2):.2f}%" y="{cy}" text-anchor="middle" fill="white" font-size="10" font-weight="700">{of_lbl_tl[:10]}</text>')
                 except Exception:
                     pass
-            # Événements (couche haute, bande fine en bas du rail)
+            # Événements/arrêts — pleine hauteur, semi-transparent par-dessus les OF
             for ev in sup_events:
                 try:
                     s_ev = datetime.datetime.fromisoformat(ev["start"])
@@ -8034,14 +8044,17 @@ new Chart(document.getElementById('gauge{i}'), {{
                     key_tl = ev.get("key", "")
                     col_tl = "#dc2626" if key_tl.startswith("pb_") else "#d97706"
                     lbl_tl = _esc(EVENT_LABELS.get(key_tl, key_tl)[:14])
-                    tl_segs.append(f'<rect x="{xp2:.2f}%" y="14" width="{wp2:.2f}%" height="6" fill="{col_tl}" rx="1" opacity="0.95"><title>{lbl_tl}</title></rect>')
+                    tl_segs.append(f'<rect x="{xp2:.2f}%" y="{RY}" width="{wp2:.2f}%" height="{RH}" fill="{col_tl}" rx="2" opacity="0.82"><title>{lbl_tl}</title></rect>')
+                    if wp2 > 3:
+                        cy = RY + RH // 2 + 4
+                        tl_segs.append(f'<text x="{(xp2+wp2/2):.2f}%" y="{cy}" text-anchor="middle" fill="white" font-size="9" font-weight="700">{lbl_tl[:10]}</text>')
                 except Exception:
                     pass
-            # Curseur maintenant
+            # Curseur maintenant — ligne verticale + point
             now_pct_tl = min(100.0, now_s_tl / shift_total_s_tl * 100)
-            tl_segs.append(f'<line x1="{now_pct_tl:.2f}%" y1="2" x2="{now_pct_tl:.2f}%" y2="22" stroke="#2563eb" stroke-width="2" stroke-dasharray="3,2"/>')
-            tl_segs.append(f'<polygon points="{now_pct_tl:.2f}%,22 calc({now_pct_tl:.2f}% - 4px),28 calc({now_pct_tl:.2f}% + 4px),28" fill="#2563eb" opacity="0.8"/>')
-            timeline_svg = '<svg width="100%" height="42" style="overflow:visible;display:block">' + "".join(tl_segs) + '</svg>'
+            tl_segs.append(f'<line x1="{now_pct_tl:.2f}%" y1="{RY-3}" x2="{now_pct_tl:.2f}%" y2="{RY+RH+3}" stroke="#2563eb" stroke-width="2.5"/>')
+            tl_segs.append(f'<circle cx="{now_pct_tl:.2f}%" cy="{RY-3}" r="4" fill="#2563eb"/>')
+            timeline_svg = f'<svg width="100%" height="{RY+RH+20}" style="overflow:visible;display:block">' + "".join(tl_segs) + '</svg>'
         else:
             timeline_svg = '<div style="text-align:center;color:#94a3b8;padding:18px;font-style:italic">Aucune session active</div>'
 
@@ -8175,7 +8188,7 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: 
 .sup-grid {{ display: grid; grid-template-columns: 300px 1fr; gap: 10px;
              padding: 8px 12px; }}
 .sup-left {{ display: flex; flex-direction: column; gap: 8px; }}
-.sup-right {{ display: flex; flex-direction: column; gap: 8px; }}
+.sup-right {{ display: flex; flex-direction: column; gap: 18px; }}
 
 .sup-card {{ background: white; border-radius: 8px; box-shadow: 0 1px 6px rgba(0,0,0,0.07);
              border: 1px solid #e2e8f0; overflow: hidden; }}
@@ -8305,21 +8318,26 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
             border-right: 1px solid #f1f5f9; }}
 
 /* Badges événements */
-.badge {{ display: inline-block; border-radius: 5px; padding: 2px 8px;
-          font-size: 0.76em; font-weight: 600; white-space: nowrap; }}
+.badge {{ display: inline-block; border-radius: 5px; padding: 3px 9px;
+          font-size: 1em; font-weight: 600; white-space: nowrap; }}
 .badge-pb    {{ background: #fee2e2; color: #dc2626; }}
 .badge-ratt  {{ background: #fef3c7; color: #d97706; }}
 .badge-nett  {{ background: #e0f2fe; color: #0284c7; }}
 .badge-pause {{ background: #f0fdf4; color: #16a34a; }}
 .badge-chgt  {{ background: #f5f3ff; color: #7c3aed; }}
 .badge-other {{ background: #f1f5f9; color: #475569; }}
+.badge-en-cours {{ background:#dc2626;color:white;border-radius:4px;padding:2px 7px;font-size:0.85em;vertical-align:middle; }}
 
 .empty {{ text-align: center; padding: 20px; color: #94a3b8; font-style: italic; }}
 .footer {{ text-align: center; padding: 14px; font-size: 0.72em; color: #94a3b8;
            border-top: 1px solid #e2e8f0; background: white; margin-top: 8px; }}
+
+/* ── Alarme globale ── */
+body.alarm-bg {{ background: #fee2e2 !important; }}
+body.alarm-bg .tab-content.visible {{ background: #fef2f2; }}
 </style>
 </head>
-<body>
+<body{' class="alarm-bg"' if has_active_stop else ''}>
 
 <div class="tab-bar">
   <span class="tab-logo">KPI ORC1</span>
@@ -8401,21 +8419,21 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     f'<b>{_esc(sup_poste)}</b> &bull; {_esc(sup_pilot)} &bull; Session {sup_session_dur}</div>'
     f'</div>'
   ) if has_active_stop else (
-    f'<div style="font-size:2em">&#9654;</div>'
-    f'<div style="flex:1">'
+    f'<div style="font-size:2em;flex-shrink:0">&#9654;</div>'
+    f'<div style="min-width:0">'
     f'<div style="font-size:0.95em;font-weight:900;letter-spacing:2px;text-transform:uppercase;margin-bottom:2px">PRODUCTION EN COURS</div>'
-    f'<div style="font-size:1em;opacity:0.9">'
+    f'<div style="font-size:1em;opacity:0.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
     f'<b>{_esc(sup_poste)}</b> &bull; &#128100; {_esc(sup_pilot)}'
     + (f' &bull; {_esc(sup_copilot)}' if sup_copilot not in ("—","") else "")
     + f' &bull; {_esc(sup_nb_pers)} pers. &bull; Session {sup_session_dur} &bull; {sup_of_count} OF'
     f'</div></div>'
-    + (f'<div style="border-left:2px solid rgba(255,255,255,0.3);padding-left:12px">'
+    + (f'<div style="border-left:2px solid rgba(255,255,255,0.3);padding-left:14px;padding-right:4px;flex-shrink:0">'
        f'<div style="font-size:0.75em;text-transform:uppercase;opacity:0.75">OF EN COURS</div>'
        f'<div style="font-size:1.8em;font-weight:900;line-height:1.1">{_esc(sup_of_num)}</div>'
        f'<div style="font-size:0.85em;opacity:0.85">{_esc(sup_taille)} &bull; {_esc(sup_type_prod)} &bull; Code {_esc(sup_code)}</div>'
        f'</div>' if sup_prod_active else "")
-    + (f'<span style="background:rgba(255,255,255,0.18);border-radius:4px;padding:2px 7px;font-size:0.85em">{_esc(sup_fibre)}</span>' if sup_prod_active and sup_fibre else "")
-    + (f'<span style="background:rgba(255,255,255,0.18);border-radius:4px;padding:2px 7px;font-size:0.85em">Kit &#10003;</span>' if sup_kit else "")
+    + (f'<span style="background:rgba(255,255,255,0.18);border-radius:4px;padding:2px 7px;font-size:0.85em;flex-shrink:0">{_esc(sup_fibre)}</span>' if sup_prod_active and sup_fibre else "")
+    + (f'<span style="background:rgba(255,255,255,0.18);border-radius:4px;padding:2px 7px;font-size:0.85em;flex-shrink:0">Kit &#10003;</span>' if sup_kit else "")
   ) if sup_prod_active else (
     f'<div style="font-size:1.8em;opacity:0.6">&#9632;</div>'
     f'<div style="font-size:0.82em;opacity:0.75">Pas de session active &bull; {_esc(sup_poste)}</div>'
