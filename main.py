@@ -8098,9 +8098,13 @@ new Chart(document.getElementById('gauge{i}'), {{
                 result[0] = _row_date(result[0])  # TRS col A = Date
             return [str(v or "") for v in result]
 
-        rev_data_js  = _json.dumps([_to_str_row(r) for r in rev_all_data], ensure_ascii=False)
-        rev_evts_js  = _json.dumps([_to_str_evt(r) for r in rev_all_evts], ensure_ascii=False)
-        rev_trs_js   = _json.dumps([_to_str_trs(r) for r in rev_all_trs], ensure_ascii=False)
+        def _js_safe(s):
+            """Sanitise un JSON pour embarquement dans <script> : évite </script> et <!-- qui cassent le parser HTML."""
+            return s.replace("</", "<\\/").replace("<!--", "<\\!--")
+
+        rev_data_js  = _js_safe(_json.dumps([_to_str_row(r) for r in rev_all_data], ensure_ascii=False))
+        rev_evts_js  = _js_safe(_json.dumps([_to_str_evt(r) for r in rev_all_evts], ensure_ascii=False))
+        rev_trs_js   = _js_safe(_json.dumps([_to_str_trs(r) for r in rev_all_trs], ensure_ascii=False))
 
         # Listes déroulantes filtre
         all_postes_rev  = sorted(set(str(r[1][2] if isinstance(r,(list,tuple)) and len(r)==2 else r[2] or "") for r in rev_all_data if r) - {""})
@@ -8127,7 +8131,7 @@ new Chart(document.getElementById('gauge{i}'), {{
                 dur_m = _hms_to_min(ev[18] if len(ev) > 18 else 0)
                 pareto_all_totals[lbl] = pareto_all_totals.get(lbl, 0.0) + dur_m
         pareto_all_sorted = sorted(pareto_all_totals.items(), key=lambda x: -x[1])[:12]
-        pareto_all_labels = _json.dumps([x[0] for x in pareto_all_sorted], ensure_ascii=False)
+        pareto_all_labels = _js_safe(_json.dumps([x[0] for x in pareto_all_sorted], ensure_ascii=False))
         pareto_all_values = _json.dumps([round(x[1],1) for x in pareto_all_sorted])
         pareto_all_colors = _json.dumps([_pareto_color(x[0]) for x in pareto_all_sorted])
 
