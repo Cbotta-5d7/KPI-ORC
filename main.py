@@ -7394,6 +7394,23 @@ Arrêts imputés au TRS (temps perdu) :
 
         pareto_colors = [_pareto_color(l) for l in pareto_labels]
 
+        # Pareto par poste (1 par poste + 1 global)
+        poste_paretos = []
+        for p in postes:
+            pt = {}
+            for ev in p["evts"]:
+                lbl = str(ev[0] or "").strip()
+                if not lbl: continue
+                dur_m = _hms_to_min(ev[18] if len(ev) > 18 else 0)
+                pt[lbl] = pt.get(lbl, 0.0) + dur_m
+            ps = sorted(pt.items(), key=lambda x: -x[1])[:8]
+            poste_paretos.append({
+                "poste": p["poste"],
+                "labels": _json.dumps([x[0] for x in ps], ensure_ascii=False),
+                "values": _json.dumps([round(x[1],1) for x in ps]),
+                "colors": _json.dumps([_pareto_color(x[0]) for x in ps]),
+            })
+
         # ── SECTION 1 : cartes postes ─────────────────────────────────────────
         cards_html = ""
         for i, p in enumerate(postes):
@@ -7418,7 +7435,7 @@ Arrêts imputés au TRS (temps perdu) :
           <div class="kpi-cell"><div class="kpi-lbl">Tps ouverture</div><div class="kpi-v">{_esc(p['t_ouv'])}</div></div>
           <div class="kpi-cell"><div class="kpi-lbl">Tps marche</div><div class="kpi-v">{_esc(p['t_marche'])}</div></div>
           <div class="kpi-cell"><div class="kpi-lbl">Tps déclarés</div><div class="kpi-v">{_esc(p['t_decl'])}</div></div>
-          <div class="kpi-cell"><div class="kpi-lbl">Écart</div><div class="kpi-v">{_esc(p['ecart'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Écart Tps déclaré/ouverture</div><div class="kpi-v">{_esc(p['ecart'])}</div></div>
           <div class="kpi-cell"><div class="kpi-lbl">Pannes</div><div class="kpi-v red">{_esc(p['pannes'])}</div></div>
           <div class="kpi-cell"><div class="kpi-lbl">Rattrapages</div><div class="kpi-v amber">{_esc(p['ratt'])}</div></div>
           <div class="kpi-cell"><div class="kpi-lbl">Pauses</div><div class="kpi-v">{_esc(p['pauses'])}</div></div>
@@ -7451,7 +7468,8 @@ Arrêts imputés au TRS (temps perdu) :
                         pass
                     cad_labels.append(cad_lbl)
                     cad_vals.append(round(cad_v, 1))
-                    of_rows += f"""<tr>
+                    row_json_dash = _json.dumps([str(v or "") for v in (list(rd) + [None]*60)[:60]], ensure_ascii=False).replace("'", "&#39;")
+                    of_rows += f"""<tr style="cursor:pointer" onclick="openOfModal(JSON.parse(this.dataset.row))" data-row='{row_json_dash}' title="Cliquer pour voir tous les d&eacute;tails">
                       <td><b>{_esc(rd[0])}</b></td>
                       <td>{_esc(rd[17])}</td><td>{_esc(rd[18])}</td>
                       <td>{_esc(rd[6])}</td><td>{_esc(rd[7])}</td><td>{_esc(rd[8])}</td>
@@ -7723,10 +7741,8 @@ new Chart(document.getElementById('gauge{i}'), {{
                 sup_decl_rows += f"""<tr style="cursor:pointer" onclick="openOfModal(JSON.parse(this.dataset.row))" data-row='{row_json}' title="Cliquer pour voir tous les d&eacute;tails">
                   <td><b>{_esc(rd[0])}</b></td>
                   <td>{_esc(rd[17])}</td><td>{_esc(rd[18])}</td>
-                  <td>{_esc(rd[6])}</td><td>{_esc(rd[7])}</td><td>{_esc(rd[8])}</td>
-                  <td>{_esc(rd[13])}</td><td>{_esc(rd[14])}</td>
-                  <td>{_esc(rd[15])}</td><td>{_esc(rd[16])}</td>
-                  <td><b>{_esc(rd[19])}</b></td>
+                  <td>{_esc(rd[6])}</td><td>{_esc(rd[7])}</td>
+                  <td>{_esc(rd[16])}</td>
                   <td>{trs_cell}</td>
                 </tr>"""
             except Exception:
@@ -7996,6 +8012,46 @@ new Chart(document.getElementById('gauge{i}'), {{
 
         rev_last_update = _dt.datetime.fromtimestamp(self._review_cache_ts).strftime("%d/%m/%Y %H:%M") if self._review_cache_ts else "—"
 
+        # ── Pareto canvases HTML pour postes ────────────────────────────────────
+        poste_pareto_canvases_html = ""
+        for i, pp in enumerate(poste_paretos):
+            poste_pareto_canvases_html += f"""    <div class="chart-card">
+      <div class="chart-title">Par&eacute;to {_esc(pp['poste'])} (min)</div>
+      <canvas id="chartParetoPoste{i}" height="200"></canvas>
+    </div>\n"""
+
+        # ── Pareto all postes + JS pareto postes ─────────────────────────────────
+        pareto_all_totals = {}
+        for p in postes:
+            for ev in p["evts"]:
+                lbl = str(ev[0] or "").strip()
+                if not lbl: continue
+                dur_m = _hms_to_min(ev[18] if len(ev) > 18 else 0)
+                pareto_all_totals[lbl] = pareto_all_totals.get(lbl, 0.0) + dur_m
+        pareto_all_sorted = sorted(pareto_all_totals.items(), key=lambda x: -x[1])[:12]
+        pareto_all_labels = _json.dumps([x[0] for x in pareto_all_sorted], ensure_ascii=False)
+        pareto_all_values = _json.dumps([round(x[1],1) for x in pareto_all_sorted])
+        pareto_all_colors = _json.dumps([_pareto_color(x[0]) for x in pareto_all_sorted])
+
+        pareto_poste_js = ""
+        for i, pp in enumerate(poste_paretos):
+            pareto_poste_js += f"""
+new Chart(document.getElementById('chartParetoPoste{i}'), {{
+  type: 'bar',
+  data: {{
+    labels: {pp['labels']},
+    datasets: [{{ label: 'Minutes', data: {pp['values']}, backgroundColor: {pp['colors']}, borderRadius: 4, borderSkipped: false }}]
+  }},
+  options: {{
+    plugins: {{ legend:{{ display:false }}, title:{{ display:false }} }},
+    scales: {{
+      x: {{ grid:{{ display:false }}, ticks:{{ font:{{ size:9 }}, maxRotation:40 }} }},
+      y: {{ grid:{{ color:'#f1f5f9' }}, ticks:{{ callback:function(v){{ return v+'m'; }} }} }}
+    }}
+  }}
+}});
+"""
+
         # ── HTML complet ──────────────────────────────────────────────────────
         html = f"""<!DOCTYPE html>
 <html lang="fr">
@@ -8208,9 +8264,9 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </div>
 
 <div class="tab-bar">
-  <button class="tab-btn" id="btn-dashboard" onclick="showTab('dashboard')">&#128202; Dashboard</button>
-  <button class="tab-btn" id="btn-supervision" onclick="showTab('supervision')">&#9881; Supervision de production</button>
-  <button class="tab-btn" id="btn-review" onclick="showTab('review')">&#128269; Revue compl&egrave;te (Directeur)</button>
+  <button class="tab-btn" id="btn-supervision" onclick="showTab('supervision')">&#9881; Supervision</button>
+  <button class="tab-btn" id="btn-dashboard" onclick="showTab('dashboard')">&#128202; R&eacute;cap 3 derniers postes</button>
+  <button class="tab-btn" id="btn-review" onclick="showTab('review')">&#128218; Historique complet BDD</button>
 </div>
 
 <!-- ══════════════════ ONGLET DASHBOARD ══════════════════ -->
@@ -8237,8 +8293,16 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
       <canvas id="chartTemps" height="200"></canvas>
     </div>
     <div class="chart-card">
-      <div class="chart-title">Par&eacute;to arr&ecirc;ts (min)</div>
+      <div class="chart-title">Par&eacute;to global arr&ecirc;ts (min)</div>
       <canvas id="chartPareto" height="200"></canvas>
+    </div>
+  </div>
+  <!-- Paretos par poste -->
+  <div class="charts-grid" style="margin-top:10px">
+{poste_pareto_canvases_html}
+    <div class="chart-card">
+      <div class="chart-title">Par&eacute;to tous postes confondus (min)</div>
+      <canvas id="chartParetoAll" height="200"></canvas>
     </div>
   </div>
 </div>
@@ -8556,7 +8620,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
       <table id="revTblTRS">
         <thead><tr>
           <th>Date</th><th>Poste</th><th>Pilote</th><th>Co-Pilote</th><th>Nb Pers</th>
-          <th>T. Ouv</th><th>T. D&eacute;cl</th><th>Écart</th><th>T. Marche</th>
+          <th>T. Ouv</th><th>T. D&eacute;cl</th><th>Écart Tps D/O</th><th>T. Marche</th>
           <th>Pannes</th><th>Ratt.</th><th>Pauses</th><th>R&eacute;unions</th>
           <th>Nb OF</th><th>Qte</th><th>Equiv</th><th>Moy/OF</th>
           <th style="min-width:70px">TRS</th>
@@ -8631,7 +8695,7 @@ function showTab(name) {{
   var saved = '';
   try {{ saved = localStorage.getItem('kpi_orc_tab') || ''; }} catch(e) {{}}
   var hash = (location.hash || '').replace('#','');
-  showTab(hash || saved || 'dashboard');
+  showTab(hash || saved || 'supervision');
 }})();
 
 // Countdown 15s
@@ -8705,6 +8769,22 @@ new Chart(document.getElementById('chartPareto'), {{
 
 {gauge_charts_js}
 {cadence_charts_js}
+
+new Chart(document.getElementById('chartParetoAll'), {{
+  type: 'bar',
+  data: {{
+    labels: {pareto_all_labels},
+    datasets: [{{ label: 'Minutes', data: {pareto_all_values}, backgroundColor: {pareto_all_colors}, borderRadius: 4, borderSkipped: false }}]
+  }},
+  options: {{
+    plugins: {{ legend:{{ display:false }} }},
+    scales: {{
+      x: {{ grid:{{ display:false }}, ticks:{{ font:{{ size:9 }}, maxRotation:40 }} }},
+      y: {{ grid:{{ color:'#f1f5f9' }}, ticks:{{ callback:function(v){{ return v+'m'; }} }} }}
+    }}
+  }}
+}});
+{pareto_poste_js}
 
 // ═══════════════ REVUE COMPLÈTE — données & logique ═══════════════
 const REV_DATA = {rev_data_js};
@@ -8872,7 +8952,7 @@ function updateCharts(d) {{
         {{label:'Rattrapages',data:d.trs.map(function(r){{return hmsToMin(r[12]);}}),backgroundColor:'#d97706',borderWidth:0}},
         {{label:'Pauses',     data:d.trs.map(function(r){{return hmsToMin(r[13]);}}),backgroundColor:'#2563eb',borderWidth:0}},
         {{label:'Réunions',   data:d.trs.map(function(r){{return hmsToMin(r[14]);}}),backgroundColor:'#7c3aed',borderWidth:0}},
-        {{label:'Écart',      data:d.trs.map(function(r){{return hmsToMin(r[7]); }}),backgroundColor:'#94a3b8',borderWidth:0}}
+        {{label:'Écart Tps déclaré/ouverture',      data:d.trs.map(function(r){{return hmsToMin(r[7]); }}),backgroundColor:'#94a3b8',borderWidth:0}}
       ]
     }},
     options:{{
