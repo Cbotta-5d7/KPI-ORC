@@ -7418,6 +7418,9 @@ Arrêts imputés au TRS (temps perdu) :
                 return f'<span class="badge badge-chgt">{_esc(label)}</span>'
             return f'<span class="badge badge-other">{_esc(label)}</span>'
 
+        def _js_safe(s):
+            return s.replace("</", "<\\/").replace("<!--", "<\\!--")
+
         # ── collect last 3 postes ─────────────────────────────────────────────
         last3 = list(self._trs_cache[-3:])[::-1] if self._trs_cache else []
 
@@ -7494,6 +7497,23 @@ Arrêts imputés au TRS (temps perdu) :
 
         pareto_colors = [_pareto_color(l) for l in pareto_labels]
 
+        # Pareto par poste (1 par poste + 1 global)
+        poste_paretos = []
+        for p in postes:
+            pt = {}
+            for ev in p["evts"]:
+                lbl = str(ev[0] or "").strip()
+                if not lbl: continue
+                dur_m = _hms_to_min(ev[18] if len(ev) > 18 else 0)
+                pt[lbl] = pt.get(lbl, 0.0) + dur_m
+            ps = sorted(pt.items(), key=lambda x: -x[1])[:8]
+            poste_paretos.append({
+                "poste": p["poste"],
+                "labels": _json.dumps([x[0] for x in ps], ensure_ascii=False),
+                "values": _json.dumps([round(x[1],1) for x in ps]),
+                "colors": _json.dumps([_pareto_color(x[0]) for x in ps]),
+            })
+
         # ── SECTION 1 : cartes postes ─────────────────────────────────────────
         cards_html = ""
         for i, p in enumerate(postes):
@@ -7518,7 +7538,7 @@ Arrêts imputés au TRS (temps perdu) :
           <div class="kpi-cell"><div class="kpi-lbl">Tps ouverture</div><div class="kpi-v">{_esc(p['t_ouv'])}</div></div>
           <div class="kpi-cell"><div class="kpi-lbl">Tps marche</div><div class="kpi-v">{_esc(p['t_marche'])}</div></div>
           <div class="kpi-cell"><div class="kpi-lbl">Tps déclarés</div><div class="kpi-v">{_esc(p['t_decl'])}</div></div>
-          <div class="kpi-cell"><div class="kpi-lbl">Écart</div><div class="kpi-v">{_esc(p['ecart'])}</div></div>
+          <div class="kpi-cell"><div class="kpi-lbl">Écart Tps déclaré/ouverture</div><div class="kpi-v">{_esc(p['ecart'])}</div></div>
           <div class="kpi-cell"><div class="kpi-lbl">Pannes</div><div class="kpi-v red">{_esc(p['pannes'])}</div></div>
           <div class="kpi-cell"><div class="kpi-lbl">Rattrapages</div><div class="kpi-v amber">{_esc(p['ratt'])}</div></div>
           <div class="kpi-cell"><div class="kpi-lbl">Pauses</div><div class="kpi-v">{_esc(p['pauses'])}</div></div>
@@ -7551,7 +7571,8 @@ Arrêts imputés au TRS (temps perdu) :
                         pass
                     cad_labels.append(cad_lbl)
                     cad_vals.append(round(cad_v, 1))
-                    of_rows += f"""<tr>
+                    row_json_dash = _json.dumps([str(v or "") for v in (list(rd) + [None]*60)[:60]], ensure_ascii=False).replace("'", "&#39;")
+                    of_rows += f"""<tr style="cursor:pointer" onclick="openOfModal(JSON.parse(this.dataset.row))" data-row='{row_json_dash}' title="Cliquer pour voir tous les d&eacute;tails">
                       <td><b>{_esc(rd[0])}</b></td>
                       <td>{_esc(rd[17])}</td><td>{_esc(rd[18])}</td>
                       <td>{_esc(rd[6])}</td><td>{_esc(rd[7])}</td><td>{_esc(rd[8])}</td>
@@ -7823,16 +7844,14 @@ new Chart(document.getElementById('gauge{i}'), {{
                 sup_decl_rows += f"""<tr style="cursor:pointer" onclick="openOfModal(JSON.parse(this.dataset.row))" data-row='{row_json}' title="Cliquer pour voir tous les d&eacute;tails">
                   <td><b>{_esc(rd[0])}</b></td>
                   <td>{_esc(rd[17])}</td><td>{_esc(rd[18])}</td>
-                  <td>{_esc(rd[6])}</td><td>{_esc(rd[7])}</td><td>{_esc(rd[8])}</td>
-                  <td>{_esc(rd[13])}</td><td>{_esc(rd[14])}</td>
-                  <td>{_esc(rd[15])}</td><td>{_esc(rd[16])}</td>
-                  <td><b>{_esc(rd[19])}</b></td>
+                  <td>{_esc(rd[6])}</td><td>{_esc(rd[7])}</td>
+                  <td>{_esc(rd[16])}</td>
                   <td>{trs_cell}</td>
                 </tr>"""
             except Exception:
                 continue
         if not sup_decl_rows:
-            sup_decl_rows = '<tr><td colspan="12" class="empty">Aucune déclaration pour ce poste aujourd\'hui</td></tr>'
+            sup_decl_rows = '<tr><td colspan="7" class="empty">Aucune déclaration pour ce poste aujourd\'hui</td></tr>'
 
         # Rows HTML événements d'aujourd'hui
         sup_evts_today = [r for r in self._events_cache
@@ -7968,7 +7987,7 @@ new Chart(document.getElementById('gauge{i}'), {{
             if "nettoyage" in ll: return "#0284c7"
             if "pause" in ll: return "#2563eb"
             return "#7c3aed"
-        sup_par_labels = _json.dumps([x[0] for x in sup_par_sorted], ensure_ascii=False)
+        sup_par_labels = _js_safe(_json.dumps([x[0] for x in sup_par_sorted], ensure_ascii=False))
         sup_par_values = _json.dumps([round(x[1], 1) for x in sup_par_sorted])
         sup_par_colors = _json.dumps([_par_col(x[0]) for x in sup_par_sorted])
 
@@ -8084,9 +8103,9 @@ new Chart(document.getElementById('gauge{i}'), {{
                 result[0] = _row_date(result[0])  # TRS col A = Date
             return [str(v or "") for v in result]
 
-        rev_data_js  = _json.dumps([_to_str_row(r) for r in rev_all_data], ensure_ascii=False)
-        rev_evts_js  = _json.dumps([_to_str_evt(r) for r in rev_all_evts], ensure_ascii=False)
-        rev_trs_js   = _json.dumps([_to_str_trs(r) for r in rev_all_trs], ensure_ascii=False)
+        rev_data_js  = _js_safe(_json.dumps([_to_str_row(r) for r in rev_all_data], ensure_ascii=False))
+        rev_evts_js  = _js_safe(_json.dumps([_to_str_evt(r) for r in rev_all_evts], ensure_ascii=False))
+        rev_trs_js   = _js_safe(_json.dumps([_to_str_trs(r) for r in rev_all_trs], ensure_ascii=False))
 
         # Listes déroulantes filtre
         all_postes_rev  = sorted(set(str(r[1][2] if isinstance(r,(list,tuple)) and len(r)==2 else r[2] or "") for r in rev_all_data if r) - {""})
@@ -8096,12 +8115,86 @@ new Chart(document.getElementById('gauge{i}'), {{
 
         rev_last_update = _dt.datetime.fromtimestamp(self._review_cache_ts).strftime("%d/%m/%Y %H:%M") if self._review_cache_ts else "—"
 
+        # ── Pareto canvases HTML pour postes ────────────────────────────────────
+        poste_pareto_canvases_html = ""
+        for i, pp in enumerate(poste_paretos):
+            poste_pareto_canvases_html += f"""    <div class="chart-card">
+      <div class="chart-title">Par&eacute;to {_esc(pp['poste'])} (min)</div>
+      <canvas id="chartParetoPoste{i}" height="200"></canvas>
+    </div>\n"""
+
+        # ── Pareto all postes + JS pareto postes ─────────────────────────────────
+        pareto_all_totals = {}
+        for p in postes:
+            for ev in p["evts"]:
+                lbl = str(ev[0] or "").strip()
+                if not lbl: continue
+                dur_m = _hms_to_min(ev[18] if len(ev) > 18 else 0)
+                pareto_all_totals[lbl] = pareto_all_totals.get(lbl, 0.0) + dur_m
+        pareto_all_sorted = sorted(pareto_all_totals.items(), key=lambda x: -x[1])[:12]
+        pareto_all_labels = _js_safe(_json.dumps([x[0] for x in pareto_all_sorted], ensure_ascii=False))
+        pareto_all_values = _json.dumps([round(x[1],1) for x in pareto_all_sorted])
+        pareto_all_colors = _json.dumps([_pareto_color(x[0]) for x in pareto_all_sorted])
+
+        pareto_poste_js = ""
+        for i, pp in enumerate(poste_paretos):
+            pareto_poste_js += f"""
+new Chart(document.getElementById('chartParetoPoste{i}'), {{
+  type: 'bar',
+  data: {{
+    labels: {pp['labels']},
+    datasets: [{{ label: 'Minutes', data: {pp['values']}, backgroundColor: {pp['colors']}, borderRadius: 4, borderSkipped: false }}]
+  }},
+  options: {{
+    plugins: {{ legend:{{ display:false }}, title:{{ display:false }} }},
+    scales: {{
+      x: {{ grid:{{ display:false }}, ticks:{{ font:{{ size:9 }}, maxRotation:40 }} }},
+      y: {{ grid:{{ color:'#f1f5f9' }}, ticks:{{ callback:function(v){{ return v+'m'; }} }} }}
+    }}
+  }}
+}});
+"""
+
+        # ─── Build new supervision HTML ───────────────────────────────────────
+        # CSS animation class for blinking header on arrêt
+        hdr_anim = 'animation:supBlink 1s step-start infinite;' if has_active_stop else ''
+        hdr_bg   = sup_status_color if has_active_stop else sup_status_bg
+        hdr_fg   = 'white' if has_active_stop else sup_status_color
+
+        # Compact product info cells (hauteur réduite)
+        def _inf(label, val, col='#1e3a5f'):
+            empty = not val or val == '—'
+            bg = '#f8fafc' if not empty else '#f1f5f9'
+            vc = col if not empty else '#cbd5e1'
+            return (f'<div style="background:{bg};border:1px solid #e2e8f0;border-radius:4px;padding:2px 5px">'
+                    f'<div style="font-size:0.50em;color:#94a3b8;text-transform:uppercase;line-height:1.1">{label}</div>'
+                    f'<div style="font-weight:700;color:{vc};font-size:0.78em;line-height:1.2">{_esc(val or "—")}</div></div>')
+
+        prod_info_html = (
+            _inf("Fibre", sup_fibre) +
+            _inf("Poids", f"{sup_poids} gr" if sup_poids != '—' else '—') +
+            _inf("OF Taie", sup_of_taie) +
+            _inf("Réf. Taie", sup_ref_taie) +
+            _inf("Traça fibre", sup_traca) +
+            _inf("Kit 2 pièces", "✓ Oui" if sup_kit else "Non") +
+            _inf("MQ MP (min)", sup_duree_mq_mp, '#dc2626') +
+            _inf("MQ Pers (min)", sup_mq_pers, '#dc2626')
+        )
+        if sup_comment:
+            prod_info_html += (f'<div style="grid-column:1/-1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:5px 8px">'
+                               f'<div style="font-size:0.58em;color:#94a3b8;text-transform:uppercase">Commentaire</div>'
+                               f'<div style="font-size:0.82em;color:#1e3a5f;white-space:pre-wrap">{_esc(sup_comment)}</div></div>')
+
+        stops_hdr_style = 'background:#dc2626;animation:supBlink 1s step-start infinite;' if has_active_stop else ''
+        stops_body = (f'<div class="active-stops-grid">{active_stops_html}</div>' if active_stops_info
+                      else '<div style="padding:10px;text-align:center;color:#16a34a;font-weight:700;font-size:0.9em">✓ Aucun arrêt en cours</div>')
+
         # ── HTML complet ──────────────────────────────────────────────────────
         html = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="15">
+<!-- auto-refresh géré en JS uniquement sur onglet supervision -->
 <title>KPI-ORC — Dashboard & Supervision</title>
 <script>
 // Canvas 2D charts - aucun CDN nécessaire
@@ -8168,7 +8261,7 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: 
 .sup-status-bar {{ padding: 18px 28px; display: flex; align-items: center; gap: 16px;
                    border-bottom: 3px solid; transition: all 0.5s; }}
 .sup-status-icon {{ font-size: 2.2em; }}
-.sup-status-text {{ font-size: 1.9em; font-weight: 900; letter-spacing: 1px; }}
+.sup-status-text {{ font-size: 1.6em; font-weight: 900; letter-spacing: 1px; }}
 .sup-status-sub  {{ font-size: 0.82em; opacity: 0.75; margin-top: 3px; }}
 
 .alarm-overlay {{ background: linear-gradient(135deg, #7f1d1d, #dc2626);
@@ -8193,7 +8286,7 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: 
 .sup-card {{ background: white; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);
              border: 1px solid #e2e8f0; overflow: hidden; }}
 .sup-card-hdr {{ background: #1e3a5f; color: white; padding: 10px 16px;
-                 font-size: 0.9em; font-weight: 700; text-transform: uppercase;
+                 font-size: 0.8em; font-weight: 700; text-transform: uppercase;
                  letter-spacing: 0.6px; display: flex; align-items: center; gap: 8px; }}
 .sup-card-body {{ padding: 16px; }}
 
@@ -8340,15 +8433,15 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <div class="meta">{now_str}</div>
   </div>
   <div style="text-align:right">
-    <div class="meta">Auto-refresh 15s</div>
+    <div class="meta">Auto-refresh 15s &nbsp; <button onclick="location.reload()" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:white;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:0.85em">&#8635; Actualiser</button></div>
     <div class="countdown" id="cdown">&#8635; Mise &agrave; jour dans 15s</div>
   </div>
 </div>
 
 <div class="tab-bar">
-  <button class="tab-btn" id="btn-dashboard" onclick="showTab('dashboard')">&#128202; Dashboard</button>
-  <button class="tab-btn" id="btn-supervision" onclick="showTab('supervision')">&#9881; Supervision de production</button>
-  <button class="tab-btn" id="btn-review" onclick="showTab('review')">&#128269; Revue compl&egrave;te (Directeur)</button>
+  <button class="tab-btn" id="btn-supervision" onclick="showTab('supervision')">&#9881; Supervision</button>
+  <button class="tab-btn" id="btn-dashboard" onclick="showTab('dashboard')">&#128202; R&eacute;cap 3 derniers postes</button>
+  <button class="tab-btn" id="btn-review" onclick="showTab('review')">&#128218; Historique complet BDD</button>
 </div>
 </div><!-- /page-header -->
 
@@ -8376,8 +8469,16 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
       <canvas id="chartTemps" height="200"></canvas>
     </div>
     <div class="chart-card">
-      <div class="chart-title">Par&eacute;to arr&ecirc;ts (min)</div>
+      <div class="chart-title">Par&eacute;to global arr&ecirc;ts (min)</div>
       <canvas id="chartPareto" height="200"></canvas>
+    </div>
+  </div>
+  <!-- Paretos par poste -->
+  <div class="charts-grid" style="margin-top:10px">
+{poste_pareto_canvases_html}
+    <div class="chart-card">
+      <div class="chart-title">Par&eacute;to tous postes confondus (min)</div>
+      <canvas id="chartParetoAll" height="200"></canvas>
     </div>
   </div>
 </div>
@@ -8403,196 +8504,163 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </div>
 
 <div class="footer">
-  KPI-ORC &bull; G&eacute;n&eacute;r&eacute; le {now_str} &bull; Actualisation automatique toutes les 30 secondes
+  KPI-ORC &bull; G&eacute;n&eacute;r&eacute; le {now_str} &bull; Actualisation automatique toutes les 15 secondes
 </div>
 
 </div><!-- /tab-dashboard -->
 
 <!-- ══════════════════ ONGLET SUPERVISION ══════════════════ -->
-<div class="tab-content" id="tab-supervision">
+<div class="tab-content visible" id="tab-supervision">
 
-{alert_html}
+<style>
+@keyframes supBlink {{
+  0%,49%{{ background:#dc2626; }}
+  50%,100%{{ background:#7f1d1d; }}
+}}
+@keyframes supPageBlink {{
+  0%,49%{{ background:#fca5a5; border:3px solid #dc2626; }}
+  50%,100%{{ background:#fee2e2; border:3px solid #ef4444; }}
+}}
+</style>
 
-<!-- Barre de statut pilote -->
-<div class="sup-status-bar" style="background:{sup_status_bg};border-color:{sup_status_color};color:{sup_status_color}">
-  <div class="sup-status-icon">{sup_status_icon}</div>
-  <div style="flex:1">
-    <div class="sup-status-text">{_esc(sup_status)}</div>
-    <div class="sup-status-sub">
-      <b>{_esc(sup_poste)}</b>
-      &nbsp;&bull;&nbsp; &#128100; <b>{_esc(sup_pilot)}</b>
-      {'&nbsp;&bull;&nbsp; Co-pilote : <b>' + _esc(sup_copilot) + '</b>' if sup_copilot not in ('—','') else ''}
-      &nbsp;&bull;&nbsp; {_esc(sup_nb_pers)} pers.
-      &nbsp;&bull;&nbsp; Session : {sup_session_dur}
-      &nbsp;&bull;&nbsp; OF déclarés : <b>{sup_of_count}</b>
-    </div>
+<div id="supPageWrap" style="{'animation:supPageBlink 0.7s step-start infinite;border-radius:8px;padding:2px;margin:2px;' if has_active_stop else ''}">
+
+<!-- HEADER 1 LIGNE -->
+<div id="supHdr" style="background:{hdr_bg};border:2px solid {sup_status_color};border-radius:10px;
+  margin:8px 12px 6px;padding:7px 16px;display:flex;align-items:center;gap:14px;
+  color:{hdr_fg};{hdr_anim}flex-wrap:nowrap;overflow:hidden;min-height:50px">
+  <span style="font-size:1.8em;flex-shrink:0">{sup_status_icon}</span>
+  <span style="font-size:1.0em;text-transform:uppercase;font-weight:800;letter-spacing:1px;white-space:nowrap;flex-shrink:0">{_esc(sup_status)}</span>
+  <span style="width:2px;height:28px;background:currentColor;opacity:0.3;flex-shrink:0"></span>
+  <span style="font-size:2.0em;font-weight:900;white-space:nowrap;flex-shrink:0">{_esc(sup_of_num)}</span>
+  <span style="width:2px;height:28px;background:currentColor;opacity:0.2;flex-shrink:0"></span>
+  <div style="font-size:1.05em;display:flex;gap:16px;flex-wrap:nowrap;overflow:hidden;white-space:nowrap">
+    <span>&#128203; <b>{_esc(sup_poste)}</b></span>
+    <span>&#128100; <b>{_esc(sup_pilot)}</b>{'&nbsp;/&nbsp;' + _esc(sup_copilot) if sup_copilot not in ('—','') else ''}</span>
+    <span>Taille: <b>{_esc(sup_taille)}</b></span>
+    <span><b>{_esc(sup_type_prod)}</b></span>
+    <span style="color:{'white' if has_active_stop else '#16a34a'}">Code: <b>{_esc(sup_code)}</b></span>
+    {f'<span>{_esc(sup_nb_pers)} pers.</span>' if sup_nb_pers not in ('—','') else ''}
   </div>
-  <div style="text-align:right;font-size:0.82em;opacity:0.75">{now_str}</div>
+  <span style="width:2px;height:28px;background:currentColor;opacity:0.2;flex-shrink:0"></span>
+  <span style="font-size:1.0em;white-space:nowrap;flex-shrink:0">Durée OF: <b>{sup_of_dur}</b></span>
+  <span style="font-size:1.0em;white-space:nowrap;flex-shrink:0">TRS: <b style="font-size:1.25em;color:{'white' if has_active_stop else sup_trs_color}">{_esc(sup_trs_display)}</b></span>
+  <span style="margin-left:auto;font-size:0.75em;opacity:0.7;white-space:nowrap;flex-shrink:0">{now_str}</span>
 </div>
 
-<!-- OF EN COURS — carte lumineuse -->
-{'<div style="background:white;border-left:6px solid ' + sup_status_color + ';border-bottom:2px solid #e2e8f0;padding:16px 28px;display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap">' if sup_prod_active else '<div style="display:none">'}
-  <!-- Bloc n° OF + infos principales -->
-  <div style="min-width:180px">
-    <div style="font-size:0.68em;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:2px">&#128203; OF EN COURS</div>
-    <div style="font-size:2.6em;font-weight:900;color:{sup_status_color};line-height:1.1">{_esc(sup_of_num)}</div>
-    <div style="font-size:0.9em;font-weight:600;color:#374151;margin-top:4px">{_esc(sup_taille)} &nbsp;&bull;&nbsp; {_esc(sup_type_prod)}</div>
-    <div style="font-size:0.85em;color:#16a34a;font-weight:700">Code : {_esc(sup_code)}</div>
-    <div style="margin-top:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px">
-      <div style="font-size:0.65em;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Dur&eacute;e OF actuel</div>
-      <div style="font-size:1.5em;font-weight:900;color:#1e3a5f;font-variant-numeric:tabular-nums">{sup_of_dur}</div>
-    </div>
-  </div>
-  <!-- Grille infos produit -->
-  <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:3px">
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:3px;padding:1px 5px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Fibre</div>
-      <div style="font-weight:700;color:#1e3a5f;font-size:0.82em;line-height:1.1">{_esc(sup_fibre)}</div>
-    </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:3px;padding:1px 5px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Poids garnissage</div>
-      <div style="font-weight:700;color:#1e3a5f;font-size:0.82em;line-height:1.1">{_esc(sup_poids)} gr</div>
-    </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:3px;padding:1px 5px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">OF Taie</div>
-      <div style="font-weight:700;color:#1e3a5f;font-size:0.82em;line-height:1.1">{_esc(sup_of_taie)}</div>
-    </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:3px;padding:1px 5px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">R&eacute;f. Taie</div>
-      <div style="font-weight:700;color:#1e3a5f;font-size:0.82em;line-height:1.1">{_esc(sup_ref_taie)}</div>
-    </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:3px;padding:1px 5px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Tra&ccedil;a fibre</div>
-      <div style="font-weight:700;color:#1e3a5f;font-size:0.82em;line-height:1.1">{_esc(sup_traca)}</div>
-    </div>
-    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:3px;padding:1px 5px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Arr&ecirc;t MQ MP (min)</div>
-      <div style="font-weight:700;color:#dc2626;font-size:0.82em;line-height:1.1">{_esc(sup_duree_mq_mp)}</div>
-    </div>
-    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:3px;padding:1px 5px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">MQ Pers/R&eacute;union (min)</div>
-      <div style="font-weight:700;color:#dc2626;font-size:0.82em;line-height:1.1">{_esc(sup_mq_pers)}</div>
-    </div>
-    {'<div style="background:#fefce8;border:1px solid #fde68a;border-radius:3px;padding:1px 5px"><div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Options</div><div style="font-weight:700;color:#d97706;font-size:0.82em;line-height:1.1">&#10003; Kit 2 pi&egrave;ces</div></div>' if sup_kit else ''}
-  </div>
-  {'<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;min-width:200px;max-width:300px"><div style="font-size:0.65em;color:#64748b;text-transform:uppercase;margin-bottom:4px">Commentaire</div><div style="font-size:0.9em;color:#1e3a5f;white-space:pre-wrap">' + _esc(sup_comment) + '</div></div>' if sup_comment else ''}
-</div>
-
-<!-- Timeline poste (8h) -->
-<div style="background:white;border-bottom:2px solid #e2e8f0;padding:12px 28px">
-  <div style="font-size:0.72em;font-weight:700;color:#1e3a5f;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
-    &#9654; Timeline du poste (8h) &nbsp;
-    <span style="font-weight:400;color:#94a3b8">&#9632; OF produits &nbsp; <span style="color:#dc2626">&#9632;</span> Pannes &nbsp; <span style="color:#d97706">&#9632;</span> Rattrapages &nbsp; <span style="color:#2563eb">│</span> Maintenant</span>
+<!-- TIMELINE PLEINE LARGEUR -->
+<div class="sup-card" style="margin:0 12px 6px;padding:5px 12px">
+  <div style="font-size:0.65em;font-weight:700;color:#1e3a5f;text-transform:uppercase;margin-bottom:3px">
+    &#9654; Timeline 8h &nbsp;<span style="font-weight:400;color:#94a3b8">&#9632; OF &nbsp;<span style="color:#dc2626">&#9632;</span> Pannes &nbsp;<span style="color:#d97706">&#9632;</span> Ratt &nbsp;<span style="color:#2563eb">│</span> Maintenant</span>
   </div>
   {timeline_svg}
 </div>
 
-<div class="sup-grid">
-  <!-- Colonne gauche : KPIs + graphiques -->
-  <div class="sup-left">
+<!-- BODY 3 COLONNES -->
+<div style="display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px;padding:0 12px 8px;height:calc(100vh - 195px)">
 
-    <!-- TRS actuel + KPIs -->
-    <div class="sup-card">
-      <div class="sup-card-hdr">&#128200; TRS Actuel</div>
-      <div class="sup-trs-big" style="color:{sup_trs_color}">{_esc(sup_trs_display)}</div>
-      <div class="sup-trs-label">Bas&eacute; sur OF d&eacute;clar&eacute;s</div>
-      <div class="sup-kpi-grid">
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Equiv. totale</div><div class="sup-kpi-val">{sup_equiv_tot:.1f}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Qt&eacute; produite</div><div class="sup-kpi-val">{sup_qte_tot}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">OF compl&eacute;t&eacute;s</div><div class="sup-kpi-val">{sup_of_count}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Dur&eacute;e session</div><div class="sup-kpi-val">{sup_session_dur}</div></div>
+  <!-- COL GAUCHE : Détails produit + Arrêts -->
+  <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+
+    <div class="sup-card" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+      <div class="sup-card-hdr">&#128203; D&eacute;tails produit</div>
+      <div style="padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:4px;overflow-y:auto;flex:1">
+        {prod_info_html}
       </div>
     </div>
 
-    <!-- Camembert production/arrêts/reste -->
-    <div class="sup-card">
-      <div class="sup-card-hdr">&#9685; R&eacute;partition du poste (min)</div>
-      <div style="padding:12px;display:flex;align-items:center;gap:12px">
-        <canvas id="supPieChart" width="120" height="120" style="flex-shrink:0"></canvas>
-        <div style="font-size:0.78em;display:flex;flex-direction:column;gap:6px">
-          <div><span style="display:inline-block;width:12px;height:12px;background:#16a34a;border-radius:2px;margin-right:6px;vertical-align:middle"></span>Production d&eacute;clar&eacute;e</div>
-          <div><span style="display:inline-block;width:12px;height:12px;background:#dc2626;border-radius:2px;margin-right:6px;vertical-align:middle"></span>Arr&ecirc;ts</div>
-          <div><span style="display:inline-block;width:12px;height:12px;background:#e2e8f0;border-radius:2px;margin-right:6px;vertical-align:middle"></span>Reste du poste</div>
+    <div class="sup-card" style="flex-shrink:0;{'border:2px solid #dc2626;' if has_active_stop else ''}">
+      <div class="sup-card-hdr" style="{stops_hdr_style}">
+        &#9888; Arr&ecirc;ts actifs — {'<b>' + str(len(active_stops_info)) + ' en cours</b>' if active_stops_info else 'Aucun'}
+      </div>
+      {stops_body}
+    </div>
+
+  </div>
+
+  <!-- COL CENTRE : TRS + KPIs + Pie + Évts session -->
+  <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+
+    <div class="sup-card" style="flex-shrink:0">
+      <div class="sup-card-hdr">&#128200; TRS Actuel &amp; KPIs</div>
+      <div style="padding:6px 8px;display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center">
+        <div style="text-align:center">
+          <div style="font-size:2.8em;font-weight:900;color:{sup_trs_color};line-height:1">{_esc(sup_trs_display)}</div>
+          <div style="font-size:0.65em;color:#94a3b8">bas&eacute; OF d&eacute;clar&eacute;s</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.8em">
+          <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Equiv. totale</div><div class="sup-kpi-val">{sup_equiv_tot:.1f}</div></div>
+          <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Qte produite</div><div class="sup-kpi-val">{sup_qte_tot}</div></div>
+          <div class="sup-kpi-cell"><div class="sup-kpi-lbl">OF compl&eacute;t&eacute;s</div><div class="sup-kpi-val">{sup_of_count}</div></div>
+          <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Dur&eacute;e session</div><div class="sup-kpi-val">{sup_session_dur}</div></div>
         </div>
       </div>
     </div>
 
-    <!-- Pareto arrêts -->
-    <div class="sup-card">
-      <div class="sup-card-hdr">&#128200; Par&eacute;to arr&ecirc;ts &amp; &eacute;v&eacute;nements (min)</div>
-      <div style="padding:12px">
-        <canvas id="supParetoChart" height="180"></canvas>
+    <div class="sup-card" style="flex-shrink:0">
+      <div class="sup-card-hdr">&#9685; R&eacute;partition du poste (min)</div>
+      <div style="padding:8px;display:flex;align-items:center;gap:10px">
+        <canvas id="supPieChart" width="120" height="120" style="flex-shrink:0;width:120px;height:120px"></canvas>
+        <div style="font-size:0.74em;display:flex;flex-direction:column;gap:4px">
+          <div><span style="display:inline-block;width:10px;height:10px;background:#16a34a;border-radius:2px;margin-right:5px"></span>Production d&eacute;clar&eacute;e</div>
+          <div><span style="display:inline-block;width:10px;height:10px;background:#dc2626;border-radius:2px;margin-right:5px"></span>Arr&ecirc;ts</div>
+          <div><span style="display:inline-block;width:10px;height:10px;background:#e2e8f0;border-radius:2px;margin-right:5px"></span>Reste du poste</div>
+        </div>
       </div>
     </div>
 
-    <!-- Arrêts actifs -->
-    <div class="sup-card">
-      <div class="sup-card-hdr" style="{'background:#dc2626' if has_active_stop else ''}">
-        &#9888; Arr&ecirc;ts actifs {'— ' + str(len(active_stops_info)) + ' en cours' if active_stops_info else '— Aucun'}
-      </div>
-      {f'<div class="active-stops-grid">{active_stops_html}</div>' if active_stops_info
-        else '<div style="padding:16px;text-align:center;color:#16a34a;font-weight:700">&#10003; Aucun arr&ecirc;t en cours</div>'}
-    </div>
-
-  </div><!-- /sup-left -->
-
-  <!-- Colonne droite : tableaux -->
-  <div class="sup-right">
-
-    <!-- Événements session EN COURS -->
-    <div class="sup-card">
-      <div class="sup-card-hdr" style="background:#7c3aed">&#128308; &Eacute;v&eacute;nements session en cours ({len(sup_events)})</div>
-      <div class="tbl-wrap" style="max-height:280px;overflow-y:auto">
-        <table style="font-size:0.88em">
-          <thead><tr>
-            <th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
-          </tr></thead>
+    <div class="sup-card" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+      <div class="sup-card-hdr" style="background:#7c3aed">&#128308; &Eacute;v&eacute;nements session ({len(sup_events)})</div>
+      <div style="overflow-y:auto;flex:1">
+        <table style="font-size:0.82em;width:100%">
+          <thead><tr><th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th></tr></thead>
           <tbody>{live_evts_rows}</tbody>
         </table>
       </div>
     </div>
 
-    <!-- Déclarations cliquables -->
-    <div class="sup-card">
-      <div class="sup-card-hdr">&#128221; D&eacute;clarations du poste ({len(sup_decls)} OF) <span style="font-size:0.75em;opacity:0.7">— cliquer pour d&eacute;tails</span></div>
-      <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
-        <table id="supDeclTable" style="font-size:0.88em">
+  </div>
+
+  <!-- COL DROITE : Pareto + Déclarations -->
+  <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+
+    <div class="sup-card" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+      <div class="sup-card-hdr">&#128200; Par&eacute;to arr&ecirc;ts &amp; &eacute;v&eacute;nements (min)</div>
+      <div style="padding:8px;flex:1;min-height:0">
+        <canvas id="supParetoChart" style="max-height:100%"></canvas>
+      </div>
+    </div>
+
+    <div class="sup-card" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+      <div class="sup-card-hdr">&#128221; D&eacute;clarations ({len(sup_decls)} OF) <span style="font-size:0.72em;opacity:0.7">— cliquer d&eacute;tails</span></div>
+      <div style="overflow-y:auto;flex:1">
+        <table id="supDeclTable" style="font-size:0.8em;width:100%">
           <thead><tr>
             <th>OF</th><th>D&eacute;but</th><th>Fin</th>
-            <th>Taille</th><th>Code</th><th>Type</th>
-            <th>Qte Fab</th><th>Qte Emb</th>
-            <th>Equiv</th><th>Dur&eacute;e</th>
-            <th>Cad/h</th><th>TRS</th>
+            <th>Taille</th><th>Code</th><th>Dur&eacute;e</th><th>TRS</th>
           </tr></thead>
           <tbody id="supDeclBody">{sup_decl_rows}</tbody>
         </table>
       </div>
     </div>
 
-    <!-- Événements sauvegardés -->
-    <div class="sup-card">
-      <div class="sup-card-hdr">&#128203; &Eacute;v&eacute;nements sauv&eacute;s du poste ({len(sup_evts_today)})</div>
-      <div class="tbl-wrap" style="max-height:280px;overflow-y:auto">
-        <table style="font-size:0.88em">
-          <thead><tr>
-            <th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
-          </tr></thead>
-          <tbody>{sup_evts_rows}</tbody>
-        </table>
-      </div>
-    </div>
+  </div>
 
-  </div><!-- /sup-right -->
-</div><!-- /sup-grid -->
+</div><!-- /body-3col -->
 
-<!-- Modal détail OF -->
+<!-- Modal détail OF (shared with dashboard) -->
 <div id="ofDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center">
   <div style="background:white;border-radius:16px;max-width:900px;width:95%;max-height:90vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column">
-    <div style="background:linear-gradient(135deg,#1e3a5f,#2c5282);color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:1.1em;font-weight:800">&#128203; D&eacute;tail de l'OF <span id="modalOfNum"></span></div>
+    <div style="background:linear-gradient(135deg,#1e3a5f,#2c5282);color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div style="font-size:1.1em;font-weight:800;flex:1">&#128203; D&eacute;tail de l'OF <span id="modalOfNum"></span></div>
+      <button id="modalEditBtn" onclick="startEditModal()" style="background:#d97706;border:none;color:white;border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:700;font-size:0.95em">&#9998; Modifier</button>
+      <button id="modalSaveBtn" onclick="saveEditModal()" style="display:none;background:#16a34a;border:none;color:white;border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:700;font-size:0.95em">&#10003; Sauvegarder</button>
+      <button id="modalCancelBtn" onclick="cancelEditModal()" style="display:none;background:#6b7280;border:none;color:white;border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:700;font-size:0.95em">&#10005; Annuler</button>
+      <span id="modalEditMsg" style="font-size:0.8em;opacity:0.8"></span>
       <button onclick="closeOfModal()" style="background:rgba(255,255,255,0.15);border:none;color:white;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700;font-size:1.1em">&#10005;</button>
     </div>
     <div id="modalBody" style="overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
+    <div id="modalEditBody" style="display:none;overflow-y:auto;padding:20px"></div>
   </div>
 </div>
 
@@ -8600,6 +8668,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
   KPI-ORC Supervision &bull; {now_str} &bull; Rafra&icirc;chissement automatique 15s
 </div>
 
+</div><!-- /supPageWrap -->
 </div><!-- /tab-supervision -->
 
 <!-- ══════════════════ ONGLET REVUE COMPLÈTE ══════════════════ -->
@@ -8695,7 +8764,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
       <table id="revTblTRS">
         <thead><tr>
           <th>Date</th><th>Poste</th><th>Pilote</th><th>Co-Pilote</th><th>Nb Pers</th>
-          <th>T. Ouv</th><th>T. D&eacute;cl</th><th>Écart</th><th>T. Marche</th>
+          <th>T. Ouv</th><th>T. D&eacute;cl</th><th>Écart Tps D/O</th><th>T. Marche</th>
           <th>Pannes</th><th>Ratt.</th><th>Pauses</th><th>R&eacute;unions</th>
           <th>Nb OF</th><th>Qte</th><th>Equiv</th><th>Moy/OF</th>
           <th style="min-width:70px">TRS</th>
@@ -8754,15 +8823,19 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </div><!-- /tab-review -->
 
 <script>
+var VALID_TABS = ['supervision','dashboard','review'];
 function showTab(name) {{
+  if (VALID_TABS.indexOf(name) === -1) name = 'supervision';
   document.querySelectorAll('.tab-content').forEach(function(el) {{
     el.classList.remove('visible');
   }});
   document.querySelectorAll('.tab-btn').forEach(function(el) {{
     el.classList.remove('active');
   }});
-  document.getElementById('tab-' + name).classList.add('visible');
-  document.getElementById('btn-' + name).classList.add('active');
+  var tc = document.getElementById('tab-' + name);
+  var bc = document.getElementById('btn-' + name);
+  if (tc) tc.classList.add('visible');
+  if (bc) bc.classList.add('active');
   try {{ localStorage.setItem('kpi_orc_tab', name); }} catch(e) {{}}
 }}
 
@@ -8770,13 +8843,27 @@ function showTab(name) {{
   var saved = '';
   try {{ saved = localStorage.getItem('kpi_orc_tab') || ''; }} catch(e) {{}}
   var hash = (location.hash || '').replace('#','');
-  showTab(hash || saved || 'dashboard');
+  var tab = hash || saved || 'supervision';
+  if (VALID_TABS.indexOf(tab) === -1) tab = 'supervision';
+  showTab(tab);
 }})();
 
-// Countdown 15s
+// Countdown 15s – reload uniquement sur onglet supervision
 (function() {{
   var s = 15, el = document.getElementById('cdown');
-  setInterval(function() {{ s--; if(s<=0)s=15; el.textContent='\\u21bb Mise \\u00e0 jour dans '+s+'s'; }}, 1000);
+  if (!el) return;
+  setInterval(function() {{
+    s--;
+    if (s <= 0) {{
+      s = 15;
+      var supTab = document.getElementById('tab-supervision');
+      if (supTab && supTab.classList.contains('visible')) {{
+        location.reload();
+        return;
+      }}
+    }}
+    el.textContent = '\\u21bb Mise \\u00e0 jour dans ' + s + 's';
+  }}, 1000);
 }})();
 
 
@@ -8848,6 +8935,22 @@ new Chart(document.getElementById('chartPareto'), {{
 
 {gauge_charts_js}
 {cadence_charts_js}
+
+new Chart(document.getElementById('chartParetoAll'), {{
+  type: 'bar',
+  data: {{
+    labels: {pareto_all_labels},
+    datasets: [{{ label: 'Minutes', data: {pareto_all_values}, backgroundColor: {pareto_all_colors}, borderRadius: 4, borderSkipped: false }}]
+  }},
+  options: {{
+    plugins: {{ legend:{{ display:false }} }},
+    scales: {{
+      x: {{ grid:{{ display:false }}, ticks:{{ font:{{ size:9 }}, maxRotation:40 }} }},
+      y: {{ grid:{{ color:'#f1f5f9' }}, ticks:{{ callback:function(v){{ return v+'m'; }} }} }}
+    }}
+  }}
+}});
+{pareto_poste_js}
 
 // ═══════════════ REVUE COMPLÈTE — données & logique ═══════════════
 const REV_DATA = {rev_data_js};
@@ -8946,10 +9049,11 @@ function destroyChart(id) {{
 }}
 
 function makeChart(id, cfg) {{
+  if (typeof Chart === 'undefined') return;
   destroyChart(id);
   var el = document.getElementById(id);
   if (!el) return;
-  revCharts[id] = new Chart(el, cfg);
+  try {{ revCharts[id] = new Chart(el, cfg); }} catch(e) {{ console.warn('Chart error:', e.message); }}
 }}
 
 function applyFilters() {{
@@ -9015,7 +9119,7 @@ function updateCharts(d) {{
         {{label:'Rattrapages',data:d.trs.map(function(r){{return hmsToMin(r[12]);}}),backgroundColor:'#d97706',borderWidth:0}},
         {{label:'Pauses',     data:d.trs.map(function(r){{return hmsToMin(r[13]);}}),backgroundColor:'#2563eb',borderWidth:0}},
         {{label:'Réunions',   data:d.trs.map(function(r){{return hmsToMin(r[14]);}}),backgroundColor:'#7c3aed',borderWidth:0}},
-        {{label:'Écart',      data:d.trs.map(function(r){{return hmsToMin(r[7]); }}),backgroundColor:'#94a3b8',borderWidth:0}}
+        {{label:'Écart Tps déclaré/ouverture',      data:d.trs.map(function(r){{return hmsToMin(r[7]); }}),backgroundColor:'#94a3b8',borderWidth:0}}
       ]
     }},
     options:{{
@@ -9258,7 +9362,8 @@ function updateTables(d) {{
   if (bOF) {{
     document.getElementById('cntOF').textContent = d.data.length;
     var rows = d.data.slice().reverse().map(function(r) {{
-      return '<tr>'
+      var rj = JSON.stringify(r).replace(/'/g,"&#39;");
+      return '<tr style="cursor:pointer" onclick="openOfModal(JSON.parse(this.dataset.row))" data-row=\''+rj+'\' title="Cliquer pour voir tous les détails">'
         +'<td><b>'+esc(r[0])+'</b></td><td>'+esc(r[1])+'</td><td>'+esc(r[2])+'</td><td>'+esc(r[3])+'</td>'
         +'<td>'+esc(r[17])+'</td><td>'+esc(r[18])+'</td>'
         +'<td>'+esc(r[6])+'</td><td>'+esc(r[7])+'</td><td>'+esc(r[8])+'</td>'
@@ -9293,11 +9398,17 @@ function updateTables(d) {{
 var DATA_HEADERS = {_json.dumps(DATA_HEADERS, ensure_ascii=False)};
 
 // ── Modal détail OF ────────────────────────────────────────────────────
+var _modalRowData = null;
 function openOfModal(rowData) {{
+  _modalRowData = rowData;
   var modal = document.getElementById('ofDetailModal');
   var body  = document.getElementById('modalBody');
   var numEl = document.getElementById('modalOfNum');
   numEl.textContent = rowData[0] || '';
+  document.getElementById('modalEditBtn').style.display = '';
+  document.getElementById('modalSaveBtn').style.display = 'none';
+  document.getElementById('modalCancelBtn').style.display = 'none';
+  document.getElementById('modalEditMsg').textContent = '';
   var html = '';
   var sections = [
     {{title:'Identification', color:'#1e3a5f', bg:'#eff6ff', indices:[0,1,2,3,4,5]}},
@@ -9332,6 +9443,87 @@ function closeOfModal() {{
   document.getElementById('ofDetailModal').style.display = 'none';
 }}
 
+function startEditModal() {{
+  if (!_modalRowData) return;
+  var sections = [
+    {{title:'Identification', color:'#1e3a5f', bg:'#eff6ff', indices:[0,1,2,3,4,5]}},
+    {{title:'Produit', color:'#16a34a', bg:'#f0fdf4', indices:[6,7,8,9,10,11,12,21]}},
+    {{title:'Quantités & Qualité', color:'#7c3aed', bg:'#faf5ff', indices:[13,14,15,16,17,18,19,20,22,23,24,25,26,27,28]}},
+    {{title:'Durées & Arrêts', color:'#d97706', bg:'#fffbeb', indices:[29,30,31,32,33,34,35,36,37,57]}},
+    {{title:'Pannes', color:'#dc2626', bg:'#fef2f2', indices:[38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55]}},
+    {{title:'Commentaire', color:'#64748b', bg:'#f8fafc', indices:[56]}}
+  ];
+  var html = '<form id="editForm">';
+  sections.forEach(function(sec) {{
+    var secHtml = '';
+    sec.indices.forEach(function(i) {{
+      if (i >= DATA_HEADERS.length) return;
+      var val = (i < _modalRowData.length && _modalRowData[i] !== null && _modalRowData[i] !== undefined) ? _modalRowData[i] : '';
+      secHtml += '<div style="background:white;border-radius:6px;padding:8px 10px;border:1px solid #e2e8f0">'
+        + '<label style="display:block;font-size:0.62em;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:4px" for="ef_' + i + '">' + esc(DATA_HEADERS[i]) + '</label>'
+        + '<input id="ef_' + i + '" data-idx="' + i + '" type="text" value="' + esc(String(val)) + '" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:4px;padding:4px 6px;font-size:0.92em;font-family:inherit" />'
+        + '</div>';
+    }});
+    if (!secHtml) return;
+    html += '<div style="grid-column:1/-1;background:' + sec.bg + ';border-radius:10px;padding:12px;border-left:4px solid ' + sec.color + ';margin-bottom:4px">'
+      + '<div style="font-size:0.72em;font-weight:700;color:' + sec.color + ';text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">' + sec.title + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px">' + secHtml + '</div>'
+      + '</div>';
+  }});
+  html += '</form>';
+  document.getElementById('modalBody').style.display = 'none';
+  var eb = document.getElementById('modalEditBody');
+  eb.innerHTML = html;
+  eb.style.display = '';
+  document.getElementById('modalEditBtn').style.display = 'none';
+  document.getElementById('modalSaveBtn').style.display = '';
+  document.getElementById('modalCancelBtn').style.display = '';
+  document.getElementById('modalEditMsg').textContent = '';
+}}
+
+function cancelEditModal() {{
+  document.getElementById('modalBody').style.display = '';
+  document.getElementById('modalEditBody').style.display = 'none';
+  document.getElementById('modalEditBtn').style.display = '';
+  document.getElementById('modalSaveBtn').style.display = 'none';
+  document.getElementById('modalCancelBtn').style.display = 'none';
+  document.getElementById('modalEditMsg').textContent = '';
+}}
+
+function saveEditModal() {{
+  if (!_modalRowData) return;
+  var inputs = document.querySelectorAll('#editForm input[data-idx]');
+  var newData = _modalRowData.slice();
+  inputs.forEach(function(inp) {{
+    var idx = parseInt(inp.getAttribute('data-idx'), 10);
+    newData[idx] = inp.value;
+  }});
+  var ofNum = newData[0] || '';
+  var date  = newData[1] || '';
+  document.getElementById('modalSaveBtn').disabled = true;
+  document.getElementById('modalEditMsg').textContent = 'Sauvegarde...';
+  fetch('http://localhost:7892/edit', {{
+    method: 'POST',
+    headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{of_num: ofNum, date: date, data: newData}})
+  }}).then(function(r) {{ return r.json(); }}).then(function(res) {{
+    if (res.ok) {{
+      document.getElementById('modalEditMsg').textContent = '✔ Sauvegardé';
+      document.getElementById('modalEditMsg').style.color = '#16a34a';
+      _modalRowData = newData;
+      setTimeout(function() {{ cancelEditModal(); }}, 1200);
+    }} else {{
+      document.getElementById('modalEditMsg').textContent = '✘ Erreur: ' + (res.error || 'inconnue');
+      document.getElementById('modalEditMsg').style.color = '#dc2626';
+      document.getElementById('modalSaveBtn').disabled = false;
+    }}
+  }}).catch(function(err) {{
+    document.getElementById('modalEditMsg').textContent = '✘ ' + err;
+    document.getElementById('modalEditMsg').style.color = '#dc2626';
+    document.getElementById('modalSaveBtn').disabled = false;
+  }});
+}}
+
 document.getElementById('ofDetailModal').addEventListener('click', function(e) {{
   if (e.target === this) closeOfModal();
 }});
@@ -9354,14 +9546,6 @@ window.addEventListener('load', _drawSupCharts);
 
   }} catch(e) {{ console.warn('Chart init error:', e.message); }}
 }}
-_initDashboardCharts();
-if (typeof Chart === 'undefined') {{
-  var _cjsPoll = setInterval(function() {{
-    if (typeof Chart !== 'undefined') {{ _initDashboardCharts(); clearInterval(_cjsPoll); }}
-  }}, 500);
-  setTimeout(function() {{ clearInterval(_cjsPoll); }}, 15000);
-}}
-
 // ── Initialisation filtres avec persistance localStorage ───────────────
 (function() {{
   var today = new Date();
@@ -9402,7 +9586,16 @@ showTab = function(name) {{
     setTimeout(function() {{ applyFilters(); }}, 50);
   }}
 }};
+_initDashboardCharts();
+if (typeof Chart === 'undefined') {{
+  var _cjsPoll = setInterval(function() {{
+    if (typeof Chart !== 'undefined') {{ _initDashboardCharts(); clearInterval(_cjsPoll); }}
+  }}, 500);
+  setTimeout(function() {{ clearInterval(_cjsPoll); }}, 15000);
+}}
 </script>
+
+
 </body>
 </html>"""
 
