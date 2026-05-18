@@ -3371,6 +3371,20 @@ Arrêts imputés au TRS (temps perdu) :
                 self._v_kit.set(self._saved_form_data["_kit"])
             except Exception:
                 pass
+        # Re-forcer le disabled sur poste/pilote après restauration
+        cb_widgets = getattr(self, "_form_cb_widgets", {})
+        if self._logged_in_poste and "poste" in cb_widgets:
+            try:
+                self.fv["poste"].set(self._logged_in_poste)
+                cb_widgets["poste"].config(state="disabled")
+            except Exception:
+                pass
+        if self._logged_in_pilot and "pilote" in cb_widgets:
+            try:
+                self.fv["pilote"].set(self._logged_in_pilot)
+                cb_widgets["pilote"].config(state="disabled")
+            except Exception:
+                pass
 
     def _nav_to_production(self):
         self._clear()
@@ -4665,6 +4679,7 @@ Arrêts imputés au TRS (temps perdu) :
     # ── Formulaire compact 4 colonnes (pas de scroll) ────────────────────────
     def _build_form(self, parent):
         self.fv = {}
+        self._form_cb_widgets = {}
         # Couleurs de fond par section
         BG_IDENT  = "#eef2fb"   # Bleu très clair — Identification
         BG_PROD   = "#f0f7f0"   # Vert très clair — Produit
@@ -4724,6 +4739,7 @@ Arrêts imputés au TRS (temps perdu) :
                                   values=self._get_list(lh) if lh else [],
                                   font=EFONT, state="readonly", height=6, width=1)
                 cb.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 3))
+                self._form_cb_widgets[key] = cb
                 if key == "pilote" and self._logged_in_pilot:
                     var.set(self._logged_in_pilot)
                     cb.config(state="disabled")
@@ -8374,7 +8390,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <div class="meta">{now_str}</div>
   </div>
   <div style="text-align:right">
-    <div class="meta">Auto-refresh 15s</div>
+    <div class="meta">Auto-refresh 15s &nbsp; <button onclick="location.reload()" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.4);color:white;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:0.85em">&#8635; Actualiser</button></div>
     <div class="countdown" id="cdown">&#8635; Mise &agrave; jour dans 15s</div>
   </div>
 </div>
@@ -8450,7 +8466,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </div><!-- /tab-dashboard -->
 
 <!-- ══════════════════ ONGLET SUPERVISION ══════════════════ -->
-<div class="tab-content" id="tab-supervision">
+<div class="tab-content visible" id="tab-supervision">
 
 <style>
 @keyframes supBlink {{
