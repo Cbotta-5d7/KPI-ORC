@@ -7748,7 +7748,7 @@ new Chart(document.getElementById('gauge{i}'), {{
             except Exception:
                 continue
         if not sup_decl_rows:
-            sup_decl_rows = '<tr><td colspan="12" class="empty">Aucune déclaration pour ce poste aujourd\'hui</td></tr>'
+            sup_decl_rows = '<tr><td colspan="7" class="empty">Aucune déclaration pour ce poste aujourd\'hui</td></tr>'
 
         # Rows HTML événements d'aujourd'hui
         sup_evts_today = [r for r in self._events_cache
@@ -8052,6 +8052,40 @@ new Chart(document.getElementById('chartParetoPoste{i}'), {{
 }});
 """
 
+        # ─── Build new supervision HTML ───────────────────────────────────────
+        # CSS animation class for blinking header on arrêt
+        hdr_anim = 'animation:supBlink 1s step-start infinite;' if has_active_stop else ''
+        hdr_bg   = sup_status_color if has_active_stop else sup_status_bg
+        hdr_fg   = 'white' if has_active_stop else sup_status_color
+
+        # Compact product info cells
+        def _inf(label, val, col='#1e3a5f'):
+            empty = not val or val == '—'
+            bg = '#f8fafc' if not empty else '#f1f5f9'
+            vc = col if not empty else '#cbd5e1'
+            return (f'<div style="background:{bg};border:1px solid #e2e8f0;border-radius:6px;padding:5px 8px">'
+                    f'<div style="font-size:0.58em;color:#94a3b8;text-transform:uppercase">{label}</div>'
+                    f'<div style="font-weight:700;color:{vc};font-size:0.88em">{_esc(val or "—")}</div></div>')
+
+        prod_info_html = (
+            _inf("Fibre", sup_fibre) +
+            _inf("Poids", f"{sup_poids} gr" if sup_poids != '—' else '—') +
+            _inf("OF Taie", sup_of_taie) +
+            _inf("Réf. Taie", sup_ref_taie) +
+            _inf("Traça fibre", sup_traca) +
+            _inf("Kit 2 pièces", "✓ Oui" if sup_kit else "Non") +
+            _inf("MQ MP (min)", sup_duree_mq_mp, '#dc2626') +
+            _inf("MQ Pers (min)", sup_mq_pers, '#dc2626')
+        )
+        if sup_comment:
+            prod_info_html += (f'<div style="grid-column:1/-1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:5px 8px">'
+                               f'<div style="font-size:0.58em;color:#94a3b8;text-transform:uppercase">Commentaire</div>'
+                               f'<div style="font-size:0.82em;color:#1e3a5f;white-space:pre-wrap">{_esc(sup_comment)}</div></div>')
+
+        stops_hdr_style = 'background:#dc2626;animation:supBlink 1s step-start infinite;' if has_active_stop else ''
+        stops_body = (f'<div class="active-stops-grid">{active_stops_html}</div>' if active_stops_info
+                      else '<div style="padding:10px;text-align:center;color:#16a34a;font-weight:700;font-size:0.9em">✓ Aucun arrêt en cours</div>')
+
         # ── HTML complet ──────────────────────────────────────────────────────
         html = f"""<!DOCTYPE html>
 <html lang="fr">
@@ -8336,181 +8370,136 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 <!-- ══════════════════ ONGLET SUPERVISION ══════════════════ -->
 <div class="tab-content" id="tab-supervision">
 
-{alert_html}
+<style>
+@keyframes supBlink {{
+  0%,49%{{ background:#dc2626; }}
+  50%,100%{{ background:#7f1d1d; }}
+}}
+</style>
 
-<!-- Barre de statut pilote -->
-<div class="sup-status-bar" style="background:{sup_status_bg};border-color:{sup_status_color};color:{sup_status_color}">
-  <div class="sup-status-icon">{sup_status_icon}</div>
-  <div style="flex:1">
-    <div class="sup-status-text">{_esc(sup_status)}</div>
-    <div class="sup-status-sub">
-      <b>{_esc(sup_poste)}</b>
-      &nbsp;&bull;&nbsp; &#128100; <b>{_esc(sup_pilot)}</b>
-      {'&nbsp;&bull;&nbsp; Co-pilote : <b>' + _esc(sup_copilot) + '</b>' if sup_copilot not in ('—','') else ''}
-      &nbsp;&bull;&nbsp; {_esc(sup_nb_pers)} pers.
-      &nbsp;&bull;&nbsp; Session : {sup_session_dur}
-      &nbsp;&bull;&nbsp; OF déclarés : <b>{sup_of_count}</b>
-    </div>
+<!-- HEADER 1 LIGNE -->
+<div id="supHdr" style="background:{hdr_bg};border:2px solid {sup_status_color};border-radius:10px;
+  margin:8px 12px 6px;padding:7px 16px;display:flex;align-items:center;gap:14px;
+  color:{hdr_fg};{hdr_anim}flex-wrap:nowrap;overflow:hidden;min-height:50px">
+  <span style="font-size:1.6em;flex-shrink:0">{sup_status_icon}</span>
+  <span style="font-size:0.72em;text-transform:uppercase;font-weight:800;letter-spacing:1px;white-space:nowrap;flex-shrink:0">{_esc(sup_status)}</span>
+  <span style="width:2px;height:24px;background:currentColor;opacity:0.3;flex-shrink:0"></span>
+  <span style="font-size:1.7em;font-weight:900;white-space:nowrap;flex-shrink:0">{_esc(sup_of_num)}</span>
+  <span style="width:2px;height:24px;background:currentColor;opacity:0.2;flex-shrink:0"></span>
+  <div style="font-size:0.8em;display:flex;gap:14px;flex-wrap:nowrap;overflow:hidden;white-space:nowrap">
+    <span>&#128203; <b>{_esc(sup_poste)}</b></span>
+    <span>&#128100; <b>{_esc(sup_pilot)}</b>{'&nbsp;/&nbsp;' + _esc(sup_copilot) if sup_copilot not in ('—','') else ''}</span>
+    <span>Taille: <b>{_esc(sup_taille)}</b></span>
+    <span><b>{_esc(sup_type_prod)}</b></span>
+    <span style="color:{'white' if has_active_stop else '#16a34a'}">Code: <b>{_esc(sup_code)}</b></span>
+    {f'<span>{_esc(sup_nb_pers)} pers.</span>' if sup_nb_pers not in ('—','') else ''}
   </div>
-  <div style="text-align:right;font-size:0.82em;opacity:0.75">{now_str}</div>
+  <span style="width:2px;height:24px;background:currentColor;opacity:0.2;flex-shrink:0"></span>
+  <span style="font-size:0.8em;white-space:nowrap;flex-shrink:0">Durée OF: <b>{sup_of_dur}</b></span>
+  <span style="font-size:0.8em;white-space:nowrap;flex-shrink:0">TRS: <b style="font-size:1.15em;color:{'white' if has_active_stop else sup_trs_color}">{_esc(sup_trs_display)}</b></span>
+  <span style="margin-left:auto;font-size:0.68em;opacity:0.7;white-space:nowrap;flex-shrink:0">{now_str}</span>
 </div>
 
-<!-- OF EN COURS — carte lumineuse -->
-{'<div style="background:white;border-left:6px solid ' + sup_status_color + ';border-bottom:2px solid #e2e8f0;padding:16px 28px;display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap">' if sup_prod_active else '<div style="display:none">'}
-  <!-- Bloc n° OF + infos principales -->
-  <div style="min-width:180px">
-    <div style="font-size:0.68em;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:2px">&#128203; OF EN COURS</div>
-    <div style="font-size:2.6em;font-weight:900;color:{sup_status_color};line-height:1.1">{_esc(sup_of_num)}</div>
-    <div style="font-size:0.9em;font-weight:600;color:#374151;margin-top:4px">{_esc(sup_taille)} &nbsp;&bull;&nbsp; {_esc(sup_type_prod)}</div>
-    <div style="font-size:0.85em;color:#16a34a;font-weight:700">Code : {_esc(sup_code)}</div>
-    <div style="margin-top:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px">
-      <div style="font-size:0.65em;color:#64748b;text-transform:uppercase;letter-spacing:0.5px">Dur&eacute;e OF actuel</div>
-      <div style="font-size:1.5em;font-weight:900;color:#1e3a5f;font-variant-numeric:tabular-nums">{sup_of_dur}</div>
-    </div>
-  </div>
-  <!-- Grille infos produit -->
-  <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Fibre</div>
-      <div style="font-weight:700;color:#1e3a5f;margin-top:2px">{_esc(sup_fibre)}</div>
-    </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Poids garnissage</div>
-      <div style="font-weight:700;color:#1e3a5f;margin-top:2px">{_esc(sup_poids)} gr</div>
-    </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">OF Taie</div>
-      <div style="font-weight:700;color:#1e3a5f;margin-top:2px">{_esc(sup_of_taie)}</div>
-    </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">R&eacute;f. Taie</div>
-      <div style="font-weight:700;color:#1e3a5f;margin-top:2px">{_esc(sup_ref_taie)}</div>
-    </div>
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Tra&ccedil;a fibre</div>
-      <div style="font-weight:700;color:#1e3a5f;margin-top:2px">{_esc(sup_traca)}</div>
-    </div>
-    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 12px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Arr&ecirc;t MQ MP (min)</div>
-      <div style="font-weight:700;color:#dc2626;margin-top:2px">{_esc(sup_duree_mq_mp)}</div>
-    </div>
-    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 12px">
-      <div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">MQ Pers/R&eacute;union (min)</div>
-      <div style="font-weight:700;color:#dc2626;margin-top:2px">{_esc(sup_mq_pers)}</div>
-    </div>
-    {'<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:8px 12px"><div style="font-size:0.65em;color:#94a3b8;text-transform:uppercase">Options</div><div style="font-weight:700;color:#d97706;margin-top:2px">&#10003; Kit 2 pi&egrave;ces</div></div>' if sup_kit else ''}
-  </div>
-  {'<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;min-width:200px;max-width:300px"><div style="font-size:0.65em;color:#64748b;text-transform:uppercase;margin-bottom:4px">Commentaire</div><div style="font-size:0.9em;color:#1e3a5f;white-space:pre-wrap">' + _esc(sup_comment) + '</div></div>' if sup_comment else ''}
-</div>
+<!-- BODY 3 COLONNES -->
+<div style="display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px;padding:0 12px 8px;height:calc(100vh - 115px)">
 
-<!-- Timeline poste (8h) -->
-<div style="background:white;border-bottom:2px solid #e2e8f0;padding:12px 28px">
-  <div style="font-size:0.72em;font-weight:700;color:#1e3a5f;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">
-    &#9654; Timeline du poste (8h) &nbsp;
-    <span style="font-weight:400;color:#94a3b8">&#9632; OF produits &nbsp; <span style="color:#dc2626">&#9632;</span> Pannes &nbsp; <span style="color:#d97706">&#9632;</span> Rattrapages &nbsp; <span style="color:#2563eb">│</span> Maintenant</span>
-  </div>
-  {timeline_svg}
-</div>
+  <!-- COL GAUCHE : Timeline + Détails produit + Arrêts -->
+  <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
 
-<div class="sup-grid">
-  <!-- Colonne gauche : KPIs + graphiques -->
-  <div class="sup-left">
+    <div class="sup-card" style="flex-shrink:0;padding:8px 12px">
+      <div style="font-size:0.65em;font-weight:700;color:#1e3a5f;text-transform:uppercase;margin-bottom:4px">
+        &#9654; Timeline 8h &nbsp;<span style="font-weight:400;color:#94a3b8">&#9632; OF &nbsp;<span style="color:#dc2626">&#9632;</span> Pannes &nbsp;<span style="color:#d97706">&#9632;</span> Ratt &nbsp;<span style="color:#2563eb">│</span> Maintenant</span>
+      </div>
+      {timeline_svg}
+    </div>
 
-    <!-- TRS actuel + KPIs -->
-    <div class="sup-card">
-      <div class="sup-card-hdr">&#128200; TRS Actuel</div>
-      <div class="sup-trs-big" style="color:{sup_trs_color}">{_esc(sup_trs_display)}</div>
-      <div class="sup-trs-label">Bas&eacute; sur OF d&eacute;clar&eacute;s</div>
-      <div class="sup-kpi-grid">
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Equiv. totale</div><div class="sup-kpi-val">{sup_equiv_tot:.1f}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Qt&eacute; produite</div><div class="sup-kpi-val">{sup_qte_tot}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">OF compl&eacute;t&eacute;s</div><div class="sup-kpi-val">{sup_of_count}</div></div>
-        <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Dur&eacute;e session</div><div class="sup-kpi-val">{sup_session_dur}</div></div>
+    <div class="sup-card" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+      <div class="sup-card-hdr">&#128203; D&eacute;tails produit</div>
+      <div style="padding:6px;display:grid;grid-template-columns:1fr 1fr;gap:4px;overflow-y:auto;flex:1">
+        {prod_info_html}
       </div>
     </div>
 
-    <!-- Camembert production/arrêts/reste -->
-    <div class="sup-card">
-      <div class="sup-card-hdr">&#9685; R&eacute;partition du poste (min)</div>
-      <div style="padding:12px;display:flex;align-items:center;gap:12px">
-        <canvas id="supPieChart" width="120" height="120" style="flex-shrink:0"></canvas>
-        <div style="font-size:0.78em;display:flex;flex-direction:column;gap:6px">
-          <div><span style="display:inline-block;width:12px;height:12px;background:#16a34a;border-radius:2px;margin-right:6px;vertical-align:middle"></span>Production d&eacute;clar&eacute;e</div>
-          <div><span style="display:inline-block;width:12px;height:12px;background:#dc2626;border-radius:2px;margin-right:6px;vertical-align:middle"></span>Arr&ecirc;ts</div>
-          <div><span style="display:inline-block;width:12px;height:12px;background:#e2e8f0;border-radius:2px;margin-right:6px;vertical-align:middle"></span>Reste du poste</div>
+    <div class="sup-card" style="flex-shrink:0;{'border:2px solid #dc2626;' if has_active_stop else ''}">
+      <div class="sup-card-hdr" style="{stops_hdr_style}">
+        &#9888; Arr&ecirc;ts actifs — {'<b>' + str(len(active_stops_info)) + ' en cours</b>' if active_stops_info else 'Aucun'}
+      </div>
+      {stops_body}
+    </div>
+
+  </div>
+
+  <!-- COL CENTRE : TRS + KPIs + Pie + Évts session -->
+  <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+
+    <div class="sup-card" style="flex-shrink:0">
+      <div class="sup-card-hdr">&#128200; TRS Actuel &amp; KPIs</div>
+      <div style="padding:6px 8px;display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center">
+        <div style="text-align:center">
+          <div style="font-size:2.8em;font-weight:900;color:{sup_trs_color};line-height:1">{_esc(sup_trs_display)}</div>
+          <div style="font-size:0.65em;color:#94a3b8">bas&eacute; OF d&eacute;clar&eacute;s</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.8em">
+          <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Equiv. totale</div><div class="sup-kpi-val">{sup_equiv_tot:.1f}</div></div>
+          <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Qte produite</div><div class="sup-kpi-val">{sup_qte_tot}</div></div>
+          <div class="sup-kpi-cell"><div class="sup-kpi-lbl">OF compl&eacute;t&eacute;s</div><div class="sup-kpi-val">{sup_of_count}</div></div>
+          <div class="sup-kpi-cell"><div class="sup-kpi-lbl">Dur&eacute;e session</div><div class="sup-kpi-val">{sup_session_dur}</div></div>
         </div>
       </div>
     </div>
 
-    <!-- Pareto arrêts -->
-    <div class="sup-card">
-      <div class="sup-card-hdr">&#128200; Par&eacute;to arr&ecirc;ts &amp; &eacute;v&eacute;nements (min)</div>
-      <div style="padding:12px">
-        <canvas id="supParetoChart" height="180"></canvas>
+    <div class="sup-card" style="flex-shrink:0">
+      <div class="sup-card-hdr">&#9685; R&eacute;partition du poste (min)</div>
+      <div style="padding:8px;display:flex;align-items:center;gap:10px">
+        <canvas id="supPieChart" width="100" height="100" style="flex-shrink:0"></canvas>
+        <div style="font-size:0.74em;display:flex;flex-direction:column;gap:4px">
+          <div><span style="display:inline-block;width:10px;height:10px;background:#16a34a;border-radius:2px;margin-right:5px"></span>Production d&eacute;clar&eacute;e</div>
+          <div><span style="display:inline-block;width:10px;height:10px;background:#dc2626;border-radius:2px;margin-right:5px"></span>Arr&ecirc;ts</div>
+          <div><span style="display:inline-block;width:10px;height:10px;background:#e2e8f0;border-radius:2px;margin-right:5px"></span>Reste du poste</div>
+        </div>
       </div>
     </div>
 
-    <!-- Arrêts actifs -->
-    <div class="sup-card">
-      <div class="sup-card-hdr" style="{'background:#dc2626' if has_active_stop else ''}">
-        &#9888; Arr&ecirc;ts actifs {'— ' + str(len(active_stops_info)) + ' en cours' if active_stops_info else '— Aucun'}
-      </div>
-      {f'<div class="active-stops-grid">{active_stops_html}</div>' if active_stops_info
-        else '<div style="padding:16px;text-align:center;color:#16a34a;font-weight:700">&#10003; Aucun arr&ecirc;t en cours</div>'}
-    </div>
-
-  </div><!-- /sup-left -->
-
-  <!-- Colonne droite : tableaux -->
-  <div class="sup-right">
-
-    <!-- Événements session EN COURS -->
-    <div class="sup-card">
-      <div class="sup-card-hdr" style="background:#7c3aed">&#128308; &Eacute;v&eacute;nements session en cours ({len(sup_events)})</div>
-      <div class="tbl-wrap" style="max-height:280px;overflow-y:auto">
-        <table style="font-size:0.88em">
-          <thead><tr>
-            <th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
-          </tr></thead>
+    <div class="sup-card" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+      <div class="sup-card-hdr" style="background:#7c3aed">&#128308; &Eacute;v&eacute;nements session ({len(sup_events)})</div>
+      <div style="overflow-y:auto;flex:1">
+        <table style="font-size:0.82em;width:100%">
+          <thead><tr><th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th></tr></thead>
           <tbody>{live_evts_rows}</tbody>
         </table>
       </div>
     </div>
 
-    <!-- Déclarations cliquables -->
-    <div class="sup-card">
-      <div class="sup-card-hdr">&#128221; D&eacute;clarations du poste ({len(sup_decls)} OF) <span style="font-size:0.75em;opacity:0.7">— cliquer pour d&eacute;tails</span></div>
-      <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
-        <table id="supDeclTable" style="font-size:0.88em">
+  </div>
+
+  <!-- COL DROITE : Pareto + Déclarations -->
+  <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+
+    <div class="sup-card" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+      <div class="sup-card-hdr">&#128200; Par&eacute;to arr&ecirc;ts &amp; &eacute;v&eacute;nements (min)</div>
+      <div style="padding:8px;flex:1;min-height:0">
+        <canvas id="supParetoChart" style="max-height:100%"></canvas>
+      </div>
+    </div>
+
+    <div class="sup-card" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+      <div class="sup-card-hdr">&#128221; D&eacute;clarations ({len(sup_decls)} OF) <span style="font-size:0.72em;opacity:0.7">— cliquer d&eacute;tails</span></div>
+      <div style="overflow-y:auto;flex:1">
+        <table id="supDeclTable" style="font-size:0.8em;width:100%">
           <thead><tr>
             <th>OF</th><th>D&eacute;but</th><th>Fin</th>
-            <th>Taille</th><th>Code</th><th>Type</th>
-            <th>Qte Fab</th><th>Qte Emb</th>
-            <th>Equiv</th><th>Dur&eacute;e</th>
-            <th>Cad/h</th><th>TRS</th>
+            <th>Taille</th><th>Code</th><th>Dur&eacute;e</th><th>TRS</th>
           </tr></thead>
           <tbody id="supDeclBody">{sup_decl_rows}</tbody>
         </table>
       </div>
     </div>
 
-    <!-- Événements sauvegardés -->
-    <div class="sup-card">
-      <div class="sup-card-hdr">&#128203; &Eacute;v&eacute;nements sauv&eacute;s du poste ({len(sup_evts_today)})</div>
-      <div class="tbl-wrap" style="max-height:280px;overflow-y:auto">
-        <table style="font-size:0.88em">
-          <thead><tr>
-            <th>Type</th><th>OF</th><th>D&eacute;but</th><th>Fin</th><th>Dur&eacute;e</th><th>Commentaire</th>
-          </tr></thead>
-          <tbody>{sup_evts_rows}</tbody>
-        </table>
-      </div>
-    </div>
+  </div>
 
-  </div><!-- /sup-right -->
-</div><!-- /sup-grid -->
+</div><!-- /body-3col -->
 
-<!-- Modal détail OF -->
+<!-- Modal détail OF (shared with dashboard) -->
 <div id="ofDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center">
   <div style="background:white;border-radius:16px;max-width:900px;width:95%;max-height:90vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column">
     <div style="background:linear-gradient(135deg,#1e3a5f,#2c5282);color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between">
