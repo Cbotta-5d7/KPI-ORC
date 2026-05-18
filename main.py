@@ -8762,15 +8762,19 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 </div><!-- /tab-review -->
 
 <script>
+var VALID_TABS = ['supervision','dashboard','review'];
 function showTab(name) {{
+  if (VALID_TABS.indexOf(name) === -1) name = 'supervision';
   document.querySelectorAll('.tab-content').forEach(function(el) {{
     el.classList.remove('visible');
   }});
   document.querySelectorAll('.tab-btn').forEach(function(el) {{
     el.classList.remove('active');
   }});
-  document.getElementById('tab-' + name).classList.add('visible');
-  document.getElementById('btn-' + name).classList.add('active');
+  var tc = document.getElementById('tab-' + name);
+  var bc = document.getElementById('btn-' + name);
+  if (tc) tc.classList.add('visible');
+  if (bc) bc.classList.add('active');
   try {{ localStorage.setItem('kpi_orc_tab', name); }} catch(e) {{}}
 }}
 
@@ -8778,7 +8782,9 @@ function showTab(name) {{
   var saved = '';
   try {{ saved = localStorage.getItem('kpi_orc_tab') || ''; }} catch(e) {{}}
   var hash = (location.hash || '').replace('#','');
-  showTab(hash || saved || 'supervision');
+  var tab = hash || saved || 'supervision';
+  if (VALID_TABS.indexOf(tab) === -1) tab = 'supervision';
+  showTab(tab);
 }})();
 
 // Countdown + reload JS (meta refresh fallback)
