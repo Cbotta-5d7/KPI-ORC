@@ -8198,7 +8198,7 @@ new Chart(document.getElementById('chartParetoPoste{i}'), {{
 <meta charset="UTF-8">
 <meta http-equiv="refresh" content="15">
 <title>KPI-ORC — Dashboard & Supervision</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" onerror="window._chartJsOk=false"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" async onerror="window._chartJsOk=false"></script>
 <script>window._chartJsOk=(typeof Chart!=='undefined');
 // ── Charts supervision : Canvas 2D pur (pas de CDN) ──
 function _drawDonut(canvas,values,colors){{
@@ -8868,7 +8868,9 @@ function showTab(name) {{
   }}, 1000);
 }})();
 
-try {{
+function _initDashboardCharts() {{
+  if (typeof Chart === 'undefined') return false;
+  try {{
 new Chart(document.getElementById('chartTRS'), {{
   type: 'bar',
   data: {{
@@ -8950,7 +8952,16 @@ new Chart(document.getElementById('chartParetoAll'), {{
   }}
 }});
 {pareto_poste_js}
-}} catch(e) {{ console.warn('Chart.js non disponible:', e.message); }}
+  }} catch(e) {{ console.warn('Chart.js error:', e.message); }}
+  return true;
+}}
+// Appel immédiat si Chart.js déjà chargé (cache), sinon polling 500ms max 15s
+if (!_initDashboardCharts()) {{
+  var _cjsPoll = setInterval(function() {{
+    if (_initDashboardCharts()) clearInterval(_cjsPoll);
+  }}, 500);
+  setTimeout(function() {{ clearInterval(_cjsPoll); }}, 15000);
+}}
 
 // ═══════════════ REVUE COMPLÈTE — données & logique ═══════════════
 const REV_DATA = {rev_data_js};
