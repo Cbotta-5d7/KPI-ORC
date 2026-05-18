@@ -1970,6 +1970,10 @@ class App:
                     ]
                 except Exception:
                     pass
+            try:
+                os.remove(PENDING_FILE)
+            except FileNotFoundError:
+                pass
             self._save_session()
             self.root.destroy()
 
