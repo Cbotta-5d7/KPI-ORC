@@ -8006,18 +8006,20 @@ new Chart(document.getElementById('gauge{i}'), {{
         if sup_of_start_dt:
             shift_start_tl = sup_of_start_dt
             now_s_tl = (datetime.datetime.now() - shift_start_tl).total_seconds()
-            # Timeline ligne unique : fond gris = poste, OF = vert, events = rouge/orange sur fond, curseur = bleu
-            tl_segs = []
-            RY, RH = 8, 26  # Rail Y origin, height
+            RY, RH = 8, 28  # Rail Y origin, height
+            # Sépare rects et labels pour que les labels soient TOUJOURS au-dessus
+            rects = []
+            labels = []
             # Fond du rail
-            tl_segs.append(f'<rect x="0" y="{RY}" width="100%" height="{RH}" fill="#e2e8f0" rx="4"/>')
-            # Graduations horaires (lignes pointillées + étiquettes)
+            rects.append(f'<rect x="0" y="{RY}" width="100%" height="{RH}" fill="#e2e8f0" rx="4"/>')
+            # Graduations horaires
             for h in range(9):
                 xp = h / 8 * 100
                 hh = (shift_start_tl.hour + h) % 24
-                tl_segs.append(f'<line x1="{xp:.1f}%" y1="{RY}" x2="{xp:.1f}%" y2="{RY+RH}" stroke="rgba(0,0,0,0.12)" stroke-width="1" stroke-dasharray="3,3"/>')
-                tl_segs.append(f'<text x="{xp:.1f}%" y="{RY+RH+14}" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">{hh:02d}h</text>')
-            # OF periods — pleine hauteur du rail
+                rects.append(f'<line x1="{xp:.1f}%" y1="{RY}" x2="{xp:.1f}%" y2="{RY+RH}" stroke="rgba(0,0,0,0.10)" stroke-width="1" stroke-dasharray="3,3"/>')
+                labels.append(f'<text x="{xp:.1f}%" y="{RY+RH+14}" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">{hh:02d}h</text>')
+            # OF periods — rects d'abord
+            cy = RY + RH // 2 + 4
             for op in of_periods:
                 try:
                     s_op = datetime.datetime.fromisoformat(op["start"])
@@ -8026,14 +8028,13 @@ new Chart(document.getElementById('gauge{i}'), {{
                     wp2 = min(100.0 - xp2, (e_op - s_op).total_seconds() / shift_total_s_tl * 100)
                     if wp2 <= 0: continue
                     col_op = "#16a34a" if op.get("end") else "#22c55e"
-                    of_lbl_tl = _esc(str(op.get("of_num") or "OF")[:12])
-                    tl_segs.append(f'<rect x="{xp2:.2f}%" y="{RY}" width="{wp2:.2f}%" height="{RH}" fill="{col_op}" rx="2" opacity="0.88"><title>{of_lbl_tl}</title></rect>')
-                    if wp2 > 3:
-                        cy = RY + RH // 2 + 4
-                        tl_segs.append(f'<text x="{(xp2+wp2/2):.2f}%" y="{cy}" text-anchor="middle" fill="white" font-size="10" font-weight="700">{of_lbl_tl[:10]}</text>')
+                    of_lbl_tl = _esc(str(op.get("of_num") or "OF")[:14])
+                    rects.append(f'<rect x="{xp2:.2f}%" y="{RY}" width="{wp2:.2f}%" height="{RH}" fill="{col_op}" rx="2"><title>{of_lbl_tl}</title></rect>')
+                    if wp2 > 2:
+                        labels.append(f'<text x="{(xp2+wp2/2):.2f}%" y="{cy}" text-anchor="middle" fill="white" font-size="11" font-weight="700" paint-order="stroke" stroke="rgba(0,80,0,0.5)" stroke-width="2">{of_lbl_tl[:12]}</text>')
                 except Exception:
                     pass
-            # Événements/arrêts — pleine hauteur, semi-transparent par-dessus les OF
+            # Événements/arrêts — rects par-dessus OF, labels toujours visibles
             for ev in sup_events:
                 try:
                     s_ev = datetime.datetime.fromisoformat(ev["start"])
@@ -8044,17 +8045,18 @@ new Chart(document.getElementById('gauge{i}'), {{
                     key_tl = ev.get("key", "")
                     col_tl = "#dc2626" if key_tl.startswith("pb_") else "#d97706"
                     lbl_tl = _esc(EVENT_LABELS.get(key_tl, key_tl)[:14])
-                    tl_segs.append(f'<rect x="{xp2:.2f}%" y="{RY}" width="{wp2:.2f}%" height="{RH}" fill="{col_tl}" rx="2" opacity="0.82"><title>{lbl_tl}</title></rect>')
-                    if wp2 > 3:
-                        cy = RY + RH // 2 + 4
-                        tl_segs.append(f'<text x="{(xp2+wp2/2):.2f}%" y="{cy}" text-anchor="middle" fill="white" font-size="9" font-weight="700">{lbl_tl[:10]}</text>')
+                    rects.append(f'<rect x="{xp2:.2f}%" y="{RY}" width="{wp2:.2f}%" height="{RH}" fill="{col_tl}" rx="2" opacity="0.90"><title>{lbl_tl}</title></rect>')
+                    if wp2 > 2:
+                        labels.append(f'<text x="{(xp2+wp2/2):.2f}%" y="{cy}" text-anchor="middle" fill="white" font-size="10" font-weight="700" paint-order="stroke" stroke="rgba(100,0,0,0.5)" stroke-width="2">{lbl_tl[:12]}</text>')
                 except Exception:
                     pass
-            # Curseur maintenant — ligne verticale + point
-            now_pct_tl = min(100.0, now_s_tl / shift_total_s_tl * 100)
-            tl_segs.append(f'<line x1="{now_pct_tl:.2f}%" y1="{RY-3}" x2="{now_pct_tl:.2f}%" y2="{RY+RH+3}" stroke="#2563eb" stroke-width="2.5"/>')
-            tl_segs.append(f'<circle cx="{now_pct_tl:.2f}%" cy="{RY-3}" r="4" fill="#2563eb"/>')
-            timeline_svg = f'<svg width="100%" height="{RY+RH+20}" style="overflow:visible;display:block">' + "".join(tl_segs) + '</svg>'
+            # Curseur "Maintenant" — toujours au premier plan
+            now_pct_tl = min(99.5, now_s_tl / shift_total_s_tl * 100)
+            labels.append(f'<line x1="{now_pct_tl:.2f}%" y1="{RY-4}" x2="{now_pct_tl:.2f}%" y2="{RY+RH+4}" stroke="#1d4ed8" stroke-width="2.5"/>')
+            labels.append(f'<circle cx="{now_pct_tl:.2f}%" cy="{RY+RH+4}" r="5" fill="#1d4ed8"/>')
+            labels.append(f'<text x="{now_pct_tl:.2f}%" y="{RY-6}" text-anchor="middle" fill="#1d4ed8" font-size="9" font-weight="700">&#9660; Maintenant</text>')
+            tl_all = rects + labels
+            timeline_svg = f'<svg width="100%" height="{RY+RH+24}" style="overflow:visible;display:block">' + "".join(tl_all) + '</svg>'
         else:
             timeline_svg = '<div style="text-align:center;color:#94a3b8;padding:18px;font-style:italic">Aucune session active</div>'
 
