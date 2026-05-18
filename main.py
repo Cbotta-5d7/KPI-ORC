@@ -7982,7 +7982,7 @@ new Chart(document.getElementById('gauge{i}'), {{
             if "nettoyage" in ll: return "#0284c7"
             if "pause" in ll: return "#2563eb"
             return "#7c3aed"
-        sup_par_labels = _json.dumps([x[0] for x in sup_par_sorted], ensure_ascii=False)
+        sup_par_labels = _js_safe(_json.dumps([x[0] for x in sup_par_sorted], ensure_ascii=False))
         sup_par_values = _json.dumps([round(x[1], 1) for x in sup_par_sorted])
         sup_par_colors = _json.dumps([_par_col(x[0]) for x in sup_par_sorted])
 
@@ -8160,14 +8160,14 @@ new Chart(document.getElementById('chartParetoPoste{i}'), {{
         hdr_bg   = sup_status_color if has_active_stop else sup_status_bg
         hdr_fg   = 'white' if has_active_stop else sup_status_color
 
-        # Compact product info cells
+        # Compact product info cells (hauteur réduite)
         def _inf(label, val, col='#1e3a5f'):
             empty = not val or val == '—'
             bg = '#f8fafc' if not empty else '#f1f5f9'
             vc = col if not empty else '#cbd5e1'
-            return (f'<div style="background:{bg};border:1px solid #e2e8f0;border-radius:6px;padding:5px 8px">'
-                    f'<div style="font-size:0.58em;color:#94a3b8;text-transform:uppercase">{label}</div>'
-                    f'<div style="font-weight:700;color:{vc};font-size:0.88em">{_esc(val or "—")}</div></div>')
+            return (f'<div style="background:{bg};border:1px solid #e2e8f0;border-radius:4px;padding:2px 5px">'
+                    f'<div style="font-size:0.50em;color:#94a3b8;text-transform:uppercase;line-height:1.1">{label}</div>'
+                    f'<div style="font-weight:700;color:{vc};font-size:0.78em;line-height:1.2">{_esc(val or "—")}</div></div>')
 
         prod_info_html = (
             _inf("Fibre", sup_fibre) +
@@ -8489,12 +8489,12 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
 <div id="supHdr" style="background:{hdr_bg};border:2px solid {sup_status_color};border-radius:10px;
   margin:8px 12px 6px;padding:7px 16px;display:flex;align-items:center;gap:14px;
   color:{hdr_fg};{hdr_anim}flex-wrap:nowrap;overflow:hidden;min-height:50px">
-  <span style="font-size:1.6em;flex-shrink:0">{sup_status_icon}</span>
-  <span style="font-size:0.72em;text-transform:uppercase;font-weight:800;letter-spacing:1px;white-space:nowrap;flex-shrink:0">{_esc(sup_status)}</span>
-  <span style="width:2px;height:24px;background:currentColor;opacity:0.3;flex-shrink:0"></span>
-  <span style="font-size:1.7em;font-weight:900;white-space:nowrap;flex-shrink:0">{_esc(sup_of_num)}</span>
-  <span style="width:2px;height:24px;background:currentColor;opacity:0.2;flex-shrink:0"></span>
-  <div style="font-size:0.8em;display:flex;gap:14px;flex-wrap:nowrap;overflow:hidden;white-space:nowrap">
+  <span style="font-size:1.8em;flex-shrink:0">{sup_status_icon}</span>
+  <span style="font-size:1.0em;text-transform:uppercase;font-weight:800;letter-spacing:1px;white-space:nowrap;flex-shrink:0">{_esc(sup_status)}</span>
+  <span style="width:2px;height:28px;background:currentColor;opacity:0.3;flex-shrink:0"></span>
+  <span style="font-size:2.0em;font-weight:900;white-space:nowrap;flex-shrink:0">{_esc(sup_of_num)}</span>
+  <span style="width:2px;height:28px;background:currentColor;opacity:0.2;flex-shrink:0"></span>
+  <div style="font-size:1.05em;display:flex;gap:16px;flex-wrap:nowrap;overflow:hidden;white-space:nowrap">
     <span>&#128203; <b>{_esc(sup_poste)}</b></span>
     <span>&#128100; <b>{_esc(sup_pilot)}</b>{'&nbsp;/&nbsp;' + _esc(sup_copilot) if sup_copilot not in ('—','') else ''}</span>
     <span>Taille: <b>{_esc(sup_taille)}</b></span>
@@ -8502,24 +8502,25 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <span style="color:{'white' if has_active_stop else '#16a34a'}">Code: <b>{_esc(sup_code)}</b></span>
     {f'<span>{_esc(sup_nb_pers)} pers.</span>' if sup_nb_pers not in ('—','') else ''}
   </div>
-  <span style="width:2px;height:24px;background:currentColor;opacity:0.2;flex-shrink:0"></span>
-  <span style="font-size:0.8em;white-space:nowrap;flex-shrink:0">Durée OF: <b>{sup_of_dur}</b></span>
-  <span style="font-size:0.8em;white-space:nowrap;flex-shrink:0">TRS: <b style="font-size:1.15em;color:{'white' if has_active_stop else sup_trs_color}">{_esc(sup_trs_display)}</b></span>
-  <span style="margin-left:auto;font-size:0.68em;opacity:0.7;white-space:nowrap;flex-shrink:0">{now_str}</span>
+  <span style="width:2px;height:28px;background:currentColor;opacity:0.2;flex-shrink:0"></span>
+  <span style="font-size:1.0em;white-space:nowrap;flex-shrink:0">Durée OF: <b>{sup_of_dur}</b></span>
+  <span style="font-size:1.0em;white-space:nowrap;flex-shrink:0">TRS: <b style="font-size:1.25em;color:{'white' if has_active_stop else sup_trs_color}">{_esc(sup_trs_display)}</b></span>
+  <span style="margin-left:auto;font-size:0.75em;opacity:0.7;white-space:nowrap;flex-shrink:0">{now_str}</span>
+</div>
+
+<!-- TIMELINE PLEINE LARGEUR -->
+<div class="sup-card" style="margin:0 12px 6px;padding:5px 12px">
+  <div style="font-size:0.65em;font-weight:700;color:#1e3a5f;text-transform:uppercase;margin-bottom:3px">
+    &#9654; Timeline 8h &nbsp;<span style="font-weight:400;color:#94a3b8">&#9632; OF &nbsp;<span style="color:#dc2626">&#9632;</span> Pannes &nbsp;<span style="color:#d97706">&#9632;</span> Ratt &nbsp;<span style="color:#2563eb">│</span> Maintenant</span>
+  </div>
+  {timeline_svg}
 </div>
 
 <!-- BODY 3 COLONNES -->
-<div style="display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px;padding:0 12px 8px;height:calc(100vh - 115px)">
+<div style="display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px;padding:0 12px 8px;height:calc(100vh - 195px)">
 
-  <!-- COL GAUCHE : Timeline + Détails produit + Arrêts -->
+  <!-- COL GAUCHE : Détails produit + Arrêts -->
   <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
-
-    <div class="sup-card" style="flex-shrink:0;padding:8px 12px">
-      <div style="font-size:0.65em;font-weight:700;color:#1e3a5f;text-transform:uppercase;margin-bottom:4px">
-        &#9654; Timeline 8h &nbsp;<span style="font-weight:400;color:#94a3b8">&#9632; OF &nbsp;<span style="color:#dc2626">&#9632;</span> Pannes &nbsp;<span style="color:#d97706">&#9632;</span> Ratt &nbsp;<span style="color:#2563eb">│</span> Maintenant</span>
-      </div>
-      {timeline_svg}
-    </div>
 
     <div class="sup-card" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
       <div class="sup-card-hdr">&#128203; D&eacute;tails produit</div>
@@ -8559,7 +8560,7 @@ tbody td {{ padding: 7px 10px; border-bottom: 1px solid #f1f5f9; white-space: no
     <div class="sup-card" style="flex-shrink:0">
       <div class="sup-card-hdr">&#9685; R&eacute;partition du poste (min)</div>
       <div style="padding:8px;display:flex;align-items:center;gap:10px">
-        <canvas id="supPieChart" width="100" height="100" style="flex-shrink:0"></canvas>
+        <canvas id="supPieChart" width="120" height="120" style="flex-shrink:0;width:120px;height:120px"></canvas>
         <div style="font-size:0.74em;display:flex;flex-direction:column;gap:4px">
           <div><span style="display:inline-block;width:10px;height:10px;background:#16a34a;border-radius:2px;margin-right:5px"></span>Production d&eacute;clar&eacute;e</div>
           <div><span style="display:inline-block;width:10px;height:10px;background:#dc2626;border-radius:2px;margin-right:5px"></span>Arr&ecirc;ts</div>
@@ -9491,6 +9492,7 @@ document.getElementById('ofDetailModal').addEventListener('click', function(e) {
         datasets: [{{ data: {pie_values}, backgroundColor: ['#16a34a','#dc2626','#e2e8f0'], borderWidth: 2, borderColor: 'white' }}]
       }},
       options: {{
+        responsive: false,
         cutout: '65%',
         plugins: {{
           legend: {{ display: false }},
