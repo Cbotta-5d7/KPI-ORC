@@ -4046,6 +4046,9 @@ Arrêts imputés au TRS (temps perdu) :
         pw, ph = min(960, sw - 40), min(800, sh - 80)
         self._center_on_root(top, pw, ph)
         top.minsize(760, 500)
+        # Bloquer l'auto-retour production pendant que la fenêtre est ouverte
+        self._modal_open = True
+        top.bind("<Destroy>", lambda e: setattr(self, "_modal_open", False) if e.widget is top else None)
 
         # Boutons toujours visibles en bas (créés AVANT le notebook)
         btm = tk.Frame(top, bg=BG)
@@ -4072,21 +4075,35 @@ Arrêts imputés au TRS (temps perdu) :
         canv1.bind_all("<MouseWheel>",
                        lambda e: canv1.yview_scroll(-1*(e.delta//120), "units"))
 
+        # Colonnes gérées automatiquement via onglet Événements — non éditables manuellement
+        # Rattrapages : 33-37, Pannes/PB : 38-55 (index 0-based)
+        _STOP_COLS = set(range(33, 56))
+
         field_vars = []
         for i, hdr in enumerate(DATA_HEADERS):
             val = row_data[i] if i < len(row_data) else None
             row_f = tk.Frame(inner1, bg=WHITE)
             row_f.pack(fill="x", padx=12, pady=2)
             row_f.columnconfigure(1, weight=1)
-            tk.Label(row_f, text=hdr, bg=WHITE, fg=GRAY,
+            is_stop = i in _STOP_COLS
+            lbl_col = "#b0b0b0" if is_stop else GRAY
+            tk.Label(row_f, text=hdr, bg=WHITE, fg=lbl_col,
                      font=("Arial", 9), width=24, anchor="w").grid(
                 row=0, column=0, sticky="w")
             var = tk.StringVar(value=str(val) if val is not None else "")
-            e = tk.Entry(row_f, textvariable=var, bg="#f8f9fa", fg=DARK,
-                         font=("Arial", 10), relief="flat", bd=1,
-                         state="readonly", readonlybackground="#f8f9fa",
-                         disabledforeground=DARK)
+            if is_stop:
+                # Calculé automatiquement depuis les événements
+                e = tk.Entry(row_f, textvariable=var, bg="#f3f4f6", fg="#b0b0b0",
+                             font=("Arial", 10), relief="flat", bd=1,
+                             state="readonly", readonlybackground="#f3f4f6")
+            else:
+                e = tk.Entry(row_f, textvariable=var, bg="white", fg=DARK,
+                             font=("Arial", 10), relief="solid", bd=1,
+                             insertbackground=DARK)
             e.grid(row=0, column=1, sticky="ew", ipady=2, padx=(6, 0))
+            if is_stop:
+                tk.Label(row_f, text="auto", bg=WHITE, fg="#b0b0b0",
+                         font=("Arial", 7, "italic")).grid(row=0, column=2, padx=(4, 0))
             field_vars.append(var)
 
         # ── Tab 2 : Evenements ────────────────────────────────────────────────
