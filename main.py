@@ -1612,47 +1612,52 @@ class App:
 
     def _show_login_overlay(self, on_success=None):
         """Overlay plein écran de connexion pilote."""
-        ov = tk.Frame(self.root, bg=BG)
+        ov = tk.Frame(self.root, bg="#0d1b2a")
         ov.place(relx=0, rely=0, relwidth=1, relheight=1)
         ov.lift()
 
-        tk.Frame(ov, bg=GREEN, height=6).pack(fill="x")
-        tk.Label(ov, text="KPI-ORC", bg=BG, fg=NAVY,
-                 font=("Arial", 28, "bold")).pack(pady=(40, 4))
-        tk.Label(ov, text="Connexion Pilote", bg=BG, fg=GRAY,
-                 font=("Arial", 14)).pack(pady=(0, 32))
+        # Logo centré en haut
+        tk.Frame(ov, bg=GREEN, height=5).pack(fill="x")
+        tk.Label(ov, text="KPI-ORC", bg="#0d1b2a", fg=WHITE,
+                 font=("Arial", 30, "bold")).pack(pady=(30, 2))
+        tk.Label(ov, text="Connexion Pilote", bg="#0d1b2a", fg="#93c5fd",
+                 font=("Arial", 13)).pack(pady=(0, 16))
+
+        # Carte centrale — centrée horizontalement et verticalement
+        # Spacer haut
+        tk.Frame(ov, bg="#0d1b2a").pack(expand=True, fill="both")
 
         card = tk.Frame(ov, bg=WHITE, bd=0)
-        card.pack(padx=80, pady=0, fill="x")
-        tk.Frame(card, bg=GREEN, height=4).pack(fill="x")
+        card.pack(ipadx=0, ipady=0)
+        card.pack_propagate(False)
+        card.configure(width=460)
 
-        # Layout : left = form, right = horaires display
-        card_body = tk.Frame(card, bg=WHITE)
-        card_body.pack(fill="x")
-        card_body.columnconfigure(0, weight=3)
-        card_body.columnconfigure(1, weight=2)
+        tk.Frame(card, bg=GREEN, height=5).pack(fill="x")
 
-        inner = tk.Frame(card_body, bg=WHITE)
-        inner.grid(row=0, column=0, sticky="nsew", padx=(40, 20), pady=30)
+        inner = tk.Frame(card, bg=WHITE)
+        inner.pack(fill="x", padx=36, pady=24)
 
-        # Panel droite : affichage des horaires du modèle sélectionné
-        horaire_panel = tk.Frame(card_body, bg="#f0f9ff", bd=0)
-        horaire_panel.grid(row=0, column=1, sticky="nsew", padx=(0, 30), pady=30)
-        tk.Label(horaire_panel, text="Horaires du modèle", bg="#f0f9ff", fg=NAVY,
-                 font=("Arial", 10, "bold")).pack(anchor="w", padx=12, pady=(14, 6))
-        horaire_labels = {}  # poste_key -> Label
+        # Panel horaires — bande bleue compacte en bas de la carte
+        horaire_panel = tk.Frame(card, bg="#e0f2fe")
+        horaire_panel.pack(fill="x")
+        _hor_row = tk.Frame(horaire_panel, bg="#e0f2fe")
+        _hor_row.pack(fill="x", padx=14, pady=6)
+        tk.Label(_hor_row, text="Horaires :", bg="#e0f2fe", fg="#0369a1",
+                 font=("Arial", 9, "bold")).pack(side="left", padx=(0, 8))
+        horaire_labels = {}
         _poste_keys = [
             ("Matin", 12), ("Midi", 13), ("Nuit", 14), ("Jour", 15)
         ]
         for pk, ci in _poste_keys:
-            row_f = tk.Frame(horaire_panel, bg="#f0f9ff")
-            row_f.pack(fill="x", padx=12, pady=2)
-            tk.Label(row_f, text=f"{pk} :", bg="#f0f9ff", fg=GRAY,
-                     font=("Arial", 9), width=6, anchor="w").pack(side="left")
-            lbl = tk.Label(row_f, text="—", bg="#f0f9ff", fg=DARK,
-                           font=("Arial", 11, "bold"))
-            lbl.pack(side="left", padx=(4, 0))
+            tk.Label(_hor_row, text=f"{pk}:", bg="#e0f2fe", fg="#0369a1",
+                     font=("Arial", 9)).pack(side="left", padx=(6, 1))
+            lbl = tk.Label(_hor_row, text="—", bg="#e0f2fe", fg=DARK,
+                           font=("Arial", 9, "bold"))
+            lbl.pack(side="left", padx=(0, 4))
             horaire_labels[ci] = lbl
+
+        # Spacer bas
+        tk.Frame(ov, bg="#0d1b2a").pack(expand=True, fill="both")
 
         # Modèles horaires depuis la config (Paramètres → Modèles Horaires)
         _cfg_modeles = self.cfg.get("modeles_horaires", [])
@@ -1756,74 +1761,58 @@ class App:
                           relief="flat", padx=10, pady=6, cursor="hand2").pack(side="left")
             self._ask_supervisor_pw(_do_modifier, title="Mot de passe encadrant")
 
-        tk.Label(inner, text="Nom du pilote", bg=WHITE, fg=GRAY,
-                 font=("Arial", 11)).pack(anchor="w")
+        def _fld(label_txt, var, values, title):
+            tk.Label(inner, text=label_txt, bg=WHITE, fg="#374151",
+                     font=("Arial", 10, "bold")).pack(anchor="w", pady=(8, 1))
+            _txt = tk.StringVar(value=var.get() or "— choisir —")
+            def _sync(*a): _txt.set(var.get() or "— choisir —")
+            var.trace_add("write", _sync)
+            btn = tk.Button(inner, textvariable=_txt, font=("Arial", 13),
+                      bg="#f8fafc", fg=DARK, relief="solid", bd=1, anchor="w",
+                      cursor="hand2", pady=7,
+                      command=lambda v=var, vs=values, t=title:
+                          self._show_picker_popup(v, vs, t))
+            btn.pack(fill="x")
+            return btn
+
         pilot_var = tk.StringVar()
         pilots = self._get_list("Pilotes")
         if pilots:
             pilot_var.set(pilots[0])
-        _pilot_btn_txt = tk.StringVar(value=pilot_var.get() or "— choisir —")
-        def _sync_pilot(*a): _pilot_btn_txt.set(pilot_var.get() or "— choisir —")
-        pilot_var.trace_add("write", _sync_pilot)
-        tk.Button(inner, textvariable=_pilot_btn_txt, font=("Arial", 14),
-                  bg=WHITE, fg=DARK, relief="solid", bd=1, anchor="w",
-                  cursor="hand2", pady=8,
-                  command=lambda: self._show_picker_popup(pilot_var, pilots, "Nom du pilote")
-                  ).pack(fill="x", pady=(4, 12))
+        _pilot_btn = _fld("Nom du pilote", pilot_var, pilots, "Nom du pilote")
 
-        tk.Label(inner, text="Poste", bg=WHITE, fg=GRAY,
-                 font=("Arial", 11)).pack(anchor="w")
         poste_var = tk.StringVar()
         postes_list = self._get_list("Postes")
         _last_poste = self._logged_in_poste or (postes_list[0] if postes_list else "")
         if _last_poste:
             poste_var.set(_last_poste)
-        _poste_btn_txt = tk.StringVar(value=poste_var.get() or "— choisir —")
-        def _sync_poste(*a): _poste_btn_txt.set(poste_var.get() or "— choisir —")
-        poste_var.trace_add("write", _sync_poste)
-        tk.Button(inner, textvariable=_poste_btn_txt, font=("Arial", 14),
-                  bg=WHITE, fg=DARK, relief="solid", bd=1, anchor="w",
-                  cursor="hand2", pady=8,
-                  command=lambda: self._show_picker_popup(poste_var, postes_list, "Poste")
-                  ).pack(fill="x", pady=(4, 12))
+        _fld("Poste", poste_var, postes_list, "Poste")
 
         if modeles_list:
-            tk.Label(inner, text="Modèle horaire", bg=WHITE, fg=GRAY,
-                     font=("Arial", 11)).pack(anchor="w")
-            if modeles_list:
-                modele_var.set(modeles_list[0])
-            _mod_btn_txt = tk.StringVar(value=modele_var.get() or "— choisir —")
-            def _sync_modele(*a):
-                _mod_btn_txt.set(modele_var.get() or "— choisir —")
-                _update_horaire_display()
+            modele_var.set(modeles_list[0])
+            def _sync_modele(*a): _update_horaire_display()
             modele_var.trace_add("write", _sync_modele)
-            tk.Button(inner, textvariable=_mod_btn_txt, font=("Arial", 14),
-                      bg=WHITE, fg=DARK, relief="solid", bd=1, anchor="w",
-                      cursor="hand2", pady=8,
-                      command=lambda: self._show_picker_popup(modele_var, modeles_list, "Modèle horaire")
-                      ).pack(fill="x", pady=(4, 4))
+            _fld("Modèle horaire", modele_var, modeles_list, "Modèle horaire")
             _update_horaire_display()
-
-            mod_btn = tk.Button(inner, text="✎  Modifier (encadrant)",
-                                command=_modifier_modele,
-                                bg="#e0f2fe", fg="#0369a1",
-                                font=("Arial", 12, "bold"), relief="flat",
-                                cursor="hand2", pady=6)
-            mod_btn.pack(anchor="e", pady=(0, 10))
+            tk.Button(inner, text="✎  Modifier le modèle (encadrant)",
+                      command=_modifier_modele,
+                      bg="#e0f2fe", fg="#0369a1",
+                      font=("Arial", 10, "bold"), relief="flat",
+                      cursor="hand2", pady=4).pack(anchor="e", pady=(2, 4))
         else:
             modele_var = None
 
         passwords = self._get_list("Mots de passe pilote") or self._get_list("Mots de passe")
         need_pw = bool(passwords)
+        pw_e = None
 
         if need_pw:
-            tk.Label(inner, text="Mot de passe", bg=WHITE, fg=GRAY,
-                     font=("Arial", 11)).pack(anchor="w")
+            tk.Label(inner, text="Mot de passe", bg=WHITE, fg="#374151",
+                     font=("Arial", 10, "bold")).pack(anchor="w", pady=(8, 1))
             pw_var = tk.StringVar()
             pw_e = tk.Entry(inner, textvariable=pw_var, show="*",
-                            font=("Arial", 14), width=28,
-                            relief="solid", bd=1)
-            pw_e.pack(fill="x", pady=(4, 16))
+                            font=("Arial", 13), relief="solid", bd=1)
+            pw_e.pack(fill="x", pady=(0, 4))
         else:
             pw_var = None
 
@@ -1892,13 +1881,15 @@ class App:
             else:
                 self._show_main()
 
-        tk.Button(inner, text="✔   SE CONNECTER", command=_connect,
+        conn_btn = tk.Button(inner, text="✔   SE CONNECTER", command=_connect,
                   bg=GREEN, fg=WHITE, font=("Arial", 14, "bold"),
-                  relief="flat", pady=12, cursor="hand2").pack(fill="x", pady=(8, 0))
-        if need_pw:
+                  relief="flat", pady=12, cursor="hand2")
+        conn_btn.pack(fill="x", pady=(10, 0))
+        if pw_e:
             pw_e.bind("<Return>", _connect)
-        cb.bind("<Return>", _connect)
-        cb.focus()
+            pw_e.focus()
+        else:
+            _pilot_btn.focus()
 
         # Bouton discret chargement fichier Excel
         def _pick_excel():
@@ -1915,20 +1906,19 @@ class App:
             self._load_history_from_excel()
             # Rafraîchir la liste des pilotes
             pilots2 = self._get_list("Pilotes")
-            cb.config(values=pilots2)
             if pilots2:
-                cb.set(pilots2[0])
+                pilot_var.set(pilots2[0])
             name = os.path.basename(p)
             db_lbl.config(text=f"📂  {name}")
 
         db_current = self.cfg.get("db_path", "")
         db_name    = os.path.basename(db_current) if db_current else "Aucun fichier chargé"
-        db_lbl = tk.Label(ov, text=f"📂  {db_name}", bg=BG, fg=GRAY,
+        db_lbl = tk.Label(ov, text=f"📂  {db_name}", bg="#0d1b2a", fg="#64748b",
                           font=("Arial", 9), cursor="hand2")
-        db_lbl.pack(pady=(14, 0))
+        db_lbl.pack(pady=(8, 2))
         db_lbl.bind("<Button-1>", lambda e: _pick_excel())
         tk.Label(ov, text="Cliquer pour changer de fichier",
-                 bg=BG, fg=LGRAY, font=("Arial", 8)).pack()
+                 bg="#0d1b2a", fg="#374151", font=("Arial", 8)).pack(pady=(0, 10))
 
     def _maybe_show_login(self):
         if not self._logged_in_pilot:
@@ -3155,18 +3145,15 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                         _f.configure(bg=alarm_col)
                     except Exception:
                         pass
-                # Mise à jour du bandeau d'alarme
-                _banner = getattr(self, "_alarm_banner", None)
-                if _banner:
+                # Bandeau alarme du haut (alarm_bar) : visible + coloré
+                _abar = getattr(self, "_alarm_bar_ref", None)
+                if _abar:
                     try:
-                        _banner.configure(bg=alarm_col)
-                        for _c in _banner.winfo_children():
-                            try:
-                                _c.configure(bg=alarm_col)
-                            except Exception:
-                                pass
+                        _abar.configure(height=8, bg=alarm_col)
                     except Exception:
                         pass
+                # NOTE: _alarm_banner n'est plus utilisé pour le bandeau bas
+                # (le bas ne clignote plus — les cartes individuelles clignotent)
             elif _alarm_was:
                 # Alarme terminée → redessiner proprement
                 self.root.after(0, self._show_production
@@ -3240,11 +3227,11 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             self._transition(self._nav_to_production)
             return
 
-        # Blink dot onglet production
+        # Blink dot dashboard prod en cours — vert clignotant
         if self._mode == "main" and self._prod_active:
             self._blink_state = not self._blink_state
             try:
-                self._blink_dot.config(fg=C_RED if self._blink_state else NAVY_L)
+                self._blink_dot.config(fg=GREEN if self._blink_state else "#166534")
             except Exception:
                 pass
 
@@ -3694,11 +3681,15 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             dot_row = tk.Frame(prod_inner, bg=NAVY)
             dot_row.pack(fill="x", padx=14, pady=(12, 2))
             self._blink_dot = tk.Label(dot_row, text="●", bg=NAVY,
-                                       fg=C_RED, font=("Arial", 16))
+                                       fg=GREEN, font=("Arial", 16), cursor="hand2")
             self._blink_dot.pack(side="left", padx=(0, 6))
-            tk.Label(dot_row, text="EN COURS",
-                     bg=NAVY, fg=WHITE,
-                     font=("Arial", 13, "bold")).pack(side="left")
+            lbl_enc = tk.Label(dot_row, text="EN COURS",
+                     bg=NAVY, fg=WHITE, cursor="hand2",
+                     font=("Arial", 13, "bold"))
+            lbl_enc.pack(side="left")
+            # Cliquer sur le panneau → aller à la vue production
+            for _w in (self._blink_dot, lbl_enc, dot_row, prod_inner, prod_wrap):
+                _w.bind("<Button-1>", lambda e: self._nav_to_production())
 
             debut_str2 = self._of_start.strftime('%H:%M:%S') if self._of_start else "--:--:--"
             tk.Label(prod_inner, text=f"Début : {debut_str2}",
@@ -5210,7 +5201,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         outer.pack(fill="both", expand=True)
         self._outer_frame = outer
         self._alarm_frames = [outer]
-        self._alarm_bg_frames = [outer]
+        self._alarm_bg_frames = []   # pas de clignotement fond entier
         self._alarm_banner = None
         self._alarm_exempt = set()
 
@@ -5294,7 +5285,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         stop_banner.place_configure(relx=0, rely=1.0, relwidth=1.0, height=110, anchor="sw")
         stop_banner.place_forget()   # masqué initialement
         self._active_stops_container = stop_banner
-        self._alarm_banner = stop_banner  # blink le bandeau, pas le fond
+        # stop_banner ne clignote plus — les cartes individuelles clignotent
         self._refresh_active_stops()
         self._build_stops_recap(recap_panel)
 
@@ -5963,7 +5954,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             if not ev_info:
                 continue
             label, _, cat = ev_info
-            color = C_NETT if cat == "nettoyage" else (C_RATT if cat == "ratt" else C_RED)
+            color = C_RED  # tous les arrêts en rouge uniforme
             type_lbl = ("Nettoyage" if cat == "nettoyage" else
                         ("Organisationnel" if key == "arret_reunion" else
                         ("Problème matière" if key == "arret_mp" else
@@ -5978,24 +5969,27 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             elapsed_str = [fmt(int(elapsed))]
             pressed_state = [False]
 
-            def _draw_card(e=None, k=key, c=color, tl=type_lbl, lb=label,
-                           es=elapsed_str, cv_ref=cv, ps=pressed_state, ca=cat):
+            def _draw_card(e=None, k=key, tl=type_lbl, lb=label,
+                           es=elapsed_str, cv_ref=cv, ps=pressed_state, app=self):
                 cv_ref.delete("all")
                 bw = cv_ref.winfo_width()
                 bh = cv_ref.winfo_height()
                 if bw < 10 or bh < 10:
                     return
-                face = _off(c, -30) if ps[0] else c
-                ox, oy = (2, 2) if ps[0] else (0, 0)  # pressed offset
+                # Clignotement rouge sur les cartes (alternance toutes les secondes)
+                c = "#991b1b" if getattr(app, "_cell_blink", False) else C_RED
+                if ps[0]:
+                    c = _off(C_RED, -40)  # assombri si pressé
+                ox, oy = (2, 2) if ps[0] else (0, 0)
                 # Shadow (plain rect)
-                cv_ref.create_rectangle(3+ox, 4+oy, bw-1, bh, fill=_off(c, -60), outline="")
+                cv_ref.create_rectangle(3+ox, 4+oy, bw-1, bh, fill=_off(c, -50), outline="")
                 # Face (plain rect)
-                cv_ref.create_rectangle(ox, oy, bw-4+ox, bh-4+oy, fill=face, outline="")
+                cv_ref.create_rectangle(ox, oy, bw-4+ox, bh-4+oy, fill=c, outline="")
                 # Highlight stripe at top
                 cv_ref.create_rectangle(ox+1, oy+1, bw-5+ox, (bh-4)//3+oy,
                                         fill=_off(c, +40), outline="")
                 # — Left column: "ARRÊT EN COURS" + type + name
-                lx = bw // 4  # center of left half
+                lx = bw // 4
                 cv_ref.create_text(lx+ox, 8+oy, text="ARRÊT EN COURS",
                                    fill="#ffe066", font=("Arial", 9, "bold"), anchor="n")
                 cv_ref.create_text(lx+ox, 26+oy, text=tl.upper(),
@@ -6007,7 +6001,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 cv_ref.create_line(bw//2+ox, 6+oy, bw//2+ox, bh-6+oy,
                                    fill=_off(c, -20), width=1)
                 # — Right column: timer + big ARRÊTER button
-                rx = bw*3//4  # center of right half
+                rx = bw*3//4
                 cv_ref.create_text(rx+ox, bh//2-24+oy, text=es[0],
                                    fill=WHITE, font=("Arial", 17, "bold"), anchor="center")
                 # ARRÊTER button box
@@ -6015,11 +6009,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 btn_y2 = bh-5+oy
                 btn_x1 = bw//2+6+ox
                 btn_x2 = bw-5+ox
-                btn_bg = _off(c, -50) if ps[0] else "#c0392b"
-                if ca == "nettoyage":
-                    btn_bg = _off(c, -50) if ps[0] else "#16a085"
-                elif ca == "ratt":
-                    btn_bg = _off(c, -50) if ps[0] else "#7f4f00"
+                btn_bg = _off(c, -50) if ps[0] else "#7f1d1d"
                 cv_ref.create_rectangle(btn_x1, btn_y1, btn_x2, btn_y2,
                                         fill=btn_bg, outline=WHITE, width=1)
                 cv_ref.create_text((btn_x1+btn_x2)//2, (btn_y1+btn_y2)//2,
@@ -6232,7 +6222,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 tk.Button(row, text="✏", bg=LGRAY, fg=DARK, font=("Arial", 18),
                           relief="flat", cursor="hand2", padx=4,
                           command=_edit).pack(side="left", padx=2)
-                tk.Button(row, text="🗑", bg="#fee2e2", fg="#dc2626", font=("Arial", 9),
+                tk.Button(row, text="🗑", bg="#fee2e2", fg="#dc2626", font=("Arial", 14),
                           relief="flat", cursor="hand2", padx=4,
                           command=_delete).pack(side="left", padx=2)
 
@@ -7377,6 +7367,22 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         """Affiche le récapitulatif complet du poste en cours."""
         if not self._logged_in_pilot:
             messagebox.showwarning("Accès refusé", "Aucun pilote connecté.\nConnectez-vous avant de déclarer une fin de poste.")
+            return
+        if self._prod_active:
+            # Popup centré : impossible de clôturer tant qu'une prod est active
+            _dlg = tk.Toplevel(self.root)
+            _dlg.overrideredirect(True)
+            _dlg.attributes("-topmost", True)
+            self._center_on_root(_dlg, 420, 200)
+            _dlg.configure(bg=WHITE)
+            tk.Frame(_dlg, bg=C_RED, height=6).pack(fill="x")
+            tk.Label(_dlg, text="⚠  Production en cours",
+                     bg=WHITE, fg=C_RED, font=("Arial", 14, "bold")).pack(pady=(20, 6))
+            tk.Label(_dlg, text="Veuillez clôturer la production\navant de déclarer la fin de poste.",
+                     bg=WHITE, fg=DARK, font=("Arial", 11), justify="center").pack(pady=(0, 16))
+            tk.Button(_dlg, text="OK", command=_dlg.destroy,
+                      bg=C_RED, fg=WHITE, font=("Arial", 12, "bold"),
+                      relief="flat", padx=24, pady=8, cursor="hand2").pack(pady=(0, 16))
             return
         now = datetime.datetime.now()
 
