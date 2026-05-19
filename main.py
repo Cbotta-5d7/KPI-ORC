@@ -782,6 +782,10 @@ class App:
         self._logged_in_pilot  = None   # Pilote actuellement connecté
         self._logged_in_poste  = None   # Poste choisi à la connexion
         self._login_time       = None   # Heure de connexion (pour postes de nuit)
+        self._logged_in_modele = None   # Modèle horaire sélectionné à la connexion
+        self._logged_in_duree_horaire_min = None  # Durée calculée depuis l'horaire
+        self._schedule_col_data = {}    # {col_index: [values]} pour colonnes L/M/N/O
+        self._schedule_col_headers = {} # {col_index: header_name}
         self._inter_of_s       = 0      # Durée inter-OF (changement de série)
         self._of_count_this_shift = 0   # Nb déclarations complétées ce poste
         self._data_rows_cache  = []
@@ -936,6 +940,26 @@ class App:
             pass
 
     # ── Config ────────────────────────────────────────────────────────────────
+    def _parse_horaire_duration(self, s):
+        """Parse '8h-16h' or '22h-6h' → duration in minutes."""
+        try:
+            s = str(s).strip().lower().replace(" ", "")
+            parts = s.split("-")
+            if len(parts) != 2:
+                return None
+            def to_min(x):
+                if "h" in x:
+                    h, _, m = x.partition("h")
+                    return int(h) * 60 + (int(m) if m else 0)
+                return int(x) * 60
+            start_m = to_min(parts[0])
+            end_m   = to_min(parts[1])
+            if end_m <= start_m:
+                end_m += 24 * 60
+            return end_m - start_m
+        except Exception:
+            return None
+
     def _load_lists(self):
         path = self.cfg.get("db_path", "")
         if not path or not os.path.exists(path):
@@ -953,6 +977,19 @@ class App:
                 for ci, val in enumerate(row, 1):
                     if ci in headers and val is not None:
                         self.lists[headers[ci]].append(str(val))
+            # Store schedule columns L/M/N/O (12-15) by index for horaire lookup
+            self._schedule_col_data = {}
+            for ci_sched in (12, 13, 14, 15):
+                col_vals = []
+                for row in rows_listes:
+                    if len(row) >= ci_sched:
+                        v = row[ci_sched - 1]
+                        col_vals.append(str(v) if v is not None else "")
+                    else:
+                        col_vals.append("")
+                self._schedule_col_data[ci_sched] = col_vals
+            # Schedule column headers (for display labels)
+            self._schedule_col_headers = {ci: headers.get(ci, "") for ci in (12, 13, 14, 15)}
             # Prod de référence : même valeur pour tous les postes — première cellule non nulle de col I
             try:
                 for row_ix in ws.iter_rows(min_row=2, min_col=9, max_col=9, values_only=True):
@@ -1493,6 +1530,50 @@ class App:
         except Exception:
             pass
 
+    def _ask_supervisor_pw(self, on_success, title="Mot de passe encadrant"):
+        """Popup de vérification du mot de passe encadrant."""
+        sv_pws = self._get_list("Mot de passe encadrant") or self._get_list("Mots de passe encadrant")
+        cfg_pw = str(self.cfg.get("supervisor_pw", ""))
+        valid_pws = [str(p) for p in sv_pws] if sv_pws else ([cfg_pw] if cfg_pw else [])
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title(title)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.attributes("-topmost", True)
+        self._center_on_root(dlg, 360, 200)
+        dlg.configure(bg=WHITE)
+
+        tk.Label(dlg, text=title, bg=WHITE, fg=NAVY,
+                 font=("Arial", 12, "bold")).pack(pady=(20, 10))
+        pw_v  = tk.StringVar()
+        err_l = tk.Label(dlg, text="", bg=WHITE, fg=C_RED, font=("Arial", 10))
+
+        def _check():
+            pw = pw_v.get()
+            if not valid_pws or pw in valid_pws:
+                dlg.destroy()
+                on_success()
+            else:
+                err_l.config(text="Mot de passe incorrect.")
+                pw_v.set("")
+
+        e = tk.Entry(dlg, textvariable=pw_v, show="*", font=("Arial", 13),
+                     relief="solid", bd=1, width=22, justify="center")
+        e.pack(pady=(0, 4), padx=30)
+        e.focus()
+        err_l.pack()
+        e.bind("<Return>", lambda _: _check())
+
+        btnf = tk.Frame(dlg, bg=WHITE)
+        btnf.pack(pady=8)
+        tk.Button(btnf, text="✔  OK", command=_check,
+                  bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
+                  relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left", padx=4)
+        tk.Button(btnf, text="Annuler", command=dlg.destroy,
+                  bg=LGRAY, fg=DARK, font=("Arial", 10),
+                  relief="flat", padx=10, pady=6, cursor="hand2").pack(side="left")
+
     def _show_login_overlay(self, on_success=None):
         """Overlay plein écran de connexion pilote."""
         ov = tk.Frame(self.root, bg=BG)
@@ -1506,10 +1587,85 @@ class App:
                  font=("Arial", 14)).pack(pady=(0, 32))
 
         card = tk.Frame(ov, bg=WHITE, bd=0)
-        card.pack(padx=120, pady=0, fill="x")
+        card.pack(padx=80, pady=0, fill="x")
         tk.Frame(card, bg=GREEN, height=4).pack(fill="x")
-        inner = tk.Frame(card, bg=WHITE)
-        inner.pack(padx=40, pady=30, fill="x")
+
+        # Layout : left = form, right = horaires display
+        card_body = tk.Frame(card, bg=WHITE)
+        card_body.pack(fill="x")
+        card_body.columnconfigure(0, weight=3)
+        card_body.columnconfigure(1, weight=2)
+
+        inner = tk.Frame(card_body, bg=WHITE)
+        inner.grid(row=0, column=0, sticky="nsew", padx=(40, 20), pady=30)
+
+        # Panel droite : affichage des horaires du modèle sélectionné
+        horaire_panel = tk.Frame(card_body, bg="#f0f9ff", bd=0)
+        horaire_panel.grid(row=0, column=1, sticky="nsew", padx=(0, 30), pady=30)
+        tk.Label(horaire_panel, text="Horaires du modèle", bg="#f0f9ff", fg=NAVY,
+                 font=("Arial", 10, "bold")).pack(anchor="w", padx=12, pady=(14, 6))
+        horaire_labels = {}  # poste_key -> Label
+        _poste_keys = [
+            ("Matin", 12), ("Midi", 13), ("Nuit", 14), ("Jour", 15)
+        ]
+        for pk, ci in _poste_keys:
+            row_f = tk.Frame(horaire_panel, bg="#f0f9ff")
+            row_f.pack(fill="x", padx=12, pady=2)
+            tk.Label(row_f, text=f"{pk} :", bg="#f0f9ff", fg=GRAY,
+                     font=("Arial", 9), width=6, anchor="w").pack(side="left")
+            lbl = tk.Label(row_f, text="—", bg="#f0f9ff", fg=DARK,
+                           font=("Arial", 11, "bold"))
+            lbl.pack(side="left", padx=(4, 0))
+            horaire_labels[ci] = lbl
+
+        # Modèles horaires disponibles
+        modeles_list = self._get_list("Modèle horaire")
+        modele_var = tk.StringVar()
+
+        def _update_horaire_display(*_):
+            mod = modele_var.get()
+            if not mod or not modeles_list:
+                for lbl in horaire_labels.values():
+                    lbl.config(text="—")
+                return
+            try:
+                idx = modeles_list.index(mod)
+            except ValueError:
+                idx = 0
+            for ci, lbl in horaire_labels.items():
+                vals = self._schedule_col_data.get(ci, [])
+                text = vals[idx] if idx < len(vals) else "—"
+                lbl.config(text=text if text else "—")
+
+        def _modifier_modele():
+            def _do_modifier():
+                # Ouvrir un dialog de sélection de modèle
+                dlg2 = tk.Toplevel(self.root)
+                dlg2.title("Modifier le modèle horaire")
+                dlg2.resizable(False, False)
+                dlg2.grab_set()
+                dlg2.attributes("-topmost", True)
+                self._center_on_root(dlg2, 400, 220)
+                dlg2.configure(bg=WHITE)
+                tk.Label(dlg2, text="Choisir un modèle horaire :", bg=WHITE, fg=NAVY,
+                         font=("Arial", 12, "bold")).pack(pady=(20, 8))
+                sel_v = tk.StringVar(value=modele_var.get())
+                cb_m = ttk.Combobox(dlg2, textvariable=sel_v, values=modeles_list,
+                                    font=("Arial", 13), state="readonly", width=22)
+                cb_m.pack(pady=(0, 12))
+                def _apply():
+                    modele_var.set(sel_v.get())
+                    _update_horaire_display()
+                    dlg2.destroy()
+                btnf2 = tk.Frame(dlg2, bg=WHITE)
+                btnf2.pack(pady=4)
+                tk.Button(btnf2, text="✔  Appliquer", command=_apply,
+                          bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
+                          relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left", padx=4)
+                tk.Button(btnf2, text="Annuler", command=dlg2.destroy,
+                          bg=LGRAY, fg=DARK, font=("Arial", 10),
+                          relief="flat", padx=10, pady=6, cursor="hand2").pack(side="left")
+            self._ask_supervisor_pw(_do_modifier, title="Mot de passe encadrant")
 
         tk.Label(inner, text="Nom du pilote", bg=WHITE, fg=GRAY,
                  font=("Arial", 11)).pack(anchor="w")
@@ -1529,11 +1685,31 @@ class App:
         cb_poste = ttk.Combobox(inner, textvariable=poste_var,
                                 values=postes_list, font=("Arial", 14),
                                 state="readonly", width=28)
-        cb_poste.pack(fill="x", pady=(4, 16))
-        # Pré-sélectionner le dernier poste utilisé si disponible
+        cb_poste.pack(fill="x", pady=(4, 12))
         _last_poste = self._logged_in_poste or (postes_list[0] if postes_list else "")
         if _last_poste:
             cb_poste.set(_last_poste)
+
+        if modeles_list:
+            tk.Label(inner, text="Modèle horaire", bg=WHITE, fg=GRAY,
+                     font=("Arial", 11)).pack(anchor="w")
+            cb_modele = ttk.Combobox(inner, textvariable=modele_var,
+                                     values=modeles_list, font=("Arial", 14),
+                                     state="readonly", width=28)
+            cb_modele.pack(fill="x", pady=(4, 4))
+            if modeles_list:
+                modele_var.set(modeles_list[0])
+            cb_modele.bind("<<ComboboxSelected>>", _update_horaire_display)
+            _update_horaire_display()
+
+            mod_btn = tk.Button(inner, text="✎ Modifier (encadrant)",
+                                command=_modifier_modele,
+                                bg="#e0f2fe", fg="#0369a1",
+                                font=("Arial", 9), relief="flat",
+                                cursor="hand2", pady=2)
+            mod_btn.pack(anchor="e", pady=(0, 10))
+        else:
+            modele_var = None
 
         passwords = self._get_list("Mots de passe pilote") or self._get_list("Mots de passe")
         need_pw = bool(passwords)
@@ -1574,6 +1750,31 @@ class App:
                 except (ValueError, IndexError):
                     err_lbl.config(text="Pilote introuvable.")
                     return
+            # Calcul de la durée depuis le modèle horaire sélectionné
+            modele_sel = modele_var.get() if modele_var else ""
+            self._logged_in_modele = modele_sel
+            self._logged_in_duree_horaire_min = None
+            if modele_sel and modeles_list:
+                try:
+                    m_idx = modeles_list.index(modele_sel)
+                    # Déterminer colonne horaire selon le poste
+                    poste_lower = poste_sel.lower()
+                    if "matin" in poste_lower:
+                        ci_h = 12
+                    elif "midi" in poste_lower:
+                        ci_h = 13
+                    elif "nuit" in poste_lower:
+                        ci_h = 14
+                    else:
+                        ci_h = 15  # Jour par défaut
+                    vals = self._schedule_col_data.get(ci_h, [])
+                    horaire_str = vals[m_idx] if m_idx < len(vals) else ""
+                    if horaire_str:
+                        dur = self._parse_horaire_duration(horaire_str)
+                        if dur:
+                            self._logged_in_duree_horaire_min = dur
+                except Exception:
+                    pass
             self._logged_in_pilot = name
             self._logged_in_poste = poste_sel
             self._login_time      = datetime.datetime.now()
@@ -5996,6 +6197,10 @@ Arrêts imputés au TRS (temps perdu) :
         ev_info = next((e for e in EVENTS if e[1] == key), None)
         label   = ev_info[0] if ev_info else key
 
+        # Geler le timer au moment du clic (pas au moment de valider)
+        self._t_stop(key)
+        _freeze_time = datetime.datetime.now()
+
         top = tk.Toplevel(self.root)
         top.overrideredirect(True)
         top.attributes("-topmost", True)
@@ -6025,7 +6230,6 @@ Arrêts imputés au TRS (temps perdu) :
 
         def _valider(comment=None):
             desc = comment if comment is not None else txt.get("1.0", "end").strip()
-            self._t_stop(key)
             self._tl_close(key, comment=desc)
             top.destroy()
             self._refresh_active_stops()
@@ -6464,10 +6668,6 @@ Arrêts imputés au TRS (temps perdu) :
             recap.destroy()
             recap_var.set(True)
 
-        tk.Button(btn_row_r, text="✏  MODIFIER",
-                  command=_modifier, bg=LGRAY, fg=DARK,
-                  font=("Arial", 12, "bold"), relief="flat",
-                  padx=24, pady=10, cursor="hand2").pack(side="left", padx=(0, 10))
         tk.Button(btn_row_r, text="✔  CONFIRMER LA DÉCLARATION",
                   command=_confirmer, bg=GREEN, fg=WHITE,
                   font=("Arial", 12, "bold"), relief="flat",
@@ -6635,7 +6835,9 @@ Arrêts imputés au TRS (temps perdu) :
 
         durees_cfg = self.cfg.get("postes_durees", {})
         _override = getattr(self, "_fp_duree_override", None)
-        duree_theorique_min = _override if _override else durees_cfg.get(poste_nom, 480)
+        _horaire_dur = getattr(self, "_logged_in_duree_horaire_min", None)
+        _default_dur = _horaire_dur if _horaire_dur else durees_cfg.get(poste_nom, 480)
+        duree_theorique_min = _override if _override else _default_dur
         self._fp_duree_override = None
 
         pilot = self._logged_in_pilot or ""
@@ -6792,43 +6994,45 @@ Arrêts imputés au TRS (temps perdu) :
         footer.pack_propagate(False)
 
         def _modifier_duree():
-            dlg = tk.Toplevel(self.root)
-            dlg.title("Durée du poste")
-            dlg.resizable(False, False)
-            dlg.grab_set()
-            self._center_on_root(dlg, 360, 200)
-            dlg.configure(bg=WHITE)
-            tk.Label(dlg, text="Modifier la durée de votre poste :",
-                     bg=WHITE, fg=NAVY, font=("Arial", 12, "bold")).pack(pady=(20, 8))
-            hv = tk.StringVar(value=str(duree_theorique_min // 60))
-            mv = tk.StringVar(value=str(duree_theorique_min % 60))
-            rf = tk.Frame(dlg, bg=WHITE)
-            rf.pack(pady=4)
-            tk.Entry(rf, textvariable=hv, width=4, font=("Arial", 14),
-                     relief="solid", bd=1, justify="center").pack(side="left", padx=4)
-            tk.Label(rf, text="h", bg=WHITE, font=("Arial", 12)).pack(side="left")
-            tk.Entry(rf, textvariable=mv, width=4, font=("Arial", 14),
-                     relief="solid", bd=1, justify="center").pack(side="left", padx=4)
-            tk.Label(rf, text="min", bg=WHITE, font=("Arial", 12)).pack(side="left")
-            def _apply_duree():
-                try:
-                    new_min = int(hv.get() or 0) * 60 + int(mv.get() or 0)
-                    if new_min <= 0:
-                        return
-                    self._fp_duree_override = new_min
-                    dlg.destroy()
-                    ov.destroy()
-                    self._show_fin_de_poste()
-                except Exception:
-                    pass
-            btnf = tk.Frame(dlg, bg=WHITE)
-            btnf.pack(pady=10)
-            tk.Button(btnf, text="✔  Appliquer", command=_apply_duree,
-                      bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
-                      relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left", padx=4)
-            tk.Button(btnf, text="Annuler", command=dlg.destroy,
-                      bg=LGRAY, fg=DARK, font=("Arial", 10),
-                      relief="flat", padx=10, pady=6, cursor="hand2").pack(side="left")
+            def _do_modifier_duree():
+                dlg = tk.Toplevel(self.root)
+                dlg.title("Durée du poste")
+                dlg.resizable(False, False)
+                dlg.grab_set()
+                self._center_on_root(dlg, 360, 200)
+                dlg.configure(bg=WHITE)
+                tk.Label(dlg, text="Modifier la durée de votre poste :",
+                         bg=WHITE, fg=NAVY, font=("Arial", 12, "bold")).pack(pady=(20, 8))
+                hv = tk.StringVar(value=str(duree_theorique_min // 60))
+                mv = tk.StringVar(value=str(duree_theorique_min % 60))
+                rf = tk.Frame(dlg, bg=WHITE)
+                rf.pack(pady=4)
+                tk.Entry(rf, textvariable=hv, width=4, font=("Arial", 14),
+                         relief="solid", bd=1, justify="center").pack(side="left", padx=4)
+                tk.Label(rf, text="h", bg=WHITE, font=("Arial", 12)).pack(side="left")
+                tk.Entry(rf, textvariable=mv, width=4, font=("Arial", 14),
+                         relief="solid", bd=1, justify="center").pack(side="left", padx=4)
+                tk.Label(rf, text="min", bg=WHITE, font=("Arial", 12)).pack(side="left")
+                def _apply_duree():
+                    try:
+                        new_min = int(hv.get() or 0) * 60 + int(mv.get() or 0)
+                        if new_min <= 0:
+                            return
+                        self._fp_duree_override = new_min
+                        dlg.destroy()
+                        ov.destroy()
+                        self._show_fin_de_poste()
+                    except Exception:
+                        pass
+                btnf = tk.Frame(dlg, bg=WHITE)
+                btnf.pack(pady=10)
+                tk.Button(btnf, text="✔  Appliquer", command=_apply_duree,
+                          bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
+                          relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left", padx=4)
+                tk.Button(btnf, text="Annuler", command=dlg.destroy,
+                          bg=LGRAY, fg=DARK, font=("Arial", 10),
+                          relief="flat", padx=10, pady=6, cursor="hand2").pack(side="left")
+            self._ask_supervisor_pw(_do_modifier_duree, title="Mot de passe encadrant")
 
         def _deconnecter_et_quitter():
             _fin_de_poste_save_trs()
