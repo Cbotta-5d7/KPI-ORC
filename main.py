@@ -729,10 +729,12 @@ class App:
         self._of_changes  = []
         self._blink_dot   = None
         self._blink_state = False
-        self._outer_frame  = None
-        self._alarm_blink  = False
-        self._alarm_frames = []   # frames à colorier lors de l'alarme
-        self._alarm_exempt = set()  # widgets exemptés du clignotement rouge
+        self._outer_frame   = None
+        self._alarm_blink   = False
+        self._alarm_frames  = []   # legacy
+        self._alarm_exempt  = set()
+        self._alarm_bg_frames = []  # frames structure à pulser (fond BG)
+        self._alarm_banner    = None  # bandeau d'alarme dédié
         self._last_activity = datetime.datetime.now()
         self._elapsed_lbl  = None
         self._stops_lbl    = None
@@ -2590,24 +2592,35 @@ Arrêts imputés au TRS (temps perdu) :
         self._cell_blink = not self._cell_blink
         any_running = any(self._t_running(k) for k in self._timers)
 
-        # ── Alarme globale : TOUT en rouge clignotant si arrêt actif ─────────
+        # ── Alarme globale : pulse rouge sur frames structure ────────────────
         _alarm_was = getattr(self, "_alarm_was_running", False)
         if self._mode in ("production", "main"):
             if any_running:
-                alarm_col = "#ff1a1a" if self._cell_blink else "#8b0000"
-                _exempt = getattr(self, "_alarm_exempt", set())
-                def _paint(w):
-                    if str(w) in _exempt:
-                        return  # carte arrêt : on ne touche pas
+                # Deux rouges proches pour un pulse élégant
+                alarm_col = "#ef4444" if self._cell_blink else "#991b1b"
+                try:
+                    self.root.configure(bg=alarm_col)
+                except Exception:
+                    pass
+                for _f in getattr(self, "_alarm_bg_frames", []):
                     try:
-                        w.configure(bg=alarm_col)
+                        _f.configure(bg=alarm_col)
                     except Exception:
                         pass
-                    for c in w.winfo_children():
-                        _paint(c)
-                _paint(self.root)
+                # Mise à jour du bandeau d'alarme
+                _banner = getattr(self, "_alarm_banner", None)
+                if _banner:
+                    try:
+                        _banner.configure(bg=alarm_col)
+                        for _c in _banner.winfo_children():
+                            try:
+                                _c.configure(bg=alarm_col)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
             elif _alarm_was:
-                # Alarme vient de s'arrêter → redessiner proprement
+                # Alarme terminée → redessiner proprement
                 self.root.after(0, self._show_production
                                 if self._mode == "production" else self._show_main)
                 self._alarm_was_running = False
@@ -3022,6 +3035,9 @@ Arrêts imputés au TRS (temps perdu) :
         outer.pack(fill="both", expand=True)
         self._outer_frame = outer
         self._alarm_frames = [outer]
+        self._alarm_bg_frames = [outer]
+        self._alarm_banner = None
+        self._alarm_exempt = set()
         outer.bind("<Motion>",  self._reset_activity)
         outer.bind("<Button-1>", self._reset_activity)
 
@@ -3033,9 +3049,11 @@ Arrêts imputés au TRS (temps perdu) :
 
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=20, pady=12)
+        self._alarm_bg_frames.append(body)
 
         top = tk.Frame(body, bg=BG, height=self._px(230))
         top.pack(fill="x", pady=(0, 8))
+        self._alarm_bg_frames.append(top)
         top.pack_propagate(False)
 
         # ── Zone TRS : Poste en cours + Poste précédent ──────────────────────
@@ -4632,6 +4650,9 @@ Arrêts imputés au TRS (temps perdu) :
         outer.pack(fill="both", expand=True)
         self._outer_frame = outer
         self._alarm_frames = [outer]
+        self._alarm_bg_frames = [outer]
+        self._alarm_banner = None
+        self._alarm_exempt = set()
 
         # ── En-tete fixe (blanc, style Dodo) ─────────────────────────────────
         hdr = tk.Frame(outer, bg=WHITE, height=self._px(62))
@@ -4680,19 +4701,27 @@ Arrêts imputés au TRS (temps perdu) :
         self._status_cv.bind("<Configure>",
                              lambda e: self._redraw_status(0, 0, False))
 
+        # ── Bandeau d'alarme (masqué si pas d'arrêt) ─────────────────────────
+        alarm_bar = tk.Frame(outer, bg=BG, height=0)
+        alarm_bar.pack(fill="x")
+        alarm_bar.pack_propagate(False)
+        self._alarm_banner = alarm_bar
+        self._alarm_bar_ref = alarm_bar   # pour ajuster la hauteur au tick
+
         self._make_tabs(outer, "production")
         self._make_timeline(outer)
 
         # ── Corps 33/33/33 ────────────────────────────────────────────────────
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=6, pady=(4, 6))
-        body.columnconfigure(0, weight=3)   # formulaire (50%)
-        body.columnconfigure(1, weight=2)   # arrêts actifs (33%)
-        body.columnconfigure(2, weight=1)   # récap (17%)
+        body.columnconfigure(0, weight=3)
+        body.columnconfigure(1, weight=2)
+        body.columnconfigure(2, weight=1)
         body.rowconfigure(0, weight=1)
         body.rowconfigure(1, weight=0)
+        self._alarm_bg_frames.extend([body])
 
-        # Zone 1 : formulaire
+        # Zone 1 : formulaire (blanc — pas dans alarm_bg_frames)
         left = tk.Frame(body, bg=WHITE)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
         self._build_form(left)
@@ -4700,9 +4729,10 @@ Arrêts imputés au TRS (temps perdu) :
         # Zone 2 : arrets actifs + boutons
         mid = tk.Frame(body, bg=BG)
         mid.grid(row=0, column=1, sticky="nsew", padx=2)
+        self._alarm_bg_frames.append(mid)
         self._build_right_panel(mid)
 
-        # Zone 3 : récap arrêts de l'OF
+        # Zone 3 : récap arrêts de l'OF (blanc — pas dans alarm_bg_frames)
         recap_panel = tk.Frame(body, bg=WHITE)
         recap_panel.grid(row=0, column=2, sticky="nsew", padx=(2, 0))
         self._recap_panel = recap_panel
@@ -4711,6 +4741,7 @@ Arrêts imputés au TRS (temps perdu) :
         # ── Footer : bouton Annuler bas-droite ───────────────────────────────
         footer = tk.Frame(body, bg=BG)
         footer.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(6, 0))
+        self._alarm_bg_frames.append(footer)
         tk.Frame(footer, bg=BG).pack(side="left", fill="both", expand=True)
 
         def _annuler_production():
