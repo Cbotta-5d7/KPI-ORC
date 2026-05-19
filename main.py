@@ -568,7 +568,7 @@ class EventCell(tk.Canvas):
 
     def _ask_stop_description(self):
         """Popup plein ecran pour saisir la description de l'arret."""
-        self.app._t_stop(self.key)
+        _freeze_time = datetime.datetime.now()
         top = tk.Toplevel(self.app.root)
         top.overrideredirect(True)
         top.attributes("-topmost", True)
@@ -591,7 +591,13 @@ class EventCell(tk.Canvas):
 
         def _valider():
             desc = txt.get("1.0", "end").strip()
-            self.app._tl_close(self.key, comment=desc)
+            t = self.app._timers.get(self.key)
+            if t and t["running"]:
+                t["elapsed"] += max(0, (_freeze_time - t["start"]).total_seconds())
+                t["running"] = False
+                t["start"]   = None
+                self.app._save_session()
+            self.app._tl_close(self.key, comment=desc, end_time=_freeze_time)
             top.destroy()
             self._draw()
 
@@ -1489,10 +1495,10 @@ class App:
         except Exception:
             pass
 
-    def _tl_close(self, key, comment=""):
+    def _tl_close(self, key, comment="", end_time=None):
         for ev in reversed(self._tl_events):
             if ev["key"] == key and ev["end"] is None:
-                ev["end"] = datetime.datetime.now()
+                ev["end"] = end_time or datetime.datetime.now()
                 ev["comment"] = comment
                 break
         self._save_session()
@@ -6572,8 +6578,8 @@ Arrêts imputés au TRS (temps perdu) :
         ev_info = next((e for e in EVENTS if e[1] == key), None)
         label   = ev_info[0] if ev_info else key
 
-        # Geler le timer au moment du clic (pas au moment de valider)
-        self._t_stop(key)
+        # Enregistrer l'heure exacte du clic — NE PAS appeler _t_stop() maintenant
+        # (cela déclencherait un redraw qui détruirait ce popup)
         _freeze_time = datetime.datetime.now()
 
         top = tk.Toplevel(self.root)
@@ -6605,7 +6611,14 @@ Arrêts imputés au TRS (temps perdu) :
 
         def _valider(comment=None):
             desc = comment if comment is not None else txt.get("1.0", "end").strip()
-            self._tl_close(key, comment=desc)
+            # Arrêter le timer en le backdatant à l'heure du clic
+            t = self._timers.get(key)
+            if t and t["running"]:
+                t["elapsed"] += max(0, (_freeze_time - t["start"]).total_seconds())
+                t["running"] = False
+                t["start"]   = None
+                self._save_session()
+            self._tl_close(key, comment=desc, end_time=_freeze_time)
             top.destroy()
             self._refresh_active_stops()
             if on_done:
