@@ -365,14 +365,16 @@ class Timeline(tk.Canvas):
             return
         now = datetime.datetime.now()
 
-        # Fenêtre dynamique : depuis le début du 1er OF jusqu'à maintenant + 5min
+        # Fenêtre : toujours au moins 8h en arrière (ou depuis le 1er OF si plus ancien)
+        t0_8h = now - datetime.timedelta(hours=8)
         if self.app._of_periods:
             try:
-                t0 = self.app._of_periods[0]["start"] - datetime.timedelta(minutes=2)
+                t0_of = self.app._of_periods[0]["start"] - datetime.timedelta(minutes=2)
+                t0 = min(t0_of, t0_8h)
             except Exception:
-                t0 = now - datetime.timedelta(hours=8)
+                t0 = t0_8h
         else:
-            t0 = now - datetime.timedelta(hours=8)
+            t0 = t0_8h
         t_end = now + datetime.timedelta(minutes=5)   # petite marge à droite
         win_s = max(1.0, (t_end - t0).total_seconds())
         now_x = (now - t0).total_seconds() / win_s * w   # position du curseur
@@ -454,14 +456,15 @@ class OFBar(tk.Canvas):
         if w < 20:
             return
         now = datetime.datetime.now()
-        # Même fenêtre dynamique que Timeline
+        # Même fenêtre que Timeline : au moins 8h en arrière
+        t0_8h = now - datetime.timedelta(hours=8)
         if self.app._of_periods:
             try:
-                t0 = self.app._of_periods[0]["start"] - datetime.timedelta(minutes=2)
+                t0 = min(self.app._of_periods[0]["start"] - datetime.timedelta(minutes=2), t0_8h)
             except Exception:
-                t0 = now - datetime.timedelta(hours=8)
+                t0 = t0_8h
         else:
-            t0 = now - datetime.timedelta(hours=8)
+            t0 = t0_8h
         t_end = now + datetime.timedelta(minutes=5)
         win_s = max(1.0, (t_end - t0).total_seconds())
 
@@ -5311,7 +5314,7 @@ Arrêts imputés au TRS (temps perdu) :
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
         self._build_form(left)
 
-        # Zone 2 : arrets actifs + boutons
+        # Zone 2 : boutons d'action uniquement (plus de stops_frame ici)
         mid = tk.Frame(body, bg=BG)
         mid.grid(row=0, column=1, sticky="nsew", padx=2)
         self._alarm_bg_frames.append(mid)
@@ -5321,6 +5324,13 @@ Arrêts imputés au TRS (temps perdu) :
         recap_panel = tk.Frame(body, bg=WHITE)
         recap_panel.grid(row=0, column=2, sticky="nsew", padx=(2, 0))
         self._recap_panel = recap_panel
+
+        # ── Overlay arrêts actifs — flottant sur la zone formulaire ──────────
+        # Couvre col0 (poids 3 sur 6 → ~50% de la largeur)
+        stops_ov = tk.Frame(body, bg=WHITE, bd=0)
+        self._active_stops_container = stops_ov
+        # Initialement masqué ; _refresh_active_stops() gère l'affichage
+        self._refresh_active_stops()
         self._build_stops_recap(recap_panel)
 
         # ── Footer : bouton Annuler bas-droite ───────────────────────────────
@@ -5874,12 +5884,8 @@ Arrêts imputés au TRS (temps perdu) :
 
     # ── Panneau droit : arrets actifs + boutons ───────────────────────────────
     def _build_right_panel(self, parent):
-        # Zone arrets actifs (prend tout l'espace disponible)
-        stops_frame = tk.Frame(parent, bg=BG)
-        stops_frame.pack(fill="both", expand=True, padx=6, pady=(6, 4))
-        self._active_stops_container = stops_frame
-        self._refresh_active_stops()
-
+        # Les arrêts actifs sont dans un overlay flottant (voir _refresh_active_stops)
+        # Ici : uniquement les boutons d'action, qui restent toujours accessibles
         BTN_H    = 46
         BTN_FONT = ("Arial", 13, "bold")
 
@@ -5935,10 +5941,10 @@ Arrêts imputés au TRS (temps perdu) :
         _make_cv_btn("⏹   DÉCLARER LA FIN DE PRODUCTION", "#16a34a",
                      self._end_production)
 
-    # ── Arrets actifs ─────────────────────────────────────────────────────────
+    # ── Arrets actifs (overlay flottant sur la zone formulaire) ──────────────
     def _refresh_active_stops(self):
         container = self._active_stops_container
-        if not container:
+        if not container or not container.winfo_exists():
             return
         for w in container.winfo_children():
             w.destroy()
@@ -5947,54 +5953,72 @@ Arrêts imputés au TRS (temps perdu) :
         active_keys = [k for k in self._timers if self._t_running(k)]
 
         if not active_keys:
-            ok_f = tk.Frame(container, bg=BG)
-            ok_f.pack(fill="both", expand=True)
-            tk.Label(ok_f, text="✅", bg=BG, fg=GREEN,
-                     font=("Arial", 48)).pack(pady=(20, 6))
-            tk.Label(ok_f, text="Aucun arrêt en cours",
-                     bg=BG, fg=GREEN, font=("Arial", 14, "bold")).pack()
+            # Masquer l'overlay — la zone formulaire reprend sa place
+            try:
+                container.place_forget()
+            except Exception:
+                pass
             return
 
-        for key in active_keys:
+        # Afficher l'overlay sur la zone formulaire (col0 ≈ 50% de body)
+        try:
+            container.lift()
+            container.place(relx=0, rely=0, relwidth=0.505, relheight=1.0)
+        except Exception:
+            return
+
+        # ── Header ──────────────────────────────────────────────────────────
+        hdr = tk.Frame(container, bg=NAVY, height=44)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        n = len(active_keys)
+        tk.Label(hdr, text=f"⚠  {n} ARRÊT{'S' if n > 1 else ''} EN COURS — cliquer ARRÊTER pour saisir le motif",
+                 bg=NAVY, fg=WHITE, font=("Arial", 11, "bold")).pack(
+                 side="left", padx=12, pady=10)
+        self._alarm_exempt.add(str(hdr))
+
+        # ── Grille de cartes (2 colonnes, max 5 arrêts) ───────────────────
+        grid = tk.Frame(container, bg=WHITE)
+        grid.pack(fill="both", expand=True, padx=6, pady=6)
+        grid.columnconfigure(0, weight=1)
+        grid.columnconfigure(1, weight=1)
+
+        for i, key in enumerate(active_keys[:5]):
             ev_info = next((e for e in EVENTS if e[1] == key), None)
             if not ev_info:
                 continue
             label, _, cat = ev_info
             color    = C_NETT if cat == "nettoyage" else (C_RATT if cat == "ratt" else C_RED)
-            type_lbl = "Nettoyage" if cat == "nettoyage" else ("Rattrapage" if cat == "ratt" else "Problème technique")
+            type_lbl = ("Nettoyage" if cat == "nettoyage" else
+                        ("Rattrapage" if cat == "ratt" else "Pb technique"))
 
-            # Carte arret — fond blanc pour rester lisible sur fond rouge alarm
-            card_shad = tk.Frame(container, bg=WHITE)
-            card_shad.pack(fill="x", pady=4)
-            card = tk.Frame(card_shad, bg=WHITE, bd=3, relief="solid",
-                            highlightbackground=color, highlightthickness=3)
-            card.pack(fill="both", padx=(0, 3), pady=(0, 3))
-            # Exempter la carte et ses enfants du clignotement rouge
-            self._alarm_exempt.add(str(card_shad))
+            row_i, col_i = divmod(i, 2)
+            grid.rowconfigure(row_i, weight=1)
+
+            card = tk.Frame(grid, bg=WHITE, bd=2, relief="solid",
+                            highlightbackground=color, highlightthickness=2)
+            card.grid(row=row_i, column=col_i, sticky="nsew", padx=4, pady=4)
             self._alarm_exempt.add(str(card))
 
-            top_row = tk.Frame(card, bg=WHITE)
-            top_row.pack(fill="x", padx=14, pady=(10, 2))
-            name_col = tk.Frame(top_row, bg=WHITE)
-            name_col.pack(side="left")
-            tk.Label(name_col, text=type_lbl.upper(), bg=WHITE,
-                     fg=color, font=("Arial", 9, "bold")).pack(anchor="w")
+            tk.Label(card, text=type_lbl.upper(), bg=WHITE, fg=color,
+                     font=("Arial", 8, "bold")).pack(anchor="w", padx=8, pady=(6, 0))
             _icon = "🧹" if cat == "nettoyage" else ("▶" if cat == "ratt" else "⚠")
-            tk.Label(name_col, text=f"{_icon}  {label}",
-                     bg=WHITE, fg=color, font=("Arial", 13, "bold")).pack(anchor="w")
-
-            def _stop(k=key):
-                self._ask_stop_description(k)
-            tk.Button(top_row, text="✔  ARRÊTER", command=_stop,
-                      bg="#16a34a", fg=WHITE, font=("Arial", 15, "bold"),
-                      relief="flat", padx=22, pady=10, cursor="hand2",
-                      bd=0, activebackground="#14532d", activeforeground=WHITE).pack(side="right", padx=4, pady=4)
+            tk.Label(card, text=f"{_icon}  {label}", bg=WHITE, fg=color,
+                     font=("Arial", 12, "bold")).pack(anchor="w", padx=8)
 
             elapsed = self._t_get(key)
             tlbl = tk.Label(card, text=fmt(elapsed), bg=color, fg=WHITE,
-                            font=("Arial", 28, "bold"))
-            tlbl.pack(pady=(2, 10))
+                            font=("Arial", 26, "bold"))
+            tlbl.pack(fill="x", padx=8, pady=4)
             self._stop_timer_lbls[key] = tlbl
+            self._alarm_exempt.add(str(tlbl))
+
+            def _stop(k=key):
+                self._ask_stop_description(k)
+            tk.Button(card, text="✔  ARRÊTER", command=_stop,
+                      bg="#16a34a", fg=WHITE, font=("Arial", 12, "bold"),
+                      relief="flat", pady=7, cursor="hand2").pack(
+                      fill="x", padx=8, pady=(0, 8))
 
     # ── Récap arrêts de l'OF (zone droite) ───────────────────────────────────
     def _build_stops_recap(self, parent):
