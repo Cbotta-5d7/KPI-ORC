@@ -5996,25 +5996,25 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                                         fill=_off(c, +40), outline="")
                 # — Left column: "ARRÊT EN COURS" + type + name
                 lx = bw // 4  # center of left half
-                cv_ref.create_text(lx+ox, 10+oy, text="ARRÊT EN COURS",
-                                   fill="#ffe066", font=("Arial", 7, "bold"), anchor="n")
+                cv_ref.create_text(lx+ox, 8+oy, text="ARRÊT EN COURS",
+                                   fill="#ffe066", font=("Arial", 9, "bold"), anchor="n")
                 cv_ref.create_text(lx+ox, 26+oy, text=tl.upper(),
-                                   fill=WHITE, font=("Arial", 8, "bold"), anchor="n")
+                                   fill=WHITE, font=("Arial", 10, "bold"), anchor="n")
                 cv_ref.create_text(lx+ox, bh//2+oy, text=lb,
-                                   fill=WHITE, font=("Arial", 9, "bold"),
+                                   fill=WHITE, font=("Arial", 11, "bold"),
                                    justify="center", width=bw//2-8, anchor="center")
                 # — Separator
                 cv_ref.create_line(bw//2+ox, 6+oy, bw//2+ox, bh-6+oy,
                                    fill=_off(c, -20), width=1)
                 # — Right column: timer + big ARRÊTER button
                 rx = bw*3//4  # center of right half
-                cv_ref.create_text(rx+ox, bh//2-22+oy, text=es[0],
-                                   fill=WHITE, font=("Arial", 14, "bold"), anchor="center")
+                cv_ref.create_text(rx+ox, bh//2-24+oy, text=es[0],
+                                   fill=WHITE, font=("Arial", 17, "bold"), anchor="center")
                 # ARRÊTER button box
-                btn_y1 = bh//2+2+oy
-                btn_y2 = bh-6+oy
+                btn_y1 = bh//2+4+oy
+                btn_y2 = bh-5+oy
                 btn_x1 = bw//2+6+ox
-                btn_x2 = bw-6+ox
+                btn_x2 = bw-5+ox
                 btn_bg = _off(c, -50) if ps[0] else "#c0392b"
                 if ca == "nettoyage":
                     btn_bg = _off(c, -50) if ps[0] else "#16a085"
@@ -6024,7 +6024,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                                         fill=btn_bg, outline=WHITE, width=1)
                 cv_ref.create_text((btn_x1+btn_x2)//2, (btn_y1+btn_y2)//2,
                                    text="■ ARRÊTER", fill=WHITE,
-                                   font=("Arial", 10, "bold"), anchor="center")
+                                   font=("Arial", 12, "bold"), anchor="center")
 
             cv.bind("<Configure>", _draw_card)
 
@@ -6328,22 +6328,22 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         top.overrideredirect(True)
         top.attributes("-topmost", True)
         top.configure(bg=WHITE)
-        self._center_on_root(top, 480, 300)
+        self._center_on_root(top, 540, 380)
         top.lift()
         top.grab_set()
 
-        hdr = tk.Frame(top, bg="#f59e0b", height=56)
+        hdr = tk.Frame(top, bg="#f59e0b", height=60)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         tk.Label(hdr, text="🧹  TYPE DE NETTOYAGE",
-                 bg="#f59e0b", fg=WHITE, font=("Arial", 15, "bold")).pack(
-                 side="left", padx=20, pady=14)
-        tk.Button(hdr, text="✕", bg="#f59e0b", fg=WHITE, font=("Arial", 12, "bold"),
+                 bg="#f59e0b", fg=WHITE, font=("Arial", 16, "bold")).pack(
+                 side="left", padx=20, pady=16)
+        tk.Button(hdr, text="✕", bg="#f59e0b", fg=WHITE, font=("Arial", 13, "bold"),
                   relief="flat", cursor="hand2",
-                  command=top.destroy).pack(side="right", padx=12)
+                  command=top.destroy).pack(side="right", padx=14)
 
         body = tk.Frame(top, bg=WHITE)
-        body.pack(fill="both", expand=True, padx=20, pady=16)
+        body.pack(fill="both", expand=True, padx=18, pady=14)
 
         _chosen = [False]
         def _choose(ntype):
@@ -6354,23 +6354,53 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             self._declare_nettoyage(ntype)
 
         options = [
-            ("🧹 Nettoyage court (poste)", "court", f"{clean_s} min toléré", "#f59e0b"),
-            ("🧽 Nettoyage long (ex: mercredi)", "long", f"{clean_l} min toléré", "#d97706"),
-            ("✨ Grand nettoyage", "grand", f"{clean_g} min toléré", "#92400e"),
+            ("🧹  Nettoyage court (poste)", "court", f"{clean_s} min tolérés", "#f59e0b"),
+            ("🧽  Nettoyage long  (ex: mercredi)", "long", f"{clean_l} min tolérés", "#d97706"),
+            ("✨  Grand nettoyage", "grand", f"{clean_g} min tolérés", "#92400e"),
         ]
+
+        def _make_nett_btn(parent, label, sub, col, ntype):
+            ps = [False]
+            cv = tk.Canvas(parent, height=80, bg=WHITE, highlightthickness=0, cursor="hand2")
+            cv.pack(fill="x", pady=5)
+
+            def _draw(e=None):
+                cv.delete("all")
+                w = cv.winfo_width()
+                h = cv.winfo_height()
+                if w < 10 or h < 10:
+                    return
+                ox, oy = (3, 3) if ps[0] else (0, 0)
+                face = _off(col, -30) if ps[0] else col
+                # Shadow
+                cv.create_rectangle(4+ox, 5+oy, w-1, h, fill=_off(col, -60), outline="")
+                # Face
+                cv.create_rectangle(ox, oy, w-5+ox, h-5+oy, fill=face, outline="")
+                # Highlight stripe
+                cv.create_rectangle(ox+1, oy+1, w-6+ox, (h-5)//3+oy,
+                                    fill=_off(col, +40), outline="")
+                # Label principal
+                cv.create_text(w//2+ox, (h-5)//2-8+oy, text=label,
+                               fill=WHITE, font=("Arial", 13, "bold"), anchor="center")
+                # Sous-label
+                cv.create_text(w//2+ox, (h-5)//2+14+oy, text=sub,
+                               fill="#fffde7", font=("Arial", 10), anchor="center")
+
+            cv.bind("<Configure>", _draw)
+
+            def _on_click(t=ntype):
+                if ps[0]:
+                    return
+                if not self._debounce_ok():
+                    return
+                ps[0] = True
+                _draw()
+                self.root.after(900, lambda: _choose(t))
+
+            cv.bind("<Button-1>", lambda e, t=ntype: _on_click(t))
+
         for txt, ntype, sub, col in options:
-            btn_f = tk.Frame(body, bg=col, cursor="hand2")
-            btn_f.pack(fill="x", pady=4)
-            btn_f.bind("<Button-1>", lambda e, t=ntype: _choose(t))
-            inner_b = tk.Frame(btn_f, bg=col)
-            inner_b.pack(fill="x", padx=12, pady=10)
-            inner_b.bind("<Button-1>", lambda e, t=ntype: _choose(t))
-            tk.Label(inner_b, text=txt, bg=col, fg=WHITE,
-                     font=("Arial", 13, "bold"), anchor="w").pack(anchor="w")
-            tk.Label(inner_b, text=sub, bg=col, fg="#fffde7",
-                     font=("Arial", 10), anchor="w").pack(anchor="w")
-            for w in inner_b.winfo_children():
-                w.bind("<Button-1>", lambda e, t=ntype: _choose(t))
+            _make_nett_btn(body, txt, sub, col, ntype)
 
     def _declare_nettoyage(self, ntype="court"):
         """Démarre un timer nettoyage du type spécifié."""
