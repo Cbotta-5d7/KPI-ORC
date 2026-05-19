@@ -1663,26 +1663,65 @@ class App:
 
         def _modifier_modele():
             def _do_modifier():
-                # Ouvrir un dialog de sélection de modèle
                 dlg2 = tk.Toplevel(self.root)
-                dlg2.title("Modifier le modèle horaire")
+                dlg2.title("Modifier le modèle horaire — Session")
                 dlg2.resizable(False, False)
                 dlg2.grab_set()
                 dlg2.attributes("-topmost", True)
-                self._center_on_root(dlg2, 400, 220)
+                self._center_on_root(dlg2, 440, 290)
                 dlg2.configure(bg=WHITE)
-                tk.Label(dlg2, text="Choisir un modèle horaire :", bg=WHITE, fg=NAVY,
-                         font=("Arial", 12, "bold")).pack(pady=(20, 8))
+                tk.Frame(dlg2, bg=NAVY, height=5).pack(fill="x")
+                tk.Label(dlg2, text="Modifier pour cette session uniquement",
+                         bg=WHITE, fg=NAVY, font=("Arial", 12, "bold")).pack(pady=(16, 4))
+                tk.Label(dlg2, text="(ne modifie pas le modèle permanent)",
+                         bg=WHITE, fg=GRAY, font=("Arial", 9)).pack(pady=(0, 10))
+
+                # Sélection du modèle
+                f_mod = tk.Frame(dlg2, bg=WHITE)
+                f_mod.pack(fill="x", padx=28, pady=(0, 8))
+                tk.Label(f_mod, text="Modèle :", bg=WHITE, fg=DARK,
+                         font=("Arial", 11), width=12, anchor="w").pack(side="left")
                 sel_v = tk.StringVar(value=modele_var.get())
-                cb_m = ttk.Combobox(dlg2, textvariable=sel_v, values=modeles_list,
-                                    font=("Arial", 13), state="readonly", width=22)
-                cb_m.pack(pady=(0, 12))
+                cb_m = ttk.Combobox(f_mod, textvariable=sel_v, values=modeles_list,
+                                    font=("Arial", 12), state="readonly", width=18)
+                cb_m.pack(side="left")
+
+                # Saisie horaire début / fin pour cette session
+                f_h = tk.Frame(dlg2, bg=WHITE)
+                f_h.pack(fill="x", padx=28, pady=4)
+                tk.Label(f_h, text="Heure début :", bg=WHITE, fg=DARK,
+                         font=("Arial", 11), width=12, anchor="w").pack(side="left")
+                debut_v = tk.StringVar(value="")
+                tk.Entry(f_h, textvariable=debut_v, width=6,
+                         font=("Arial", 13, "bold"), relief="solid", bd=1,
+                         justify="center").pack(side="left")
+                tk.Label(f_h, text="h", bg=WHITE, font=("Arial", 11)).pack(side="left", padx=(2, 20))
+                tk.Label(f_h, text="Heure fin :", bg=WHITE, fg=DARK,
+                         font=("Arial", 11)).pack(side="left")
+                fin_v = tk.StringVar(value="")
+                tk.Entry(f_h, textvariable=fin_v, width=6,
+                         font=("Arial", 13, "bold"), relief="solid", bd=1,
+                         justify="center").pack(side="left")
+                tk.Label(f_h, text="h", bg=WHITE, font=("Arial", 11)).pack(side="left", padx=2)
+
+                tk.Label(dlg2, text="Laisser vide pour utiliser les horaires du modèle",
+                         bg=WHITE, fg=GRAY, font=("Arial", 9)).pack()
+
                 def _apply():
                     modele_var.set(sel_v.get())
+                    d = debut_v.get().strip()
+                    f = fin_v.get().strip()
+                    if d and f:
+                        # Stocker l'override horaire pour cette session
+                        hs = f"{d}h-{f}h"
+                        dur = self._parse_horaire_duration(hs)
+                        if dur:
+                            self._logged_in_duree_horaire_min = dur
                     _update_horaire_display()
                     dlg2.destroy()
+
                 btnf2 = tk.Frame(dlg2, bg=WHITE)
-                btnf2.pack(pady=4)
+                btnf2.pack(pady=12)
                 tk.Button(btnf2, text="✔  Appliquer", command=_apply,
                           bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
                           relief="flat", padx=14, pady=6, cursor="hand2").pack(side="left", padx=4)
@@ -2385,7 +2424,6 @@ Arrêts imputés au TRS (temps perdu) :
     def _show_settings(self):
         """Fenêtre paramètres protégée par mot de passe."""
         # Étape 1 : mot de passe
-        settings_pw = self.cfg.get("settings_password", "2026")
         top_pw = tk.Toplevel(self.root)
         top_pw.overrideredirect(True)
         top_pw.attributes("-topmost", True)
@@ -2395,7 +2433,7 @@ Arrêts imputés au TRS (temps perdu) :
 
         tk.Label(top_pw, text="⚙  PARAMÈTRES", bg=NAVY, fg=WHITE,
                  font=("Arial", 16, "bold")).pack(pady=(24, 4))
-        tk.Label(top_pw, text="Mot de passe paramètres :", bg=NAVY, fg="#7a99c0",
+        tk.Label(top_pw, text="Mot de passe Encadrant :", bg=NAVY, fg="#7a99c0",
                  font=("Arial", 11)).pack()
         err_lbl = tk.Label(top_pw, text="", bg=NAVY, fg=C_RED, font=("Arial", 10))
         err_lbl.pack()
@@ -2408,7 +2446,7 @@ Arrêts imputés au TRS (temps perdu) :
         allowed = [False]
 
         def _confirm_pw(ev=None):
-            if pv.get() == str(self.cfg.get("settings_password", "2026")):
+            if pv.get() == str(self.cfg.get("supervisor_pw", "1234")):
                 allowed[0] = True
                 top_pw.destroy()
             else:
@@ -2470,9 +2508,7 @@ Arrêts imputés au TRS (temps perdu) :
             ("Grand nettoyage (minutes)",              "clean_grand_min",   60),
             ("Réunion tolérée par poste (minutes)",    "meeting_tol_min",    5),
             ("Temps de pause autorisé par poste (min)", "pause_max_min",    20),
-            ("Mot de passe application",               "app_password",    "0000"),
-            ("Mot de passe base de données",           "db_password",     "4594"),
-            ("Mot de passe paramètres",                "settings_password","2026"),
+            ("Mot de passe Encadrant",                 "supervisor_pw",    "1234"),
         ]
         gen_vars = {}
         for i, (label, key, default) in enumerate(gen_fields):
@@ -2483,9 +2519,8 @@ Arrêts imputés au TRS (temps perdu) :
             val = self.cfg.get(key, default)
             var = tk.StringVar(value=str(val))
             gen_vars[key] = var
-            show = "*" if "password" in key else ""
             tk.Entry(row_f, textvariable=var, font=("Arial", 12, "bold"),
-                     width=12, relief="solid", bd=1, show=show).pack(side="left", padx=8)
+                     width=12, relief="solid", bd=1).pack(side="left", padx=8)
 
         # ── Tab Pilotes (avec mots de passe) ─────────────────────────────────
         tab_pil = tk.Frame(nb_s, bg=WHITE)
@@ -2907,7 +2942,7 @@ Arrêts imputés au TRS (temps perdu) :
         def _save_settings():
             # Appliquer les éditions en cours dans le tableau pilotes
             _apply_pil_edits()
-            _pw_keys = {"app_password", "db_password", "settings_password"}
+            _pw_keys = {"supervisor_pw"}
             for key, var in gen_vars.items():
                 val2 = var.get().strip()
                 if key in _pw_keys:
