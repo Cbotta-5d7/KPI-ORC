@@ -96,6 +96,8 @@ EVENTS = [
     ("Presse Housse ZIP",    "pb_presse_zip2",   "pb"),
     ("Cercleuse",            "pb_cercleuse",     "pb"),
     ("Enrouleuse Traversin", "pb_enrouleuse",    "pb"),
+    ("Matière première",  "arret_mp",       "pb"),
+    ("Réunion",           "arret_reunion",  "ratt"),
 ]
 
 DATA_HEADERS = [
@@ -566,6 +568,7 @@ class EventCell(tk.Canvas):
 
     def _ask_stop_description(self):
         """Popup plein ecran pour saisir la description de l'arret."""
+        self.app._t_stop(self.key)
         top = tk.Toplevel(self.app.root)
         top.overrideredirect(True)
         top.attributes("-topmost", True)
@@ -588,7 +591,6 @@ class EventCell(tk.Canvas):
 
         def _valider():
             desc = txt.get("1.0", "end").strip()
-            self.app._t_stop(self.key)
             self.app._tl_close(self.key, comment=desc)
             top.destroy()
             self._draw()
@@ -5210,7 +5212,7 @@ Arrêts imputés au TRS (temps perdu) :
                 except Exception:
                     pass
             if not has_recent:
-                self._saved_form_data["manquant_pers"] = "5"
+                pass  # manquant_pers pré-rempli supprimé
 
         self._save_session()
         self._show_production()
@@ -5488,11 +5490,6 @@ Arrêts imputés au TRS (temps perdu) :
                        row=1, column=0, sticky="w", padx=4)
         ri[0] += 1
 
-        # ── AUTRES ARRÊTS ─────────────────────────────────────────────────────
-        _cur_c[0] = _make_section(BG_ARRETS, "Autres arrêts", "#d97706")
-        ri[0] = 0
-        row2("Durée arrêt manquant MP (min)",         "duree_mq_mp",   "entry", None,
-             "Arrêt manquant personne / Réunion (min)", "manquant_pers", "entry", None)
 
         # ── QUANTITÉS & QUALITÉ ───────────────────────────────────────────────
         _cur_c[0] = _make_section(BG_QTE, "Quantités & Qualité", GREEN)
@@ -5519,8 +5516,7 @@ Arrêts imputés au TRS (temps perdu) :
             e.grid(row=1, column=0, sticky="nsew", padx=(0, 2), pady=(0, 3))
         fld("Traça fibre",  "traca",    "entry", None, col=2, adv=False)
         fld("Réf. taie",    "ref_taie", "entry", None, col=3, adv=True)
-        row4("Qte initiale taie", "qte_init_taie",   "entry", None,
-             "Nb taie 2nd choix", "nb_taie2_choix",  "entry", None,
+        row3("Nb taie 2nd choix", "nb_taie2_choix",  "entry", None,
              "Nb déf. couture",   "nb_def_cout",     "entry", None,
              "Mq. taie",          "mq_taie",         "entry", None)
         row2("Mq. housse/encart (nb)", "mq_housse_encart", "entry", None,
@@ -6430,9 +6426,24 @@ Arrêts imputés au TRS (temps perdu) :
     # ── Selecteur d'arret ─────────────────────────────────────────────────────
     def _show_stop_selector(self):
         OV_BG = WHITE
-        overlay = tk.Frame(self.root, bg=OV_BG)
-        overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
-        overlay.lift()
+        # Panneau flottant côté droit — ne couvre pas tout l'écran
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        pw, ph = min(640, sw - 40), min(700, sh - 80)
+        rx = self.root.winfo_rootx()
+        ry = self.root.winfo_rooty()
+        rw = self.root.winfo_width()
+        rh = self.root.winfo_height()
+        px = rx + rw - pw - 10
+        py = ry + (rh - ph) // 2
+
+        overlay = tk.Toplevel(self.root)
+        overlay.overrideredirect(True)
+        overlay.attributes("-topmost", True)
+        overlay.configure(bg=OV_BG)
+        overlay.geometry(f"{pw}x{ph}+{px}+{py}")
+        # Ombre visuelle via frame border
+        tk.Frame(overlay, bg=NAVY, height=5).pack(fill="x")
 
         # Header blanc avec bande bleue
         hdr = tk.Frame(overlay, bg=OV_BG, height=68)
@@ -6501,6 +6512,22 @@ Arrêts imputés au TRS (temps perdu) :
         for i, (lbl, key, cat) in enumerate(pb_events):
             self._make_selector_btn(pb_g, lbl, key, cat, i // ncols_p, i % ncols_p, _close)
 
+        # ARRÊTS SPÉCIAUX (MP + Réunion)
+        sp_events = [(l, k, c) for l, k, c in EVENTS if k in ("arret_mp", "arret_reunion")]
+        if sp_events:
+            sp_row = tk.Frame(body, bg=OV_BG)
+            sp_row.pack(fill="x", pady=(8, 4))
+            tk.Frame(sp_row, bg="#7c3aed", width=5).pack(side="left", fill="y")
+            tk.Label(sp_row, text="  ARRÊTS SPÉCIAUX", bg=OV_BG, fg="#7c3aed",
+                     font=("Arial", 12, "bold")).pack(side="left", pady=4)
+            sp_g = tk.Frame(body, bg=OV_BG)
+            sp_g.pack(fill="x", pady=(0, 8))
+            for col in range(4):
+                sp_g.columnconfigure(col, weight=1)
+            sp_g.rowconfigure(0, weight=1)
+            for i, (lbl, key, cat) in enumerate(sp_events):
+                self._make_selector_btn(sp_g, lbl, key, cat, 0, i, _close)
+
     def _make_selector_btn(self, parent, label, key, cat, row, col, close_fn):
         running = self._t_running(key)
         elapsed = self._t_get(key)
@@ -6525,13 +6552,13 @@ Arrêts imputés au TRS (temps perdu) :
                 lines.append("● EN COURS")
             txt = "\n".join(lines)
             cv.create_text(bw//2-2, bh//2-2, text=txt,
-                           fill=WHITE, font=("Arial", 9, "bold"),
+                           fill=WHITE, font=("Arial", 11, "bold"),
                            justify="center", width=bw-12)
 
         def _action(k=key, c=cat):
             if self._t_running(k):
-                self._ask_stop_description(k)
-                close_fn()
+                # Fermer l'overlay seulement APRÈS validation du commentaire
+                self._ask_stop_description(k, on_done=close_fn)
             else:
                 self._t_start(k)
                 self._tl_open(k, c)
@@ -6541,7 +6568,7 @@ Arrêts imputés au TRS (temps perdu) :
         cv.bind("<Button-1>",  lambda e: _action())
 
     # ── Popup description d'arret ─────────────────────────────────────────────
-    def _ask_stop_description(self, key):
+    def _ask_stop_description(self, key, on_done=None):
         ev_info = next((e for e in EVENTS if e[1] == key), None)
         label   = ev_info[0] if ev_info else key
 
@@ -6581,6 +6608,8 @@ Arrêts imputés au TRS (temps perdu) :
             self._tl_close(key, comment=desc)
             top.destroy()
             self._refresh_active_stops()
+            if on_done:
+                on_done()
 
         btn_row = tk.Frame(top, bg=WHITE)
         btn_row.pack(fill="x", padx=24, pady=(8, 16))
@@ -6760,47 +6789,6 @@ Arrêts imputés au TRS (temps perdu) :
             v.get("comment",""),                            # BE
             fmt(self._interposte_s) if self._interposte_s > 0 else "",  # BF
         ]
-
-        # ── Alerte réunion non déclarée (1ère déclaration du poste) ──────────
-        if self._of_count_this_shift == 0:
-            mp_val = v.get("manquant_pers", "").strip()
-            if mp_val in ("", "0", "00:00:00"):
-                reunion_ok  = [False]
-                reunion_var = tk.BooleanVar(value=False)
-                ov_r = tk.Frame(self.root, bg=WHITE)
-                ov_r.place(relx=0, rely=0, relwidth=1, relheight=1)
-                ov_r.lift()
-                tk.Frame(ov_r, bg=ORANGE, height=6).pack(fill="x")
-                tk.Label(ov_r, text="⚠  Réunion non déclarée",
-                         bg=WHITE, fg=ORANGE,
-                         font=("Arial", 13, "bold")).pack(pady=(60, 4))
-                tk.Label(ov_r,
-                         text="Tu n'as pas déclaré de réunion.\nValider quand même ?",
-                         bg=WHITE, fg=DARK,
-                         font=("Arial", 11), justify="center").pack(pady=4)
-                bf = tk.Frame(ov_r, bg=WHITE)
-                bf.pack(pady=12)
-                def _r_ok():
-                    reunion_ok[0] = True
-                    ov_r.destroy()
-                    reunion_var.set(True)
-                def _r_cancel():
-                    ov_r.destroy()
-                    reunion_var.set(True)
-                tk.Button(bf, text="Valider quand même", command=_r_ok,
-                          bg=GREEN, fg=WHITE, font=("Arial", 11, "bold"),
-                          relief="flat", padx=14, pady=8, cursor="hand2").pack(
-                          side="left", padx=6)
-                tk.Button(bf, text="Annuler", command=_r_cancel,
-                          bg=LGRAY, fg=DARK, font=("Arial", 11),
-                          relief="flat", padx=14, pady=8, cursor="hand2").pack(
-                          side="left", padx=6)
-                self.root.wait_variable(reunion_var)
-                if not reunion_ok[0]:
-                    self._prod_active = True
-                    if self._after_id: self.root.after_cancel(self._after_id)
-                    self._after_id = self.root.after(1000, self._tick)
-                    return
 
         # ── Calculs étendus pour l'affichage ──────────────────────────────────
         total_brut_s = of_s_brut
@@ -7254,6 +7242,9 @@ Arrêts imputés au TRS (temps perdu) :
 
         total_declare_s = total_prod_s + total_panne_s + total_ratt_s + total_pause_s + total_reunion_s
         duree_theorique_s = duree_theorique_min * 60
+        # Déduire réunion planifiée du temps d'ouverture
+        _reunion_planif_s = int(self.cfg.get("meeting_tol_min", 5)) * 60
+        duree_theorique_s = max(1, duree_theorique_s - _reunion_planif_s)
         non_declare_s = max(0.0, duree_theorique_s - total_declare_s)
 
         # TRS poste = equiv produite / (prod_ref × durée_théorique_poste / 28800)
