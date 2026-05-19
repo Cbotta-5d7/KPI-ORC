@@ -61,6 +61,7 @@ GREEN   = "#1a8c4e"   # Vert production
 C_RED   = "#e31e24"   # Rouge Dodo (pannes)
 C_RATT  = "#d97706"   # Ambre rattrapages
 C_PB    = "#1a1f5e"   # Bleu Dodo PB techniques
+C_NETT  = "#0891b2"   # Cyan nettoyage (arrêt planifié)
 GRAY    = "#64748b"
 LGRAY   = "#dde4ef"
 DARK    = "#0f172a"
@@ -73,7 +74,7 @@ EVENTS = [
     ("Emballage",            "ratt_emb",         "ratt"),
     ("Presse Souder",        "ratt_presse_soud", "ratt"),
     ("Presse ZIP",           "ratt_presse_zip",  "ratt"),
-    ("Nettoyage",            "nettoyage",        "ratt"),
+    ("Nettoyage",            "nettoyage",        "nettoyage"),
     ("Chargeuse",            "pb_chargeuse",     "pb"),
     ("Carde",                "pb_carde",         "pb"),
     ("Etaleur / Tour",       "pb_etaleur",       "pb"),
@@ -269,7 +270,7 @@ class Timeline(tk.Canvas):
         # Chercher l'evenement le plus proche du clic
         found = None
         for ev in self.app._tl_events:
-            if ev.get("cat") not in ("ratt", "pb"):
+            if ev.get("cat") not in ("ratt", "pb", "nettoyage"):
                 continue
             start = ev["start"]
             end   = ev.get("end") or now
@@ -372,9 +373,9 @@ class Timeline(tk.Canvas):
                 self.create_rectangle(x1, BY, x2, BY + BH, fill=GREEN, outline="")
 
         for ev in self.app._tl_events:
-            if ev["cat"] not in ("ratt", "pb"):
+            if ev["cat"] not in ("ratt", "pb", "nettoyage"):
                 continue
-            col = C_RATT if ev["cat"] == "ratt" else C_RED
+            col = C_RATT if ev["cat"] == "ratt" else (C_NETT if ev["cat"] == "nettoyage" else C_RED)
             x1, x2 = px(ev["start"]), px(ev.get("end") or now)
             if x2 > x1:
                 self.create_rectangle(x1, BY, x2, BY + BH, fill=col, outline="")
@@ -518,7 +519,7 @@ class EventCell(tk.Canvas):
         self.key    = key
         self.app    = app
         self.label  = label
-        self.accent = C_RATT if cat == "ratt" else C_PB
+        self.accent = C_NETT if cat == "nettoyage" else (C_RATT if cat == "ratt" else C_PB)
         self.bind("<Configure>", lambda e: self._draw())
         self.bind("<Button-1>",  lambda e: self._toggle())
 
@@ -527,7 +528,8 @@ class EventCell(tk.Canvas):
             self._ask_stop_description()
         else:
             self.app._t_start(self.key)
-            self.app._tl_open(self.key, "ratt" if self.accent == C_RATT else "pb")
+            _cat_open = "nettoyage" if self.accent == C_NETT else ("ratt" if self.accent == C_RATT else "pb")
+            self.app._tl_open(self.key, _cat_open)
             self._flash(14, 14)
 
     def _ask_stop_description(self):
@@ -886,6 +888,8 @@ class App:
                         cat = "ratt"
                     elif "pb" in evt_type or "technique" in evt_type:
                         cat = "pb"
+                    elif "nettoyage" in evt_type.lower():
+                        cat = "nettoyage"
                     else:
                         continue
                     self._tl_events.append({
@@ -1701,7 +1705,7 @@ class App:
                 start_ts = now_ts - datetime.timedelta(minutes=minutes)
                 self._tl_events.append({
                     "key": "nettoyage",
-                    "cat": "ratt",
+                    "cat": "nettoyage",
                     "start": start_ts,
                     "end": now_ts,
                     "comment": "Nettoyage déclaré au changement de poste",
@@ -2504,7 +2508,7 @@ Arrêts imputés au TRS (temps perdu) :
         leg = tk.Frame(zone, bg=WHITE)
         leg.pack(anchor="w", padx=10, pady=(0, 5))
         for lbl, col in [("Production", GREEN), ("Rattrapage", C_RATT),
-                         ("PB Technique", C_RED), ("Changement OF", ORANGE)]:
+                         ("PB Technique", C_RED), ("Nettoyage", C_NETT), ("Changement OF", ORANGE)]:
             tk.Frame(leg, bg=col, width=14, height=14).pack(side="left", padx=(0, 4))
             tk.Label(leg, text=lbl, bg=WHITE, fg=GRAY,
                      font=("Arial", 8, "bold")).pack(side="left", padx=(0, 16))
@@ -3504,7 +3508,7 @@ Arrêts imputés au TRS (temps perdu) :
             max_dur = max(d["dur"] for d in stops.values()) or 1
 
             for lbl, data in sorted_stops[:6]:  # Max 6 lignes
-                c = C_RATT if data["cat"] == "ratt" else (NAVY_L if data["cat"] == "pause" else C_RED)
+                c = C_NETT if data["cat"] == "nettoyage" else (C_RATT if data["cat"] == "ratt" else (NAVY_L if data["cat"] == "pause" else C_RED))
                 rf = tk.Frame(body_col, bg=WHITE)
                 rf.pack(fill="x", padx=4, pady=1)
                 tk.Frame(rf, bg=c, width=4).pack(side="left", fill="y")
@@ -3813,7 +3817,7 @@ Arrêts imputés au TRS (temps perdu) :
                 s = _hms_to_sec(str(row[32]))
                 if s > 0:
                     if "Nettoyage" not in target:
-                        target["Nettoyage"] = {"count": 0, "dur": 0.0, "cat": "ratt"}
+                        target["Nettoyage"] = {"count": 0, "dur": 0.0, "cat": "nettoyage"}
                     target["Nettoyage"]["count"] += 1
                     target["Nettoyage"]["dur"]   += s
 
@@ -6988,9 +6992,10 @@ Arrêts imputés au TRS (temps perdu) :
             for ev in self._tl_events:
                 cat = ev.get("cat", "")
                 es = ev.get("start"); ee = ev.get("end") or now
-                if es and es >= login_dt and cat in ("ratt", "pb", "pause", "reunion"):
+                if es and es >= login_dt and cat in ("ratt", "pb", "pause", "reunion", "nettoyage"):
                     _cat_col = {"pb": "#dc2626", "ratt": "#f59e0b",
-                                "pause": "#3b82f6", "reunion": "#8b5cf6"}.get(cat, "#94a3b8")
+                                "pause": "#3b82f6", "reunion": "#8b5cf6",
+                                "nettoyage": "#0891b2"}.get(cat, "#94a3b8")
                     x0 = _px(es.timestamp()); x1 = _px(min(ee, now).timestamp())
                     chron_cv.create_rectangle(x0, bar_y, max(x1, x0 + 2), bar_y + bar_h,
                                               fill=_cat_col, outline="", width=0)
@@ -7774,7 +7779,7 @@ new Chart(document.getElementById('gauge{i}'), {{
                     except Exception:
                         pass
                 lbl = EVENT_LABELS.get(k, k)
-                cat = "pb" if k.startswith("pb_") else "ratt"
+                cat = "pb" if k.startswith("pb_") else ("nettoyage" if k == "nettoyage" else "ratt")
                 active_stops_info.append({
                     "label": lbl, "elapsed": elapsed_s, "cat": cat,
                     "start_iso": start_iso, "key": k,
@@ -7950,8 +7955,8 @@ new Chart(document.getElementById('gauge{i}'), {{
         # Arrêts actifs HTML
         active_stops_html = ""
         for s in active_stops_info:
-            cat_col = "#dc2626" if s["cat"] == "pb" else "#d97706"
-            cat_lbl = "Panne" if s["cat"] == "pb" else "Rattrapage"
+            cat_col = "#dc2626" if s["cat"] == "pb" else ("#0891b2" if s["cat"] == "nettoyage" else "#d97706")
+            cat_lbl = "Panne" if s["cat"] == "pb" else ("Nettoyage" if s["cat"] == "nettoyage" else "Rattrapage")
             active_stops_html += f"""
             <div class="active-stop-card" style="border-left-color:{cat_col}">
               <div class="stop-cat" style="color:{cat_col}">{cat_lbl}</div>
@@ -8020,8 +8025,8 @@ new Chart(document.getElementById('gauge{i}'), {{
     return (h>0 ? h+'h ' : '') + String(m).padStart(2,'0') + 'min ' + String(ss).padStart(2,'0') + 's';
   }}
   var cards = stops.map(function(st, i) {{
-    var col = st.cat === 'pb' ? '#dc2626' : '#d97706';
-    var catLbl = st.cat === 'pb' ? '🔴 PANNE' : '🟠 RATTRAPAGE';
+    var col = st.cat === 'pb' ? '#dc2626' : (st.cat === 'nettoyage' ? '#0891b2' : '#d97706');
+    var catLbl = st.cat === 'pb' ? '🔴 PANNE' : (st.cat === 'nettoyage' ? '🔵 NETTOYAGE' : '🟠 RATTRAPAGE');
     var hHr = st.start_ts > 0 ? new Date(st.start_ts*1000).toLocaleTimeString('fr-FR',{{hour:'2-digit',minute:'2-digit',second:'2-digit'}}) : '—';
     return '<div class="alp-stop-card" style="border-color:'+col+'"><div class="alp-stop-cat" style="background:'+col+'">'+catLbl+'</div>'
       + '<div class="alp-stop-lbl">'+st.label+'</div>'
@@ -8148,7 +8153,7 @@ new Chart(document.getElementById('gauge{i}'), {{
                     wp2 = min(100.0 - xp2, (e_ev - s_ev).total_seconds() / shift_total_s_tl * 100)
                     if wp2 <= 0: continue
                     key_tl = ev.get("key", "")
-                    col_tl = "#dc2626" if key_tl.startswith("pb_") else "#d97706"
+                    col_tl = "#dc2626" if key_tl.startswith("pb_") else ("#0891b2" if key_tl == "nettoyage" else "#d97706")
                     lbl_tl = _esc(EVENT_LABELS.get(key_tl, key_tl)[:14])
                     rects.append(f'<rect x="{xp2:.2f}%" y="{RY}" width="{wp2:.2f}%" height="{RH}" fill="{col_tl}" rx="2" opacity="0.90"><title>{lbl_tl}</title></rect>')
                     if wp2 > 2:
