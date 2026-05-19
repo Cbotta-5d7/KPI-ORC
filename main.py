@@ -794,6 +794,8 @@ class App:
         self._data_rows_cache  = []
         self._events_cache     = []
         self._last_of_pilot    = ""
+        self._last_of_modele   = None  # Modèle horaire du dernier pilote
+        self._last_of_poste    = None  # Poste du dernier pilote
         self._last_of_num      = ""   # N° OF de la dernière déclaration (tous pilotes)
         self._interposte_s     = 0
         self._wb_cache         = None
@@ -2291,9 +2293,25 @@ class App:
         # Pilote (shows name)
         pilot_name = self._logged_in_pilot or "Non connecté"
         pilot_bg   = GREEN if self._logged_in_pilot else C_RED
-        # Poste en cours (visible à côté du pilote)
+        # Poste + modèle horaire + plage du jour
         if self._logged_in_poste:
-            tk.Label(right_bar, text=f"🕐 {self._logged_in_poste}",
+            _hdr_horaire_txt = f"🕐 {self._logged_in_poste}"
+            # Ajouter l'horaire du jour si un modèle est sélectionné
+            _mod_sel = getattr(self, "_logged_in_modele", None)
+            if _mod_sel:
+                _cfg_mods = self.cfg.get("modeles_horaires", [])
+                _m_data = next((m for m in _cfg_mods if m["nom"] == _mod_sel), None)
+                if _m_data:
+                    _poste_lower = self._logged_in_poste.lower()
+                    _pk = ("Matin" if "matin" in _poste_lower else
+                           "Midi"  if "midi"  in _poste_lower else
+                           "Nuit"  if "nuit"  in _poste_lower else "Jour")
+                    _tj = JOURS_SEMAINE[datetime.datetime.now().weekday()]
+                    _sc = _m_data["postes"].get(_pk, {}).get(_tj, {})
+                    _d = _sc.get("debut", ""); _f = _sc.get("fin", "")
+                    if _d and _f:
+                        _hdr_horaire_txt += f"   {_d}h–{_f}h  ({_mod_sel})"
+            tk.Label(right_bar, text=_hdr_horaire_txt,
                      bg=NAVY, fg="#4ade80",
                      font=("Arial", 12, "bold")).pack(side="right", padx=(0, 8))
         # Pilote (nom)
@@ -4896,6 +4914,47 @@ Arrêts imputés au TRS (temps perdu) :
     # =========================================================================
     #  ECRAN DE PRODUCTION
     # =========================================================================
+    def _get_shift_window_today(self, modele_nom, poste_nom):
+        """Retourne (debut_min, fin_min) depuis minuit pour le modèle/poste/jour courant.
+        Retourne (None, None) si introuvable.
+        fin_min peut être > 1440 si le poste passe minuit."""
+        cfg_mods = self.cfg.get("modeles_horaires", [])
+        m_data = next((m for m in cfg_mods if m["nom"] == modele_nom), None)
+        if not m_data:
+            return None, None
+        poste_lower = poste_nom.lower()
+        pk = ("Matin" if "matin" in poste_lower else
+              "Midi"  if "midi"  in poste_lower else
+              "Nuit"  if "nuit"  in poste_lower else "Jour")
+        today_jour = JOURS_SEMAINE[datetime.datetime.now().weekday()]
+        sc = m_data["postes"].get(pk, {}).get(today_jour, {})
+        d = str(sc.get("debut", "")).strip()
+        f = str(sc.get("fin", "")).strip()
+        dur = self._parse_horaire_duration(f"{d}h-{f}h") if d and f else None
+        if dur is None:
+            return None, None
+        def _to_min(x):
+            x = x.lower().replace(" ", "")
+            if "h" in x:
+                h, _, m = x.partition("h")
+                return int(h) * 60 + (int(m) if m else 0)
+            return int(x) * 60
+        start_m = _to_min(d)
+        end_m   = start_m + dur
+        return start_m, end_m
+
+    def _overlap_seconds(self, t_start_dt, t_end_dt, win_start_m, win_end_m):
+        """Secondes de chevauchement entre [t_start_dt, t_end_dt] et la fenêtre
+        [win_start_m, win_end_m] (minutes depuis minuit de t_start_dt.date)."""
+        if win_start_m is None or win_end_m is None:
+            return (t_end_dt - t_start_dt).total_seconds()
+        ref = datetime.datetime.combine(t_start_dt.date(), datetime.time(0, 0))
+        w_s = ref + datetime.timedelta(minutes=win_start_m)
+        w_e = ref + datetime.timedelta(minutes=win_end_m)
+        ov_s = max(t_start_dt, w_s)
+        ov_e = min(t_end_dt, w_e)
+        return max(0.0, (ov_e - ov_s).total_seconds())
+
     def _start_production(self):
         if not self._logged_in_pilot:
             self._show_login_overlay(on_success=self._start_production)
@@ -4903,16 +4962,30 @@ Arrêts imputés au TRS (temps perdu) :
         now = datetime.datetime.now()
         self._inter_of_s = 0
         self._interposte_s = 0
-        if (self._last_of_end is not None
-                and self._last_of_pilot
-                and self._last_of_pilot != (self._logged_in_pilot or "")):
-            gap_p = (now - self._last_of_end).total_seconds()
-            if 0 < gap_p <= 3600:
-                self._interposte_s = gap_p
         if self._last_of_end is not None:
-            gap = (now - self._last_of_end).total_seconds()
-            if 30 < gap <= 28800:   # > 30s et <= 8h
-                self._inter_of_s = gap
+            gap_total = (now - self._last_of_end).total_seconds()
+            pilot_changed = (self._last_of_pilot
+                             and self._last_of_pilot != (self._logged_in_pilot or ""))
+            if pilot_changed and 0 < gap_total <= 3600:
+                # Calculer la part interposte = fraction dans la fenêtre du poste précédent
+                prev_mod   = getattr(self, "_last_of_modele", None)
+                prev_poste = getattr(self, "_last_of_poste", None)
+                if prev_mod and prev_poste:
+                    ws, we = self._get_shift_window_today(prev_mod, prev_poste)
+                    self._interposte_s = self._overlap_seconds(
+                        self._last_of_end, now, ws, we)
+                else:
+                    self._interposte_s = gap_total
+            if 30 < gap_total <= 28800:
+                # Calculer la part inter-OF = fraction dans la fenêtre du nouveau poste
+                cur_mod   = getattr(self, "_logged_in_modele", None)
+                cur_poste = getattr(self, "_logged_in_poste", None)
+                if cur_mod and cur_poste:
+                    ws2, we2 = self._get_shift_window_today(cur_mod, cur_poste)
+                    self._inter_of_s = self._overlap_seconds(
+                        self._last_of_end, now, ws2, we2)
+                else:
+                    self._inter_of_s = gap_total
                 do_changeof = False
                 if self._last_of_pilot and self._last_of_pilot != (self._logged_in_pilot or ""):
                     h = int(gap // 3600)
@@ -6932,10 +7005,12 @@ Arrêts imputés au TRS (temps perdu) :
 
         # ── Enregistrement + retour tableau de bord ───────────────────────────
         self._prod_active = False
-        self._last_of_end = end_dt
+        self._last_of_end    = end_dt
         self._of_count_this_shift += 1
-        self._last_of_pilot = v.get("pilote", self._logged_in_pilot or "")
-        self._last_of_num   = v.get("of_num", "")
+        self._last_of_pilot  = v.get("pilote", self._logged_in_pilot or "")
+        self._last_of_modele = getattr(self, "_logged_in_modele", None)
+        self._last_of_poste  = getattr(self, "_logged_in_poste", None)
+        self._last_of_num    = v.get("of_num", "")
         self._interposte_s = 0
         self._inter_of_s = 0
         if self._of_periods:
