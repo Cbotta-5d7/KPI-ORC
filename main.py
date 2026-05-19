@@ -5969,41 +5969,74 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                         ("Problème matière" if key == "arret_mp" else
                         ("Rattrapage" if cat == "ratt" else "Pb technique"))))
 
-            # Card as Canvas (3D button effect)
+            # Card as Canvas — plain rectangle (no rounded corners)
             cv = tk.Canvas(cards_frame, bg=BG_BANNER, highlightthickness=0, cursor="hand2")
             cv.grid(row=0, column=i, sticky="nsew", padx=3, pady=3)
             self._alarm_exempt.add(str(cv))
 
             elapsed = self._t_get(key)
             elapsed_str = [fmt(int(elapsed))]
+            pressed_state = [False]
 
-            def _draw_card(e=None, k=key, c=color, tl=type_lbl, lb=label, es=elapsed_str, cv_ref=cv):
+            def _draw_card(e=None, k=key, c=color, tl=type_lbl, lb=label,
+                           es=elapsed_str, cv_ref=cv, ps=pressed_state, ca=cat):
                 cv_ref.delete("all")
                 bw = cv_ref.winfo_width()
                 bh = cv_ref.winfo_height()
                 if bw < 10 or bh < 10:
                     return
-                shad = _off(c, -50)
-                _rrect(cv_ref, 3, 4, bw-1, bh, 10, fill=shad)
-                _rrect(cv_ref, 0, 0, bw-4, bh-4, 10, fill=c)
-                _rrect(cv_ref, 1, 1, bw-5, bh//3, 10, fill=_off(c, +40))
-                cv_ref.create_text(bw//2-2, 14, text=tl.upper(),
-                                   fill=WHITE, font=("Arial", 7, "bold"), anchor="n")
-                cv_ref.create_text(bw//2-2, bh//2-8, text=lb,
-                                   fill=WHITE, font=("Arial", 10, "bold"),
-                                   justify="center", width=bw-12, anchor="center")
-                cv_ref.create_text(bw//2-2, bh-22, text=es[0],
-                                   fill=WHITE, font=("Arial", 11, "bold"), anchor="center")
-                cv_ref.create_text(bw//2-2, bh-8, text="▶ ARRÊTER",
-                                   fill=WHITE, font=("Arial", 8, "bold"), anchor="center")
+                face = _off(c, -30) if ps[0] else c
+                ox, oy = (2, 2) if ps[0] else (0, 0)  # pressed offset
+                # Shadow (plain rect)
+                cv_ref.create_rectangle(3+ox, 4+oy, bw-1, bh, fill=_off(c, -60), outline="")
+                # Face (plain rect)
+                cv_ref.create_rectangle(ox, oy, bw-4+ox, bh-4+oy, fill=face, outline="")
+                # Highlight stripe at top
+                cv_ref.create_rectangle(ox+1, oy+1, bw-5+ox, (bh-4)//3+oy,
+                                        fill=_off(c, +40), outline="")
+                # — Left column: "ARRÊT EN COURS" + type + name
+                lx = bw // 4  # center of left half
+                cv_ref.create_text(lx+ox, 10+oy, text="ARRÊT EN COURS",
+                                   fill="#ffe066", font=("Arial", 7, "bold"), anchor="n")
+                cv_ref.create_text(lx+ox, 26+oy, text=tl.upper(),
+                                   fill=WHITE, font=("Arial", 8, "bold"), anchor="n")
+                cv_ref.create_text(lx+ox, bh//2+oy, text=lb,
+                                   fill=WHITE, font=("Arial", 9, "bold"),
+                                   justify="center", width=bw//2-8, anchor="center")
+                # — Separator
+                cv_ref.create_line(bw//2+ox, 6+oy, bw//2+ox, bh-6+oy,
+                                   fill=_off(c, -20), width=1)
+                # — Right column: timer + big ARRÊTER button
+                rx = bw*3//4  # center of right half
+                cv_ref.create_text(rx+ox, bh//2-22+oy, text=es[0],
+                                   fill=WHITE, font=("Arial", 14, "bold"), anchor="center")
+                # ARRÊTER button box
+                btn_y1 = bh//2+2+oy
+                btn_y2 = bh-6+oy
+                btn_x1 = bw//2+6+ox
+                btn_x2 = bw-6+ox
+                btn_bg = _off(c, -50) if ps[0] else "#c0392b"
+                if ca == "nettoyage":
+                    btn_bg = _off(c, -50) if ps[0] else "#16a085"
+                elif ca == "ratt":
+                    btn_bg = _off(c, -50) if ps[0] else "#7f4f00"
+                cv_ref.create_rectangle(btn_x1, btn_y1, btn_x2, btn_y2,
+                                        fill=btn_bg, outline=WHITE, width=1)
+                cv_ref.create_text((btn_x1+btn_x2)//2, (btn_y1+btn_y2)//2,
+                                   text="■ ARRÊTER", fill=WHITE,
+                                   font=("Arial", 10, "bold"), anchor="center")
 
             cv.bind("<Configure>", _draw_card)
 
-            def _stop_action(k=key):
+            def _stop_action(k=key, cv_ref=cv, ps=pressed_state, dc=_draw_card):
+                if ps[0]:
+                    return  # already pending
                 if not self._debounce_ok():
                     return
-                self._ask_stop_description(k)
-            cv.bind("<Button-1>", lambda e, k=key: _stop_action(k))
+                ps[0] = True
+                dc()  # redraw pressed state
+                self.root.after(900, lambda: self._ask_stop_description(k))
+            cv.bind("<Button-1>", lambda e, k=key, fn=_stop_action: fn(k))
 
             # Store canvas + elapsed_str ref for tick updates
             self._stop_timer_lbls[key] = (cv, elapsed_str)
