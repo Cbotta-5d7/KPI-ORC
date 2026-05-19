@@ -2532,25 +2532,62 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         gen_inner.bind("<Configure>", lambda e: cv_gen.configure(scrollregion=cv_gen.bbox("all")))
         cv_gen.bind("<Configure>", lambda e: cv_gen.itemconfig(gen_win, width=e.width))
 
+        # ── Encadré : Temps d'ouverture ──────────────────────────────────────
+        info_box = tk.Frame(gen_inner, bg="#eef6ff",
+                            highlightthickness=1, highlightbackground="#93c5fd")
+        info_box.pack(fill="x", padx=16, pady=(12, 4))
+        tk.Frame(info_box, bg="#2563eb", width=5).pack(side="left", fill="y")
+        info_body = tk.Frame(info_box, bg="#eef6ff")
+        info_body.pack(fill="x", padx=10, pady=8)
+        tk.Label(info_body, text="⏱  Calcul du Temps d'Ouverture (TRS)",
+                 bg="#eef6ff", fg="#1d4ed8", font=("Arial", 11, "bold")).pack(anchor="w")
+        tk.Label(info_body,
+                 text="Temps d'ouverture  =  Durée du modèle horaire\n"
+                      "                              −  Pause max autorisée (ci-dessous)\n"
+                      "                              −  Réunion planifiée (ci-dessous)",
+                 bg="#eef6ff", fg="#1e3a5f", font=("Arial", 10),
+                 justify="left").pack(anchor="w", pady=(4, 0))
+        tk.Label(info_body,
+                 text="▸ Les pauses sont déclarées par le pilote via les arrêts.\n"
+                      "  Le quota ci-dessous est déduit du temps d'ouverture.\n"
+                      "  Tout dépassement du quota reste affiché comme «Dépassement pause».\n"
+                      "▸ La réunion planifiée n'est PAS déclarée par le pilote — elle\n"
+                      "  est automatiquement déduite. Le bouton «Arrêt réunion» sert\n"
+                      "  uniquement pour les réunions EXCEPTIONNELLES hors quota.",
+                 bg="#eef6ff", fg="#374151", font=("Arial", 9),
+                 justify="left").pack(anchor="w", pady=(4, 0))
+
+        # ── Séparateur ────────────────────────────────────────────────────────
+        tk.Frame(gen_inner, bg="#e5e7eb", height=1).pack(fill="x", padx=16, pady=(8, 4))
+
         gen_fields = [
-            ("Nettoyage court poste (minutes)",        "clean_short_min",   10),
-            ("Nettoyage long ex: mercredi (minutes)",  "clean_long_min",    30),
-            ("Grand nettoyage (minutes)",              "clean_grand_min",   60),
-            ("Temps réunion planifiée /poste (min)",   "meeting_tol_min",    5),
-            ("Temps de pause autorisé par poste (min)", "pause_max_min",    20),
-            ("Mot de passe Encadrant",                 "supervisor_pw",    "1234"),
+            ("Nettoyage court poste (min)",            "clean_short_min",   10),
+            ("Nettoyage long ex: mercredi (min)",       "clean_long_min",    30),
+            ("Grand nettoyage (min)",                   "clean_grand_min",   60),
+            ("⏱ Pause max /poste — déduit temps ouverture (min)",
+                                                        "pause_max_min",     20),
+            ("⏱ Réunion planifiée /poste — déduit auto (min)",
+                                                        "meeting_tol_min",    5),
+            ("Mot de passe Encadrant",                  "supervisor_pw",    "1234"),
         ]
         gen_vars = {}
         for i, (label, key, default) in enumerate(gen_fields):
-            row_f = tk.Frame(gen_inner, bg=WHITE)
-            row_f.pack(fill="x", padx=20, pady=6)
-            tk.Label(row_f, text=label, bg=WHITE, fg=DARK,
-                     font=("Arial", 11), width=38, anchor="w").pack(side="left")
+            is_trs = key in ("pause_max_min", "meeting_tol_min")
+            row_bg = "#f0f7ff" if is_trs else WHITE
+            row_f = tk.Frame(gen_inner, bg=row_bg,
+                             highlightthickness=1 if is_trs else 0,
+                             highlightbackground="#bfdbfe" if is_trs else WHITE)
+            row_f.pack(fill="x", padx=16, pady=4)
+            tk.Label(row_f, text=label, bg=row_bg,
+                     fg="#1d4ed8" if is_trs else DARK,
+                     font=("Arial", 11, "bold" if is_trs else "normal"),
+                     width=44, anchor="w").pack(side="left", padx=(8, 0), pady=4)
             val = self.cfg.get(key, default)
             var = tk.StringVar(value=str(val))
             gen_vars[key] = var
             tk.Entry(row_f, textvariable=var, font=("Arial", 12, "bold"),
-                     width=12, relief="solid", bd=1).pack(side="left", padx=8)
+                     width=8, relief="solid", bd=1,
+                     bg="#dbeafe" if is_trs else WHITE).pack(side="left", padx=8, pady=4)
 
         # ── Tab Pilotes (avec mots de passe) ─────────────────────────────────
         tab_pil = tk.Frame(nb_s, bg=WHITE)
