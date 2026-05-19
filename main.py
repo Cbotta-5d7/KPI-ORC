@@ -125,8 +125,9 @@ EVT_HEADERS = [
 ]
 
 ALL_EVENT_TYPES = (
-    [f"Rattrapage: {e[0]}" for e in EVENTS[:5]] +
-    [f"PB Technique: {e[0]}" for e in EVENTS[5:]] +
+    [f"Rattrapage: {e[0]}" for e in EVENTS if e[2] == "ratt"] +
+    [f"Nettoyage: {e[0]}" for e in EVENTS if e[2] == "nettoyage"] +
+    [f"PB Technique: {e[0]}" for e in EVENTS if e[2] == "pb"] +
     ["Changement d'OF"]
 )
 
@@ -884,12 +885,12 @@ class App:
                     end_dt   = _pdt(date_val, str(row[11] or ""))
                     if start_dt is None:
                         continue
-                    if "rattrapage" in evt_type:
-                        cat = "ratt"
-                    elif "pb" in evt_type or "technique" in evt_type:
-                        cat = "pb"
-                    elif "nettoyage" in evt_type.lower():
+                    if "nettoyage" in evt_type.lower():
                         cat = "nettoyage"
+                    elif "rattrapage" in evt_type.lower():
+                        cat = "ratt"
+                    elif "pb" in evt_type.lower() or "technique" in evt_type.lower():
+                        cat = "pb"
                     else:
                         continue
                     self._tl_events.append({
@@ -5300,8 +5301,8 @@ Arrêts imputés au TRS (temps perdu) :
             if not ev_info:
                 continue
             label, _, cat = ev_info
-            color    = C_RATT if cat == "ratt" else C_RED
-            type_lbl = "Rattrapage" if cat == "ratt" else "Problème technique"
+            color    = C_NETT if cat == "nettoyage" else (C_RATT if cat == "ratt" else C_RED)
+            type_lbl = "Nettoyage" if cat == "nettoyage" else ("Rattrapage" if cat == "ratt" else "Problème technique")
 
             # Carte arret
             card_shad = tk.Frame(container, bg=_off(color, -40))
@@ -5315,7 +5316,8 @@ Arrêts imputés au TRS (temps perdu) :
             name_col.pack(side="left")
             tk.Label(name_col, text=type_lbl.upper(), bg=color,
                      fg=_off(WHITE, -60), font=("Arial", 8, "bold")).pack(anchor="w")
-            tk.Label(name_col, text=f"{'▶' if cat == 'ratt' else '⚠'}  {label}",
+            _icon = "🧹" if cat == "nettoyage" else ("▶" if cat == "ratt" else "⚠")
+            tk.Label(name_col, text=f"{_icon}  {label}",
                      bg=color, fg=WHITE, font=("Arial", 13, "bold")).pack(anchor="w")
 
             def _stop(k=key):
