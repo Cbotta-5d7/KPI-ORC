@@ -2352,9 +2352,6 @@ class App:
         # Base données (remplace _db_widget)
         tk.Button(right_bar, text="⚙  Base", bg=NAVY_L, fg=WHITE,
                   command=self._select_db, **BTN).pack(side="right", padx=4)
-        # Listes Excel
-        tk.Button(right_bar, text="⚙  Listes", bg=NAVY_L, fg=WHITE,
-                  command=self._show_excel_info, **BTN).pack(side="right", padx=4)
         # Paramètres
         tk.Button(right_bar, text="⚙  Paramètres", bg=NAVY_L, fg=WHITE,
                   font=("Arial", 11, "bold"), relief="flat", cursor="hand2",
@@ -2383,71 +2380,63 @@ class App:
             tk.Label(right_bar, text=_hdr_horaire_txt,
                      bg=NAVY, fg="#4ade80",
                      font=("Arial", 12, "bold")).pack(side="right", padx=(0, 8))
-        # Pilote (nom)
-        tk.Button(right_bar, text=f"👤  {pilot_name}", bg=pilot_bg, fg=WHITE,
+        # Pilote (nom) — with disconnect icon if logged in
+        pilot_btn_text = f"⏻  {pilot_name}" if self._logged_in_pilot else f"👤  {pilot_name}"
+        tk.Button(right_bar, text=pilot_btn_text, bg=pilot_bg, fg=WHITE,
                   command=lambda: self._check_nettoyage_before_logout(
                       lambda: self._show_login_overlay(on_success=self._show_main)
                   ), **BTN).pack(side="right", padx=(4, 0))
-        # Bouton déconnexion dédié (n'apparait que si connecté)
-        if self._logged_in_pilot:
-            tk.Button(right_bar, text="⏻", bg="#dc2626", fg=WHITE,
-                      command=lambda: self._check_nettoyage_before_logout(
-                          lambda: self._do_logout_to_main()
-                      ), **BTN).pack(side="right", padx=(0, 4))
         return hdr
 
     # ── Paramètres ───────────────────────────────────────────────────────────
     RULES_TEXT = """\
 RÈGLES DE FONCTIONNEMENT KPI-ORC
 
-═══ DURÉES & CALCUL TRS ═══
+═══ TEMPS D'OUVERTURE & CALCUL TRS ═══
 
-TRS = (Temps productif net) / (Temps d'ouverture)
-Temps d'ouverture = Durée totale du poste - Arrêts planifiés
+TRS du poste = Équivalence produite / (Référence prod × Temps d'ouverture / 28800)
 
-Arrêts planifiés (exclus du TRS) :
-  • Pauses opérateur (100% exclues)
-  • Nettoyage court ≤ durée configurée (défaut 10 min)
-  • Nettoyage long ≤ durée configurée (défaut 30 min)
-  • Grand nettoyage ≤ durée configurée (défaut 60 min)
-  • Réunion/manquant personnel ≤ tolérance (défaut 5 min/poste)
+Temps d'ouverture = Durée du modèle horaire choisi à la connexion
+  - moins 5 min de réunion planifiée (configurable dans Paramètres)
+  Le temps d'ouverture peut être modifié par l'encadrant en fin de poste.
 
-Arrêts imputés au TRS (temps perdu) :
+═══ ARRÊTS PLANIFIÉS (non imputés au TRS) ═══
+  • Pauses opérateur : exclues à 100%
+  • Réunion planifiée : 5 min automatiquement déduits du temps d'ouverture
+    (les pilotes ne déclarent PAS ces 5 min — c'est automatique)
+
+═══ ARRÊTS IMPUTÉS AU TRS (temps perdu) ═══
   • Pannes techniques (100%)
   • Rattrapages (100%)
   • Nettoyage dépassant la durée planifiée (excédent seulement)
-  • Réunion/manquant personnel dépassant la tolérance (excédent seulement)
-  • Manquant matière première (100%)
+  • Arrêt réunion EXCEPTIONNEL (hors des 5 min planifiées) : impacte le TRS
+  • Arrêt matière première (100%)
 
-═══ INTERVALLE ENTRE OF ═══
-  • Si l'intervalle entre deux OF est ≤ durée configurée (défaut 5 min),
-    il est automatiquement classé "Changement d'OF" dans les événements.
-    Il est toujours imputé au TRS du prochain OF ouvert.
-    Si l'intervalle dépasse la durée configurée, une confirmation est demandée au pilote.
+═══ MODÈLE HORAIRE ═══
+  • Géré dans Paramètres → Modèles Horaires
+  • Sélectionné à la connexion par le pilote
+  • L'encadrant peut modifier les heures pour la session courante
+  • Le modèle détermine le temps d'ouverture pour le TRS
 
-═══ CHANGEMENT D'OF ═══
-  • Un changement d'OF crée automatiquement un événement dans l'onglet
-    Événements de l'Excel (colonne A = "Changement d'OF", col C = date,
-    col Q = heure début, col R = heure fin, col S = durée, col T = commentaire).
-  • Le nom du pilote qui a effectué le dernier OF est écrit en colonne E.
-
-═══ PAUSES ═══
-  • Les pauses sont déclarées via "Aller en pause" et enregistrées dans
-    l'onglet Événements.
-  • Les pauses sont exclues du calcul TRS (arrêt planifié).
-  • Le temps de pause total est affiché dans le récapitulatif de fin de poste.
-
-═══ POSTE EN COURS vs POSTE PRÉCÉDENT ═══
-  • Le KPI "Poste en cours" est calculé sur toutes les déclarations du
-    pilote connecté depuis 00:00 du jour courant.
-  • Le KPI "Poste précédent" est calculé sur le dernier poste clôturé
-    avant le poste en cours.
+═══ RÉUNION ═══
+  • 5 min planifiées par poste : déduit automatiquement du temps d'ouverture
+  • Réunion exceptionnelle : déclarée via le bouton "Arrêt réunion (hors 5 min prévue)"
+    → impacte directement le TRS (temps non productif)
 
 ═══ NETTOYAGE ═══
   • Court (fin de poste) : tolérance configurable (défaut 10 min)
   • Long (ex: mercredi) : tolérance configurable (défaut 30 min)
   • Grand nettoyage : tolérance configurable (défaut 60 min)
-  • Seul le temps dépassant la tolérance est imputé au TRS.
+  • Seul le dépassement de la tolérance est imputé au TRS.
+
+═══ INTERVALLE ENTRE OF ═══
+  • Si l'intervalle ≤ 5 min : classé "Changement d'OF", imputé au TRS.
+  • Si l'intervalle > 5 min : confirmation demandée au pilote.
+
+═══ INTER-POSTE ═══
+  • Le temps entre deux pilotes sur le même OF est partagé selon les
+    fenêtres horaires de chaque modèle horaire.
+  • Le temps hors des deux fenêtres est ignoré.
 
 """
 
@@ -2699,48 +2688,6 @@ Arrêts imputés au TRS (temps perdu) :
             return items
 
         cop_items_ref = _make_list_tab(tab_cop, "Co-pilotes")
-
-        # ── Tab Postes ────────────────────────────────────────────────────────
-        tab_post = tk.Frame(nb_s, bg=WHITE)
-        nb_s.add(tab_post, text="  Postes  ")
-
-        postes_defaults = [("Matin", 8, 0), ("Midi", 8, 0), ("Nuit", 8, 0), ("Jour", 8, 0)]
-        postes_vars = {}  # nom -> (h_var, m_var)
-        poste_durees_cfg = self.cfg.get("postes_durees", {})
-
-        post_frm = tk.Frame(tab_post, bg=WHITE)
-        post_frm.pack(fill="both", expand=True, padx=16, pady=12)
-        tk.Label(post_frm, text="Durées des postes", bg=WHITE, fg=NAVY,
-                 font=("Arial", 12, "bold")).pack(anchor="w", pady=(0, 8))
-
-        post_hdr = tk.Frame(post_frm, bg=WHITE)
-        post_hdr.pack(fill="x", pady=(0, 4))
-        tk.Label(post_hdr, text="Poste", bg=WHITE, fg=GRAY,
-                 font=("Arial", 10, "bold"), width=14, anchor="w").pack(side="left")
-        tk.Label(post_hdr, text="Heures", bg=WHITE, fg=GRAY,
-                 font=("Arial", 10, "bold"), width=8, anchor="w").pack(side="left")
-        tk.Label(post_hdr, text="Minutes", bg=WHITE, fg=GRAY,
-                 font=("Arial", 10, "bold"), width=8, anchor="w").pack(side="left")
-
-        for nom, dh, dm in postes_defaults:
-            total_min = poste_durees_cfg.get(nom, dh * 60 + dm)
-            h_val = total_min // 60
-            m_val = total_min % 60
-            h_var = tk.StringVar(value=str(h_val))
-            m_var = tk.StringVar(value=str(m_val))
-            postes_vars[nom] = (h_var, m_var)
-            prow = tk.Frame(post_frm, bg=WHITE if postes_defaults.index((nom, dh, dm)) % 2 == 0 else "#f8f9fc")
-            prow.pack(fill="x", pady=2)
-            tk.Label(prow, text=nom, bg=prow.cget("bg"), fg=DARK,
-                     font=("Arial", 11), width=14, anchor="w").pack(side="left")
-            tk.Entry(prow, textvariable=h_var, font=("Arial", 11),
-                     width=6, relief="solid", bd=1, justify="center").pack(side="left", padx=4)
-            tk.Label(prow, text="h", bg=prow.cget("bg"), fg=GRAY,
-                     font=("Arial", 11)).pack(side="left", padx=(0, 8))
-            tk.Entry(prow, textvariable=m_var, font=("Arial", 11),
-                     width=6, relief="solid", bd=1, justify="center").pack(side="left", padx=4)
-            tk.Label(prow, text="min", bg=prow.cget("bg"), fg=GRAY,
-                     font=("Arial", 11)).pack(side="left")
 
         # ── Tab Modèles Horaires ──────────────────────────────────────────────
         import copy as _copy
@@ -3150,10 +3097,11 @@ Arrêts imputés au TRS (temps perdu) :
             if any_running:
                 # Deux rouges proches pour un pulse élégant
                 alarm_col = "#ef4444" if self._cell_blink else "#991b1b"
-                try:
-                    self.root.configure(bg=alarm_col)
-                except Exception:
-                    pass
+                if self._mode != "production":
+                    try:
+                        self.root.configure(bg=alarm_col)
+                    except Exception:
+                        pass
                 for _f in getattr(self, "_alarm_bg_frames", []):
                     try:
                         _f.configure(bg=alarm_col)
@@ -3188,9 +3136,17 @@ Arrêts imputés au TRS (temps perdu) :
             except Exception:
                 pass
             # Timers des cartes d'arret actifs
-            for key, lbl in list(self._stop_timer_lbls.items()):
+            for key, ref in list(self._stop_timer_lbls.items()):
                 try:
-                    lbl.config(text=fmt(self._t_get(key)))
+                    if isinstance(ref, tuple):
+                        cv_w, es = ref
+                        es[0] = fmt(int(self._t_get(key)))
+                        try:
+                            cv_w.event_generate("<Configure>")
+                        except Exception:
+                            pass
+                    else:
+                        ref.config(text=fmt(self._t_get(key)))
                 except Exception:
                     self._stop_timer_lbls.pop(key, None)
 
@@ -3737,14 +3693,6 @@ Arrêts imputés au TRS (temps perdu) :
         else:
             _make_canvas_btn(b1, "▶  DÉMARRER\nUNE PROD", GREEN, self._start_production)
 
-        # Btn 2 : SE CONNECTER / SE DÉCONNECTER
-        b2 = tk.Frame(action_bar, bg=BG)
-        b2.pack(side="left", fill="both", expand=True)
-        if self._logged_in_pilot:
-            _make_canvas_btn(b2, "👤  SE\nDÉCONNECTER", ORANGE, _do_logout)
-        else:
-            _make_canvas_btn(b2, "🔑  SE\nCONNECTER", GREEN, _do_connect)
-
         # Btn 4 : FIN DE MON POSTE
         b4 = tk.Frame(action_bar, bg=BG)
         b4.pack(side="left", fill="both", expand=True)
@@ -3754,8 +3702,8 @@ Arrêts imputés au TRS (temps perdu) :
         tab_bar = tk.Frame(body, bg=BG)
         tab_bar.pack(fill="x", pady=(0, 0))
 
-        _active_tab = [0]   # 0 = Déclarations, 1 = Événements, 2 = Postes
-        tab_frames  = [None, None, None]
+        _active_tab = [0]   # 0 = Déclarations, 1 = Événements
+        tab_frames  = [None, None]
 
         def _switch_tab(idx):
             _active_tab[0] = idx
@@ -3772,7 +3720,7 @@ Arrêts imputés au TRS (temps perdu) :
                         frm.pack_forget()
 
         tab_btns = []
-        for i, lbl in enumerate(["📋  Déclarations", "📊  Événements", "🏁  Postes"]):
+        for i, lbl in enumerate(["📋  Déclarations", "📊  Événements"]):
             btn = tk.Button(tab_bar, text=lbl, bg=NAVY if i == 0 else LGRAY,
                             fg=WHITE if i == 0 else DARK,
                             font=("Arial", 10, "bold"), relief="flat",
@@ -3795,7 +3743,7 @@ Arrêts imputés au TRS (temps perdu) :
         style = ttk.Style()
         style.configure("KPI.Treeview",
                         background=WHITE, foreground=DARK,
-                        fieldbackground=WHITE, rowheight=32,
+                        fieldbackground=WHITE, rowheight=44,
                         font=("Arial", 10))
         style.configure("KPI.Treeview.Heading",
                         background=LGRAY, foreground=DARK,
@@ -3809,7 +3757,7 @@ Arrêts imputés au TRS (temps perdu) :
         widths = {"Date": 80, "H.Début": 65, "H.Fin": 65, "OF": 90, "Pilote": 130, "Poste": 80,
                   "Qte Fab": 60, "Qte Emb": 60, "Equiv": 60,
                   "TRS %": 65, "Duree OF": 75, "Arrêts": 75,
-                  "✏": 52, "🗑": 52}
+                  "✏": 90, "🗑": 52}
         for c in cols:
             tree.heading(c, text=c)
             tree.column(c, width=widths.get(c, 70), anchor="center",
@@ -3890,57 +3838,6 @@ Arrêts imputés au TRS (temps perdu) :
                 evt_tree2.insert("", "end", values=(
                     ev_type, ev_pil, ev_of, ev_date, ev_hd, ev_hf, ev_dur, ev_cmt),
                     tags=(tag,) if tag else ())
-            except Exception:
-                pass
-
-        # ── Tab 2: Postes (TRS par poste) ────────────────────────────────────
-        postes_frame = tk.Frame(tab_container, bg=BG)
-        tab_frames[2] = postes_frame
-
-        pos_wrap, pos_inner = shadow_frame(postes_frame, bg=WHITE)
-        pos_wrap.pack(fill="both", expand=True)
-
-        pos_cols = ("Date", "Poste", "Pilote", "TRS", "Qté produite",
-                    "Équivalence", "Total prod", "Total panne", "Total ratt")
-        pos_tree = ttk.Treeview(pos_inner, columns=pos_cols, show="headings",
-                                height=15, style="KPI.Treeview")
-        self._pos_tree = pos_tree
-        pos_widths = {"Date": 80, "Poste": 80, "Pilote": 130, "TRS": 70,
-                      "Qté produite": 90, "Équivalence": 90,
-                      "Total prod": 90, "Total panne": 90, "Total ratt": 90}
-        for c3 in pos_cols:
-            pos_tree.heading(c3, text=c3)
-            pos_tree.column(c3, width=pos_widths.get(c3, 80), anchor="center",
-                            stretch=(c3 == "Pilote"))
-        pos_tree.tag_configure("trs_hi",   background="#e6f7ee", foreground=GREEN)
-        pos_tree.tag_configure("trs_warn", background="#fff7e6", foreground=ORANGE)
-        pos_tree.tag_configure("trs_low",  background="#fde8e8", foreground=C_RED)
-        sb_pos = ttk.Scrollbar(pos_inner, orient="vertical", command=pos_tree.yview)
-        pos_tree.configure(yscrollcommand=sb_pos.set)
-        pos_tree.pack(side="left", fill="both", expand=True)
-        sb_pos.pack(side="right", fill="y")
-
-        # Populate from _trs_cache
-        for trs_row in reversed(self._trs_cache[-100:]):
-            try:
-                t_date  = str(trs_row[0] or "")[:10]
-                t_poste = str(trs_row[1] or "")
-                t_pilot = str(trs_row[2] or "")
-                t_trs   = str(trs_row[19] or "")
-                t_qte   = str(trs_row[16] or "")
-                t_equiv = str(trs_row[17] or "")
-                t_prod  = str(trs_row[8] or "")
-                t_panne = str(trs_row[11] or "")
-                t_ratt  = str(trs_row[12] or "")
-                # Tag TRS
-                try:
-                    trs_num = float(str(t_trs).replace("%", "").replace(",", "."))
-                    pos_tag = ("trs_hi",) if trs_num >= 75 else (("trs_warn",) if trs_num >= 55 else ("trs_low",))
-                except Exception:
-                    pos_tag = ()
-                pos_tree.insert("", "end", values=(
-                    t_date, t_poste, t_pilot, t_trs, t_qte,
-                    t_equiv, t_prod, t_panne, t_ratt), tags=pos_tag)
             except Exception:
                 pass
 
@@ -5290,22 +5187,14 @@ Arrêts imputés au TRS (temps perdu) :
         # Base données
         tk.Button(right_bar, text="⚙  Base", bg=NAVY_L, fg=WHITE,
                   command=self._select_db, **BTN_P).pack(side="right", padx=4)
-        # Listes
-        tk.Button(right_bar, text="⚙  Listes", bg=NAVY_L, fg=WHITE,
-                  command=self._show_excel_info, **BTN_P).pack(side="right", padx=4)
-        # Pilote
+        # Pilote — with disconnect icon if logged in
         pilot_name_p = self._logged_in_pilot or "Non connecté"
         pilot_bg_p   = GREEN if self._logged_in_pilot else C_RED
-        tk.Button(right_bar, text=f"👤  {pilot_name_p}", bg=pilot_bg_p, fg=WHITE,
+        pilot_btn_text_p = f"⏻  {pilot_name_p}" if self._logged_in_pilot else f"👤  {pilot_name_p}"
+        tk.Button(right_bar, text=pilot_btn_text_p, bg=pilot_bg_p, fg=WHITE,
                   command=lambda: self._check_nettoyage_before_logout(
                       lambda: self._show_login_overlay(on_success=self._show_main)
                   ), **BTN_P).pack(side="right", padx=(4, 0))
-        # Bouton déconnexion dédié
-        if self._logged_in_pilot:
-            tk.Button(right_bar, text="⏻", bg="#dc2626", fg=WHITE,
-                      command=lambda: self._check_nettoyage_before_logout(
-                          lambda: self._do_logout_to_main()
-                      ), **BTN_P).pack(side="right", padx=(0, 4))
 
         # ── Barre de statut Canvas (chrono + KPI, change couleur) ────────────
         self._status_cv = tk.Canvas(outer, height=self._px(72), bg=BG, highlightthickness=0)
@@ -5331,7 +5220,7 @@ Arrêts imputés au TRS (temps perdu) :
         body.columnconfigure(2, weight=2)
         body.rowconfigure(0, weight=1)
         body.rowconfigure(1, weight=0)
-        self._alarm_bg_frames.extend([body])
+        # (body NOT added to _alarm_bg_frames — only banner blinks)
 
         # Zone 1 : formulaire (blanc — pas dans alarm_bg_frames)
         left = tk.Frame(body, bg=WHITE)
@@ -5341,7 +5230,6 @@ Arrêts imputés au TRS (temps perdu) :
         # Zone 2 : boutons d'action uniquement (plus de stops_frame ici)
         mid = tk.Frame(body, bg=BG)
         mid.grid(row=0, column=1, sticky="nsew", padx=2)
-        self._alarm_bg_frames.append(mid)
         self._build_right_panel(mid)
 
         # Zone 3 : récap arrêts de l'OF (blanc — pas dans alarm_bg_frames)
@@ -5349,18 +5237,19 @@ Arrêts imputés au TRS (temps perdu) :
         recap_panel.grid(row=0, column=2, sticky="nsew", padx=(2, 0))
         self._recap_panel = recap_panel
 
-        # ── Overlay arrêts actifs — flottant sur la zone formulaire ──────────
-        # Couvre col0 (poids 3 sur 6 → ~50% de la largeur)
-        stops_ov = tk.Frame(body, bg=WHITE, bd=0)
-        self._active_stops_container = stops_ov
-        # Initialement masqué ; _refresh_active_stops() gère l'affichage
+        # ── Bannière arrêts actifs en bas — toute la largeur ─────────────────
+        stop_banner = tk.Frame(outer, bg="#1e293b", height=110)
+        stop_banner.pack(fill="x", side="bottom")
+        stop_banner.pack_propagate(False)
+        self._active_stops_container = stop_banner
+        self._alarm_banner = stop_banner  # blink the banner, not the whole background
         self._refresh_active_stops()
         self._build_stops_recap(recap_panel)
 
         # ── Footer : bouton Annuler bas-droite ───────────────────────────────
         footer = tk.Frame(body, bg=BG)
         footer.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(6, 0))
-        self._alarm_bg_frames.append(footer)
+        # (footer NOT added to _alarm_bg_frames)
         tk.Frame(footer, bg=BG).pack(side="left", fill="both", expand=True)
 
         def _annuler_production():
@@ -5430,7 +5319,7 @@ Arrêts imputés au TRS (temps perdu) :
                 body.columnconfigure(col, weight=1)
             return body
 
-        LFONT  = ("Arial", 8)
+        LFONT  = ("Arial", 10)
         EFONT  = ("Arial", 10, "bold")
         CELL_H = 48
         ri     = [0]
@@ -5926,6 +5815,7 @@ Arrêts imputés au TRS (temps perdu) :
             cv = tk.Canvas(parent, height=BTN_H, highlightthickness=0, bg=BG)
             cv.pack(fill="x", padx=8, pady=(0, 3))
             pressed = [False]
+            _last_click = [0.0]
             def _draw(e=None):
                 cv.delete("all")
                 bw, bh = cv.winfo_width(), cv.winfo_height()
@@ -5940,8 +5830,13 @@ Arrêts imputés au TRS (temps perdu) :
                 pressed[0] = True
                 _draw()
             def _release(e):
+                import time
                 pressed[0] = False
                 _draw()
+                now_t = time.time()
+                if now_t - _last_click[0] < 0.5:
+                    return
+                _last_click[0] = now_t
                 cmd()
             cv.bind("<Configure>", _draw)
             cv.bind("<ButtonPress-1>",  _press)
@@ -5982,7 +5877,7 @@ Arrêts imputés au TRS (temps perdu) :
         _make_cv_btn("⏹   DÉCLARER LA FIN DE PRODUCTION", "#16a34a",
                      self._end_production)
 
-    # ── Arrets actifs (overlay flottant sur la zone formulaire) ──────────────
+    # ── Arrêts actifs (bannière en bas) ──────────────────────────────────────
     def _refresh_active_stops(self):
         container = self._active_stops_container
         if not container or not container.winfo_exists():
@@ -5994,74 +5889,74 @@ Arrêts imputés au TRS (temps perdu) :
         active_keys = [k for k in self._timers if self._t_running(k)]
 
         if not active_keys:
-            # Masquer l'overlay — la zone formulaire reprend sa place
             try:
-                container.place_forget()
+                container.pack_forget()
             except Exception:
                 pass
             return
 
-        # Afficher l'overlay sur la zone formulaire (col0 ≈ 50% de body)
+        # Montrer la bannière
         try:
+            container.pack(fill="x", side="bottom")
             container.lift()
-            container.place(relx=0, rely=0, relwidth=0.34, relheight=1.0)
         except Exception:
             return
 
-        # ── Header ──────────────────────────────────────────────────────────
-        hdr = tk.Frame(container, bg=NAVY, height=44)
-        hdr.pack(fill="x")
-        hdr.pack_propagate(False)
-        n = len(active_keys)
-        tk.Label(hdr, text=f"⚠  {n} ARRÊT{'S' if n > 1 else ''} EN COURS — cliquer ARRÊTER pour saisir le motif",
-                 bg=NAVY, fg=WHITE, font=("Arial", 11, "bold")).pack(
-                 side="left", padx=12, pady=10)
-        self._alarm_exempt.add(str(hdr))
-
-        # ── Grille de cartes (2 colonnes, max 5 arrêts) ───────────────────
-        grid = tk.Frame(container, bg=WHITE)
-        grid.pack(fill="both", expand=True, padx=6, pady=6)
-        grid.columnconfigure(0, weight=1)
-        grid.columnconfigure(1, weight=1)
+        BG_BANNER = "#1e293b"
+        container.configure(bg=BG_BANNER)
+        cards_frame = tk.Frame(container, bg=BG_BANNER)
+        cards_frame.pack(fill="both", expand=True, padx=4, pady=4)
+        for i in range(5):
+            cards_frame.columnconfigure(i, weight=1)
+        cards_frame.rowconfigure(0, weight=1)
 
         for i, key in enumerate(active_keys[:5]):
             ev_info = next((e for e in EVENTS if e[1] == key), None)
             if not ev_info:
                 continue
             label, _, cat = ev_info
-            color    = C_NETT if cat == "nettoyage" else (C_RATT if cat == "ratt" else C_RED)
+            color = C_NETT if cat == "nettoyage" else (C_RATT if cat == "ratt" else C_RED)
             type_lbl = ("Nettoyage" if cat == "nettoyage" else
                         ("Organisationnel" if key == "arret_reunion" else
                         ("Problème matière" if key == "arret_mp" else
                         ("Rattrapage" if cat == "ratt" else "Pb technique"))))
 
-            row_i, col_i = divmod(i, 2)
-            grid.rowconfigure(row_i, weight=1)
-
-            card = tk.Frame(grid, bg=WHITE, bd=2, relief="solid",
-                            highlightbackground=color, highlightthickness=2)
-            card.grid(row=row_i, column=col_i, sticky="nsew", padx=4, pady=4)
-            self._alarm_exempt.add(str(card))
-
-            tk.Label(card, text=type_lbl.upper(), bg=WHITE, fg=color,
-                     font=("Arial", 8, "bold")).pack(anchor="w", padx=8, pady=(6, 0))
-            _icon = "🧹" if cat == "nettoyage" else ("▶" if cat == "ratt" else "⚠")
-            tk.Label(card, text=f"{_icon}  {label}", bg=WHITE, fg=color,
-                     font=("Arial", 12, "bold")).pack(anchor="w", padx=8)
+            # Card as Canvas (3D button effect)
+            cv = tk.Canvas(cards_frame, bg=BG_BANNER, highlightthickness=0, cursor="hand2")
+            cv.grid(row=0, column=i, sticky="nsew", padx=3, pady=3)
+            self._alarm_exempt.add(str(cv))
 
             elapsed = self._t_get(key)
-            tlbl = tk.Label(card, text=fmt(elapsed), bg=color, fg=WHITE,
-                            font=("Arial", 26, "bold"))
-            tlbl.pack(fill="x", padx=8, pady=4)
-            self._stop_timer_lbls[key] = tlbl
-            self._alarm_exempt.add(str(tlbl))
+            elapsed_str = [fmt(int(elapsed))]
 
-            def _stop(k=key):
+            def _draw_card(e=None, k=key, c=color, tl=type_lbl, lb=label, es=elapsed_str, cv_ref=cv):
+                cv_ref.delete("all")
+                bw = cv_ref.winfo_width()
+                bh = cv_ref.winfo_height()
+                if bw < 10 or bh < 10:
+                    return
+                shad = _off(c, -50)
+                _rrect(cv_ref, 3, 4, bw-1, bh, 10, fill=shad)
+                _rrect(cv_ref, 0, 0, bw-4, bh-4, 10, fill=c)
+                _rrect(cv_ref, 1, 1, bw-5, bh//3, 10, fill=_off(c, +40))
+                cv_ref.create_text(bw//2-2, 14, text=tl.upper(),
+                                   fill=WHITE, font=("Arial", 7, "bold"), anchor="n")
+                cv_ref.create_text(bw//2-2, bh//2-8, text=lb,
+                                   fill=WHITE, font=("Arial", 10, "bold"),
+                                   justify="center", width=bw-12, anchor="center")
+                cv_ref.create_text(bw//2-2, bh-22, text=es[0],
+                                   fill=WHITE, font=("Arial", 11, "bold"), anchor="center")
+                cv_ref.create_text(bw//2-2, bh-8, text="▶ ARRÊTER",
+                                   fill=WHITE, font=("Arial", 8, "bold"), anchor="center")
+
+            cv.bind("<Configure>", _draw_card)
+
+            def _stop_action(k=key):
                 self._ask_stop_description(k)
-            tk.Button(card, text="✔  ARRÊTER", command=_stop,
-                      bg="#16a34a", fg=WHITE, font=("Arial", 12, "bold"),
-                      relief="flat", pady=7, cursor="hand2").pack(
-                      fill="x", padx=8, pady=(0, 8))
+            cv.bind("<Button-1>", lambda e, k=key: _stop_action(k))
+
+            # Store canvas + elapsed_str ref for tick updates
+            self._stop_timer_lbls[key] = (cv, elapsed_str)
 
     # ── Récap arrêts de l'OF (zone droite) ───────────────────────────────────
     def _build_stops_recap(self, parent):
@@ -6531,8 +6426,8 @@ Arrêts imputés au TRS (temps perdu) :
         top.configure(bg=WHITE)
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
-        pw = min(640, sw - 60)
-        ph = min(700, sh - 80)
+        pw = min(900, sw - 40)
+        ph = min(800, sh - 60)
         rx = self.root.winfo_rootx() + (self.root.winfo_width() - pw) // 2
         ry = self.root.winfo_rooty() + (self.root.winfo_height() - ph) // 2
         top.geometry(f"{pw}x{ph}+{rx}+{ry}")
@@ -6550,24 +6445,16 @@ Arrêts imputés au TRS (temps perdu) :
                   relief="flat", padx=12, pady=6, cursor="hand2").pack(side="right", padx=12, pady=10)
         tk.Frame(top, bg=LGRAY, height=1).pack(fill="x")
 
-        scroll_frame = tk.Frame(top, bg=WHITE)
-        scroll_frame.pack(fill="both", expand=True, padx=12, pady=8)
+        n = len(values)
+        if n <= 6:
+            ncols = 3
+        elif n <= 12:
+            ncols = 4
+        else:
+            ncols = 5
 
-        canvas = tk.Canvas(scroll_frame, bg=WHITE, highlightthickness=0)
-        vsb = tk.Scrollbar(scroll_frame, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=vsb.set)
-        vsb.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-
-        inner = tk.Frame(canvas, bg=WHITE)
-        canvas.create_window((0, 0), window=inner, anchor="nw")
-
-        def _on_resize(e=None):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-            canvas.itemconfig(1, width=canvas.winfo_width())
-        inner.bind("<Configure>", _on_resize)
-
-        ncols = 2
+        inner = tk.Frame(top, bg=WHITE)
+        inner.pack(fill="both", expand=True, padx=12, pady=8)
         for col in range(ncols):
             inner.columnconfigure(col, weight=1)
 
@@ -6578,9 +6465,9 @@ Arrêts imputés au TRS (temps perdu) :
         for i, val in enumerate(values):
             r, c = divmod(i, ncols)
             btn = tk.Button(inner, text=val, command=lambda v=val: _pick(v),
-                            bg=NAVY_L, fg=WHITE, font=("Arial", 13, "bold"),
-                            relief="flat", pady=14, cursor="hand2", wraplength=260)
-            btn.grid(row=r, column=c, sticky="ew", padx=4, pady=3)
+                            bg=NAVY_L, fg=WHITE, font=("Arial", 14, "bold"),
+                            relief="flat", pady=16, cursor="hand2", wraplength=160)
+            btn.grid(row=r, column=c, sticky="ew", padx=4, pady=4)
             btn.bind("<Enter>", lambda e, b=btn: b.config(bg=NAVY))
             btn.bind("<Leave>", lambda e, b=btn: b.config(bg=NAVY_L))
 
@@ -6590,12 +6477,13 @@ Arrêts imputés au TRS (temps perdu) :
         # Panneau flottant côté droit — ne couvre pas tout l'écran
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
-        pw, ph = min(640, sw - 40), min(700, sh - 80)
+        pw = min(900, sw - 40)  # wider
+        ph = min(750, sh - 80)
         rx = self.root.winfo_rootx()
         ry = self.root.winfo_rooty()
         rw = self.root.winfo_width()
         rh = self.root.winfo_height()
-        px = rx + rw - pw - 10
+        px = rx + (rw - pw) // 2  # centered
         py = ry + (rh - ph) // 2
 
         overlay = tk.Toplevel(self.root)
@@ -7560,18 +7448,19 @@ Arrêts imputés au TRS (temps perdu) :
         _dh = duree_theorique_min // 60
         _dm = duree_theorique_min % 60
         _dlbl = f"{_dh}h{_dm:02d}" if _dm else f"{_dh}h"
-        tk.Button(footer,
-                  text=f"⏱  Changer la durée du poste  (calculé sur {_dlbl})",
-                  command=_modifier_duree, bg="#2563eb", fg=WHITE,
-                  font=("Arial", 11, "bold"), relief="flat",
-                  padx=16, pady=8, cursor="hand2").pack(side="left", padx=(12, 6), pady=8)
         def _retour():
             ov.destroy()
             self._show_main()
-        tk.Button(footer, text="↩  Annuler, retour dans les déclarations",
-                  command=_retour,
-                  bg="#475569", fg=WHITE, font=("Arial", 11), relief="flat",
-                  padx=16, pady=8, cursor="hand2").pack(side="left", padx=6, pady=8)
+
+        # Left: changer durée
+        tk.Button(footer, text=f"⏱  Changer le temps d'ouverture du poste  (calculé sur {_dlbl})",
+                  command=_modifier_duree, bg="#2563eb", fg=WHITE,
+                  font=("Arial", 11, "bold"), relief="flat",
+                  padx=16, pady=8, cursor="hand2").pack(side="left", padx=(12, 6), pady=6)
+
+        # Center frame for validate+cancel
+        center_f = tk.Frame(footer, bg="#1e3a5f")
+        center_f.pack(side="left", fill="both", expand=True)
 
         if non_declare_s > 60:
             _nd_h = int(non_declare_s) // 3600
@@ -7599,16 +7488,20 @@ Arrêts imputés au TRS (temps perdu) :
                     except Exception as ex:
                         _toast(self.root, f"Erreur Excel : {ex}", bg=C_RED, duration=3000)
                 _deconnecter_et_quitter()
-            tk.Button(footer,
+            tk.Button(center_f,
                       text=f"✔  Valider en l'état  ({_nd_label} → « Non défini »)",
                       command=_valider_etat, bg=GREEN, fg=WHITE,
-                      font=("Arial", 11, "bold"), relief="flat",
-                      padx=18, pady=8, cursor="hand2").pack(side="right", padx=12, pady=8)
+                      font=("Arial", 14, "bold"), relief="flat",
+                      padx=30, pady=8, cursor="hand2").pack(side="left", expand=True, pady=6, padx=10)
         else:
-            tk.Button(footer, text="✔  Valider et clôturer le poste",
+            tk.Button(center_f, text="✔  Valider et clôturer le poste",
                       command=_deconnecter_et_quitter, bg=GREEN, fg=WHITE,
-                      font=("Arial", 11, "bold"), relief="flat",
-                      padx=18, pady=8, cursor="hand2").pack(side="right", padx=12, pady=8)
+                      font=("Arial", 14, "bold"), relief="flat",
+                      padx=30, pady=8, cursor="hand2").pack(side="left", expand=True, pady=6, padx=10)
+
+        tk.Button(center_f, text="↩  Annuler", command=_retour,
+                  bg="#475569", fg=WHITE, font=("Arial", 11), relief="flat",
+                  padx=16, pady=8, cursor="hand2").pack(side="left", pady=6, padx=(0, 12))
 
         # ── Body — 3 colonnes : info (étroit) | TRS+KPI | Pareto — 3 lignes ────────
         body = tk.Frame(ov, bg="#0d2040")
