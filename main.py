@@ -820,6 +820,7 @@ class App:
         self._pause_periods    = []
         self._is_paused        = False
         self._pause_overlay    = None
+        self._reunion_overlay  = None
         self._modal_open       = False
         self._trs_cache        = []
         self._loading_overlay  = None
@@ -1693,9 +1694,14 @@ class App:
                 tk.Label(f_mod, text="Modèle :", bg=WHITE, fg=DARK,
                          font=("Arial", 11), width=12, anchor="w").pack(side="left")
                 sel_v = tk.StringVar(value=modele_var.get())
-                cb_m = ttk.Combobox(f_mod, textvariable=sel_v, values=modeles_list,
-                                    font=("Arial", 12), state="readonly", width=18)
-                cb_m.pack(side="left")
+                _mod2_txt = tk.StringVar(value=sel_v.get() or "— choisir —")
+                def _sync_mod2(*a): _mod2_txt.set(sel_v.get() or "— choisir —")
+                sel_v.trace_add("write", _sync_mod2)
+                tk.Button(f_mod, textvariable=_mod2_txt, font=("Arial", 12),
+                          bg=WHITE, fg=DARK, relief="solid", bd=1,
+                          cursor="hand2", pady=4,
+                          command=lambda: self._show_picker_popup(sel_v, modeles_list, "Modèle")
+                          ).pack(side="left")
 
                 # Saisie horaire début / fin pour cette session
                 f_h = tk.Frame(dlg2, bg=WHITE)
@@ -1745,35 +1751,48 @@ class App:
                  font=("Arial", 11)).pack(anchor="w")
         pilot_var = tk.StringVar()
         pilots = self._get_list("Pilotes")
-        cb = ttk.Combobox(inner, textvariable=pilot_var,
-                          values=pilots, font=("Arial", 14),
-                          state="readonly", width=28)
-        cb.pack(fill="x", pady=(4, 12))
         if pilots:
-            cb.set(pilots[0])
+            pilot_var.set(pilots[0])
+        _pilot_btn_txt = tk.StringVar(value=pilot_var.get() or "— choisir —")
+        def _sync_pilot(*a): _pilot_btn_txt.set(pilot_var.get() or "— choisir —")
+        pilot_var.trace_add("write", _sync_pilot)
+        tk.Button(inner, textvariable=_pilot_btn_txt, font=("Arial", 14),
+                  bg=WHITE, fg=DARK, relief="solid", bd=1, anchor="w",
+                  cursor="hand2", pady=8,
+                  command=lambda: self._show_picker_popup(pilot_var, pilots, "Nom du pilote")
+                  ).pack(fill="x", pady=(4, 12))
 
         tk.Label(inner, text="Poste", bg=WHITE, fg=GRAY,
                  font=("Arial", 11)).pack(anchor="w")
         poste_var = tk.StringVar()
         postes_list = self._get_list("Postes")
-        cb_poste = ttk.Combobox(inner, textvariable=poste_var,
-                                values=postes_list, font=("Arial", 14),
-                                state="readonly", width=28)
-        cb_poste.pack(fill="x", pady=(4, 12))
         _last_poste = self._logged_in_poste or (postes_list[0] if postes_list else "")
         if _last_poste:
-            cb_poste.set(_last_poste)
+            poste_var.set(_last_poste)
+        _poste_btn_txt = tk.StringVar(value=poste_var.get() or "— choisir —")
+        def _sync_poste(*a): _poste_btn_txt.set(poste_var.get() or "— choisir —")
+        poste_var.trace_add("write", _sync_poste)
+        tk.Button(inner, textvariable=_poste_btn_txt, font=("Arial", 14),
+                  bg=WHITE, fg=DARK, relief="solid", bd=1, anchor="w",
+                  cursor="hand2", pady=8,
+                  command=lambda: self._show_picker_popup(poste_var, postes_list, "Poste")
+                  ).pack(fill="x", pady=(4, 12))
 
         if modeles_list:
             tk.Label(inner, text="Modèle horaire", bg=WHITE, fg=GRAY,
                      font=("Arial", 11)).pack(anchor="w")
-            cb_modele = ttk.Combobox(inner, textvariable=modele_var,
-                                     values=modeles_list, font=("Arial", 14),
-                                     state="readonly", width=28)
-            cb_modele.pack(fill="x", pady=(4, 4))
             if modeles_list:
                 modele_var.set(modeles_list[0])
-            cb_modele.bind("<<ComboboxSelected>>", _update_horaire_display)
+            _mod_btn_txt = tk.StringVar(value=modele_var.get() or "— choisir —")
+            def _sync_modele(*a):
+                _mod_btn_txt.set(modele_var.get() or "— choisir —")
+                _update_horaire_display()
+            modele_var.trace_add("write", _sync_modele)
+            tk.Button(inner, textvariable=_mod_btn_txt, font=("Arial", 14),
+                      bg=WHITE, fg=DARK, relief="solid", bd=1, anchor="w",
+                      cursor="hand2", pady=8,
+                      command=lambda: self._show_picker_popup(modele_var, modeles_list, "Modèle horaire")
+                      ).pack(fill="x", pady=(4, 4))
             _update_horaire_display()
 
             mod_btn = tk.Button(inner, text="✎ Modifier (encadrant)",
@@ -2517,7 +2536,7 @@ Arrêts imputés au TRS (temps perdu) :
             ("Nettoyage court poste (minutes)",        "clean_short_min",   10),
             ("Nettoyage long ex: mercredi (minutes)",  "clean_long_min",    30),
             ("Grand nettoyage (minutes)",              "clean_grand_min",   60),
-            ("Réunion tolérée par poste (minutes)",    "meeting_tol_min",    5),
+            ("Temps réunion planifiée /poste (min)",   "meeting_tol_min",    5),
             ("Temps de pause autorisé par poste (min)", "pause_max_min",    20),
             ("Mot de passe Encadrant",                 "supervisor_pw",    "1234"),
         ]
@@ -4905,9 +4924,14 @@ Arrêts imputés au TRS (temps perdu) :
         hd_var   = tk.StringVar(value=existing[16] if existing and len(existing) > 16 else "")
         hf_var   = tk.StringVar(value=existing[17] if existing and len(existing) > 17 else "")
 
-        ttk.Combobox(frm, textvariable=type_var,
-                     values=ALL_EVENT_TYPES, state="readonly",
-                     width=36).grid(row=0, column=1, sticky="ew", pady=4)
+        _type_btn_txt = tk.StringVar(value=type_var.get() or "— choisir —")
+        def _sync_type(*a): _type_btn_txt.set(type_var.get() or "— choisir —")
+        type_var.trace_add("write", _sync_type)
+        tk.Button(frm, textvariable=_type_btn_txt, font=("Arial", 11),
+                  bg=WHITE, fg=DARK, relief="solid", bd=1, anchor="w",
+                  cursor="hand2", pady=4,
+                  command=lambda: self._show_picker_popup(type_var, ALL_EVENT_TYPES, "Type d'événement")
+                  ).grid(row=0, column=1, sticky="ew", pady=4)
         tk.Entry(frm, textvariable=hd_var, font=("Arial", 11),
                  relief="solid", bd=1).grid(row=1, column=1, sticky="ew", pady=4)
         tk.Entry(frm, textvariable=hf_var, font=("Arial", 11),
@@ -5302,9 +5326,9 @@ Arrêts imputés au TRS (temps perdu) :
         # ── Corps 33/33/33 ────────────────────────────────────────────────────
         body = tk.Frame(outer, bg=BG)
         body.pack(fill="both", expand=True, padx=6, pady=(4, 6))
-        body.columnconfigure(0, weight=3)
+        body.columnconfigure(0, weight=2)
         body.columnconfigure(1, weight=2)
-        body.columnconfigure(2, weight=1)
+        body.columnconfigure(2, weight=2)
         body.rowconfigure(0, weight=1)
         body.rowconfigure(1, weight=0)
         self._alarm_bg_frames.extend([body])
@@ -5402,7 +5426,7 @@ Arrêts imputés au TRS (temps perdu) :
                      font=("Arial", 9, "bold"), pady=3).pack(side="left")
             body = tk.Frame(wrap, bg=bg_color)
             body.pack(fill="x", padx=4, pady=(0, 4))
-            for col in range(4):
+            for col in range(3):
                 body.columnconfigure(col, weight=1)
             return body
 
@@ -5435,25 +5459,34 @@ Arrêts imputés au TRS (temps perdu) :
                              font=LFONT).grid(row=1, column=1, sticky="sw",
                                               padx=(2, 0), pady=(0, 3))
             else:
-                cb = ttk.Combobox(cell, textvariable=var,
-                                  values=self._get_list(lh) if lh else [],
-                                  font=EFONT, state="readonly", height=6, width=1)
+                vals = self._get_list(lh) if lh else []
+                locked = ((key == "pilote" and self._logged_in_pilot) or
+                          (key == "poste" and self._logged_in_poste))
+                if locked:
+                    if key == "pilote": var.set(self._logged_in_pilot)
+                    if key == "poste":  var.set(self._logged_in_poste)
+                cbg_locked = "#e5e7eb" if locked else cbg
+                btn_txt = tk.StringVar()
+                def _update_btn(name=None, ix=None, op=None, v=var, bt=btn_txt):
+                    bt.set(v.get() or "— choisir —")
+                var.trace_add("write", _update_btn)
+                _update_btn()
+                cb = tk.Button(cell, textvariable=btn_txt,
+                               bg=WHITE if not locked else cbg_locked,
+                               fg=DARK if not locked else GRAY,
+                               font=EFONT, relief="solid", bd=1,
+                               anchor="w", cursor="hand2" if not locked else "",
+                               state="normal" if not locked else "disabled")
                 cb.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 3))
+                if not locked:
+                    cb.config(command=lambda v=var, vals=vals, t=lbl_txt:
+                              self._show_picker_popup(v, vals, t))
+                if locked:
+                    cell.config(bg=cbg_locked)
+                    for w in cell.winfo_children():
+                        try: w.config(bg=cbg_locked)
+                        except Exception: pass
                 self._form_cb_widgets[key] = cb
-                if key == "pilote" and self._logged_in_pilot:
-                    var.set(self._logged_in_pilot)
-                    cb.config(state="disabled")
-                    cell.config(bg="#e5e7eb")
-                    for w in cell.winfo_children():
-                        try: w.config(bg="#e5e7eb")
-                        except Exception: pass
-                if key == "poste" and self._logged_in_poste:
-                    var.set(self._logged_in_poste)
-                    cb.config(state="disabled")
-                    cell.config(bg="#e5e7eb")
-                    for w in cell.winfo_children():
-                        try: w.config(bg="#e5e7eb")
-                        except Exception: pass
             if adv:
                 ri[0] += 1
 
@@ -5461,8 +5494,8 @@ Arrêts imputés au TRS (temps perdu) :
                  s1=None, s2=None, s3=None, s4=None):
             fld(l1,k1,t1,h1, col=0, adv=False, suffix=s1)
             fld(l2,k2,t2,h2, col=1, adv=False, suffix=s2)
-            fld(l3,k3,t3,h3, col=2, adv=False, suffix=s3)
-            fld(l4,k4,t4,h4, col=3, adv=True,  suffix=s4)
+            fld(l3,k3,t3,h3, col=2, adv=True,  suffix=s3)
+            fld(l4,k4,t4,h4, col=0, adv=True,  suffix=s4)
 
         def row3(l1,k1,t1,h1, l2,k2,t2,h2, l3,k3,t3,h3,
                  s1=None, s2=None, s3=None):
@@ -5530,8 +5563,8 @@ Arrêts imputés au TRS (temps perdu) :
                          highlightthickness=1, highlightbackground=GREEN,
                          highlightcolor=GREEN)
             e.grid(row=1, column=0, sticky="nsew", padx=(0, 2), pady=(0, 3))
-        fld("Traça fibre",  "traca",    "entry", None, col=2, adv=False)
-        fld("Réf. taie",    "ref_taie", "entry", None, col=3, adv=True)
+        fld("Traça fibre",  "traca",    "entry", None, col=2, adv=True)
+        fld("Réf. taie",    "ref_taie", "entry", None, col=0, adv=True)
         row3("Nb taie 2nd choix", "nb_taie2_choix",  "entry", None,
              "Nb déf. couture",   "nb_def_cout",     "entry", None,
              "Mq. taie",          "mq_taie",         "entry", None)
@@ -5886,7 +5919,7 @@ Arrêts imputés au TRS (temps perdu) :
     def _build_right_panel(self, parent):
         # Les arrêts actifs sont dans un overlay flottant (voir _refresh_active_stops)
         # Ici : uniquement les boutons d'action, qui restent toujours accessibles
-        BTN_H    = 46
+        BTN_H    = 62
         BTN_FONT = ("Arial", 13, "bold")
 
         def _make_cv_btn(text, color, cmd):
@@ -5921,18 +5954,26 @@ Arrêts imputés au TRS (temps perdu) :
             ev_info = next((e for e in EVENTS if e[1] == key), None)
             cat = ev_info[2] if ev_info else "pb"
             if self._t_running(key):
+                # Fermer overlay réunion si ouvert
+                ov = getattr(self, "_reunion_overlay", None)
+                if ov:
+                    try: ov.destroy()
+                    except Exception: pass
+                    self._reunion_overlay = None
                 self._ask_stop_description(key)
             else:
                 self._t_start(key)
                 self._tl_open(key, cat)
                 self._refresh_active_stops()
+                if key == "arret_reunion":
+                    self._show_reunion_overlay()
 
         # Boutons d'action — dans l'ordre
         _make_cv_btn("⚠   DÉCLARER UN ARRÊT / RATTRAPAGE", "#dc2626",
                      self._show_stop_selector)
         _make_cv_btn("🏭  ARRÊT MATIÈRE PREMIÈRE", "#b45309",
                      lambda: _direct_stop("arret_mp"))
-        _make_cv_btn("🗣   ARRÊT RÉUNION", "#7c3aed",
+        _make_cv_btn("🗣   ARRÊT RÉUNION (HORS 5 MIN PRÉVUE)", "#7c3aed",
                      lambda: _direct_stop("arret_reunion"))
         _make_cv_btn("🧹  DÉCLARER UN ARRÊT NETTOYAGE", "#f59e0b",
                      self._show_nettoyage_selector)
@@ -5963,7 +6004,7 @@ Arrêts imputés au TRS (temps perdu) :
         # Afficher l'overlay sur la zone formulaire (col0 ≈ 50% de body)
         try:
             container.lift()
-            container.place(relx=0, rely=0, relwidth=0.505, relheight=1.0)
+            container.place(relx=0, rely=0, relwidth=0.34, relheight=1.0)
         except Exception:
             return
 
@@ -5990,7 +6031,9 @@ Arrêts imputés au TRS (temps perdu) :
             label, _, cat = ev_info
             color    = C_NETT if cat == "nettoyage" else (C_RATT if cat == "ratt" else C_RED)
             type_lbl = ("Nettoyage" if cat == "nettoyage" else
-                        ("Rattrapage" if cat == "ratt" else "Pb technique"))
+                        ("Organisationnel" if key == "arret_reunion" else
+                        ("Problème matière" if key == "arret_mp" else
+                        ("Rattrapage" if cat == "ratt" else "Pb technique"))))
 
             row_i, col_i = divmod(i, 2)
             grid.rowconfigure(row_i, weight=1)
@@ -6448,25 +6491,98 @@ Arrêts imputés au TRS (temps perdu) :
 
         tk.Label(ov, text="☕  EN PAUSE",
                  bg=NAVY, fg=WHITE, font=("Arial", 54, "bold")).pack(expand=False, pady=(80, 6))
-        self._pause_timer_lbl = tk.Label(ov, text="00:00:00",
-                                          bg=NAVY, fg=ORANGE, font=("Arial", 36, "bold"))
-        self._pause_timer_lbl.pack(pady=(0, 40))
+        tk.Label(ov, text="Bonne pause !",
+                 bg=NAVY, fg="#94a3b8", font=("Arial", 20)).pack(pady=(0, 60))
         tk.Button(ov, text="✔  JE SUIS REVENU", command=self._toggle_pause,
                   bg=GREEN, fg=WHITE, font=("Arial", 20, "bold"),
                   relief="flat", padx=60, pady=20, cursor="hand2").pack()
-        self._update_pause_timer()
 
-    def _update_pause_timer(self):
-        if not self._is_paused or not self._pause_start:
-            return
-        elapsed = (datetime.datetime.now() - self._pause_start).total_seconds()
-        lbl = getattr(self, "_pause_timer_lbl", None)
-        if lbl:
+    def _show_reunion_overlay(self):
+        ov = tk.Frame(self.root, bg="#4c1d95")
+        ov.place(relx=0, rely=0, relwidth=1, relheight=1)
+        ov.lift()
+        self._reunion_overlay = ov
+
+        tk.Label(ov, text="🗣  EN RÉUNION",
+                 bg="#4c1d95", fg=WHITE, font=("Arial", 54, "bold")).pack(expand=False, pady=(80, 6))
+        tk.Label(ov, text="Réunion hors des 5 min planifiées",
+                 bg="#4c1d95", fg="#c4b5fd", font=("Arial", 20)).pack(pady=(0, 60))
+
+        def _end():
             try:
-                lbl.config(text=fmt(int(elapsed)))
+                ov.destroy()
             except Exception:
-                return
-        self.root.after(1000, self._update_pause_timer)
+                pass
+            self._reunion_overlay = None
+            self._ask_stop_description("arret_reunion")
+
+        tk.Button(ov, text="✔  FIN DE RÉUNION", command=_end,
+                  bg="#7c3aed", fg=WHITE, font=("Arial", 20, "bold"),
+                  relief="flat", padx=60, pady=20, cursor="hand2").pack()
+
+    # ── Picker liste (grand popup boutons) ───────────────────────────────────
+    def _show_picker_popup(self, var, values, title="Choisir"):
+        """Ouvre un Toplevel avec des grands boutons pour choisir une valeur de liste."""
+        if not values:
+            return
+        top = tk.Toplevel(self.root)
+        top.overrideredirect(True)
+        top.attributes("-topmost", True)
+        top.configure(bg=WHITE)
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        pw = min(640, sw - 60)
+        ph = min(700, sh - 80)
+        rx = self.root.winfo_rootx() + (self.root.winfo_width() - pw) // 2
+        ry = self.root.winfo_rooty() + (self.root.winfo_height() - ph) // 2
+        top.geometry(f"{pw}x{ph}+{rx}+{ry}")
+        top.grab_set()
+
+        tk.Frame(top, bg=NAVY, height=5).pack(fill="x")
+        hdr = tk.Frame(top, bg=WHITE, height=60)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Frame(hdr, bg=NAVY, width=6).pack(side="left", fill="y")
+        tk.Label(hdr, text=title, bg=WHITE, fg=NAVY,
+                 font=("Arial", 16, "bold")).pack(side="left", padx=14, pady=12)
+        tk.Button(hdr, text="✕ FERMER", command=top.destroy,
+                  bg=LGRAY, fg=DARK, font=("Arial", 11, "bold"),
+                  relief="flat", padx=12, pady=6, cursor="hand2").pack(side="right", padx=12, pady=10)
+        tk.Frame(top, bg=LGRAY, height=1).pack(fill="x")
+
+        scroll_frame = tk.Frame(top, bg=WHITE)
+        scroll_frame.pack(fill="both", expand=True, padx=12, pady=8)
+
+        canvas = tk.Canvas(scroll_frame, bg=WHITE, highlightthickness=0)
+        vsb = tk.Scrollbar(scroll_frame, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        inner = tk.Frame(canvas, bg=WHITE)
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+
+        def _on_resize(e=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfig(1, width=canvas.winfo_width())
+        inner.bind("<Configure>", _on_resize)
+
+        ncols = 2
+        for col in range(ncols):
+            inner.columnconfigure(col, weight=1)
+
+        def _pick(val):
+            var.set(val)
+            top.destroy()
+
+        for i, val in enumerate(values):
+            r, c = divmod(i, ncols)
+            btn = tk.Button(inner, text=val, command=lambda v=val: _pick(v),
+                            bg=NAVY_L, fg=WHITE, font=("Arial", 13, "bold"),
+                            relief="flat", pady=14, cursor="hand2", wraplength=260)
+            btn.grid(row=r, column=c, sticky="ew", padx=4, pady=3)
+            btn.bind("<Enter>", lambda e, b=btn: b.config(bg=NAVY))
+            btn.bind("<Leave>", lambda e, b=btn: b.config(bg=NAVY_L))
 
     # ── Selecteur d'arret ─────────────────────────────────────────────────────
     def _show_stop_selector(self):
