@@ -2409,10 +2409,12 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
   - moins 5 min de réunion planifiée (configurable dans Paramètres)
   Le temps d'ouverture peut être modifié par l'encadrant en fin de poste.
 
-═══ ARRÊTS PLANIFIÉS (non imputés au TRS) ═══
-  • Pauses opérateur : exclues à 100%
-  • Réunion planifiée : 5 min automatiquement déduits du temps d'ouverture
-    (les pilotes ne déclarent PAS ces 5 min — c'est automatique)
+═══ ARRÊTS PLANIFIÉS (déduits du temps d'ouverture) ═══
+  • Pauses opérateur : quota configuré (défaut 20 min/poste) déduit du temps d'ouverture
+    → au-delà du quota : excédent impute le TRS
+  • Réunion planifiée : quota configuré (défaut 5 min/poste) déduit du temps d'ouverture
+    → les pilotes ne déclarent PAS ces 5 min, c'est automatique
+    → réunion exceptionnelle (hors quota) : impacte le TRS
 
 ═══ ARRÊTS IMPUTÉS AU TRS (temps perdu) ═══
   • Pannes techniques (100%)
@@ -7320,11 +7322,18 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 pass
         total_pause_s += self._pause_total_s
 
-        total_declare_s = total_prod_s + total_panne_s + total_ratt_s + total_pause_s + total_reunion_s
         duree_theorique_s = duree_theorique_min * 60
-        # Déduire réunion planifiée du temps d'ouverture
+        # Déduire arrêts planifiés du temps d'ouverture :
+        # - réunion tolérée par poste (ex: 5 min)
+        # - pauses tolérées par poste (ex: 20 min)
         _reunion_planif_s = int(self.cfg.get("meeting_tol_min", 5)) * 60
-        duree_theorique_s = max(1, duree_theorique_s - _reunion_planif_s)
+        _pause_planif_s   = int(self.cfg.get("pause_max_min", 20)) * 60
+        duree_theorique_s = max(1, duree_theorique_s - _reunion_planif_s - _pause_planif_s)
+        # Temps déclaré hors arrêts planifiés (pauses et réunions dans leur quota)
+        _pause_excess_s   = max(0.0, total_pause_s   - _pause_planif_s)
+        _reunion_excess_s = max(0.0, total_reunion_s - _reunion_planif_s)
+        total_declare_s = (total_prod_s + total_panne_s + total_ratt_s
+                           + _pause_excess_s + _reunion_excess_s)
         non_declare_s = max(0.0, duree_theorique_s - total_declare_s)
 
         # TRS poste = equiv produite / (prod_ref × durée_théorique_poste / 28800)
@@ -7347,12 +7356,14 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             _today_s = datetime.date.today().strftime("%d/%m/%Y")
             _pause_max_f = int(self.cfg.get("pause_max_min", 20)) * 60
             _meet_tol_f  = int(self.cfg.get("meeting_tol_min", 5)) * 60
+            _depasse_pause_f  = max(0.0, total_pause_s   - _pause_max_f)
+            _depasse_meet_f   = max(0.0, total_reunion_s - _meet_tol_f)
+            # Déclaré = prod + pannes + ratt + excédents (arrêts hors quota impactent TRS)
             _total_decl_f = (total_prod_s + total_panne_s + total_ratt_s
-                             + total_pause_s + total_reunion_s)
+                             + _depasse_pause_f + _depasse_meet_f)
             _prevu_f = (min(total_pause_s, _pause_max_f)
                         + min(total_reunion_s, _meet_tol_f))
-            _depasse_f = (max(0.0, total_pause_s - _pause_max_f)
-                          + max(0.0, total_reunion_s - _meet_tol_f))
+            _depasse_f = _depasse_pause_f + _depasse_meet_f
             def _bg_trs():
                 try:
                     with self._excel_lock:
@@ -7561,7 +7572,10 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         _ri("Date",              _date_display,              DARK)
         _ri("Pilote",            pilot or "—",               NAVY, bold=True)
         _ri("Poste",             poste_nom or "—",           NAVY_L)
-        _ri("Durée théorique",   fmt(duree_theorique_s),     DARK)
+        _ri("Temps d'ouverture",  fmt(duree_theorique_s),     NAVY, bold=True)
+        _ri("  - Durée modèle horaire", fmt(duree_theorique_min*60), GRAY)
+        _ri("  - Pause planifiée",      fmt(_pause_planif_s),        GRAY)
+        _ri("  - Réunion planifiée",    fmt(_reunion_planif_s),      GRAY)
         _ri(None, None, sep=True)
         _ri("OF déclarés",       nb_of,                      NAVY, bold=True)
         _ri("Qté fabriquée",     total_qte,                  GREEN, bold=True)
@@ -7573,9 +7587,13 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             C_RED if total_panne_s > 0 else DARK, bold=(total_panne_s > 0))
         _ri("Total rattrapages", fmt(total_ratt_s),
             C_RATT if total_ratt_s > 0 else DARK)
-        _ri("Total pauses",      fmt(total_pause_s),         GRAY)
-        _ri("Total réunions",    fmt(total_reunion_s),       GRAY)
-        _ri("Total déclaré",     fmt(total_declare_s),       DARK, bold=True)
+        _ri("Pauses (planif.)",  fmt(min(total_pause_s, _pause_planif_s)), GRAY)
+        if _pause_excess_s > 0:
+            _ri("Pauses excédent", fmt(_pause_excess_s), C_RED, bold=True)
+        _ri("Réunions (planif.)",fmt(min(total_reunion_s, _reunion_planif_s)), GRAY)
+        if _reunion_excess_s > 0:
+            _ri("Réunions excédent", fmt(_reunion_excess_s), C_RED, bold=True)
+        _ri("Total vs ouverture",fmt(total_declare_s),       DARK, bold=True)
         nc_col = C_RED if non_declare_s > 60 else DARK
         _ri("Durée non déclarée",fmt(non_declare_s),         nc_col, bold=(non_declare_s > 60))
         _ri(None, None, sep=True)
