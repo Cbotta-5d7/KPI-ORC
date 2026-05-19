@@ -8000,9 +8000,12 @@ new Chart(document.getElementById('gauge{i}'), {{
         remaining_s_pie   = max(0.0, shift_total_s - elapsed_sess_s)
         pie_values  = _json.dumps([round(prod_s_pie/60,1), round(total_stop_s_pie/60,1), round(remaining_s_pie/60,1)])
 
-        # ── Timeline SVG 8h ─────────────────────────────────────────────────
+        # ── Timeline SVG dynamique ───────────────────────────────────────────
         of_periods = session_data.get("of_periods", [])
-        shift_total_s_tl = 8 * 3600
+        # Durée configurée du poste (minutes → secondes), défaut 480 min
+        _poste_durees = self.cfg.get("postes_durees", {}) if hasattr(self, "cfg") else {}
+        _poste_nom_tl = sup_poste if sup_poste not in ("—", "") else ""
+        _cfg_dur_s = _poste_durees.get(_poste_nom_tl, 480) * 60
         if sup_of_start_dt:
             # Référence = début du premier OF du quart (pas du dernier)
             if of_periods:
@@ -8013,15 +8016,20 @@ new Chart(document.getElementById('gauge{i}'), {{
             else:
                 shift_start_tl = sup_of_start_dt
             now_s_tl = (datetime.datetime.now() - shift_start_tl).total_seconds()
+            # Si on dépasse la durée configurée, étendre d'une heure supplémentaire
+            shift_total_s_tl = max(_cfg_dur_s, now_s_tl + 3600)
+            # Arrondir à l'heure entière supérieure pour des graduations propres
+            n_hours = max(1, int(shift_total_s_tl / 3600) + (1 if shift_total_s_tl % 3600 else 0))
+            shift_total_s_tl = n_hours * 3600
             RY, RH = 8, 28  # Rail Y origin, height
             # Sépare rects et labels pour que les labels soient TOUJOURS au-dessus
             rects = []
             labels = []
             # Fond du rail
             rects.append(f'<rect x="0" y="{RY}" width="100%" height="{RH}" fill="#e2e8f0" rx="4"/>')
-            # Graduations horaires
-            for h in range(9):
-                xp = h / 8 * 100
+            # Graduations horaires (une par heure sur toute la durée)
+            for h in range(n_hours + 1):
+                xp = h / n_hours * 100
                 hh = (shift_start_tl.hour + h) % 24
                 rects.append(f'<line x1="{xp:.1f}%" y1="{RY}" x2="{xp:.1f}%" y2="{RY+RH}" stroke="rgba(0,0,0,0.10)" stroke-width="1" stroke-dasharray="3,3"/>')
                 labels.append(f'<text x="{xp:.1f}%" y="{RY+RH+14}" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">{hh:02d}h</text>')
