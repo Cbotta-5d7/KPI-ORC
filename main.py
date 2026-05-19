@@ -5351,9 +5351,10 @@ Arrêts imputés au TRS (temps perdu) :
 
             def _stop(k=key):
                 self._ask_stop_description(k)
-            tk.Button(top_row, text="ARRÊTER  ✓", command=_stop,
-                      bg=WHITE, fg=color, font=("Arial", 11, "bold"),
-                      relief="flat", padx=14, pady=5, cursor="hand2").pack(side="right")
+            tk.Button(top_row, text="✔  ARRÊTER", command=_stop,
+                      bg="#16a34a", fg=WHITE, font=("Arial", 15, "bold"),
+                      relief="flat", padx=22, pady=10, cursor="hand2",
+                      bd=0, activebackground="#14532d", activeforeground=WHITE).pack(side="right", padx=4, pady=4)
 
             elapsed = self._t_get(key)
             tlbl = tk.Label(card, text=fmt(elapsed), bg=color, fg=WHITE,
