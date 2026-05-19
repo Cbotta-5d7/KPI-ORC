@@ -1150,6 +1150,15 @@ class App:
                   relief="flat", pady=8, cursor="hand2").pack(
                   fill="x", padx=40, pady=(4, 16))
 
+    def _debounce_ok(self, ms=500):
+        """Retourne True si l'action peut s'exécuter (anti-double-clic global)."""
+        import time
+        now = time.time()
+        if now - getattr(self, "_last_action_t", 0.0) < ms / 1000.0:
+            return False
+        self._last_action_t = now
+        return True
+
     def _db_widget(self, parent, bg):
         f = tk.Frame(parent, bg=bg)
         tk.Button(f, text="⚙  Base", command=self._select_db,
@@ -5237,12 +5246,13 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         recap_panel.grid(row=0, column=2, sticky="nsew", padx=(2, 0))
         self._recap_panel = recap_panel
 
-        # ── Bannière arrêts actifs en bas — toute la largeur ─────────────────
-        stop_banner = tk.Frame(outer, bg="#1e293b", height=110)
-        stop_banner.pack(fill="x", side="bottom")
-        stop_banner.pack_propagate(False)
+        # ── Bannière arrêts actifs en bas — positionnée par place() ─────────────
+        # place() est utilisé pour ne pas perturber le layout pack de outer
+        stop_banner = tk.Frame(outer, bg="#1e293b")
+        stop_banner.place_configure(relx=0, rely=1.0, relwidth=1.0, height=110, anchor="sw")
+        stop_banner.place_forget()   # masqué initialement
         self._active_stops_container = stop_banner
-        self._alarm_banner = stop_banner  # blink the banner, not the whole background
+        self._alarm_banner = stop_banner  # blink le bandeau, pas le fond
         self._refresh_active_stops()
         self._build_stops_recap(recap_panel)
 
@@ -5890,14 +5900,14 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
 
         if not active_keys:
             try:
-                container.pack_forget()
+                container.place_forget()
             except Exception:
                 pass
             return
 
-        # Montrer la bannière
+        # Montrer la bannière (place absolu en bas de outer)
         try:
-            container.pack(fill="x", side="bottom")
+            container.place(relx=0, rely=1.0, relwidth=1.0, height=110, anchor="sw")
             container.lift()
         except Exception:
             return
@@ -5952,6 +5962,8 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             cv.bind("<Configure>", _draw_card)
 
             def _stop_action(k=key):
+                if not self._debounce_ok():
+                    return
                 self._ask_stop_description(k)
             cv.bind("<Button-1>", lambda e, k=key: _stop_action(k))
 
@@ -6262,7 +6274,11 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         body = tk.Frame(top, bg=WHITE)
         body.pack(fill="both", expand=True, padx=20, pady=16)
 
+        _chosen = [False]
         def _choose(ntype):
+            if _chosen[0]:
+                return
+            _chosen[0] = True
             top.destroy()
             self._declare_nettoyage(ntype)
 
@@ -6605,8 +6621,9 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                            justify="center", width=bw-12)
 
         def _action(k=key, c=cat):
+            if not self._debounce_ok():
+                return
             if self._t_running(k):
-                # Fermer l'overlay seulement APRÈS validation du commentaire
                 self._ask_stop_description(k, on_done=close_fn)
             else:
                 self._t_start(k)
@@ -6652,7 +6669,11 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         txt.pack(fill="x")
         txt.focus()
 
+        _validated = [False]
         def _valider(comment=None):
+            if _validated[0]:
+                return
+            _validated[0] = True
             desc = comment if comment is not None else txt.get("1.0", "end").strip()
             # Arrêter le timer en le backdatant à l'heure du clic
             t = self._timers.get(key)
