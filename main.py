@@ -5880,12 +5880,12 @@ Arrêts imputés au TRS (temps perdu) :
         self._active_stops_container = stops_frame
         self._refresh_active_stops()
 
-        BTN_H    = 52
-        BTN_FONT = ("Arial", 14, "bold")
+        BTN_H    = 46
+        BTN_FONT = ("Arial", 13, "bold")
 
         def _make_cv_btn(text, color, cmd):
             cv = tk.Canvas(parent, height=BTN_H, highlightthickness=0, bg=BG)
-            cv.pack(fill="x", padx=8, pady=(0, 4))
+            cv.pack(fill="x", padx=8, pady=(0, 3))
             pressed = [False]
             def _draw(e=None):
                 cv.delete("all")
@@ -5910,9 +5910,24 @@ Arrêts imputés au TRS (temps perdu) :
             cv.config(cursor="hand2")
             return cv
 
-        # Couleurs modernisées : rouge / ambre / gris ardoise / vert
+        def _direct_stop(key):
+            """Démarre ou arrête un stop direct (MP, Réunion) sans passer par le sélecteur."""
+            ev_info = next((e for e in EVENTS if e[1] == key), None)
+            cat = ev_info[2] if ev_info else "pb"
+            if self._t_running(key):
+                self._ask_stop_description(key)
+            else:
+                self._t_start(key)
+                self._tl_open(key, cat)
+                self._refresh_active_stops()
+
+        # Boutons d'action — dans l'ordre
         _make_cv_btn("⚠   DÉCLARER UN ARRÊT / RATTRAPAGE", "#dc2626",
                      self._show_stop_selector)
+        _make_cv_btn("🏭  ARRÊT MATIÈRE PREMIÈRE", "#b45309",
+                     lambda: _direct_stop("arret_mp"))
+        _make_cv_btn("🗣   ARRÊT RÉUNION", "#7c3aed",
+                     lambda: _direct_stop("arret_reunion"))
         _make_cv_btn("🧹  DÉCLARER UN ARRÊT NETTOYAGE", "#f59e0b",
                      self._show_nettoyage_selector)
         _make_cv_btn("☕  JE VAIS EN PAUSE", "#64748b",
