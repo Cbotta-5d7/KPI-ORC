@@ -6728,37 +6728,46 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         elapsed = self._t_get(key)
         color   = C_RATT if cat == "ratt" else C_RED
         face    = color if running else NAVY_L
+        ps      = [False]  # pressed state
 
         cv = tk.Canvas(parent, highlightthickness=0, bg=WHITE, cursor="hand2")
         cv.grid(row=row, column=col, sticky="nsew", padx=3, pady=3)
 
-        def _draw(e=None):
+        def _draw(e=None, _face=face, _ps=ps):
             cv.delete("all")
             bw, bh = cv.winfo_width(), cv.winfo_height()
             if bw < 10 or bh < 10:
                 return
-            shad = _off(face, -50)
-            _rrect(cv, 3, 4, bw-1, bh, 10, fill=shad)
-            _rrect(cv, 0, 0, bw-4, bh-4, 10, fill=face)
-            _rrect(cv, 1, 1, bw-5, bh//3, 10, fill=_off(face, +40))
+            f = _off(_face, -30) if _ps[0] else _face
+            ox, oy = (3, 3) if _ps[0] else (0, 0)
+            shad = _off(_face, -60)
+            _rrect(cv, 3+ox, 4+oy, bw-1, bh, 10, fill=shad)
+            _rrect(cv, ox, oy, bw-4+ox, bh-4+oy, 10, fill=f)
+            _rrect(cv, ox+1, oy+1, bw-5+ox, bh//3+oy, 10, fill=_off(_face, +40))
             lines = [label]
             if running:
                 lines.append(fmt(elapsed))
                 lines.append("● EN COURS")
             txt = "\n".join(lines)
-            cv.create_text(bw//2-2, bh//2-2, text=txt,
+            cv.create_text(bw//2-2+ox, bh//2-2+oy, text=txt,
                            fill=WHITE, font=("Arial", 11, "bold"),
                            justify="center", width=bw-12)
 
         def _action(k=key, c=cat):
+            if ps[0]:
+                return
             if not self._debounce_ok():
                 return
-            if self._t_running(k):
-                self._ask_stop_description(k, on_done=close_fn)
-            else:
-                self._t_start(k)
-                self._tl_open(k, c)
-                close_fn()
+            ps[0] = True
+            _draw()
+            def _do():
+                if self._t_running(k):
+                    self._ask_stop_description(k, on_done=close_fn)
+                else:
+                    self._t_start(k)
+                    self._tl_open(k, c)
+                    close_fn()
+            self.root.after(900, _do)
 
         cv.bind("<Configure>", _draw)
         cv.bind("<Button-1>",  lambda e: _action())
