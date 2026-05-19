@@ -732,6 +732,7 @@ class App:
         self._outer_frame  = None
         self._alarm_blink  = False
         self._alarm_frames = []   # frames à colorier lors de l'alarme
+        self._alarm_exempt = set()  # widgets exemptés du clignotement rouge
         self._last_activity = datetime.datetime.now()
         self._elapsed_lbl  = None
         self._stops_lbl    = None
@@ -1456,6 +1457,7 @@ class App:
         self._active_stops_container = None
         self._main_prod_panel = None
         self._alarm_frames = []
+        self._alarm_exempt = set()
         try:
             self.root.configure(bg=BG)
         except Exception:
@@ -2593,7 +2595,10 @@ Arrêts imputés au TRS (temps perdu) :
         if self._mode in ("production", "main"):
             if any_running:
                 alarm_col = "#ff1a1a" if self._cell_blink else "#8b0000"
+                _exempt = getattr(self, "_alarm_exempt", set())
                 def _paint(w):
+                    if str(w) in _exempt:
+                        return  # carte arrêt : on ne touche pas
                     try:
                         w.configure(bg=alarm_col)
                     except Exception:
@@ -5333,21 +5338,25 @@ Arrêts imputés au TRS (temps perdu) :
             color    = C_NETT if cat == "nettoyage" else (C_RATT if cat == "ratt" else C_RED)
             type_lbl = "Nettoyage" if cat == "nettoyage" else ("Rattrapage" if cat == "ratt" else "Problème technique")
 
-            # Carte arret
-            card_shad = tk.Frame(container, bg=_off(color, -40))
+            # Carte arret — fond blanc pour rester lisible sur fond rouge alarm
+            card_shad = tk.Frame(container, bg=WHITE)
             card_shad.pack(fill="x", pady=4)
-            card = tk.Frame(card_shad, bg=color)
+            card = tk.Frame(card_shad, bg=WHITE, bd=3, relief="solid",
+                            highlightbackground=color, highlightthickness=3)
             card.pack(fill="both", padx=(0, 3), pady=(0, 3))
+            # Exempter la carte et ses enfants du clignotement rouge
+            self._alarm_exempt.add(str(card_shad))
+            self._alarm_exempt.add(str(card))
 
-            top_row = tk.Frame(card, bg=color)
+            top_row = tk.Frame(card, bg=WHITE)
             top_row.pack(fill="x", padx=14, pady=(10, 2))
-            name_col = tk.Frame(top_row, bg=color)
+            name_col = tk.Frame(top_row, bg=WHITE)
             name_col.pack(side="left")
-            tk.Label(name_col, text=type_lbl.upper(), bg=color,
-                     fg=_off(WHITE, -60), font=("Arial", 8, "bold")).pack(anchor="w")
+            tk.Label(name_col, text=type_lbl.upper(), bg=WHITE,
+                     fg=color, font=("Arial", 9, "bold")).pack(anchor="w")
             _icon = "🧹" if cat == "nettoyage" else ("▶" if cat == "ratt" else "⚠")
             tk.Label(name_col, text=f"{_icon}  {label}",
-                     bg=color, fg=WHITE, font=("Arial", 13, "bold")).pack(anchor="w")
+                     bg=WHITE, fg=color, font=("Arial", 13, "bold")).pack(anchor="w")
 
             def _stop(k=key):
                 self._ask_stop_description(k)
