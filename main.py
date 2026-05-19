@@ -2588,23 +2588,26 @@ Arrêts imputés au TRS (temps perdu) :
         self._cell_blink = not self._cell_blink
         any_running = any(self._t_running(k) for k in self._timers)
 
-        # ── Alarme globale : fond fenêtre rouge clignotant si arrêt actif ────
+        # ── Alarme globale : TOUT en rouge clignotant si arrêt actif ─────────
+        _alarm_was = getattr(self, "_alarm_was_running", False)
         if self._mode in ("production", "main"):
             if any_running:
                 alarm_col = "#ff1a1a" if self._cell_blink else "#8b0000"
-                for _w in [self.root, self._outer_frame] + self._alarm_frames:
-                    if _w:
-                        try:
-                            _w.configure(bg=alarm_col)
-                        except Exception:
-                            pass
-            else:
-                for _w in [self.root, self._outer_frame] + self._alarm_frames:
-                    if _w:
-                        try:
-                            _w.configure(bg=BG)
-                        except Exception:
-                            pass
+                def _paint(w):
+                    try:
+                        w.configure(bg=alarm_col)
+                    except Exception:
+                        pass
+                    for c in w.winfo_children():
+                        _paint(c)
+                _paint(self.root)
+            elif _alarm_was:
+                # Alarme vient de s'arrêter → redessiner proprement
+                self.root.after(0, self._show_production
+                                if self._mode == "production" else self._show_main)
+                self._alarm_was_running = False
+                return
+        self._alarm_was_running = any_running
 
         # ── Vue production ────────────────────────────────────────────────────
         if self._mode == "production" and self._prod_active and self._of_start:
