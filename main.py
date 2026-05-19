@@ -7749,15 +7749,19 @@ new Chart(document.getElementById('gauge{i}'), {{
         for k, tv in sup_timers.items():
             if tv.get("running"):
                 elapsed_s = tv.get("elapsed", 0) or 0
-                if tv.get("start"):
+                start_iso = tv.get("start", "")
+                if start_iso:
                     try:
-                        s_dt = datetime.datetime.fromisoformat(tv["start"])
+                        s_dt = datetime.datetime.fromisoformat(start_iso)
                         elapsed_s += (datetime.datetime.now() - s_dt).total_seconds()
                     except Exception:
                         pass
                 lbl = EVENT_LABELS.get(k, k)
                 cat = "pb" if k.startswith("pb_") else "ratt"
-                active_stops_info.append({"label": lbl, "elapsed": elapsed_s, "cat": cat})
+                active_stops_info.append({
+                    "label": lbl, "elapsed": elapsed_s, "cat": cat,
+                    "start_iso": start_iso, "key": k,
+                })
 
         has_active_stop = bool(active_stops_info)
 
@@ -7943,19 +7947,82 @@ new Chart(document.getElementById('gauge{i}'), {{
             f"{_esc(s.get('label','?'))} — {s.get('dur','?')}" for s in active_stops_info
         ) if active_stops_info else ""
 
-        # Alerte HTML
+        # Alerte HTML — popup plein écran si arrêt actif
         alert_html = ""
         if has_active_stop:
-            stops_list_txt = ", ".join(s["label"] for s in active_stops_info)
+            # Données des arrêts pour le chrono JS (timestamp Unix de départ)
+            stops_js_data = []
+            for s in active_stops_info:
+                start_ts = 0
+                if s.get("start_iso"):
+                    try:
+                        start_ts = int(datetime.datetime.fromisoformat(s["start_iso"]).timestamp())
+                    except Exception:
+                        pass
+                stops_js_data.append({
+                    "label": s["label"],
+                    "cat": s["cat"],
+                    "start_ts": start_ts,
+                    "elapsed_at_gen": round(s["elapsed"]),
+                })
+            stops_js_json = _js_safe(_json.dumps(stops_js_data, ensure_ascii=False))
+            # Infos du formulaire à afficher dans la popup
+            popup_form_rows = ""
+            form_fields = [
+                ("OF", sup_of_num), ("Poste", sup_poste), ("Pilote", sup_pilot),
+                ("Taille", sup_taille), ("Type", sup_type_prod), ("Code", sup_code),
+                ("Fibres", sup_fibre), ("Qté fab.", sup_qte_fab),
+            ]
+            for fname, fval in form_fields:
+                if fval and fval != "—":
+                    popup_form_rows += f'<div class="alp-info-row"><span class="alp-info-key">{_esc(fname)}</span><span class="alp-info-val">{_esc(fval)}</span></div>'
+
             alert_html = f"""
-<div class="alarm-overlay" id="alarmBanner">
-  <div class="alarm-icon">⚠</div>
-  <div class="alarm-body">
-    <div class="alarm-title">ARRÊT EN COURS — INTERVENTION REQUISE</div>
-    <div class="alarm-detail">{_esc(stops_list_txt)}</div>
-    <div class="alarm-timer" id="alarmTimer">En attente de clôture…</div>
+<div id="alarmPopup" class="alp-overlay">
+  <div class="alp-box">
+    <div class="alp-header">
+      <span class="alp-warn">⚠</span>
+      <span class="alp-title">ALERTE — ARRÊT EN COURS</span>
+      <span class="alp-warn">⚠</span>
+    </div>
+    <div id="alpStops" class="alp-stops"></div>
+    <div class="alp-section-title">INFORMATIONS OF</div>
+    <div class="alp-form-grid">{popup_form_rows}</div>
+    <button class="alp-close-btn" onclick="document.getElementById('alarmPopup').style.display='none'">
+      ✕ Masquer (réapparaîtra au prochain rafraîchissement si arrêt toujours actif)
+    </button>
   </div>
-</div>"""
+</div>
+<script>
+(function(){{
+  var stops = {stops_js_json};
+  var container = document.getElementById('alpStops');
+  if (!stops.length || !container) return;
+  function fmtDur(s) {{
+    var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), ss = Math.floor(s%60);
+    return (h>0 ? h+'h ' : '') + String(m).padStart(2,'0') + 'min ' + String(ss).padStart(2,'0') + 's';
+  }}
+  var cards = stops.map(function(st, i) {{
+    var col = st.cat === 'pb' ? '#dc2626' : '#d97706';
+    var catLbl = st.cat === 'pb' ? '🔴 PANNE' : '🟠 RATTRAPAGE';
+    var hHr = st.start_ts > 0 ? new Date(st.start_ts*1000).toLocaleTimeString('fr-FR',{{hour:'2-digit',minute:'2-digit',second:'2-digit'}}) : '—';
+    return '<div class="alp-stop-card" style="border-color:'+col+'"><div class="alp-stop-cat" style="background:'+col+'">'+catLbl+'</div>'
+      + '<div class="alp-stop-lbl">'+st.label+'</div>'
+      + '<div class="alp-stop-since">Début : '+hHr+'</div>'
+      + '<div class="alp-stop-chrono" id="alp-chrono-'+i+'">00min 00s</div></div>';
+  }});
+  container.innerHTML = cards.join('');
+  setInterval(function() {{
+    var now = Math.floor(Date.now()/1000);
+    stops.forEach(function(st, i) {{
+      var el = document.getElementById('alp-chrono-'+i);
+      if (!el) return;
+      var dur = st.start_ts > 0 ? now - st.start_ts : st.elapsed_at_gen;
+      el.textContent = fmtDur(Math.max(0, dur));
+    }});
+  }}, 1000);
+}})();
+</script>"""
 
         # TRS color pour supervision
         sup_trs_color = _trs_color(sup_trs_val)
@@ -8197,6 +8264,45 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: 
   60%     {{ transform: rotate(8deg); }}
 }}
 
+/* ── Popup plein écran ALERTE ARRÊT ── */
+.alp-overlay {{ position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,0.75);
+                display:flex; align-items:center; justify-content:center; }}
+.alp-box {{ background:#1a0000; border:6px solid #ef4444; border-radius:20px;
+            max-width:900px; width:96%; max-height:94vh; overflow-y:auto;
+            box-shadow:0 0 80px #ef4444, 0 0 200px rgba(239,68,68,0.4);
+            animation: alpFlash 1.2s infinite; padding:32px 36px; color:white; }}
+@keyframes alpFlash {{
+  0%,100% {{ border-color:#ef4444; box-shadow:0 0 80px #ef4444,0 0 200px rgba(239,68,68,0.4); }}
+  50%     {{ border-color:#fbbf24; box-shadow:0 0 60px #fbbf24,0 0 160px rgba(251,191,36,0.4); }}
+}}
+.alp-header {{ display:flex; align-items:center; justify-content:center; gap:20px;
+               margin-bottom:24px; }}
+.alp-warn {{ font-size:3.5em; animation:alarmShake 0.6s infinite; }}
+.alp-title {{ font-size:2.8em; font-weight:900; letter-spacing:3px; text-align:center;
+              color:#ef4444; text-shadow:0 0 20px #ef4444;
+              animation: alpBlink 0.8s step-start infinite; }}
+@keyframes alpBlink {{ 0%,100% {{ opacity:1; }} 50% {{ opacity:0.15; }} }}
+.alp-stops {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+              gap:16px; margin-bottom:24px; }}
+.alp-stop-card {{ border:3px solid; border-radius:14px; padding:18px 20px;
+                  background:rgba(255,255,255,0.06); text-align:center; }}
+.alp-stop-cat  {{ font-size:1em; font-weight:800; letter-spacing:1px;
+                  padding:4px 12px; border-radius:20px; display:inline-block; margin-bottom:10px; color:white; }}
+.alp-stop-lbl  {{ font-size:1.8em; font-weight:900; margin-bottom:8px; color:white;
+                  text-shadow:0 2px 8px rgba(0,0,0,0.5); }}
+.alp-stop-since {{ font-size:0.9em; color:#fbbf24; margin-bottom:6px; font-weight:600; }}
+.alp-stop-chrono {{ font-size:3.2em; font-weight:900; color:#ef4444;
+                    text-shadow:0 0 16px #ef4444; letter-spacing:2px; font-family:monospace; }}
+.alp-section-title {{ font-size:0.75em; font-weight:700; letter-spacing:2px; color:#94a3b8;
+                       text-transform:uppercase; margin:16px 0 10px; border-top:1px solid #374151; padding-top:12px; }}
+.alp-form-grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:8px; margin-bottom:24px; }}
+.alp-info-row  {{ background:rgba(255,255,255,0.07); border-radius:8px; padding:8px 12px; }}
+.alp-info-key  {{ font-size:0.68em; color:#94a3b8; text-transform:uppercase; display:block; margin-bottom:2px; }}
+.alp-info-val  {{ font-size:1.05em; font-weight:700; color:white; }}
+.alp-close-btn {{ width:100%; padding:12px; background:rgba(255,255,255,0.1); border:2px solid rgba(255,255,255,0.25);
+                  border-radius:10px; color:rgba(255,255,255,0.6); font-size:0.82em; cursor:pointer; }}
+.alp-close-btn:hover {{ background:rgba(255,255,255,0.18); color:white; }}
+
 .sup-banner-prod  {{ background:#16a34a; color:white; border-bottom:3px solid #14532d;
                     padding:8px 16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; min-height:52px; }}
 .sup-banner-alarm {{ background:#dc2626; color:white; border-bottom:3px solid #7f1d1d;
@@ -8428,8 +8534,6 @@ body.alarm-bg .tab-content.visible {{ background: #fee2e2; }}
 
 <!-- ══════════════════ ONGLET SUPERVISION ══════════════════ -->
 <div class="tab-content" id="tab-supervision">
-
-{alert_html}
 
 {'<!-- ALARME ARRÊT -->' if has_active_stop else '<!-- PRODUCTION OK -->'}
 <div class="{'sup-banner-alarm' if has_active_stop else ('sup-banner-prod' if sup_prod_active else 'sup-banner-idle')}">
@@ -8719,6 +8823,9 @@ body.alarm-bg .tab-content.visible {{ background: #fee2e2; }}
 </div>
 
 </div><!-- /tab-review -->
+
+<!-- Popup alerte arrêt — hors de tout tab, visible depuis n'importe quel onglet -->
+{alert_html}
 
 <!-- Modal détail OF — hors de tout tab pour être visible depuis n'importe quel onglet -->
 <div id="ofDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center">
