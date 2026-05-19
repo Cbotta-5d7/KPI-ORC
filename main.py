@@ -1804,11 +1804,11 @@ class App:
                       ).pack(fill="x", pady=(4, 4))
             _update_horaire_display()
 
-            mod_btn = tk.Button(inner, text="✎ Modifier (encadrant)",
+            mod_btn = tk.Button(inner, text="✎  Modifier (encadrant)",
                                 command=_modifier_modele,
                                 bg="#e0f2fe", fg="#0369a1",
-                                font=("Arial", 9), relief="flat",
-                                cursor="hand2", pady=2)
+                                font=("Arial", 12, "bold"), relief="flat",
+                                cursor="hand2", pady=6)
             mod_btn.pack(anchor="e", pady=(0, 10))
         else:
             modele_var = None
@@ -4707,13 +4707,13 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
 
         for txt, cmd, col in [
             ("+ Ajouter",    _add_evt,  GREEN),
-            ("✏ Modifier",   _edit_evt, ORANGE),
+            ("✏  Modifier",  _edit_evt, ORANGE),
             ("🗑 Supprimer", _del_evt,  C_RED),
         ]:
             tk.Button(btn_bar, text=txt, command=cmd,
-                      bg=col, fg=WHITE, font=("Arial", 10, "bold"),
-                      relief="flat", padx=8, pady=6, cursor="hand2",
-                      width=14).pack(pady=5)
+                      bg=col, fg=WHITE, font=("Arial", 14, "bold"),
+                      relief="flat", padx=8, pady=8, cursor="hand2",
+                      width=14).pack(pady=6)
 
         # ── Barre de sauvegarde ───────────────────────────────────────────────
 
@@ -5980,7 +5980,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         tk.Label(inner_hdr, text="RÉCAP ARRÊTS OF",
                  bg="#c0392b", fg=WHITE, font=("Arial", 9, "bold")).pack(side="left")
         tk.Button(inner_hdr, text="✏", bg="#e74c3c", fg=WHITE,
-                  font=("Arial", 9, "bold"), relief="flat", cursor="hand2",
+                  font=("Arial", 18, "bold"), relief="flat", cursor="hand2",
                   command=self._open_stops_editor).pack(side="right", padx=2)
         self._recap_inner = tk.Frame(parent, bg=WHITE)
         self._recap_inner.pack(fill="both", expand=True, padx=4, pady=4)
@@ -6158,7 +6158,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                     _rebuild()
                     self._refresh_stops_recap()
 
-                tk.Button(row, text="✏", bg=LGRAY, fg=DARK, font=("Arial", 9),
+                tk.Button(row, text="✏", bg=LGRAY, fg=DARK, font=("Arial", 18),
                           relief="flat", cursor="hand2", padx=4,
                           command=_edit).pack(side="left", padx=2)
                 tk.Button(row, text="🗑", bg="#fee2e2", fg="#dc2626", font=("Arial", 9),
