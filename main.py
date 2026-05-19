@@ -358,15 +358,27 @@ class Timeline(tk.Canvas):
         w, h = self.winfo_width(), self.winfo_height()
         if w < 20:
             return
-        now   = datetime.datetime.now()
-        win_s = TIMELINE_WINDOW * 60
-        t0    = now - datetime.timedelta(seconds=win_s)
+        now = datetime.datetime.now()
+
+        # Fenêtre dynamique : depuis le début du 1er OF jusqu'à maintenant + 5min
+        if self.app._of_periods:
+            try:
+                t0 = self.app._of_periods[0]["start"] - datetime.timedelta(minutes=2)
+            except Exception:
+                t0 = now - datetime.timedelta(hours=8)
+        else:
+            t0 = now - datetime.timedelta(hours=8)
+        t_end = now + datetime.timedelta(minutes=5)   # petite marge à droite
+        win_s = max(1.0, (t_end - t0).total_seconds())
+        now_x = (now - t0).total_seconds() / win_s * w   # position du curseur
 
         def px(dt):
             return max(0.0, min(float(w), (dt - t0).total_seconds() / win_s * w))
 
         BY, BH = self.BAR_Y, self.BAR_H
+        # Fond gris sur toute la largeur, zone future (droite du curseur) plus clair
         self.create_rectangle(0, BY, w, BY + BH, fill="#cfdaeb", outline="")
+        self.create_rectangle(now_x, BY, w, BY + BH, fill="#e8edf5", outline="")
 
         for p in self.app._of_periods:
             x1, x2 = px(p["start"]), px(p.get("end") or now)
@@ -390,21 +402,29 @@ class Timeline(tk.Canvas):
                 self.create_text(x, BY - 26, text="CHG OF",
                                  fill=ORANGE, font=("Arial", 7, "bold"), anchor="center")
 
-        # Lignes de tick toutes les 30 min, label seulement heures pile et demies
-        for i in range(TIMELINE_WINDOW + 1):
-            if i % 30 != 0:
-                continue
-            t = t0 + datetime.timedelta(minutes=i)
-            x = i / TIMELINE_WINDOW * w
-            is_hour = (t.minute == 0)
-            col = "#aab8cc" if is_hour else "#ccd6e4"
-            lw  = 2 if is_hour else 1
-            self.create_line(x, BY - 4, x, BY + BH + 4, fill=col, width=lw)
-            self.create_text(x, BY - 10, text=t.strftime("%H:%M"),
-                             font=("Arial", 8 if is_hour else 7, "bold" if is_hour else "normal"),
-                             fill=GRAY if not is_hour else DARK, anchor="center")
+        # Graduations horaires dynamiques (toutes les heures si fenêtre > 3h, sinon 30min)
+        step_min = 60 if win_s > 3 * 3600 else 30
+        t_cur = t0.replace(second=0, microsecond=0)
+        # Aligner sur le prochain multiple de step_min
+        mins = (t_cur.minute // step_min) * step_min
+        t_cur = t_cur.replace(minute=mins) + datetime.timedelta(minutes=step_min)
+        while t_cur <= t_end:
+            x = px(t_cur)
+            if 0 < x < w:
+                is_hour = (t_cur.minute == 0)
+                col_l = "#aab8cc" if is_hour else "#ccd6e4"
+                lw = 2 if is_hour else 1
+                self.create_line(x, BY - 4, x, BY + BH + 4, fill=col_l, width=lw)
+                self.create_text(x, BY - 10, text=t_cur.strftime("%H:%M"),
+                                 font=("Arial", 8 if is_hour else 7,
+                                       "bold" if is_hour else "normal"),
+                                 fill=DARK if is_hour else GRAY, anchor="center")
+            t_cur += datetime.timedelta(minutes=step_min)
 
-        self.create_line(w - 1, BY - 8, w - 1, BY + BH + 8, fill=ORANGE, width=2)
+        # Curseur "Maintenant" vertical orange
+        self.create_line(now_x, BY - 8, now_x, BY + BH + 8, fill=ORANGE, width=2)
+        self.create_text(now_x, BY + BH + 16, text="▲ Maintenant",
+                         fill=ORANGE, font=("Arial", 7, "bold"), anchor="center")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -428,9 +448,17 @@ class OFBar(tk.Canvas):
         w, h = self.winfo_width(), self.winfo_height()
         if w < 20:
             return
-        now   = datetime.datetime.now()
-        win_s = TIMELINE_WINDOW * 60
-        t0    = now - datetime.timedelta(seconds=win_s)
+        now = datetime.datetime.now()
+        # Même fenêtre dynamique que Timeline
+        if self.app._of_periods:
+            try:
+                t0 = self.app._of_periods[0]["start"] - datetime.timedelta(minutes=2)
+            except Exception:
+                t0 = now - datetime.timedelta(hours=8)
+        else:
+            t0 = now - datetime.timedelta(hours=8)
+        t_end = now + datetime.timedelta(minutes=5)
+        win_s = max(1.0, (t_end - t0).total_seconds())
 
         def px(dt):
             return max(0.0, min(float(w), (dt - t0).total_seconds() / win_s * w))
