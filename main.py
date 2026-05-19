@@ -8563,17 +8563,6 @@ body.alarm-bg .tab-content.visible {{ background: #fee2e2; }}
   </div><!-- /sup-right -->
 </div><!-- /sup-grid -->
 
-<!-- Modal détail OF -->
-<div id="ofDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:white;border-radius:16px;max-width:900px;width:95%;max-height:90vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column">
-    <div style="background:linear-gradient(135deg,#1e3a5f,#2c5282);color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:1.1em;font-weight:800">&#128203; D&eacute;tail de l'OF <span id="modalOfNum"></span></div>
-      <button onclick="closeOfModal()" style="background:rgba(255,255,255,0.15);border:none;color:white;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700;font-size:1.1em">&#10005;</button>
-    </div>
-    <div id="modalBody" style="overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
-  </div>
-</div>
-
 <div class="footer">
   KPI-ORC Supervision &bull; {now_str} &bull; Rafra&icirc;chissement automatique 30s
 </div>
@@ -8730,6 +8719,17 @@ body.alarm-bg .tab-content.visible {{ background: #fee2e2; }}
 </div>
 
 </div><!-- /tab-review -->
+
+<!-- Modal détail OF — hors de tout tab pour être visible depuis n'importe quel onglet -->
+<div id="ofDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:16px;max-width:900px;width:95%;max-height:90vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);display:flex;flex-direction:column">
+    <div style="background:linear-gradient(135deg,#1e3a5f,#2c5282);color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:1.1em;font-weight:800">&#128203; D&eacute;tail de l'OF <span id="modalOfNum"></span></div>
+      <button onclick="closeOfModal()" style="background:rgba(255,255,255,0.15);border:none;color:white;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:700;font-size:1.1em">&#10005;</button>
+    </div>
+    <div id="modalBody" style="overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px"></div>
+  </div>
+</div>
 
 <script>
 function showTab(name) {{
