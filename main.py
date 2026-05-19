@@ -68,6 +68,9 @@ DARK    = "#0f172a"
 
 TIMELINE_WINDOW = 480  # minutes (8h)
 
+POSTES_HORAIRES = ["Matin", "Midi", "Nuit", "Jour"]
+JOURS_SEMAINE   = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+
 EVENTS = [
     ("Pochon / Fibre",       "ratt_pochon",      "ratt"),
     ("Couture",              "ratt_couture",     "ratt"),
@@ -960,6 +963,16 @@ class App:
         except Exception:
             return None
 
+    def _default_modele_horaire(self, nom="Nouveau modèle"):
+        """Returns a blank modèle horaire dict with default empty schedule."""
+        return {
+            "nom": nom,
+            "postes": {
+                p: {j: {"debut": "", "fin": ""} for j in JOURS_SEMAINE}
+                for p in POSTES_HORAIRES
+            }
+        }
+
     def _load_lists(self):
         path = self.cfg.get("db_path", "")
         if not path or not os.path.exists(path):
@@ -1618,24 +1631,33 @@ class App:
             lbl.pack(side="left", padx=(4, 0))
             horaire_labels[ci] = lbl
 
-        # Modèles horaires disponibles
-        modeles_list = self._get_list("Modèle horaire")
+        # Modèles horaires depuis la config (Paramètres → Modèles Horaires)
+        _cfg_modeles = self.cfg.get("modeles_horaires", [])
+        modeles_list = [m["nom"] for m in _cfg_modeles]
         modele_var = tk.StringVar()
+
+        # Calcul du jour de la semaine courant (0=Lundi … 6=Dimanche)
+        _today_idx = datetime.datetime.now().weekday()
+        _today_jour = JOURS_SEMAINE[_today_idx]
 
         def _update_horaire_display(*_):
             mod = modele_var.get()
-            if not mod or not modeles_list:
+            if not mod or not _cfg_modeles:
                 for lbl in horaire_labels.values():
                     lbl.config(text="—")
                 return
             try:
-                idx = modeles_list.index(mod)
-            except ValueError:
-                idx = 0
-            for ci, lbl in horaire_labels.items():
-                vals = self._schedule_col_data.get(ci, [])
-                text = vals[idx] if idx < len(vals) else "—"
-                lbl.config(text=text if text else "—")
+                m_data = next(m for m in _cfg_modeles if m["nom"] == mod)
+            except StopIteration:
+                for lbl in horaire_labels.values():
+                    lbl.config(text="—")
+                return
+            for (pk, ci), lbl in zip(_poste_keys, horaire_labels.values()):
+                sched = m_data["postes"].get(pk, {}).get(_today_jour, {})
+                debut = sched.get("debut", "")
+                fin   = sched.get("fin", "")
+                text  = f"{debut}h – {fin}h" if debut and fin else "—"
+                lbl.config(text=text)
 
         def _modifier_modele():
             def _do_modifier():
@@ -1754,25 +1776,29 @@ class App:
             modele_sel = modele_var.get() if modele_var else ""
             self._logged_in_modele = modele_sel
             self._logged_in_duree_horaire_min = None
-            if modele_sel and modeles_list:
+            if modele_sel and _cfg_modeles:
                 try:
-                    m_idx = modeles_list.index(modele_sel)
-                    # Déterminer colonne horaire selon le poste
-                    poste_lower = poste_sel.lower()
-                    if "matin" in poste_lower:
-                        ci_h = 12
-                    elif "midi" in poste_lower:
-                        ci_h = 13
-                    elif "nuit" in poste_lower:
-                        ci_h = 14
-                    else:
-                        ci_h = 15  # Jour par défaut
-                    vals = self._schedule_col_data.get(ci_h, [])
-                    horaire_str = vals[m_idx] if m_idx < len(vals) else ""
-                    if horaire_str:
-                        dur = self._parse_horaire_duration(horaire_str)
-                        if dur:
-                            self._logged_in_duree_horaire_min = dur
+                    m_data = next((m for m in _cfg_modeles if m["nom"] == modele_sel), None)
+                    if m_data:
+                        poste_lower = poste_sel.lower()
+                        if "matin" in poste_lower:
+                            poste_key = "Matin"
+                        elif "midi" in poste_lower:
+                            poste_key = "Midi"
+                        elif "nuit" in poste_lower:
+                            poste_key = "Nuit"
+                        else:
+                            poste_key = "Jour"
+                        today_idx = datetime.datetime.now().weekday()
+                        today_jour = JOURS_SEMAINE[today_idx]
+                        sched = m_data["postes"].get(poste_key, {}).get(today_jour, {})
+                        debut = str(sched.get("debut", "")).strip()
+                        fin   = str(sched.get("fin", "")).strip()
+                        if debut and fin:
+                            horaire_str = f"{debut}h-{fin}h"
+                            dur = self._parse_horaire_duration(horaire_str)
+                            if dur:
+                                self._logged_in_duree_horaire_min = dur
                 except Exception:
                     pass
             self._logged_in_pilot = name
@@ -2633,6 +2659,219 @@ Arrêts imputés au TRS (temps perdu) :
             tk.Label(prow, text="min", bg=prow.cget("bg"), fg=GRAY,
                      font=("Arial", 11)).pack(side="left")
 
+        # ── Tab Modèles Horaires ──────────────────────────────────────────────
+        import copy as _copy
+        modeles_ref = _copy.deepcopy(self.cfg.get("modeles_horaires", []))
+        if not modeles_ref:
+            modeles_ref.append(self._default_modele_horaire("35h"))
+
+        tab_hor = tk.Frame(nb_s, bg=WHITE)
+        nb_s.add(tab_hor, text="  Modèles Horaires  ")
+        tab_hor.columnconfigure(0, minsize=185)
+        tab_hor.columnconfigure(1, minsize=130)
+        tab_hor.columnconfigure(2, weight=1)
+        tab_hor.rowconfigure(0, weight=1)
+
+        # --- Panel gauche : liste des modèles ---
+        pnl_mod = tk.Frame(tab_hor, bg=WHITE)
+        pnl_mod.grid(row=0, column=0, sticky="nsew", padx=(8, 0), pady=8)
+        pnl_mod.rowconfigure(1, weight=1)
+        tk.Label(pnl_mod, text="Modèles", bg=WHITE, fg=NAVY,
+                 font=("Arial", 11, "bold")).grid(row=0, column=0, columnspan=2,
+                                                   sticky="w", padx=6, pady=(6, 4))
+        lb_mod = tk.Listbox(pnl_mod, font=("Arial", 11), selectmode="single",
+                            relief="solid", bd=1, activestyle="none",
+                            selectbackground=NAVY, selectforeground=WHITE,
+                            height=8, width=18)
+        lb_mod.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=6)
+
+        tk.Frame(tab_hor, bg=LGRAY, width=1).grid(row=0, column=0, sticky="nse", pady=8)
+
+        # Rename entry below listbox
+        name_var_mod = tk.StringVar()
+        name_entry_mod = tk.Entry(pnl_mod, textvariable=name_var_mod,
+                                  font=("Arial", 11), relief="solid", bd=1, width=14)
+        name_entry_mod.grid(row=2, column=0, columnspan=2, sticky="ew",
+                            padx=6, pady=(4, 0))
+
+        btn_row_mod = tk.Frame(pnl_mod, bg=WHITE)
+        btn_row_mod.grid(row=3, column=0, columnspan=2, sticky="w", padx=6, pady=4)
+
+        _sel_mod = [-1]  # mutable index
+
+        def _mod_refresh_lb():
+            lb_mod.delete(0, "end")
+            for m in modeles_ref:
+                lb_mod.insert("end", m["nom"])
+            if 0 <= _sel_mod[0] < len(modeles_ref):
+                lb_mod.selection_clear(0, "end")
+                lb_mod.selection_set(_sel_mod[0])
+                lb_mod.see(_sel_mod[0])
+
+        def _mod_select(idx):
+            _sel_mod[0] = idx
+            if 0 <= idx < len(modeles_ref):
+                name_var_mod.set(modeles_ref[idx]["nom"])
+                lb_mod.selection_clear(0, "end")
+                lb_mod.selection_set(idx)
+                _pos_refresh()
+            else:
+                name_var_mod.set("")
+
+        def _mod_on_lb_select(event=None):
+            sel = lb_mod.curselection()
+            if sel:
+                _mod_select(sel[0])
+
+        def _mod_rename(*_):
+            idx = _sel_mod[0]
+            if 0 <= idx < len(modeles_ref):
+                modeles_ref[idx]["nom"] = name_var_mod.get()
+                _mod_refresh_lb()
+
+        def _mod_add():
+            new_m = self._default_modele_horaire(f"Modèle {len(modeles_ref)+1}")
+            modeles_ref.append(new_m)
+            _sel_mod[0] = len(modeles_ref) - 1
+            _mod_refresh_lb()
+            _mod_select(_sel_mod[0])
+
+        def _mod_del():
+            idx = _sel_mod[0]
+            if 0 <= idx < len(modeles_ref):
+                del modeles_ref[idx]
+                new_idx = min(idx, len(modeles_ref) - 1)
+                _sel_mod[0] = new_idx
+                _mod_refresh_lb()
+                if modeles_ref:
+                    _mod_select(new_idx)
+                else:
+                    _pos_clear()
+                    _days_clear()
+
+        name_var_mod.trace_add("write", _mod_rename)
+        lb_mod.bind("<<ListboxSelect>>", _mod_on_lb_select)
+
+        tk.Button(btn_row_mod, text="+ Nouveau", command=_mod_add,
+                  bg=GREEN, fg=WHITE, font=("Arial", 9, "bold"),
+                  relief="flat", padx=8, pady=4, cursor="hand2").pack(side="left", padx=(0, 4))
+        tk.Button(btn_row_mod, text="× Supprimer", command=_mod_del,
+                  bg=C_RED, fg=WHITE, font=("Arial", 9),
+                  relief="flat", padx=8, pady=4, cursor="hand2").pack(side="left")
+
+        # --- Panel milieu : postes ---
+        pnl_pos = tk.Frame(tab_hor, bg=WHITE)
+        pnl_pos.grid(row=0, column=1, sticky="nsew", padx=(8, 0), pady=8)
+        tk.Label(pnl_pos, text="Poste", bg=WHITE, fg=NAVY,
+                 font=("Arial", 11, "bold")).pack(anchor="w", padx=6, pady=(6, 4))
+        tk.Frame(tab_hor, bg=LGRAY, width=1).grid(row=0, column=1, sticky="nse", pady=8)
+
+        _sel_poste = [None]
+        _poste_btns = {}
+
+        def _pos_select(poste):
+            _sel_poste[0] = poste
+            for p, btn in _poste_btns.items():
+                btn.config(bg=NAVY if p == poste else WHITE,
+                           fg=WHITE if p == poste else DARK)
+            _days_load()
+
+        def _pos_refresh():
+            _pos_select(_sel_poste[0] or POSTES_HORAIRES[0])
+
+        def _pos_clear():
+            _sel_poste[0] = None
+            for btn in _poste_btns.values():
+                btn.config(bg=WHITE, fg=DARK)
+
+        for p in POSTES_HORAIRES:
+            btn_p = tk.Button(pnl_pos, text=p,
+                              command=lambda pp=p: _pos_select(pp),
+                              bg=WHITE, fg=DARK, font=("Arial", 11),
+                              relief="solid", bd=1, padx=10, pady=6,
+                              cursor="hand2", anchor="w")
+            btn_p.pack(fill="x", padx=6, pady=3)
+            _poste_btns[p] = btn_p
+
+        # --- Panel droit : jours × horaires ---
+        pnl_days = tk.Frame(tab_hor, bg=WHITE)
+        pnl_days.grid(row=0, column=2, sticky="nsew", padx=8, pady=8)
+        tk.Label(pnl_days, text="Horaires", bg=WHITE, fg=NAVY,
+                 font=("Arial", 11, "bold")).pack(anchor="w", padx=6, pady=(6, 4))
+
+        days_frame = tk.Frame(pnl_days, bg=WHITE)
+        days_frame.pack(fill="x", padx=6)
+        days_frame.columnconfigure(0, minsize=90)
+        days_frame.columnconfigure(1, minsize=80)
+        days_frame.columnconfigure(2, minsize=80)
+
+        tk.Label(days_frame, text="Jour", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        tk.Label(days_frame, text="Début (h)", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold")).grid(row=0, column=1, padx=4, pady=(0, 4))
+        tk.Label(days_frame, text="Fin (h)", bg=WHITE, fg=GRAY,
+                 font=("Arial", 9, "bold")).grid(row=0, column=2, padx=4, pady=(0, 4))
+
+        day_vars = {}
+        _updating_days = [False]
+
+        for ri, jour in enumerate(JOURS_SEMAINE, 1):
+            dv = tk.StringVar()
+            fv = tk.StringVar()
+            day_vars[jour] = {"debut": dv, "fin": fv}
+            tk.Label(days_frame, text=jour, bg=WHITE, fg=DARK,
+                     font=("Arial", 11)).grid(row=ri, column=0, sticky="w", pady=2)
+            tk.Entry(days_frame, textvariable=dv, width=7,
+                     font=("Arial", 12, "bold"), relief="solid", bd=1,
+                     justify="center").grid(row=ri, column=1, padx=4, pady=2)
+            tk.Entry(days_frame, textvariable=fv, width=7,
+                     font=("Arial", 12, "bold"), relief="solid", bd=1,
+                     justify="center").grid(row=ri, column=2, padx=4, pady=2)
+
+            def _on_day_change(_, __, ___, j=jour, d=dv, f=fv):
+                if _updating_days[0]:
+                    return
+                idx = _sel_mod[0]
+                pos = _sel_poste[0]
+                if 0 <= idx < len(modeles_ref) and pos:
+                    modeles_ref[idx]["postes"][pos][j]["debut"] = d.get()
+                    modeles_ref[idx]["postes"][pos][j]["fin"]   = f.get()
+
+            dv.trace_add("write", _on_day_change)
+            fv.trace_add("write", _on_day_change)
+
+        def _days_load():
+            idx = _sel_mod[0]
+            pos = _sel_poste[0]
+            _updating_days[0] = True
+            try:
+                if 0 <= idx < len(modeles_ref) and pos:
+                    sched = modeles_ref[idx]["postes"].get(pos, {})
+                    for jour, dvs in day_vars.items():
+                        entry = sched.get(jour, {})
+                        dvs["debut"].set(str(entry.get("debut", "")))
+                        dvs["fin"].set(str(entry.get("fin", "")))
+                else:
+                    for dvs in day_vars.values():
+                        dvs["debut"].set("")
+                        dvs["fin"].set("")
+            finally:
+                _updating_days[0] = False
+
+        def _days_clear():
+            _updating_days[0] = True
+            try:
+                for dvs in day_vars.values():
+                    dvs["debut"].set("")
+                    dvs["fin"].set("")
+            finally:
+                _updating_days[0] = False
+
+        # Init
+        _mod_refresh_lb()
+        if modeles_ref:
+            _mod_select(0)
+
         # ── Tab Règles de calcul ──────────────────────────────────────────────
         tab_rules = tk.Frame(nb_s, bg=WHITE)
         nb_s.add(tab_rules, text="  Règles de calcul  ")
@@ -2669,6 +2908,7 @@ Arrêts imputés au TRS (temps perdu) :
                     total = 480
                 postes_dict[nom] = total
             self.cfg["postes_durees"] = postes_dict
+            self.cfg["modeles_horaires"] = modeles_ref
             save_cfg(self.cfg)
             # Mettre à jour self.lists
             self.lists["Pilotes"] = list(pil_names_ref)
