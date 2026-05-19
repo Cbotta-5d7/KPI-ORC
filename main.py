@@ -6543,8 +6543,8 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         top.configure(bg=WHITE)
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
-        pw = min(900, sw - 40)
-        ph = min(800, sh - 60)
+        pw = max(700, int(sw * 0.92))
+        ph = max(500, int(sh * 0.88))
         rx = self.root.winfo_rootx() + (self.root.winfo_width() - pw) // 2
         ry = self.root.winfo_rooty() + (self.root.winfo_height() - ph) // 2
         top.geometry(f"{pw}x{ph}+{rx}+{ry}")
@@ -6563,33 +6563,59 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         tk.Frame(top, bg=LGRAY, height=1).pack(fill="x")
 
         n = len(values)
-        # Choisir la taille de police et le pady selon la quantité d'items
-        if n <= 8:
-            font_sz, btn_pady = 13, 10
-        elif n <= 16:
-            font_sz, btn_pady = 11, 6
-        elif n <= 28:
-            font_sz, btn_pady = 10, 4
+        # 2 colonnes si >= 6 items, sinon 1 colonne
+        ncols = 2 if n >= 6 else 1
+        # Police toujours grande — réduit un peu seulement si beaucoup d'items
+        if n <= 10:
+            font_sz, btn_pady = 14, 10
+        elif n <= 20:
+            font_sz, btn_pady = 13, 8
+        elif n <= 36:
+            font_sz, btn_pady = 12, 6
         else:
-            font_sz, btn_pady = 9, 2
+            font_sz, btn_pady = 11, 4
 
-        # Toujours une seule colonne : liste verticale lisible
-        inner = tk.Frame(top, bg=WHITE)
-        inner.pack(fill="both", expand=True, padx=20, pady=8)
-        inner.columnconfigure(0, weight=1)
+        scroll_frame = tk.Frame(top, bg=WHITE)
+        scroll_frame.pack(fill="both", expand=True, padx=12, pady=6)
+
+        canvas_s = tk.Canvas(scroll_frame, bg=WHITE, highlightthickness=0)
+        sb = tk.Scrollbar(scroll_frame, orient="vertical", command=canvas_s.yview)
+        canvas_s.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas_s.pack(side="left", fill="both", expand=True)
+
+        inner = tk.Frame(canvas_s, bg=WHITE)
+        win_id = canvas_s.create_window((0, 0), window=inner, anchor="nw")
+
+        def _on_resize(e):
+            canvas_s.itemconfig(win_id, width=e.width)
+        canvas_s.bind("<Configure>", _on_resize)
+
+        def _on_frame_resize(e):
+            canvas_s.configure(scrollregion=canvas_s.bbox("all"))
+        inner.bind("<Configure>", _on_frame_resize)
+
+        for c in range(ncols):
+            inner.columnconfigure(c, weight=1)
 
         def _pick(val):
             var.set(val)
             top.destroy()
 
         for i, val in enumerate(values):
+            row_i = i // ncols
+            col_i = i % ncols
             btn = tk.Button(inner, text=val, command=lambda v=val: _pick(v),
                             bg=NAVY_L, fg=WHITE, font=("Arial", font_sz, "bold"),
                             relief="flat", pady=btn_pady, anchor="w", padx=16,
                             cursor="hand2")
-            btn.grid(row=i, column=0, sticky="ew", padx=4, pady=2)
+            btn.grid(row=row_i, column=col_i, sticky="ew", padx=4, pady=3)
             btn.bind("<Enter>", lambda e, b=btn: b.config(bg=NAVY))
             btn.bind("<Leave>", lambda e, b=btn: b.config(bg=NAVY_L))
+
+        def _on_mousewheel(e):
+            canvas_s.yview_scroll(int(-1 * (e.delta / 120)), "units")
+        canvas_s.bind_all("<MouseWheel>", _on_mousewheel)
 
     # ── Selecteur d'arret ─────────────────────────────────────────────────────
     def _show_stop_selector(self):
