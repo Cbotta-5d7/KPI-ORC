@@ -731,6 +731,7 @@ class App:
         self._blink_state = False
         self._outer_frame  = None
         self._alarm_blink  = False
+        self._alarm_frames = []   # frames à colorier lors de l'alarme
         self._last_activity = datetime.datetime.now()
         self._elapsed_lbl  = None
         self._stops_lbl    = None
@@ -1454,6 +1455,11 @@ class App:
         self._stop_timer_lbls = {}
         self._active_stops_container = None
         self._main_prod_panel = None
+        self._alarm_frames = []
+        try:
+            self.root.configure(bg=BG)
+        except Exception:
+            pass
 
     def _show_login_overlay(self, on_success=None):
         """Overlay plein écran de connexion pilote."""
@@ -2582,6 +2588,24 @@ Arrêts imputés au TRS (temps perdu) :
         self._cell_blink = not self._cell_blink
         any_running = any(self._t_running(k) for k in self._timers)
 
+        # ── Alarme globale : fond fenêtre rouge clignotant si arrêt actif ────
+        if self._mode in ("production", "main"):
+            if any_running:
+                alarm_col = "#ff1a1a" if self._cell_blink else "#8b0000"
+                for _w in [self.root, self._outer_frame] + self._alarm_frames:
+                    if _w:
+                        try:
+                            _w.configure(bg=alarm_col)
+                        except Exception:
+                            pass
+            else:
+                for _w in [self.root, self._outer_frame] + self._alarm_frames:
+                    if _w:
+                        try:
+                            _w.configure(bg=BG)
+                        except Exception:
+                            pass
+
         # ── Vue production ────────────────────────────────────────────────────
         if self._mode == "production" and self._prod_active and self._of_start:
             of_s   = (now - self._of_start).total_seconds() + getattr(self, "_inter_of_s", 0)
@@ -2989,6 +3013,7 @@ Arrêts imputés au TRS (temps perdu) :
         outer = tk.Frame(self.root, bg=BG)
         outer.pack(fill="both", expand=True)
         self._outer_frame = outer
+        self._alarm_frames = [outer]
         outer.bind("<Motion>",  self._reset_activity)
         outer.bind("<Button-1>", self._reset_activity)
 
@@ -4598,6 +4623,7 @@ Arrêts imputés au TRS (temps perdu) :
         outer = tk.Frame(self.root, bg=BG)
         outer.pack(fill="both", expand=True)
         self._outer_frame = outer
+        self._alarm_frames = [outer]
 
         # ── En-tete fixe (blanc, style Dodo) ─────────────────────────────────
         hdr = tk.Frame(outer, bg=WHITE, height=self._px(62))
