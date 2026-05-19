@@ -7498,7 +7498,7 @@ Arrêts imputés au TRS (temps perdu) :
                   cursor="hand2", padx=8).pack(side="right", padx=10, pady=8)
 
         # Footer buttons
-        footer = tk.Frame(ov, bg="#1e3a5f", height=52)
+        footer = tk.Frame(ov, bg="#1e3a5f", height=60)
         footer.pack(fill="x", side="bottom")
         footer.pack_propagate(False)
 
@@ -7548,6 +7548,12 @@ Arrêts imputés au TRS (temps perdu) :
             self._logged_in_pilot = None
             self._logged_in_poste = None
             self._login_time      = None
+            # Reset production state so next pilot can start fresh
+            self._prod_active = False
+            self._of_start    = None
+            self._t_reset()
+            self._of_periods  = []
+            self._of_changes  = []
             ov.destroy()
             self._show_main()
 
@@ -7559,8 +7565,11 @@ Arrêts imputés au TRS (temps perdu) :
                   command=_modifier_duree, bg="#2563eb", fg=WHITE,
                   font=("Arial", 11, "bold"), relief="flat",
                   padx=16, pady=8, cursor="hand2").pack(side="left", padx=(12, 6), pady=8)
-        tk.Button(footer, text="↩  Retour sans clôturer",
-                  command=lambda: ov.destroy(),
+        def _retour():
+            ov.destroy()
+            self._show_main()
+        tk.Button(footer, text="↩  Annuler, retour dans les déclarations",
+                  command=_retour,
                   bg="#475569", fg=WHITE, font=("Arial", 11), relief="flat",
                   padx=16, pady=8, cursor="hand2").pack(side="left", padx=6, pady=8)
 
