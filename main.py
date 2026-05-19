@@ -6462,28 +6462,31 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         tk.Frame(top, bg=LGRAY, height=1).pack(fill="x")
 
         n = len(values)
-        if n <= 6:
-            ncols = 3
-        elif n <= 12:
-            ncols = 4
+        # Choisir la taille de police et le pady selon la quantité d'items
+        if n <= 8:
+            font_sz, btn_pady = 13, 10
+        elif n <= 16:
+            font_sz, btn_pady = 11, 6
+        elif n <= 28:
+            font_sz, btn_pady = 10, 4
         else:
-            ncols = 5
+            font_sz, btn_pady = 9, 2
 
+        # Toujours une seule colonne : liste verticale lisible
         inner = tk.Frame(top, bg=WHITE)
-        inner.pack(fill="both", expand=True, padx=12, pady=8)
-        for col in range(ncols):
-            inner.columnconfigure(col, weight=1)
+        inner.pack(fill="both", expand=True, padx=20, pady=8)
+        inner.columnconfigure(0, weight=1)
 
         def _pick(val):
             var.set(val)
             top.destroy()
 
         for i, val in enumerate(values):
-            r, c = divmod(i, ncols)
             btn = tk.Button(inner, text=val, command=lambda v=val: _pick(v),
-                            bg=NAVY_L, fg=WHITE, font=("Arial", 14, "bold"),
-                            relief="flat", pady=16, cursor="hand2", wraplength=160)
-            btn.grid(row=r, column=c, sticky="ew", padx=4, pady=4)
+                            bg=NAVY_L, fg=WHITE, font=("Arial", font_sz, "bold"),
+                            relief="flat", pady=btn_pady, anchor="w", padx=16,
+                            cursor="hand2")
+            btn.grid(row=i, column=0, sticky="ew", padx=4, pady=2)
             btn.bind("<Enter>", lambda e, b=btn: b.config(bg=NAVY))
             btn.bind("<Leave>", lambda e, b=btn: b.config(bg=NAVY_L))
 
