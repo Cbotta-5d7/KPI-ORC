@@ -7618,11 +7618,9 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         _dm = duree_theorique_min % 60
         _dlbl = f"{_dh}h{_dm:02d}" if _dm else f"{_dh}h"
         def _retour():
+            # L'overlay est placé par-dessus la vue existante (place()).
+            # Le détruire révèle la vue d'origine sans toucher à aucun état.
             ov.destroy()
-            if self._prod_active:
-                self._show_production()
-            else:
-                self._show_main()
 
         # Left: changer durée
         tk.Button(footer, text=f"⏱  Changer le temps d'ouverture du poste  (calculé sur {_dlbl})",
