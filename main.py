@@ -3671,7 +3671,10 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 cv.create_text(bw//2-2, bh//2-2, text=text, fill=WHITE,
                                font=("Arial", 12, "bold"), justify="center")
             def _press(e): pressed[0] = True; _draw()
-            def _release(e): pressed[0] = False; _draw(); cmd()
+            def _release(e):
+                pressed[0] = False; _draw()
+                if not self._debounce_ok(): return
+                cmd()
             cv.bind("<Configure>", _draw)
             cv.bind("<ButtonPress-1>",  _press)
             cv.bind("<ButtonRelease-1>", _release)
@@ -5864,7 +5867,6 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             cv = tk.Canvas(parent, height=BTN_H, highlightthickness=0, bg=BG)
             cv.pack(fill="x", padx=8, pady=(0, 3))
             pressed = [False]
-            _last_click = [0.0]
             def _draw(e=None):
                 cv.delete("all")
                 bw, bh = cv.winfo_width(), cv.winfo_height()
@@ -5879,13 +5881,10 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 pressed[0] = True
                 _draw()
             def _release(e):
-                import time
                 pressed[0] = False
                 _draw()
-                now_t = time.time()
-                if now_t - _last_click[0] < 0.5:
+                if not self._debounce_ok():
                     return
-                _last_click[0] = now_t
                 cmd()
             cv.bind("<Configure>", _draw)
             cv.bind("<ButtonPress-1>",  _press)
