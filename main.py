@@ -1612,52 +1612,53 @@ class App:
 
     def _show_login_overlay(self, on_success=None):
         """Overlay plein écran de connexion pilote."""
-        ov = tk.Frame(self.root, bg="#0d1b2a")
+        ov = tk.Frame(self.root, bg="#0f2744")
         ov.place(relx=0, rely=0, relwidth=1, relheight=1)
         ov.lift()
 
         # Logo centré en haut
         tk.Frame(ov, bg=GREEN, height=5).pack(fill="x")
-        tk.Label(ov, text="KPI-ORC", bg="#0d1b2a", fg=WHITE,
+        tk.Label(ov, text="KPI-ORC", bg="#0f2744", fg=WHITE,
                  font=("Arial", 30, "bold")).pack(pady=(30, 2))
-        tk.Label(ov, text="Connexion Pilote", bg="#0d1b2a", fg="#93c5fd",
+        tk.Label(ov, text="Connexion Pilote", bg="#0f2744", fg="#93c5fd",
                  font=("Arial", 13)).pack(pady=(0, 16))
 
-        # Carte centrale — centrée horizontalement et verticalement
-        # Spacer haut
-        tk.Frame(ov, bg="#0d1b2a").pack(expand=True, fill="both")
+        # Carte centrale — centrée avec grid (colonnes extensibles de chaque côté)
+        center_row = tk.Frame(ov, bg="#0f2744")
+        center_row.pack(fill="both", expand=True)
+        center_row.columnconfigure(0, weight=1)
+        center_row.columnconfigure(1, weight=0)
+        center_row.columnconfigure(2, weight=1)
+        center_row.rowconfigure(0, weight=1)
 
-        card = tk.Frame(ov, bg=WHITE, bd=0)
-        card.pack(ipadx=0, ipady=0)
-        card.pack_propagate(False)
-        card.configure(width=460)
+        card = tk.Frame(center_row, bg=WHITE, bd=0)
+        card.grid(row=0, column=1, padx=10, pady=20)
+        # Forcer largeur minimum 480 avec un frame invisible
+        tk.Frame(card, bg=WHITE, width=480, height=1).pack()
 
         tk.Frame(card, bg=GREEN, height=5).pack(fill="x")
 
         inner = tk.Frame(card, bg=WHITE)
-        inner.pack(fill="x", padx=36, pady=24)
+        inner.pack(fill="x", padx=36, pady=20)
 
         # Panel horaires — bande bleue compacte en bas de la carte
-        horaire_panel = tk.Frame(card, bg="#e0f2fe")
+        horaire_panel = tk.Frame(card, bg="#dbeafe")
         horaire_panel.pack(fill="x")
-        _hor_row = tk.Frame(horaire_panel, bg="#e0f2fe")
+        _hor_row = tk.Frame(horaire_panel, bg="#dbeafe")
         _hor_row.pack(fill="x", padx=14, pady=6)
-        tk.Label(_hor_row, text="Horaires :", bg="#e0f2fe", fg="#0369a1",
+        tk.Label(_hor_row, text="Horaires :", bg="#dbeafe", fg="#1e40af",
                  font=("Arial", 9, "bold")).pack(side="left", padx=(0, 8))
         horaire_labels = {}
         _poste_keys = [
             ("Matin", 12), ("Midi", 13), ("Nuit", 14), ("Jour", 15)
         ]
         for pk, ci in _poste_keys:
-            tk.Label(_hor_row, text=f"{pk}:", bg="#e0f2fe", fg="#0369a1",
+            tk.Label(_hor_row, text=f"{pk}:", bg="#dbeafe", fg="#1e40af",
                      font=("Arial", 9)).pack(side="left", padx=(6, 1))
-            lbl = tk.Label(_hor_row, text="—", bg="#e0f2fe", fg=DARK,
+            lbl = tk.Label(_hor_row, text="—", bg="#dbeafe", fg=DARK,
                            font=("Arial", 9, "bold"))
             lbl.pack(side="left", padx=(0, 4))
             horaire_labels[ci] = lbl
-
-        # Spacer bas
-        tk.Frame(ov, bg="#0d1b2a").pack(expand=True, fill="both")
 
         # Modèles horaires depuis la config (Paramètres → Modèles Horaires)
         _cfg_modeles = self.cfg.get("modeles_horaires", [])
@@ -1913,12 +1914,12 @@ class App:
 
         db_current = self.cfg.get("db_path", "")
         db_name    = os.path.basename(db_current) if db_current else "Aucun fichier chargé"
-        db_lbl = tk.Label(ov, text=f"📂  {db_name}", bg="#0d1b2a", fg="#64748b",
+        db_lbl = tk.Label(ov, text=f"📂  {db_name}", bg="#0f2744", fg="#64748b",
                           font=("Arial", 9), cursor="hand2")
         db_lbl.pack(pady=(8, 2))
         db_lbl.bind("<Button-1>", lambda e: _pick_excel())
         tk.Label(ov, text="Cliquer pour changer de fichier",
-                 bg="#0d1b2a", fg="#374151", font=("Arial", 8)).pack(pady=(0, 10))
+                 bg="#0f2744", fg="#374151", font=("Arial", 8)).pack(pady=(0, 10))
 
     def _maybe_show_login(self):
         if not self._logged_in_pilot:
