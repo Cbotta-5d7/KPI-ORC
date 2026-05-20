@@ -802,6 +802,8 @@ class App:
         self._inter_of_s       = 0      # Durée inter-OF (changement de série)
         self._of_count_this_shift = 0   # Nb déclarations complétées ce poste
         self._horaire_alert    = None   # Alerte modèle horaire (dict ou None)
+        self._session_ws_override = None  # Override heure début poste (min depuis minuit)
+        self._session_we_override = None  # Override heure fin poste (min depuis minuit)
         self._data_rows_cache  = []
         self._events_cache     = []
         self._last_of_pilot    = ""
@@ -2512,25 +2514,113 @@ class App:
         pilot_bg   = GREEN if self._logged_in_pilot else C_RED
         # Poste + modèle horaire + plage du jour
         if self._logged_in_poste:
-            _hdr_horaire_txt = f"🕐 {self._logged_in_poste}"
-            # Ajouter l'horaire du jour si un modèle est sélectionné
-            _mod_sel = getattr(self, "_logged_in_modele", None)
-            if _mod_sel:
-                _cfg_mods = self.cfg.get("modeles_horaires", [])
-                _m_data = next((m for m in _cfg_mods if m["nom"] == _mod_sel), None)
-                if _m_data:
-                    _poste_lower = self._logged_in_poste.lower()
-                    _pk = ("Matin" if "matin" in _poste_lower else
-                           "Midi"  if "midi"  in _poste_lower else
-                           "Nuit"  if "nuit"  in _poste_lower else "Jour")
-                    _tj = JOURS_SEMAINE[datetime.datetime.now().weekday()]
-                    _sc = _m_data["postes"].get(_pk, {}).get(_tj, {})
-                    _d = _sc.get("debut", ""); _f = _sc.get("fin", "")
-                    if _d and _f:
-                        _hdr_horaire_txt += f"   {_d}h–{_f}h  ({_mod_sel})"
-            tk.Label(right_bar, text=_hdr_horaire_txt,
-                     bg=NAVY, fg="#4ade80",
-                     font=("Arial", 12, "bold")).pack(side="right", padx=(0, 8))
+            # Construire le texte horaire (override session ou config)
+            _ws_hdr, _we_hdr = self._get_current_shift_window()
+            if _ws_hdr is not None:
+                _we_adj_hdr = _we_hdr % 1440
+                _sh_hdr = f"{_ws_hdr//60:02d}h" + (f"{_ws_hdr%60:02d}" if _ws_hdr % 60 else "")
+                _se_hdr = f"{_we_adj_hdr//60:02d}h" + (f"{_we_adj_hdr%60:02d}" if _we_adj_hdr % 60 else "")
+                _hdr_horaire_txt = f"🕐 {self._logged_in_poste}   {_sh_hdr}–{_se_hdr}"
+                if self._session_ws_override is not None:
+                    _hdr_horaire_txt += "  ✎"
+            else:
+                _hdr_horaire_txt = f"🕐 {self._logged_in_poste}"
+
+            def _open_horaire_modifier():
+                def _do_modify_horaire():
+                    dlg_h = tk.Toplevel(self.root)
+                    dlg_h.title("Modifier le modèle horaire — Session")
+                    dlg_h.resizable(False, False)
+                    dlg_h.grab_set()
+                    dlg_h.attributes("-topmost", True)
+                    self._center_on_root(dlg_h, 420, 260)
+                    dlg_h.configure(bg=WHITE)
+                    tk.Frame(dlg_h, bg=NAVY, height=5).pack(fill="x")
+                    tk.Label(dlg_h, text="Modifier les horaires — Session en cours",
+                             bg=WHITE, fg=NAVY, font=("Arial", 12, "bold")).pack(pady=(16, 2))
+                    tk.Label(dlg_h, text="(s'applique à ce pilote/poste uniquement, ne modifie pas la config)",
+                             bg=WHITE, fg=GRAY, font=("Arial", 9)).pack(pady=(0, 12))
+                    _fh = tk.Frame(dlg_h, bg=WHITE)
+                    _fh.pack(fill="x", padx=30, pady=4)
+                    tk.Label(_fh, text="Heure début :", bg=WHITE, fg=DARK,
+                             font=("Arial", 11), width=14, anchor="w").pack(side="left")
+                    _cur_ws, _cur_we = self._get_current_shift_window()
+                    _dv = tk.StringVar(value=f"{_cur_ws//60}" if _cur_ws is not None else "")
+                    _dmv = tk.StringVar(value=f"{_cur_ws%60:02d}" if _cur_ws is not None else "00")
+                    tk.Entry(_fh, textvariable=_dv, width=4, font=("Arial", 13, "bold"),
+                             relief="solid", bd=1, justify="center").pack(side="left", padx=2)
+                    tk.Label(_fh, text="h", bg=WHITE, font=("Arial", 11)).pack(side="left")
+                    tk.Entry(_fh, textvariable=_dmv, width=4, font=("Arial", 13, "bold"),
+                             relief="solid", bd=1, justify="center").pack(side="left", padx=2)
+                    tk.Label(_fh, text="min", bg=WHITE, font=("Arial", 11)).pack(side="left")
+                    _ff = tk.Frame(dlg_h, bg=WHITE)
+                    _ff.pack(fill="x", padx=30, pady=4)
+                    tk.Label(_ff, text="Heure fin :", bg=WHITE, fg=DARK,
+                             font=("Arial", 11), width=14, anchor="w").pack(side="left")
+                    _fv = tk.StringVar(value=f"{(_cur_we%1440)//60}" if _cur_we is not None else "")
+                    _fmv = tk.StringVar(value=f"{_cur_we%60:02d}" if _cur_we is not None else "00")
+                    tk.Entry(_ff, textvariable=_fv, width=4, font=("Arial", 13, "bold"),
+                             relief="solid", bd=1, justify="center").pack(side="left", padx=2)
+                    tk.Label(_ff, text="h", bg=WHITE, font=("Arial", 11)).pack(side="left")
+                    tk.Entry(_ff, textvariable=_fmv, width=4, font=("Arial", 13, "bold"),
+                             relief="solid", bd=1, justify="center").pack(side="left", padx=2)
+                    tk.Label(_ff, text="min", bg=WHITE, font=("Arial", 11)).pack(side="left")
+                    _err_h = tk.Label(dlg_h, text="", bg=WHITE, fg=C_RED, font=("Arial", 10))
+                    _err_h.pack()
+
+                    def _apply_horaire():
+                        try:
+                            ws_new = int(_dv.get() or 0) * 60 + int(_dmv.get() or 0)
+                            we_new = int(_fv.get() or 0) * 60 + int(_fmv.get() or 0)
+                            if we_new <= ws_new:
+                                we_new += 1440  # poste de nuit
+                            if we_new - ws_new < 30 or we_new - ws_new > 1440:
+                                _err_h.config(text="Durée invalide (entre 30 min et 24h)")
+                                return
+                            self._session_ws_override = ws_new
+                            self._session_we_override = we_new
+                            self._logged_in_duree_horaire_min = we_new - ws_new
+                            dlg_h.destroy()
+                            # Rafraîchir la vue pour mettre à jour le bandeau
+                            if self._mode == "main":
+                                self._show_main()
+                            elif self._mode == "prod":
+                                self._show_production()
+                        except ValueError:
+                            _err_h.config(text="Saisie invalide")
+
+                    def _reset_horaire():
+                        self._session_ws_override = None
+                        self._session_we_override = None
+                        self._logged_in_duree_horaire_min = None
+                        dlg_h.destroy()
+                        if self._mode == "main":
+                            self._show_main()
+                        elif self._mode == "prod":
+                            self._show_production()
+
+                    _btnf_h = tk.Frame(dlg_h, bg=WHITE)
+                    _btnf_h.pack(pady=10)
+                    tk.Button(_btnf_h, text="✔  Appliquer",
+                              command=_apply_horaire, bg=GREEN, fg=WHITE,
+                              font=("Arial", 11, "bold"), relief="flat",
+                              padx=14, pady=6, cursor="hand2").pack(side="left", padx=4)
+                    tk.Button(_btnf_h, text="↺  Réinitialiser (config)",
+                              command=_reset_horaire, bg="#475569", fg=WHITE,
+                              font=("Arial", 10), relief="flat",
+                              padx=10, pady=6, cursor="hand2").pack(side="left", padx=4)
+                    tk.Button(_btnf_h, text="Annuler", command=dlg_h.destroy,
+                              bg=LGRAY, fg=DARK, font=("Arial", 10),
+                              relief="flat", padx=10, pady=6, cursor="hand2").pack(side="left")
+
+                self._ask_supervisor_pw(_do_modify_horaire, title="Mot de passe Administrateur")
+
+            _override_mark = "  ✎" if self._session_ws_override is not None else ""
+            tk.Button(right_bar, text=_hdr_horaire_txt,
+                      bg=NAVY, fg="#4ade80" if not self._session_ws_override else ORANGE,
+                      font=("Arial", 12, "bold"), relief="flat",
+                      cursor="hand2", pady=2,
+                      command=_open_horaire_modifier).pack(side="right", padx=(0, 8))
         # Pilote (nom) — with disconnect icon if logged in
         pilot_btn_text = f"⏻  {pilot_name}" if self._logged_in_pilot else f"👤  {pilot_name}"
         tk.Button(right_bar, text=pilot_btn_text, bg=pilot_bg, fg=WHITE,
@@ -5104,6 +5194,19 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         end_m   = start_m + dur
         return start_m, end_m
 
+    def _get_current_shift_window(self):
+        """Retourne (start_min, end_min) pour le poste courant.
+        Utilise l'override session si actif, sinon lit depuis le modèle horaire."""
+        if self._session_ws_override is not None:
+            ws = self._session_ws_override
+            we = self._session_we_override if self._session_we_override is not None else ws + 480
+            return ws, we
+        mod = getattr(self, "_logged_in_modele", None)
+        pos = getattr(self, "_logged_in_poste", None)
+        if mod and pos:
+            return self._get_shift_window_today(mod, pos)
+        return None, None
+
     def _overlap_seconds(self, t_start_dt, t_end_dt, win_start_m, win_end_m):
         """Secondes de chevauchement entre [t_start_dt, t_end_dt] et la fenêtre
         [win_start_m, win_end_m] (minutes depuis minuit de t_start_dt.date)."""
@@ -5141,16 +5244,16 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 # Calculer la part inter-OF = fraction dans la fenêtre du nouveau poste
                 cur_mod   = getattr(self, "_logged_in_modele", None)
                 cur_poste = getattr(self, "_logged_in_poste", None)
-                if cur_mod and cur_poste:
-                    ws2, we2 = self._get_shift_window_today(cur_mod, cur_poste)
+                ws2, we2 = self._get_current_shift_window()
+                if ws2 is not None:
                     self._inter_of_s = self._overlap_seconds(
                         self._last_of_end, now, ws2, we2)
                 else:
                     self._inter_of_s = gap_total
                 do_changeof = False
                 if self._last_of_pilot and self._last_of_pilot != (self._logged_in_pilot or ""):
-                    h = int(gap // 3600)
-                    m = int((gap % 3600) // 60)
+                    h = int(gap_total // 3600)
+                    m = int((gap_total % 3600) // 60)
                     ts = f"{h}h {m:02d}min" if h > 0 else f"{m}min"
                     # ── Overlay inter-poste 3 questions (changement de pilote) ─
                     result = {"same_of": None, "interposte": None}
@@ -5244,7 +5347,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                         do_changeof = False
                 else:
                     # ── Popup changement d'OF : toujours affiché, temps modifiable ─
-                    h2 = int(gap // 3600); m2 = int((gap % 3600) // 60); s2 = int(gap % 60)
+                    h2 = int(gap_total // 3600); m2 = int((gap_total % 3600) // 60); s2 = int(gap_total % 60)
                     _alert_var = tk.BooleanVar(value=False)
                     self._modal_open = True
                     ov_a = tk.Frame(self.root, bg=WHITE)
@@ -5281,7 +5384,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                                        + int(sv.get() or 0))
                             self._inter_of_s = max(0, new_gap)
                         except Exception:
-                            self._inter_of_s = gap
+                            self._inter_of_s = gap_total
                         ov_a.destroy()
                         _alert_var.set(True)
                     tk.Button(ov_a, text="✔  Valider — Changement de série",
@@ -5302,8 +5405,89 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                     })
             # Si gap > 8h : nouveau départ, on ignore l'intervalle
 
+        # ── Vérification alerte horaire : proposer heure de début rétroactive ──
+        _of_start_actual = now
+        _ha = getattr(self, "_horaire_alert", None)
+        if _ha:
+            _mod_n = getattr(self, "_logged_in_modele", None)
+            _pos_n = getattr(self, "_logged_in_poste", "") or ""
+            try:
+                _ws_m2, _we_m2 = self._get_current_shift_window()
+            except Exception:
+                _ws_m2, _we_m2 = None, None
+            if _ws_m2 is not None:
+                _shift_start_dt = now.replace(
+                    hour=_ws_m2 // 60, minute=_ws_m2 % 60, second=0, microsecond=0)
+                _retro_min = max(0, int((now - _shift_start_dt).total_seconds() / 60))
+                _sh_str = f"{_ws_m2//60:02d}h" + (f"{_ws_m2%60:02d}" if _ws_m2 % 60 else "")
+
+                _retro_choice = [None]
+                _retro_var    = tk.BooleanVar(value=False)
+                _rov = tk.Frame(self.root, bg="#1e293b")
+                _rov.place(relx=0, rely=0, relwidth=1, relheight=1)
+                _rov.lift()
+                _rc_row = tk.Frame(_rov, bg="#1e293b")
+                _rc_row.pack(fill="both", expand=True)
+                _rc_row.columnconfigure(0, weight=1)
+                _rc_row.columnconfigure(1, weight=0)
+                _rc_row.columnconfigure(2, weight=1)
+                _rc_row.rowconfigure(0, weight=1)
+                _rcard = tk.Frame(_rc_row, bg=WHITE, bd=0)
+                _rcard.grid(row=0, column=1, padx=10, pady=40)
+                tk.Frame(_rcard, bg=WHITE, width=480, height=1).pack()
+                tk.Frame(_rcard, bg=ORANGE, height=6).pack(fill="x")
+                _rci = tk.Frame(_rcard, bg=WHITE)
+                _rci.pack(fill="x", padx=32, pady=20)
+                tk.Label(_rci, text="⚠  Heure de début de production",
+                         bg=WHITE, fg=ORANGE,
+                         font=("Arial", 16, "bold")).pack(pady=(0, 12))
+                _msg_retro = (
+                    f"Ton poste a commencé à {_sh_str}.\n\n"
+                    f"Veux-tu modifier l'heure de début de cette prod\n"
+                    f"pour la mettre à {_sh_str}  ({_retro_min} min d'absence) ?\n\n"
+                    f"• OUI → prod démarrée à {_sh_str}, alerte HTML supprimée\n"
+                    f"• NON → {_retro_min} min comptées comme Inter-poste (impacte TRS)"
+                )
+                tk.Label(_rci, text=_msg_retro, bg=WHITE, fg=DARK,
+                         font=("Arial", 11), justify="center").pack(pady=(0, 20))
+                _rbf = tk.Frame(_rci, bg=WHITE)
+                _rbf.pack(fill="x")
+
+                def _retro_yes(c=_retro_choice, v=_retro_var):
+                    c[0] = "yes"; v.set(True)
+                def _retro_no(c=_retro_choice, v=_retro_var):
+                    c[0] = "no";  v.set(True)
+
+                tk.Button(_rbf, text="✔  OUI — Modifier à " + _sh_str,
+                          command=_retro_yes, bg=GREEN, fg=WHITE,
+                          font=("Arial", 12, "bold"), relief="flat",
+                          padx=14, pady=10,
+                          cursor="hand2").pack(side="left", padx=(0, 10))
+                tk.Button(_rbf, text="✕  NON — Garder l'heure actuelle",
+                          command=_retro_no, bg="#dc2626", fg=WHITE,
+                          font=("Arial", 12, "bold"), relief="flat",
+                          padx=14, pady=10,
+                          cursor="hand2").pack(side="right")
+
+                self.root.wait_variable(_retro_var)
+                _rov.destroy()
+
+                if _retro_choice[0] == "yes":
+                    _of_start_actual = _shift_start_dt
+                    self._horaire_alert = None
+                else:
+                    # Ajouter un événement inter-poste pour le gap
+                    if _shift_start_dt < now:
+                        self._tl_events.append({
+                            "key": "arret_interposte", "cat": "ratt",
+                            "start": _shift_start_dt, "end": now,
+                        })
+                        self._inter_of_s = max(
+                            self._inter_of_s,
+                            (now - _shift_start_dt).total_seconds())
+
         self._t_reset()
-        self._of_start    = now
+        self._of_start    = _of_start_actual
         self._prod_active = True
         self._cells       = []
         self._pause_start    = None
@@ -5312,8 +5496,8 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         self._is_paused      = False
         self._pause_overlay  = None
         if self._of_periods:
-            self._of_changes.append(now)
-        self._of_periods.append({"start": now, "end": None, "of_num": ""})
+            self._of_changes.append(_of_start_actual)
+        self._of_periods.append({"start": _of_start_actual, "end": None, "of_num": ""})
 
         # Vider le formulaire pour chaque nouveau lancement
         self._saved_form_data = {}
@@ -7207,9 +7391,9 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         _horaire_str = "—"
         _mod_name = getattr(self, "_logged_in_modele", None)
         _pos_name = v.get("poste", "") or getattr(self, "_logged_in_poste", "") or ""
-        if _mod_name and _pos_name:
+        if _mod_name or _pos_name:
             try:
-                _ws_m, _we_m = self._get_shift_window_today(_mod_name, _pos_name)
+                _ws_m, _we_m = self._get_current_shift_window()
                 if _ws_m is not None:
                     _wsh = _ws_m // 60; _wsm = _ws_m % 60
                     _we_adj = _we_m % 1440
