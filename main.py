@@ -812,6 +812,7 @@ class App:
         self._last_of_poste    = None  # Poste du dernier pilote
         self._last_of_num      = ""   # N° OF de la dernière déclaration (tous pilotes)
         self._interposte_s     = 0
+        self._interposte_alert_frames = []  # frames Tkinter à clignoter si interposte > 20min
         self._wb_cache         = None
         self._wb_path_cache    = ""
         self._wb_mtime_cache   = 0.0
@@ -3482,6 +3483,29 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             except Exception:
                 pass
 
+        # ── Clignotement interposte > 20 min (récap arrêts) ─────────────────
+        _intf_col = "#ef4444" if self._cell_blink else "#991b1b"
+        for _intf in getattr(self, "_interposte_alert_frames", []):
+            try:
+                if _intf.winfo_exists():
+                    for _w in (_intf,) + tuple(_intf.winfo_children()):
+                        try:
+                            _w.configure(bg=_intf_col)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+        # ── Clignotement interposte > 20 min (treeview événements) ──────────
+        _t2 = getattr(self, "_evt_tree2", None)
+        if _t2:
+            try:
+                if _t2.winfo_exists():
+                    _t2.tag_configure("interposte_alert",
+                                      background=_intf_col,
+                                      foreground="white")
+            except Exception:
+                pass
+
         if self._tl_widget:
             try:
                 self._tl_widget.redraw()
@@ -4100,7 +4124,32 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         evt_tree2.tag_configure("evt_ratt",     background="#fff3e0", foreground="#d97706")
         evt_tree2.tag_configure("evt_chg",      background="#ede9fe", foreground="#5b21b6")
         evt_tree2.tag_configure("evt_nett",     background="#e0f2fe", foreground="#0369a1")
-        evt_tree2.tag_configure("evt_hors_trs", background="#dcfce7", foreground="#15803d")
+        evt_tree2.tag_configure("evt_hors_trs",      background="#dcfce7", foreground="#15803d")
+        evt_tree2.tag_configure("interposte_alert",  background="#ef4444", foreground="white")
+
+        def _evt_dur_min(dur_str):
+            try:
+                p = str(dur_str).strip().split(":")
+                return int(p[0]) * 60 + int(p[1]) if len(p) >= 2 else 0
+            except Exception:
+                return 0
+
+        def _evt_tag(ev_type_low, ev_hors, ev_dur):
+            if ev_hors == "OUI":
+                return "evt_hors_trs"
+            if "interposte" in ev_type_low and _evt_dur_min(ev_dur) > 20:
+                return "interposte_alert"
+            if "pause" in ev_type_low:
+                return "evt_pause"
+            if "panne" in ev_type_low or "pb" in ev_type_low or "problème" in ev_type_low:
+                return "evt_panne"
+            if "ratt" in ev_type_low:
+                return "evt_ratt"
+            if "changement" in ev_type_low:
+                return "evt_chg"
+            if "nettoyage" in ev_type_low:
+                return "evt_nett"
+            return ""
 
         # Populate events tree
         # self._evt_iid_map maps tree iid → ev_row (for click handling / refresh)
@@ -4116,21 +4165,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 ev_dur  = str(ev_row[18] or "")
                 ev_cmt  = str(ev_row[19] or "")
                 ev_hors = str(ev_row[20] if len(ev_row) > 20 else "").strip().upper()
-                ev_type_low = ev_type.lower()
-                if ev_hors == "OUI":
-                    tag = "evt_hors_trs"
-                elif "pause" in ev_type_low:
-                    tag = "evt_pause"
-                elif "panne" in ev_type_low or "pb" in ev_type_low or "problème" in ev_type_low:
-                    tag = "evt_panne"
-                elif "ratt" in ev_type_low:
-                    tag = "evt_ratt"
-                elif "changement" in ev_type_low:
-                    tag = "evt_chg"
-                elif "nettoyage" in ev_type_low:
-                    tag = "evt_nett"
-                else:
-                    tag = ""
+                tag     = _evt_tag(ev_type.lower(), ev_hors, ev_dur)
                 hors_lbl = "✔ Hors TRS" if ev_hors == "OUI" else "—"
                 iid = evt_tree2.insert("", "end", values=(
                     ev_type, ev_pil, ev_of, ev_date, ev_hd, ev_hf,
@@ -4488,6 +4523,14 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         for item in tree.get_children():
             tree.delete(item)
         self._evt_iid_map = {}
+
+        def _dur_min(dur_str):
+            try:
+                p = str(dur_str).strip().split(":")
+                return int(p[0]) * 60 + int(p[1]) if len(p) >= 2 else 0
+            except Exception:
+                return 0
+
         for ev_row in reversed(self._events_cache[-100:]):
             try:
                 ev_type     = str(ev_row[0] or "")
@@ -4502,6 +4545,8 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 ev_type_low = ev_type.lower()
                 if ev_hors == "OUI":
                     tag = "evt_hors_trs"
+                elif "interposte" in ev_type_low and _dur_min(ev_dur) > 20:
+                    tag = "interposte_alert"
                 elif "pause" in ev_type_low:
                     tag = "evt_pause"
                 elif "panne" in ev_type_low or "pb" in ev_type_low or "problème" in ev_type_low:
@@ -6462,9 +6507,10 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             return
 
         total_stops = 0.0
+        self._interposte_alert_frames = []
         for ev in sorted(stop_evts, key=lambda x: x["start"]):
             key   = ev.get("key", "")
-            label = next((e[0] for e in EVENTS if e[1] == key), key)
+            label = "Interposte" if key == "arret_interposte" else next((e[0] for e in EVENTS if e[1] == key), key)
             color = C_RATT if ev.get("cat") == "ratt" else C_RED
             s     = ev["start"]
             e_end = ev.get("end") or now
@@ -6474,13 +6520,22 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             secs  = int(dur % 60)
             dur_s = f"{mins}min {secs:02d}s" if mins > 0 else f"{secs}s"
             hors  = ev.get("hors_trs", False)
-            bar_color = "#86efac" if hors else color
-            txt_color = "#15803d" if hors else DARK
-            lbl_color = "#15803d" if hors else color
+            is_interposte_alert = (key == "arret_interposte" and dur > 1200 and not hors)
+            if is_interposte_alert:
+                bar_color = "#ef4444"
+                txt_color = "#ffffff"
+                lbl_color = "#ffffff"
+                row_bg    = "#ef4444"
+            elif hors:
+                bar_color = "#86efac"; txt_color = "#15803d"; lbl_color = "#15803d"; row_bg = WHITE
+            else:
+                bar_color = color;     txt_color = DARK;      lbl_color = color;     row_bg = WHITE
 
-            row_f = tk.Frame(inner, bg=WHITE)
+            row_f = tk.Frame(inner, bg=row_bg)
             row_f.pack(fill="x", pady=1, padx=2)
             tk.Frame(row_f, bg=bar_color, width=4).pack(side="left", fill="y")
+            if is_interposte_alert:
+                self._interposte_alert_frames.append(row_f)
 
             def _make_toggle(ev_ref):
                 def _do():
@@ -6498,18 +6553,21 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 return _ask
 
             btn_txt = "✓ Hors TRS" if hors else "⊘"
-            btn_fg  = "#15803d"    if hors else "#dc2626"
-            tk.Button(row_f, text=btn_txt, bg=WHITE, fg=btn_fg,
+            btn_fg  = ("#15803d" if hors else ("#ffffff" if is_interposte_alert else "#dc2626"))
+            btn_bg  = row_bg
+            tk.Button(row_f, text=btn_txt, bg=btn_bg, fg=btn_fg,
                       font=("Arial", 8), relief="flat", cursor="hand2",
                       command=_make_toggle(ev)).pack(side="right", padx=3)
 
-            name_f = tk.Frame(row_f, bg=WHITE)
+            name_f = tk.Frame(row_f, bg=row_bg)
             name_f.pack(side="left", fill="both", expand=True, padx=(4, 0))
-            tk.Label(name_f, text=label, bg=WHITE, fg=txt_color,
-                     font=("Arial", 10), anchor="w", wraplength=140).pack(anchor="w")
-            suffix = "  — Hors TRS" if hors else ""
+            alert_prefix = "⚠  " if is_interposte_alert else ""
+            tk.Label(name_f, text=f"{alert_prefix}{label}", bg=row_bg, fg=txt_color,
+                     font=("Arial", 10, "bold" if is_interposte_alert else "normal"),
+                     anchor="w", wraplength=140).pack(anchor="w")
+            suffix = "  — Hors TRS" if hors else ("  — > 20 min !" if is_interposte_alert else "")
             tk.Label(name_f, text=f"{dur_s}{suffix}",
-                     bg=WHITE, fg=lbl_color,
+                     bg=row_bg, fg=lbl_color,
                      font=("Arial", 10, "bold"), anchor="w").pack(anchor="w")
 
         if pause_total > 0:
@@ -9333,7 +9391,16 @@ new Chart(document.getElementById('gauge{i}'), {{
             try:
                 dur_str = str(ev[18] if len(ev) > 18 else "")
                 is_open = not dur_str or dur_str.strip() in ("", "—", "00:00:00")
-                row_style = ' style="background:#fee2e2"' if is_open else ""
+                _is_ip_alert_hist = (
+                    "interposte" in str(ev[0] or "").lower()
+                    and _hms_to_min(dur_str) > 20
+                )
+                if _is_ip_alert_hist:
+                    row_style = ' class="interposte-alert-row"'
+                elif is_open:
+                    row_style = ' style="background:#fee2e2"'
+                else:
+                    row_style = ""
                 open_badge = ' <span class="badge-en-cours">EN COURS</span>' if is_open else ""
                 sup_evts_rows += f"""<tr{row_style}>
                   <td>{_badge_evt(ev[0])}{open_badge}</td>
@@ -9353,24 +9420,33 @@ new Chart(document.getElementById('gauge{i}'), {{
         for ev in sorted(sup_events, key=lambda e: str(e.get("start") or ""), reverse=True):
             try:
                 key = ev.get("key", "")
-                lbl = EVENT_LABELS.get(key, key)
+                lbl = "Interposte" if key == "arret_interposte" else EVENT_LABELS.get(key, key)
                 start_s_str = "—"
                 end_s_str   = "—"
                 dur_s_str   = "—"
+                dur_seconds = 0
                 try:
                     s_dt2 = datetime.datetime.fromisoformat(ev["start"])
                     start_s_str = s_dt2.strftime("%H:%M")
                     e_dt2 = datetime.datetime.fromisoformat(ev["end"]) if ev.get("end") else None
                     if e_dt2:
                         end_s_str = e_dt2.strftime("%H:%M")
-                        dur_s_str = fmt((e_dt2 - s_dt2).total_seconds())
+                        dur_seconds = (e_dt2 - s_dt2).total_seconds()
+                        dur_s_str = fmt(dur_seconds)
                     else:
                         end_s_str = "En cours"
-                        dur_s_str = fmt((datetime.datetime.now() - s_dt2).total_seconds())
+                        dur_seconds = (datetime.datetime.now() - s_dt2).total_seconds()
+                        dur_s_str = fmt(dur_seconds)
                 except Exception:
                     pass
                 is_open2 = not ev.get("end")
-                row_style2 = ' style="background:#fee2e2"' if is_open2 else ""
+                _is_ip_alert2 = (key == "arret_interposte" and dur_seconds > 1200)
+                if _is_ip_alert2:
+                    row_style2 = ' class="interposte-alert-row"'
+                elif is_open2:
+                    row_style2 = ' style="background:#fee2e2"'
+                else:
+                    row_style2 = ""
                 open_badge2 = ' <span class="badge-en-cours">EN COURS</span>' if is_open2 else ""
                 live_evts_rows += f"""<tr{row_style2}>
                   <td>{_badge_evt(lbl)}{open_badge2}</td>
@@ -9500,6 +9576,32 @@ new Chart(document.getElementById('gauge{i}'), {{
                 f'{_ha_time} &mdash; {_ha_msg}</span>'
                 f'</div>'
             )
+
+        # Bannière interposte > 20 min
+        _interposte_banner = ""
+        for _ev_ip in sup_events:
+            if _ev_ip.get("key") == "arret_interposte":
+                try:
+                    _s_ip = datetime.datetime.fromisoformat(_ev_ip["start"])
+                    _e_ip = (datetime.datetime.fromisoformat(_ev_ip["end"])
+                             if _ev_ip.get("end") else datetime.datetime.now())
+                    _dur_ip = (_e_ip - _s_ip).total_seconds()
+                except Exception:
+                    _dur_ip = 0
+                if _dur_ip > 1200:
+                    _m_ip = int(_dur_ip // 60)
+                    _s_ip_str = _s_ip.strftime("%H:%M")
+                    _interposte_banner = (
+                        f'<div style="background:#dc2626;color:white;font-weight:700;'
+                        f'padding:9px 18px;display:flex;align-items:center;gap:12px;'
+                        f'animation:interpostePulse 1s ease-in-out infinite;">'
+                        f'<span style="font-size:1.5em;flex-shrink:0">🚨</span>'
+                        f'<span>Interposte &gt; 20 min &bull; Pilote&nbsp;: '
+                        f'<b>{_esc(sup_pilot)}</b> &bull; Poste&nbsp;: {_esc(sup_poste)} &bull; '
+                        f'Depuis {_s_ip_str} &mdash; <b>{_m_ip} min d&apos;absence</b></span>'
+                        f'</div>'
+                    )
+                    break
 
         # TRS color pour supervision
         sup_trs_color = _trs_color(sup_trs_val)
@@ -9791,6 +9893,8 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: 
                            50% {{ background:#b91c1c; box-shadow:0 0 30px 10px rgba(220,38,38,0.5); }} }}
 @keyframes iconShake {{ 0%,100% {{ transform:rotate(0); }} 25% {{ transform:rotate(-12deg); }} 75% {{ transform:rotate(12deg); }} }}
 @keyframes horairePulse {{ 0%,100% {{ opacity:1; background:#f97316; }} 50% {{ opacity:0.8; background:#ea580c; }} }}
+@keyframes interpostePulse {{ 0%,100% {{ background:#dc2626; color:#fff; }} 50% {{ background:#7f1d1d; color:#fca5a5; }} }}
+.interposte-alert-row {{ animation: interpostePulse 1s ease-in-out infinite; font-weight:700; }}
 
 .sup-grid {{ display: grid; grid-template-columns: 300px 1fr; gap: 10px;
              padding: 8px 12px; }}
@@ -10014,6 +10118,7 @@ body.alarm-bg .tab-content.visible {{ background: #fee2e2; }}
 <div class="tab-content" id="tab-supervision">
 
 {_horaire_alert_banner}
+{_interposte_banner}
 {'<!-- ALARME ARRÊT -->' if has_active_stop else '<!-- PRODUCTION OK -->'}
 <div class="{'sup-banner-alarm' if has_active_stop else ('sup-banner-prod' if sup_prod_active else 'sup-banner-idle')}">
   {(
