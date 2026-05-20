@@ -126,6 +126,7 @@ EVT_HEADERS = [
     "Nb Personnes", "Taille", "Type Produit", "Code Produit", "Fibre",
     "Poids Garnissage", "OF Taie", "Traca Fibre", "Ref Taie", "Kit",
     "Heure Debut", "Heure Fin", "Duree", "Commentaire",
+    "Prévu/Hors TRS",  # col U — index 20
 ]
 
 ALL_EVENT_TYPES = (
@@ -1474,6 +1475,8 @@ class App:
             if ev.get("cat") not in ("ratt", "pb"):
                 continue
             if ev["start"] < self._of_start:
+                continue
+            if ev.get("hors_trs"):
                 continue
             intervals.append((ev["start"], ev.get("end") or now))
         # Arrets courants pas encore dans tl_events (deja ouverts)
@@ -4073,12 +4076,13 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         evt_wrap.pack(fill="both", expand=True)
 
         evt_cols2 = ("Type d'événement", "Pilote", "OF", "Date",
-                     "Heure début", "Heure fin", "Durée", "Commentaire")
+                     "Heure début", "Heure fin", "Durée", "Commentaire", "Hors TRS")
         evt_tree2 = ttk.Treeview(evt_inner, columns=evt_cols2, show="headings",
                                   height=15, style="KPI.Treeview")
         self._evt_tree2 = evt_tree2
-        evt_widths2 = {"Type d'événement": 200, "Pilote": 120, "OF": 90, "Date": 80,
-                       "Heure début": 80, "Heure fin": 80, "Durée": 70, "Commentaire": 200}
+        evt_widths2 = {"Type d'événement": 190, "Pilote": 110, "OF": 80, "Date": 75,
+                       "Heure début": 75, "Heure fin": 75, "Durée": 65,
+                       "Commentaire": 180, "Hors TRS": 80}
         for c2 in evt_cols2:
             evt_tree2.heading(c2, text=c2)
             evt_tree2.column(c2, width=evt_widths2.get(c2, 80), anchor="center",
@@ -4089,13 +4093,16 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         sb_evt.pack(side="right", fill="y")
 
         # Configure event color tags
-        evt_tree2.tag_configure("evt_pause", background="#fff8e1", foreground="#92400e")
-        evt_tree2.tag_configure("evt_panne", background="#fee2e2", foreground="#991b1b")
-        evt_tree2.tag_configure("evt_ratt",  background="#fff3e0", foreground="#d97706")
-        evt_tree2.tag_configure("evt_chg",   background="#ede9fe", foreground="#5b21b6")
-        evt_tree2.tag_configure("evt_nett",  background="#e0f2fe", foreground="#0369a1")
+        evt_tree2.tag_configure("evt_pause",    background="#fff8e1", foreground="#92400e")
+        evt_tree2.tag_configure("evt_panne",    background="#fee2e2", foreground="#991b1b")
+        evt_tree2.tag_configure("evt_ratt",     background="#fff3e0", foreground="#d97706")
+        evt_tree2.tag_configure("evt_chg",      background="#ede9fe", foreground="#5b21b6")
+        evt_tree2.tag_configure("evt_nett",     background="#e0f2fe", foreground="#0369a1")
+        evt_tree2.tag_configure("evt_hors_trs", background="#dcfce7", foreground="#15803d")
 
         # Populate events tree
+        # self._evt_iid_map maps tree iid → ev_row (for click handling / refresh)
+        self._evt_iid_map = {}
         for ev_row in reversed(self._events_cache[-100:]):
             try:
                 ev_type = str(ev_row[0] or "")
@@ -4106,8 +4113,11 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 ev_hf   = str(ev_row[17] or "")[:8]
                 ev_dur  = str(ev_row[18] or "")
                 ev_cmt  = str(ev_row[19] or "")
+                ev_hors = str(ev_row[20] if len(ev_row) > 20 else "").strip().upper()
                 ev_type_low = ev_type.lower()
-                if "pause" in ev_type_low:
+                if ev_hors == "OUI":
+                    tag = "evt_hors_trs"
+                elif "pause" in ev_type_low:
                     tag = "evt_pause"
                 elif "panne" in ev_type_low or "pb" in ev_type_low or "problème" in ev_type_low:
                     tag = "evt_panne"
@@ -4119,11 +4129,47 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                     tag = "evt_nett"
                 else:
                     tag = ""
-                evt_tree2.insert("", "end", values=(
-                    ev_type, ev_pil, ev_of, ev_date, ev_hd, ev_hf, ev_dur, ev_cmt),
+                hors_lbl = "✔ Hors TRS" if ev_hors == "OUI" else "—"
+                iid = evt_tree2.insert("", "end", values=(
+                    ev_type, ev_pil, ev_of, ev_date, ev_hd, ev_hf,
+                    ev_dur, ev_cmt, hors_lbl),
                     tags=(tag,) if tag else ())
+                self._evt_iid_map[iid] = ev_row
             except Exception:
                 pass
+
+        def _on_evt_dbl_click(event):
+            iid = evt_tree2.identify_row(event.y)
+            if not iid or iid not in self._evt_iid_map:
+                return
+            ev_row = self._evt_iid_map[iid]
+            ev_date = str(ev_row[2] or "")[:10]
+            ev_of   = str(ev_row[1] or "")
+            ev_pil  = str(ev_row[4] or "")
+            ev_hd   = str(ev_row[16] or "")[:8]
+            cur_hors = str(ev_row[20] if len(ev_row) > 20 else "").strip().upper()
+            new_val  = "" if cur_hors == "OUI" else "OUI"
+            new_lbl  = "→ Hors TRS" if new_val == "OUI" else "→ Inclure dans TRS"
+            msg = (f"Marquer cet arrêt comme «{new_lbl.replace('→ ', '')}» ?\n\n"
+                   f"{ev_row[0]}  |  {ev_pil}  |  OF {ev_of}  |  {ev_hd}")
+
+            def _do_toggle():
+                if len(ev_row) > 20:
+                    ev_row[20] = new_val
+                elif len(ev_row) == 20:
+                    ev_row.append(new_val)
+                self._toggle_hors_trs_excel(ev_date, ev_of, ev_pil, ev_hd, new_val)
+                messagebox.showinfo("Mis à jour",
+                    f"Arrêt marqué «{'Hors TRS' if new_val=='OUI' else 'Inclus TRS'}».\n"
+                    "Le tableau va se rafraîchir.")
+
+            def _ask():
+                if messagebox.askyesno("Prévu/Hors TRS", msg):
+                    self._ask_supervisor_pw(_do_toggle, title="Mot de passe Administrateur")
+
+            _ask()
+
+        evt_tree2.bind("<Double-1>", _on_evt_dbl_click)
 
         if self._after_id: self.root.after_cancel(self._after_id)
         self._after_id = self.root.after(1000, self._tick)
@@ -4439,6 +4485,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             return
         for item in tree.get_children():
             tree.delete(item)
+        self._evt_iid_map = {}
         for ev_row in reversed(self._events_cache[-100:]):
             try:
                 ev_type     = str(ev_row[0] or "")
@@ -4449,8 +4496,11 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 ev_hf       = str(ev_row[17] or "")[:8]
                 ev_dur      = str(ev_row[18] or "")
                 ev_cmt      = str(ev_row[19] or "")
+                ev_hors     = str(ev_row[20] if len(ev_row) > 20 else "").strip().upper()
                 ev_type_low = ev_type.lower()
-                if "pause" in ev_type_low:
+                if ev_hors == "OUI":
+                    tag = "evt_hors_trs"
+                elif "pause" in ev_type_low:
                     tag = "evt_pause"
                 elif "panne" in ev_type_low or "pb" in ev_type_low or "problème" in ev_type_low:
                     tag = "evt_panne"
@@ -4462,9 +4512,12 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                     tag = "evt_nett"
                 else:
                     tag = ""
-                tree.insert("", "end", values=(
-                    ev_type, ev_pil, ev_of, ev_date, ev_hd, ev_hf, ev_dur, ev_cmt),
+                hors_lbl = "✔ Hors TRS" if ev_hors == "OUI" else "—"
+                iid = tree.insert("", "end", values=(
+                    ev_type, ev_pil, ev_of, ev_date, ev_hd, ev_hf,
+                    ev_dur, ev_cmt, hors_lbl),
                     tags=(tag,) if tag else ())
+                self._evt_iid_map[iid] = ev_row
             except Exception:
                 pass
 
@@ -5149,6 +5202,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 hf_var.get(),           # 17 Heure Fin
                 dur,                    # 18 Duree
                 "",                     # 19 Commentaire
+                "",                     # 20 Prévu/Hors TRS
             ]
             if idx is None:
                 evt_data.append(new_row)
@@ -6390,49 +6444,72 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             return
         for w in inner.winfo_children():
             w.destroy()
-        # Cumuler par clé d'arrêt
-        cumuls = {}
         now = datetime.datetime.now()
-        for ev in self._tl_events:
-            if ev.get("cat") not in ("ratt", "pb"):
-                continue
-            if self._of_start and ev["start"] < self._of_start:
-                continue
-            key  = ev["key"]
-            s    = ev["start"]
-            e    = ev.get("end") or now
-            dur  = (e - s).total_seconds()
-            if key not in cumuls:
-                cumuls[key] = {"dur": 0.0, "cat": ev["cat"], "n": 0}
-            cumuls[key]["dur"] += dur
-            cumuls[key]["n"]   += 1
-        # Ajouter les pauses
+
+        stop_evts = [ev for ev in self._tl_events
+                     if ev.get("cat") in ("ratt", "pb")
+                     and (not self._of_start or ev["start"] >= self._of_start)]
         pause_total = self._pause_total_s
         if self._is_paused and self._pause_start:
             pause_total += (now - self._pause_start).total_seconds()
+        inter_of = getattr(self, "_inter_of_s", 0)
 
-        has_any = bool(cumuls) or pause_total > 0
-        if not has_any:
+        if not stop_evts and pause_total <= 0 and inter_of <= 0:
             tk.Label(inner, text="Aucun arrêt", bg=WHITE, fg=LGRAY,
                      font=("Arial", 9, "italic")).pack(pady=12)
             return
-        for key, info in sorted(cumuls.items(), key=lambda x: -x[1]["dur"]):
+
+        total_stops = 0.0
+        for ev in sorted(stop_evts, key=lambda x: x["start"]):
+            key   = ev.get("key", "")
             label = next((e[0] for e in EVENTS if e[1] == key), key)
-            color = C_RATT if info["cat"] == "ratt" else C_RED
-            mins  = int(info["dur"] // 60)
-            secs  = int(info["dur"] % 60)
+            color = C_RATT if ev.get("cat") == "ratt" else C_RED
+            s     = ev["start"]
+            e_end = ev.get("end") or now
+            dur   = (e_end - s).total_seconds()
+            total_stops += dur
+            mins  = int(dur // 60)
+            secs  = int(dur % 60)
             dur_s = f"{mins}min {secs:02d}s" if mins > 0 else f"{secs}s"
+            hors  = ev.get("hors_trs", False)
+            bar_color = "#86efac" if hors else color
+            txt_color = "#15803d" if hors else DARK
+            lbl_color = "#15803d" if hors else color
+
             row_f = tk.Frame(inner, bg=WHITE)
             row_f.pack(fill="x", pady=1, padx=2)
-            tk.Frame(row_f, bg=color, width=4).pack(side="left", fill="y")
+            tk.Frame(row_f, bg=bar_color, width=4).pack(side="left", fill="y")
+
+            def _make_toggle(ev_ref):
+                def _do():
+                    ev_ref["hors_trs"] = not ev_ref.get("hors_trs", False)
+                    if ev_ref.get("end"):
+                        ev_date = ev_ref["start"].strftime("%Y-%m-%d")
+                        ev_of   = self.fv["of_num"].get() if hasattr(self, "fv") and "of_num" in self.fv else ""
+                        ev_pil  = getattr(self, "_logged_in_pilot", "") or ""
+                        ev_hd   = ev_ref["start"].strftime("%H:%M:%S")
+                        new_val = "OUI" if ev_ref["hors_trs"] else ""
+                        self._toggle_hors_trs_excel(ev_date, ev_of, ev_pil, ev_hd, new_val)
+                    self._refresh_stops_recap()
+                def _ask():
+                    self._ask_supervisor_pw(_do, title="Mot de passe Administrateur")
+                return _ask
+
+            btn_txt = "✓ Hors TRS" if hors else "⊘"
+            btn_fg  = "#15803d"    if hors else "#dc2626"
+            tk.Button(row_f, text=btn_txt, bg=WHITE, fg=btn_fg,
+                      font=("Arial", 8), relief="flat", cursor="hand2",
+                      command=_make_toggle(ev)).pack(side="right", padx=3)
+
             name_f = tk.Frame(row_f, bg=WHITE)
             name_f.pack(side="left", fill="both", expand=True, padx=(4, 0))
-            tk.Label(name_f, text=label, bg=WHITE, fg=DARK,
-                     font=("Arial", 11), anchor="w",
-                     wraplength=150).pack(anchor="w")
-            tk.Label(name_f, text=f"× {info['n']}  —  {dur_s}",
-                     bg=WHITE, fg=color, font=("Arial", 11, "bold"),
-                     anchor="w").pack(anchor="w")
+            tk.Label(name_f, text=label, bg=WHITE, fg=txt_color,
+                     font=("Arial", 10), anchor="w", wraplength=140).pack(anchor="w")
+            suffix = "  — Hors TRS" if hors else ""
+            tk.Label(name_f, text=f"{dur_s}{suffix}",
+                     bg=WHITE, fg=lbl_color,
+                     font=("Arial", 10, "bold"), anchor="w").pack(anchor="w")
+
         if pause_total > 0:
             pm = int(pause_total // 60)
             ps = int(pause_total % 60)
@@ -6443,14 +6520,13 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             name_f = tk.Frame(row_f, bg=WHITE)
             name_f.pack(side="left", fill="both", expand=True, padx=(4, 0))
             tk.Label(name_f, text="☕ Pause pilote", bg=WHITE, fg=DARK,
-                     font=("Arial", 11), anchor="w").pack(anchor="w")
-            tk.Label(name_f,
-                     text=f"× {pn}  —  {pm}min {ps:02d}s",
-                     bg=WHITE, fg=NAVY_L, font=("Arial", 11, "bold"),
+                     font=("Arial", 10), anchor="w").pack(anchor="w")
+            tk.Label(name_f, text=f"× {pn}  —  {pm}min {ps:02d}s",
+                     bg=WHITE, fg=NAVY_L, font=("Arial", 10, "bold"),
                      anchor="w").pack(anchor="w")
-        inter_of = getattr(self, "_inter_of_s", 0)
+
         if inter_of > 0:
-            im = int(inter_of // 60)
+            im  = int(inter_of // 60)
             is_ = int(inter_of % 60)
             row_fi = tk.Frame(inner, bg=WHITE)
             row_fi.pack(fill="x", pady=1, padx=2)
@@ -6458,13 +6534,13 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             name_fi = tk.Frame(row_fi, bg=WHITE)
             name_fi.pack(side="left", fill="both", expand=True, padx=(4, 0))
             tk.Label(name_fi, text="Chgmt. de série", bg=WHITE, fg=DARK,
-                     font=("Arial", 11), anchor="w").pack(anchor="w")
-            tk.Label(name_fi,
-                     text=f"× 1  —  {im}min {is_:02d}s",
-                     bg=WHITE, fg="#8b5cf6", font=("Arial", 11, "bold"),
+                     font=("Arial", 10), anchor="w").pack(anchor="w")
+            tk.Label(name_fi, text=f"× 1  —  {im}min {is_:02d}s",
+                     bg=WHITE, fg="#8b5cf6", font=("Arial", 10, "bold"),
                      anchor="w").pack(anchor="w")
+
         tk.Frame(inner, bg=LGRAY, height=1).pack(fill="x", pady=4)
-        total = sum(v["dur"] for v in cumuls.values()) + pause_total + inter_of
+        total = total_stops + pause_total + inter_of
         tm = int(total // 60)
         ts = int(total % 60)
         tk.Label(inner, text=f"Total : {tm}min {ts:02d}s",
@@ -8658,7 +8734,8 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 start.strftime("%H:%M:%S"),
                 end.strftime("%H:%M:%S"),
                 fmt(dur),
-                "",
+                "",   # 19 Commentaire
+                "",   # 20 Prévu/Hors TRS (col U) — overridden below per-event
             ]
 
         # Arrêts / rattrapages
@@ -8681,6 +8758,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 label    = next((e[0] for e in EVENTS if e[1] == ev["key"]), ev["key"])
                 row = _base_row(f"{cat_name}: {label}", start, end)
             row[19] = ev.get("comment", "")
+            row[20] = "OUI" if ev.get("hors_trs") else ""
             events_rows.append(row)
 
         # Pauses pilote
@@ -11079,6 +11157,34 @@ showTab = function(name) {{
                     ws.cell(1, i).value = h
                 self._format_row(ws, 1)
         return wb["Evenements"]
+
+    def _toggle_hors_trs_excel(self, ev_date, ev_of, ev_pilote, ev_hd, new_val):
+        """Écrit 'OUI' ou '' en colonne U de l'onglet Evenements pour la ligne matchée."""
+        path = self.cfg.get("db_path", "")
+        if not path or not os.path.exists(path):
+            return
+        def _bg():
+            try:
+                with self._excel_lock:
+                    wb = self._get_wb(path)
+                    if wb is None or "Evenements" not in wb.sheetnames:
+                        return
+                    ws = wb["Evenements"]
+                    for row in ws.iter_rows(min_row=2):
+                        r_date  = str(row[2].value  or "")[:10]
+                        r_of    = str(row[1].value  or "")
+                        r_pil   = str(row[4].value  or "")
+                        r_hd    = str(row[16].value or "")[:8]
+                        if (r_date == ev_date and r_of == ev_of
+                                and r_pil == ev_pilote and r_hd == ev_hd):
+                            row[20].value = new_val  # col U = index 20 (0-based)
+                            break
+                    self._safe_excel_save(wb, path)
+                    wb.close()
+                self.root.after(0, self._reload_and_refresh)
+            except Exception:
+                pass
+        threading.Thread(target=_bg, daemon=True).start()
 
     def _ensure_data_sheet(self, wb):
         if "Data" not in wb.sheetnames:
