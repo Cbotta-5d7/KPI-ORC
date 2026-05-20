@@ -1474,7 +1474,7 @@ class App:
         for ev in self._tl_events:
             if ev.get("cat") not in ("ratt", "pb"):
                 continue
-            if ev["start"] < self._of_start:
+            if ev["start"] < self._of_start and ev.get("key") != "arret_interposte":
                 continue
             if ev.get("hors_trs"):
                 continue
@@ -2618,11 +2618,13 @@ class App:
 
                 self._ask_supervisor_pw(_do_modify_horaire, title="Mot de passe Administrateur")
 
-            _override_mark = "  ✎" if self._session_ws_override is not None else ""
-            tk.Button(right_bar, text=_hdr_horaire_txt,
-                      bg=NAVY, fg="#4ade80" if not self._session_ws_override else ORANGE,
-                      font=("Arial", 12, "bold"), relief="flat",
-                      cursor="hand2", pady=2,
+            _btn_bg = ORANGE if self._session_ws_override is not None else NAVY_L
+            _btn_fg = WHITE
+            _hdr_horaire_full = _hdr_horaire_txt + "   ✎ Modifier"
+            tk.Button(right_bar, text=_hdr_horaire_full,
+                      bg=_btn_bg, fg=_btn_fg,
+                      font=("Arial", 11, "bold"), relief="flat",
+                      cursor="hand2", padx=10, pady=4,
                       command=_open_horaire_modifier).pack(side="right", padx=(0, 8))
         # Pilote (nom) — with disconnect icon if logged in
         pilot_btn_text = f"⏻  {pilot_name}" if self._logged_in_pilot else f"👤  {pilot_name}"
@@ -5536,9 +5538,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                             "key": "arret_interposte", "cat": "ratt",
                             "start": _shift_start_dt, "end": now,
                         })
-                        self._inter_of_s = max(
-                            self._inter_of_s,
-                            (now - _shift_start_dt).total_seconds())
+                    self._horaire_alert = None  # Une seule fois : 1ère prod seulement
 
         self._t_reset()
         self._of_start    = _of_start_actual
@@ -6448,7 +6448,9 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
 
         stop_evts = [ev for ev in self._tl_events
                      if ev.get("cat") in ("ratt", "pb")
-                     and (not self._of_start or ev["start"] >= self._of_start)]
+                     and (not self._of_start
+                          or ev["start"] >= self._of_start
+                          or ev.get("key") == "arret_interposte")]
         pause_total = self._pause_total_s
         if self._is_paused and self._pause_start:
             pause_total += (now - self._pause_start).total_seconds()
@@ -8744,7 +8746,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 continue
             if not ev.get("key") or ev["key"].startswith("_"):
                 continue
-            if of_start and ev["start"] < of_start:
+            if of_start and ev["start"] < of_start and ev.get("key") != "arret_interposte":
                 continue
             start    = ev["start"]
             end      = ev.get("end") or datetime.datetime.now()
