@@ -5899,6 +5899,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 self._t_start(key)
                 self._tl_open(key, cat)
                 self._refresh_active_stops()
+                self.root.after(100, self._generate_dashboard_html)
                 if key == "arret_reunion":
                     self._show_reunion_overlay()
 
@@ -6407,6 +6408,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         self._save_session()
         self._refresh_stops_recap()
         self._refresh_active_stops()
+        self.root.after(100, self._generate_dashboard_html)
 
     def _start_nettoyage(self):
         """Compatibilité — délègue au sélecteur."""
@@ -6756,6 +6758,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 else:
                     self._t_start(k)
                     self._tl_open(k, c)
+                    self.root.after(100, self._generate_dashboard_html)
                     close_fn()
             self.root.after(900, _do)
 
@@ -7043,61 +7046,171 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         body_r.columnconfigure(1, weight=3)   # visuels (60%)
         body_r.rowconfigure(0, weight=1)
 
-        # ── Colonne gauche : infos ─────────────────────────────────────────────
+        # ── Colonne gauche : rapport dashboard ────────────────────────────────
         info_card = tk.Frame(body_r, bg=WHITE,
                              highlightthickness=1, highlightbackground=LGRAY)
         info_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        tk.Frame(info_card, bg=NAVY, height=3).pack(fill="x")
-        info_inner = tk.Frame(info_card, bg=WHITE)
-        info_inner.pack(fill="both", expand=True, padx=16, pady=10)
 
-        def _row(lbl, val, val_color=DARK, lbl_color=GRAY, bold=False, sep=False):
-            if sep:
-                tk.Frame(info_inner, bg=LGRAY, height=1).pack(fill="x", pady=(6, 4))
-                return
+        # Modèle horaire string
+        _horaire_str = "—"
+        _mod_name = getattr(self, "_logged_in_modele", None)
+        _pos_name = v.get("poste", "") or getattr(self, "_logged_in_poste", "") or ""
+        if _mod_name and _pos_name:
+            try:
+                _ws_m, _we_m = self._get_shift_window_today(_mod_name, _pos_name)
+                if _ws_m is not None:
+                    _wsh = _ws_m // 60; _wsm = _ws_m % 60
+                    _we_adj = _we_m % 1440
+                    _weh = _we_adj // 60; _wem = _we_adj % 60
+                    _sh = f"{_wsh:02d}h" + (f"{_wsm:02d}" if _wsm else "")
+                    _se = f"{_weh:02d}h" + (f"{_wem:02d}" if _wem else "")
+                    _horaire_str = f"de {_sh} à {_se}"
+                else:
+                    _horaire_str = _mod_name
+            except Exception:
+                _horaire_str = _mod_name or "—"
+        elif _mod_name:
+            _horaire_str = _mod_name
+
+        # Cumul brut des arrêts (somme individuelle, avec éventuels chevauchements)
+        _stop_keys_rc = [e[1] for e in EVENTS if e[2] in ("ratt", "pb")]
+        _stop_cumul_s = sum(self._t_get(k) for k in _stop_keys_rc)
+
+        # Scrollable inner
+        _ic_cv = tk.Canvas(info_card, bg=WHITE, highlightthickness=0)
+        _ic_sb = tk.Scrollbar(info_card, orient="vertical", command=_ic_cv.yview)
+        _ic_cv.configure(yscrollcommand=_ic_sb.set)
+        _ic_sb.pack(side="right", fill="y")
+        _ic_cv.pack(side="left", fill="both", expand=True)
+        info_inner = tk.Frame(_ic_cv, bg=WHITE)
+        _ic_win = _ic_cv.create_window((0, 0), window=info_inner, anchor="nw")
+
+        def _ic_conf(e=None):
+            _ic_cv.configure(scrollregion=_ic_cv.bbox("all"))
+            _ic_cv.itemconfig(_ic_win, width=_ic_cv.winfo_width())
+        info_inner.bind("<Configure>", _ic_conf)
+        _ic_cv.bind("<Configure>", lambda e: _ic_cv.itemconfig(_ic_win, width=e.width))
+        _ic_cv.bind("<MouseWheel>", lambda e: _ic_cv.yview_scroll(-1*(e.delta//120), "units"))
+
+        def _sec_hdr(text, color):
+            f = tk.Frame(info_inner, bg=color)
+            f.pack(fill="x")
+            tk.Label(f, text=text, bg=color, fg=WHITE,
+                     font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=3)
+
+        def _row2(lbl, val, val_color=DARK, bold=False):
             f = tk.Frame(info_inner, bg=WHITE)
-            f.pack(fill="x", pady=2)
-            tk.Label(f, text=lbl, bg=WHITE, fg=lbl_color,
+            f.pack(fill="x", padx=10, pady=1)
+            tk.Label(f, text=lbl, bg=WHITE, fg=GRAY,
                      font=("Arial", 10), width=22, anchor="w").pack(side="left")
             tk.Label(f, text=str(val), bg=WHITE, fg=val_color,
-                     font=("Arial", 11, "bold" if bold else "normal")).pack(side="left")
+                     font=("Arial", 12, "bold" if bold else "normal"),
+                     anchor="w").pack(side="left", fill="x", expand=True)
 
-        _row("N° OF",                 v.get("of_num", "—"),        NAVY,  bold=True)
-        _row("Pilote",                self._logged_in_pilot or v.get("pilote","—"), NAVY_L)
-        _row("Poste",                 v.get("poste", "—"),          DARK)
-        _row(None, None, sep=True)
-        _row("Qté fabriquée",         f"{qte_fab}",                 GREEN, bold=True)
-        _row("Qté emballée",          f"{int(_n('qte_emb'))}",      GREEN)
-        _row("Équivalence",           f"{int(round(equiv))}",       GREEN)
-        _row(None, None, sep=True)
-        _row("Durée brute",           fmt(total_brut_s),            DARK)
-        _row("Durée comptée (TRS)",   fmt(of_s),                    NAVY_L, bold=True)
-        _diff_s = of_s - total_brut_s
-        if abs(_diff_s) >= 1:
-            _diff_sign = "+" if _diff_s > 0 else "−"
-            _row(f"Différence ({_diff_sign})", fmt(abs(_diff_s)),   C_RATT if _diff_s < 0 else GREEN, bold=True)
+        # ── Section 1 : Identification ──────────────────────────────────────
+        _sec_hdr("▸  IDENTIFICATION DE L'OF", NAVY)
+        _row2("N° OF", v.get("of_num", "—"), NAVY, bold=True)
+        _row2("Pilote", self._logged_in_pilot or v.get("pilote", "—"), "#1e40af")
+        _row2("Co-pilote", v.get("copilote", "—") or "—", DARK)
+        _row2("Poste", v.get("poste", "—"), DARK)
+        _row2("Modèle horaire", _horaire_str, DARK)
+        tk.Frame(info_inner, bg=LGRAY, height=1).pack(fill="x")
+
+        # ── Section 2 : Temps ───────────────────────────────────────────────
+        _sec_hdr("▸  TEMPS", "#1d4ed8")
+        _row2("Heure début", self._of_start.strftime("%H:%M:%S"), DARK)
+        _row2("Heure fin", end_dt.strftime("%H:%M:%S"), DARK)
+        _row2("Durée brute", fmt(total_brut_s), DARK)
+        _row2("Durée TRS", fmt(of_s), "#1d4ed8", bold=True)
         if self._inter_of_s > 0:
-            _row("Chgmt. de série",   fmt(self._inter_of_s),        C_RATT, bold=True)
-        _row("Arrêts cumulés",        fmt(stop_s),
-             C_RED if stop_s > 0 else DARK,                         bold=(stop_s > 0))
-        _row("Pauses",                fmt(pause_s),                 GRAY)
+            _row2("Changement de série", fmt(self._inter_of_s), C_RATT, bold=True)
+        if getattr(self, "_interposte_s", 0) > 0:
+            _row2("Inter-poste", fmt(self._interposte_s), "#a855f7")
+        tk.Frame(info_inner, bg=LGRAY, height=1).pack(fill="x")
+
+        # ── Section 3 : Production ──────────────────────────────────────────
+        _sec_hdr("▸  PRODUCTION", GREEN)
+        _row2("Qté fabriquée", f"{qte_fab}", GREEN, bold=True)
+        _row2("Qté emballée", f"{int(_n('qte_emb'))}", GREEN)
+        _row2("Équivalence", f"{int(round(equiv))}", GREEN)
+        tk.Frame(info_inner, bg=LGRAY, height=1).pack(fill="x")
+
+        # ── Section 4 : Arrêts & pertes ─────────────────────────────────────
+        _sec_hdr("▸  ARRÊTS & PERTES", C_RED)
+        _row2("Durée arrêt (sans chevauch.)", fmt(stop_s),
+              C_RED if stop_s > 0 else DARK, bold=(stop_s > 0))
+        _row2("Total arrêts (cumul)", fmt(_stop_cumul_s),
+              C_RED if _stop_cumul_s > 0 else DARK)
+        _row2("Pauses", fmt(pause_s), GRAY)
         _pause_max_s_rc = int(self.cfg.get("pause_max_min", 20)) * 60
         _pause_excess_rc = max(0.0, self._pause_total_s - _pause_max_s_rc)
-        _row("Pauses tolérées",       fmt(min(pause_s, _pause_max_s_rc)), GRAY)
         if _pause_excess_rc > 0:
-            _row("Pauses excès TRS",  fmt(_pause_excess_rc),       C_RED, bold=True)
-        _row(None, None, sep=True)
-        if _nett_s > 0:
-            _row("Nettoyage planifié",fmt(_nett_planned),           "#60a5fa")
-            if _nett_counted > 0:
-                _row("Nettoyage excès",fmt(_nett_counted),          C_RED, bold=True)
-        _row("Nettoyage déclaré",     fmt(_nett_s) if _nett_s > 0 else "Aucun", GRAY)
-        if _reunion_s > 0:
-            _row("Réunion tolérée",   fmt(_reunion_planned),        "#fbbf24")
-            if _reunion_counted > 0:
-                _row("Réunion excès", fmt(_reunion_counted),        C_RED, bold=True)
-        _row("Réunion déclarée",      fmt(_reunion_s) if _reunion_s > 0 else "Aucune", GRAY)
-        _row("Commentaire",           v.get("comment","")[:60] or "—", GRAY)
+            _row2("Pauses excès TRS", fmt(_pause_excess_rc), C_RED, bold=True)
+        _row2("Nettoyage planifié", fmt(_nett_planned), "#3b82f6")
+        _row2("Nettoyage déclaré",
+              fmt(_nett_s) if _nett_s > 0 else "Aucun",
+              "#3b82f6" if _nett_s > 0 else GRAY)
+        if _nett_counted > 0:
+            _row2("Nettoyage excès TRS", fmt(_nett_counted), C_RED, bold=True)
+        _row2("Réunion déclarée",
+              fmt(_reunion_s) if _reunion_s > 0 else "Aucune",
+              "#f59e0b" if _reunion_s > 0 else GRAY)
+        if _reunion_counted > 0:
+            _row2("Réunion excès TRS", fmt(_reunion_counted), C_RED, bold=True)
+        tk.Frame(info_inner, bg=LGRAY, height=1).pack(fill="x")
+
+        # ── Section 5 : Commentaire ─────────────────────────────────────────
+        _sec_hdr("▸  COMMENTAIRE", GRAY)
+        _comm = v.get("comment", "") or "—"
+        tk.Label(info_inner, text=_comm[:300], bg=WHITE, fg=DARK,
+                 font=("Arial", 10), wraplength=260, justify="left",
+                 anchor="w").pack(fill="x", padx=10, pady=(4, 4))
+        tk.Frame(info_inner, bg=LGRAY, height=1).pack(fill="x")
+
+        # ── Section 6 : Chronologie ─────────────────────────────────────────
+        _sec_hdr("▸  CHRONOLOGIE DE L'OF", "#475569")
+        tl_cv = tk.Canvas(info_inner, bg="#e2e8f0", height=48, highlightthickness=0)
+        tl_cv.pack(fill="x", padx=10, pady=(4, 10))
+
+        def _draw_tl(e=None):
+            tl_cv.delete("all")
+            cw = tl_cv.winfo_width()
+            ch = tl_cv.winfo_height()
+            if cw < 40 or ch < 10:
+                return
+            t0 = self._of_start
+            t1 = end_dt
+            tot = (t1 - t0).total_seconds()
+            if tot <= 0:
+                return
+            def _px(dt):
+                return max(0, min(cw, int((dt - t0).total_seconds() / tot * cw)))
+            tl_cv.create_rectangle(0, 8, cw, ch - 8, fill="#16a34a", outline="")
+            for ev in self._tl_events:
+                if not ev.get("start") or not ev.get("end"):
+                    continue
+                _s = max(ev["start"], t0)
+                _e = min(ev["end"], t1)
+                if _s >= _e:
+                    continue
+                x1, x2 = _px(_s), _px(_e)
+                if x2 <= x1:
+                    x2 = x1 + 2
+                _key = ev.get("key", "")
+                _cat = ev.get("cat", "")
+                if _key == "nettoyage":
+                    _col = "#3b82f6"
+                elif _cat in ("ratt", "pb"):
+                    _col = "#dc2626"
+                else:
+                    _col = "#94a3b8"
+                tl_cv.create_rectangle(x1, 8, x2, ch - 8, fill=_col, outline="")
+            tl_cv.create_text(4, ch // 2, text=t0.strftime("%H:%M"),
+                              anchor="w", fill=WHITE, font=("Arial", 8, "bold"))
+            tl_cv.create_text(cw - 4, ch // 2, text=t1.strftime("%H:%M"),
+                              anchor="e", fill=WHITE, font=("Arial", 8, "bold"))
+
+        tl_cv.bind("<Configure>", _draw_tl)
 
         # ── Colonne droite : visuels ───────────────────────────────────────────
         vis_zone = tk.Frame(body_r, bg="#f0f4fb")
@@ -7214,6 +7327,14 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                   command=_confirmer, bg=GREEN, fg=WHITE,
                   font=("Arial", 12, "bold"), relief="flat",
                   padx=24, pady=10, cursor="hand2").pack(side="left")
+
+        tk.Button(btn_row_r,
+                  text="↩  Modifier (Administrateur)",
+                  command=lambda: self._ask_supervisor_pw(
+                      _modifier, title="Mot de passe Administrateur"),
+                  bg="#475569", fg=WHITE,
+                  font=("Arial", 11, "bold"), relief="flat",
+                  padx=18, pady=10, cursor="hand2").pack(side="right")
 
         self.root.wait_variable(recap_var)
         self._modal_open = False
