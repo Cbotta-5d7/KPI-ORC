@@ -47,8 +47,7 @@ from openpyxl.styles import Alignment, Border, Side, PatternFill
 CONFIG_FILE  = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
 SESSION_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_session.json")
 PENDING_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_pending.json")
-PASSWORD     = "0000"
-DB_PASSWORD  = "4594"
+# Mots de passe hardcodés supprimés — tout passe par cfg["supervisor_pw"]
 
 NAVY    = "#1a1f5e"   # Dodo bleu marine
 NAVY_L  = "#2d3490"   # Dodo bleu marine clair
@@ -1042,7 +1041,7 @@ class App:
         self._center_on_root(top, 320, 180)
         top.bind("<Destroy>", lambda e: setattr(self, "_modal_open", False) if e.widget is top else None)
         allowed = tk.BooleanVar(value=False)
-        tk.Label(top, text="Mot de passe base de donnees",
+        tk.Label(top, text="Mot de passe Administrateur",
                  font=("Arial", 10, "bold"), fg=DARK).pack(pady=(18, 4))
         err2 = tk.Label(top, text="", fg=C_RED, font=("Arial", 9))
         err2.pack()
@@ -1053,7 +1052,7 @@ class App:
         pe.pack(pady=4)
         pe.focus()
         def _confirm_db(ev=None):
-            if pv.get() == DB_PASSWORD:
+            if pv.get() == str(self.cfg.get("supervisor_pw", "1234")):
                 allowed.set(True)
                 top.destroy()
             else:
@@ -1566,11 +1565,11 @@ class App:
         except Exception:
             pass
 
-    def _ask_supervisor_pw(self, on_success, title="Mot de passe encadrant"):
-        """Popup de vérification du mot de passe encadrant."""
-        sv_pws = self._get_list("Mot de passe encadrant") or self._get_list("Mots de passe encadrant")
+    def _ask_supervisor_pw(self, on_success, title="Mot de passe Administrateur"):
+        """Popup de vérification du mot de passe administrateur (unique)."""
         cfg_pw = str(self.cfg.get("supervisor_pw", ""))
-        valid_pws = [str(p) for p in sv_pws] if sv_pws else ([cfg_pw] if cfg_pw else [])
+        # Mot de passe unique depuis la config — plus de liste Excel
+        valid_pws = [cfg_pw] if cfg_pw else []
 
         dlg = tk.Toplevel(self.root)
         dlg.title(title)
@@ -1760,7 +1759,7 @@ class App:
                 tk.Button(btnf2, text="Annuler", command=dlg2.destroy,
                           bg=LGRAY, fg=DARK, font=("Arial", 10),
                           relief="flat", padx=10, pady=6, cursor="hand2").pack(side="left")
-            self._ask_supervisor_pw(_do_modifier, title="Mot de passe encadrant")
+            self._ask_supervisor_pw(_do_modifier, title="Mot de passe Administrateur")
 
         def _fld(label_txt, var, values, title):
             tk.Label(inner, text=label_txt, bg=WHITE, fg="#374151",
@@ -1795,7 +1794,7 @@ class App:
             modele_var.trace_add("write", _sync_modele)
             _fld("Modèle horaire", modele_var, modeles_list, "Modèle horaire")
             _update_horaire_display()
-            tk.Button(inner, text="✎  Modifier le modèle (encadrant)",
+            tk.Button(inner, text="✎  Modifier le modèle (Administrateur)",
                       command=_modifier_modele,
                       bg="#e0f2fe", fg="#0369a1",
                       font=("Arial", 10, "bold"), relief="flat",
@@ -2398,7 +2397,7 @@ TRS du poste = Équivalence produite / (Référence prod × Temps d'ouverture / 
 
 Temps d'ouverture = Durée du modèle horaire choisi à la connexion
   - moins 5 min de réunion planifiée (configurable dans Paramètres)
-  Le temps d'ouverture peut être modifié par l'encadrant en fin de poste.
+  Le temps d'ouverture peut être modifié par l'administrateur en fin de poste.
 
 ═══ ARRÊTS PLANIFIÉS (déduits du temps d'ouverture) ═══
   • Pauses opérateur : quota configuré (défaut 20 min/poste) déduit du temps d'ouverture
@@ -2417,7 +2416,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
 ═══ MODÈLE HORAIRE ═══
   • Géré dans Paramètres → Modèles Horaires
   • Sélectionné à la connexion par le pilote
-  • L'encadrant peut modifier les heures pour la session courante
+  • L'administrateur peut modifier les heures pour la session courante
   • Le modèle détermine le temps d'ouverture pour le TRS
 
 ═══ RÉUNION ═══
@@ -2454,7 +2453,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
 
         tk.Label(top_pw, text="⚙  PARAMÈTRES", bg=NAVY, fg=WHITE,
                  font=("Arial", 16, "bold")).pack(pady=(24, 4))
-        tk.Label(top_pw, text="Mot de passe Encadrant :", bg=NAVY, fg="#7a99c0",
+        tk.Label(top_pw, text="Mot de passe Administrateur :", bg=NAVY, fg="#7a99c0",
                  font=("Arial", 11)).pack()
         err_lbl = tk.Label(top_pw, text="", bg=NAVY, fg=C_RED, font=("Arial", 10))
         err_lbl.pack()
@@ -2559,7 +2558,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                                                         "pause_max_min",     20),
             ("⏱ Réunion planifiée /poste — déduit auto (min)",
                                                         "meeting_tol_min",    5),
-            ("Mot de passe Encadrant",                  "supervisor_pw",    "1234"),
+            ("Mot de passe Administrateur",             "supervisor_pw",    "1234"),
         ]
         gen_vars = {}
         for i, (label, key, default) in enumerate(gen_fields):
@@ -3370,7 +3369,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         self._center_on_root(top, 320, 160)
 
         result = tk.BooleanVar(value=False)
-        tk.Label(top, text=action or "Entrez le mot de passe",
+        tk.Label(top, text=action or "Mot de passe Administrateur",
                  font=("Arial", 10, "bold"), fg=DARK).pack(pady=(18, 4))
         err_lbl = tk.Label(top, text="", fg=C_RED, font=("Arial", 9))
         err_lbl.pack()
@@ -3382,7 +3381,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         e.focus()
 
         def confirm(ev=None):
-            if var.get() == PASSWORD:
+            if var.get() == str(self.cfg.get("supervisor_pw", "1234")):
                 result.set(True)
                 top.destroy()
             else:
@@ -3433,7 +3432,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
         pe.focus()
 
         def _confirm(ev=None):
-            if pw2.get() == DB_PASSWORD:
+            if pw2.get() == str(self.cfg.get("supervisor_pw", "1234")):
                 top.destroy()
                 self._select_db()
             else:
@@ -5578,7 +5577,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             pw_win.configure(bg=WHITE)
             pw_win.attributes("-topmost", True)
             pw_win.grab_set()
-            tk.Label(pw_win, text="Mot de passe requis", bg=WHITE, fg=NAVY,
+            tk.Label(pw_win, text="Mot de passe Administrateur", bg=WHITE, fg=NAVY,
                      font=("Arial", 13, "bold")).pack(pady=(20, 8))
             pw_var = tk.StringVar()
             pw_entry = tk.Entry(pw_win, textvariable=pw_var, show="*",
@@ -5589,7 +5588,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
             err = tk.Label(pw_win, text="", bg=WHITE, fg=C_RED, font=("Arial", 10))
             err.pack()
             def _confirm_pw(event=None):
-                if pw_var.get() == PASSWORD:
+                if pw_var.get() == str(self.cfg.get("supervisor_pw", "1234")):
                     pw_win.destroy()
                     try:
                         with self._excel_lock:
@@ -7605,7 +7604,7 @@ Temps d'ouverture = Durée du modèle horaire choisi à la connexion
                 tk.Button(btnf, text="Annuler", command=dlg.destroy,
                           bg=LGRAY, fg=DARK, font=("Arial", 10),
                           relief="flat", padx=10, pady=6, cursor="hand2").pack(side="left")
-            self._ask_supervisor_pw(_do_modifier_duree, title="Mot de passe encadrant")
+            self._ask_supervisor_pw(_do_modifier_duree, title="Mot de passe Administrateur")
 
         def _deconnecter_et_quitter():
             _fin_de_poste_save_trs()
