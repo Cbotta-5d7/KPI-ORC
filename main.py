@@ -801,6 +801,7 @@ class App:
         self._schedule_col_headers = {} # {col_index: header_name}
         self._inter_of_s       = 0      # Durée inter-OF (changement de série)
         self._of_count_this_shift = 0   # Nb déclarations complétées ce poste
+        self._horaire_alert    = None   # Alerte modèle horaire (dict ou None)
         self._data_rows_cache  = []
         self._events_cache     = []
         self._last_of_pilot    = ""
@@ -1802,6 +1803,53 @@ class App:
         else:
             modele_var = None
 
+        # ── Grand affichage horaires du poste sélectionné ──────────────────────
+        shift_disp = tk.Frame(inner, bg="#eff6ff", bd=0)
+        shift_disp.pack(fill="x", pady=(8, 2))
+        tk.Frame(shift_disp, bg="#3b82f6", height=2).pack(fill="x")
+        shift_lbl = tk.Label(shift_disp,
+                             text="Sélectionnez votre poste et modèle",
+                             bg="#eff6ff", fg="#94a3b8",
+                             font=("Arial", 12, "italic"))
+        shift_lbl.pack(pady=6)
+
+        def _update_shift_display(*_):
+            mod   = modele_var.get() if modele_var else ""
+            poste = poste_var.get().strip()
+            if not mod or not poste or not _cfg_modeles:
+                shift_lbl.config(text="Sélectionnez votre poste et modèle",
+                                 fg="#94a3b8", font=("Arial", 12, "italic"))
+                return
+            try:
+                m_data = next((m for m in _cfg_modeles if m["nom"] == mod), None)
+                if not m_data:
+                    shift_lbl.config(text="—", fg="#94a3b8",
+                                     font=("Arial", 12, "italic"))
+                    return
+                poste_lower = poste.lower()
+                if "matin" in poste_lower:   pk = "Matin"
+                elif "midi" in poste_lower:  pk = "Midi"
+                elif "nuit" in poste_lower:  pk = "Nuit"
+                else:                        pk = "Jour"
+                today_jour = JOURS_SEMAINE[datetime.datetime.now().weekday()]
+                sched = m_data["postes"].get(pk, {}).get(today_jour, {})
+                debut = str(sched.get("debut", "")).strip()
+                fin   = str(sched.get("fin", "")).strip()
+                if debut and fin:
+                    shift_lbl.config(
+                        text=f"Tes horaires sont de  {debut}h  à  {fin}h",
+                        fg="#1d4ed8", font=("Arial", 15, "bold"))
+                else:
+                    shift_lbl.config(text="Horaires non définis pour ce jour",
+                                     fg="#94a3b8", font=("Arial", 11, "italic"))
+            except Exception:
+                pass
+
+        poste_var.trace_add("write", _update_shift_display)
+        if modele_var:
+            modele_var.trace_add("write", _update_shift_display)
+        _update_shift_display()
+
         passwords = self._get_list("Mots de passe pilote") or self._get_list("Mots de passe")
         need_pw = bool(passwords)
         pw_e = None
@@ -1870,6 +1918,110 @@ class App:
                                 self._logged_in_duree_horaire_min = dur
                 except Exception:
                     pass
+
+            # ── Vérification plage horaire ─────────────────────────────────────
+            _horaire_alert_info = None
+            if modele_sel and poste_sel:
+                try:
+                    _ws_m, _we_m = self._get_shift_window_today(modele_sel, poste_sel)
+                    if _ws_m is not None:
+                        _now      = datetime.datetime.now()
+                        _now_m    = _now.hour * 60 + _now.minute
+                        _gap_bef  = _ws_m - _now_m   # >0 = on est AVANT le début
+                        _gap_aft  = _now_m - _ws_m   # >0 = on est APRÈS le début
+                        _we_adj   = _we_m % 1440
+                        _sh = (f"{_ws_m//60:02d}h" +
+                               (f"{_ws_m%60:02d}" if _ws_m % 60 else ""))
+                        _se = (f"{_we_adj//60:02d}h" +
+                               (f"{_we_adj%60:02d}" if _we_adj % 60 else ""))
+                        _warn_type = None
+                        if _gap_bef > 15:
+                            _warn_type = "avant"
+                        elif _gap_aft > 30:
+                            _warn_type = "retard"
+                        if _warn_type:
+                            if _warn_type == "avant":
+                                _w_title = "⚠  HORS PLAGE HORAIRE"
+                                _w_body  = (
+                                    f"Nous sommes en dehors de la plage horaire prévue.\n\n"
+                                    f"Le calcul du TRS se fera dans la plage\n"
+                                    f"de {_sh}  à  {_se} seulement.\n\n"
+                                    f"Veuillez appeler l'encadrant pour\n"
+                                    f"modifier votre modèle horaire."
+                                )
+                                _w_alert = (f"Connexion {_gap_bef} min avant le poste "
+                                            f"({_sh}→{_se}) — TRS sera impacté")
+                            else:
+                                _w_title = "⚠  RETARD DE CONNEXION"
+                                _w_body  = (
+                                    f"Ton temps d'ouverture a commencé à {_sh}.\n\n"
+                                    f"Il y a donc {_gap_aft} min d'absence qui vont\n"
+                                    f"impacter ton TRS.\n\n"
+                                    f"Veuillez appeler un encadrant."
+                                )
+                                _w_alert = (f"Connexion {_gap_aft} min après le début "
+                                            f"du poste ({_sh}→{_se}) — TRS sera impacté")
+
+                            _warn_choice = [None]
+                            _warn_var    = tk.BooleanVar(value=False)
+
+                            _warn_ov = tk.Frame(ov, bg="#1e293b")
+                            _warn_ov.place(relx=0, rely=0, relwidth=1, relheight=1)
+                            _warn_ov.lift()
+                            _wc_row = tk.Frame(_warn_ov, bg="#1e293b")
+                            _wc_row.pack(fill="both", expand=True)
+                            _wc_row.columnconfigure(0, weight=1)
+                            _wc_row.columnconfigure(1, weight=0)
+                            _wc_row.columnconfigure(2, weight=1)
+                            _wc_row.rowconfigure(0, weight=1)
+                            _wc = tk.Frame(_wc_row, bg=WHITE, bd=0)
+                            _wc.grid(row=0, column=1, padx=10, pady=40)
+                            tk.Frame(_wc, bg=WHITE, width=460, height=1).pack()
+                            tk.Frame(_wc, bg=ORANGE, height=6).pack(fill="x")
+                            _wci = tk.Frame(_wc, bg=WHITE)
+                            _wci.pack(fill="x", padx=32, pady=22)
+                            tk.Label(_wci, text=_w_title, bg=WHITE, fg=ORANGE,
+                                     font=("Arial", 17, "bold")).pack(pady=(0, 14))
+                            tk.Label(_wci, text=_w_body, bg=WHITE, fg=DARK,
+                                     font=("Arial", 12), justify="center").pack(pady=(0, 22))
+                            _wbf = tk.Frame(_wci, bg=WHITE)
+                            _wbf.pack(fill="x")
+
+                            def _warn_cancel(c=_warn_choice, v=_warn_var):
+                                c[0] = "cancel"; v.set(True)
+                            def _warn_continue(c=_warn_choice, v=_warn_var):
+                                c[0] = "continue"; v.set(True)
+
+                            tk.Button(_wbf,
+                                      text="⟳  Annuler et modifier ma saisie",
+                                      command=_warn_cancel, bg=LGRAY, fg=DARK,
+                                      font=("Arial", 11, "bold"), relief="flat",
+                                      padx=14, pady=10,
+                                      cursor="hand2").pack(side="left", padx=(0, 10))
+                            tk.Button(_wbf,
+                                      text="Continuer quand même  →",
+                                      command=_warn_continue, bg=ORANGE, fg=WHITE,
+                                      font=("Arial", 11, "bold"), relief="flat",
+                                      padx=14, pady=10,
+                                      cursor="hand2").pack(side="right")
+
+                            self.root.wait_variable(_warn_var)
+                            _warn_ov.destroy()
+
+                            if _warn_choice[0] == "cancel":
+                                return
+
+                            _horaire_alert_info = {
+                                "type":   _warn_type,
+                                "msg":    _w_alert,
+                                "pilot":  name,
+                                "poste":  poste_sel,
+                                "time":   _now.strftime("%H:%M"),
+                            }
+                except Exception:
+                    pass
+            self._horaire_alert = _horaire_alert_info
+
             self._logged_in_pilot = name
             self._logged_in_poste = poste_sel
             self._login_time      = datetime.datetime.now()
@@ -9065,6 +9217,26 @@ new Chart(document.getElementById('gauge{i}'), {{
 }})();
 </script>"""
 
+        # ── Alerte modèle horaire ────────────────────────────────────────────────
+        _horaire_alert_banner = ""
+        _ha = getattr(self, "_horaire_alert", None)
+        if _ha:
+            _ha_msg   = _esc(_ha.get("msg", ""))
+            _ha_pilot = _esc(_ha.get("pilot", ""))
+            _ha_poste = _esc(_ha.get("poste", ""))
+            _ha_time  = _esc(_ha.get("time", ""))
+            _horaire_alert_banner = (
+                f'<div id="horaireAlertBanner" style="'
+                f'background:#f97316;color:white;font-weight:700;'
+                f'padding:9px 18px;display:flex;align-items:center;gap:12px;'
+                f'animation:horairePulse 1.4s ease-in-out infinite;">'
+                f'<span style="font-size:1.5em;flex-shrink:0">⚠</span>'
+                f'<span>Attention — Problème modèle horaire &bull; Pilote&nbsp;: '
+                f'<b>{_ha_pilot}</b> &bull; Poste&nbsp;: {_ha_poste} &bull; '
+                f'{_ha_time} &mdash; {_ha_msg}</span>'
+                f'</div>'
+            )
+
         # TRS color pour supervision
         sup_trs_color = _trs_color(sup_trs_val)
         sup_trs_display = f"{sup_trs_val:.1f}%" if sup_trs_val > 0 else "—"
@@ -9354,6 +9526,7 @@ body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: 
 @keyframes flashBanner {{ 0%,100% {{ background:#dc2626; box-shadow:0 0 0 0 rgba(220,38,38,0); }}
                            50% {{ background:#b91c1c; box-shadow:0 0 30px 10px rgba(220,38,38,0.5); }} }}
 @keyframes iconShake {{ 0%,100% {{ transform:rotate(0); }} 25% {{ transform:rotate(-12deg); }} 75% {{ transform:rotate(12deg); }} }}
+@keyframes horairePulse {{ 0%,100% {{ opacity:1; background:#f97316; }} 50% {{ opacity:0.8; background:#ea580c; }} }}
 
 .sup-grid {{ display: grid; grid-template-columns: 300px 1fr; gap: 10px;
              padding: 8px 12px; }}
@@ -9576,6 +9749,7 @@ body.alarm-bg .tab-content.visible {{ background: #fee2e2; }}
 <!-- ══════════════════ ONGLET SUPERVISION ══════════════════ -->
 <div class="tab-content" id="tab-supervision">
 
+{_horaire_alert_banner}
 {'<!-- ALARME ARRÊT -->' if has_active_stop else '<!-- PRODUCTION OK -->'}
 <div class="{'sup-banner-alarm' if has_active_stop else ('sup-banner-prod' if sup_prod_active else 'sup-banner-idle')}">
   {(
