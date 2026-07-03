@@ -21,11 +21,15 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pyinstaller openpyxl
+          pip install pyinstaller openpyxl flask pywebview
 
       - name: Build exe
         run: |
-          pyinstaller --onefile --windowed --name "KPI-ORC" main.py
+          pyinstaller --onefile --windowed --name "KPI-ORC" ^
+            --hidden-import flask ^
+            --hidden-import webview ^
+            --collect-all webview ^
+            main.py
 
       - name: Upload exe artifact
         uses: actions/upload-artifact@v4
