@@ -20,11 +20,12 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pyinstaller openpyxl flask "pywebview>=4.0"
+        run: |
+          pip install pyinstaller openpyxl
 
       - name: Build exe
-        shell: pwsh
-        run: pyinstaller --onefile --windowed --name "KPI-ORC" --hidden-import flask --hidden-import webview --hidden-import webview.platforms.edgechromium --collect-all webview main.py
+        run: |
+          pyinstaller --onefile --windowed --name "KPI-ORC" main.py
 
       - name: Upload exe artifact
         uses: actions/upload-artifact@v4
