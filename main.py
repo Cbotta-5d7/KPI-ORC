@@ -1620,7 +1620,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px;height:100vh;overflow:hidden;display:flex;flex-direction:column}
 
 /* ── STOP ACTIVE THEME ── */
-body.stop-on{--bg:#180808;--card:#2d1212;--border:#5a2020;--text:#fde8e8;--gray:#c99090;--lgray:#3d1a1a}
 body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 
 /* ── HEADER ── */
@@ -1633,7 +1632,7 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .htab.prod-on{background:var(--green)!important;color:#fff!important;font-weight:700;animation:pt 2s infinite}
 @keyframes pt{0%,100%{opacity:1}50%{opacity:.75}}
 #hdr-right{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:11px;color:rgba(255,255,255,.75)}
-#hdr-pilot-lbl{font-weight:700;color:#fff;font-size:12px}
+#hdr-pilot-lbl{font-weight:800;color:#fff;font-size:18px;letter-spacing:.3px}
 
 /* ── ALERT STRIP ── */
 #alert-strip{background:#b91c1c;color:#fff;text-align:center;padding:4px;font-weight:700;font-size:12px;flex-shrink:0;display:none;animation:blink .85s step-start infinite}
@@ -1708,7 +1707,6 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .act-btn:hover{filter:brightness(.9)}
 .act-nett{background:#e0f2fe;color:var(--blue)}
 .act-pause{background:#f3e8ff;color:var(--purple)}
-body.stop-on .act-pause{background:#4c1d95;color:#fff}
 .act-spacer{flex:1}
 .act-endprod{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:12px;font-weight:800;padding:10px 4px;border-radius:8px;box-shadow:0 3px 8px rgba(217,119,6,.3)}
 /* CENTER form col */
@@ -1720,9 +1718,6 @@ body.stop-on .act-pause{background:#4c1d95;color:#fff}
 .zi{background:#eef2ff;border:1px solid #c7d2fe}.zi h4{color:#3730a3}
 .zp{background:#f0fdf4;border:1px solid #bbf7d0}.zp h4{color:#166534}
 .zq{background:#fff7ed;border:1px solid #fed7aa}.zq h4{color:#9a3412}
-body.stop-on .zi{background:#1e1b3a;border-color:#4c4a8a}
-body.stop-on .zp{background:#0a1f0a;border-color:#1a4d1a}
-body.stop-on .zq{background:#1f1208;border-color:#4d2a00}
 .fr{display:flex;flex-direction:column;margin-bottom:4px}
 .fr label{font-size:9px;font-weight:700;color:var(--gray);margin-bottom:2px;text-transform:uppercase;letter-spacing:.2px}
 .fr input,.fr select,.fr textarea{padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--card);color:var(--text);width:100%;outline:none;transition:border .15s}
@@ -1746,13 +1741,26 @@ body.stop-on .zq{background:#1f1208;border-color:#4d2a00}
 /* TRS gauge */
 .gauge-box{padding:6px;border-top:1px solid var(--border);text-align:center}
 .gauge-lbl{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;margin-top:2px}
-/* Active stop bottom bar */
-#stop-bottom{display:none;background:#7f0000;color:#fff;padding:8px 14px;align-items:center;gap:12px;flex-shrink:0;border-top:2px solid #b91c1c}
+/* Active stops bottom bar — chips */
+#stop-bottom{display:none;background:#7f0000;color:#fff;padding:8px 14px;align-items:center;gap:8px;flex-shrink:0;border-top:2px solid #b91c1c;flex-wrap:wrap}
 #stop-bottom.on{display:flex}
-.sb-type{font-weight:800;font-size:14px;flex:1}
-.sb-timer{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
-.btn-endstop{background:#16a34a;color:#fff;border:none;border-radius:7px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer}
+.stop-chip{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.28);border-radius:8px;padding:6px 10px;border:1px solid rgba(255,255,255,.2)}
+.chip-lbl{font-weight:800;font-size:13px;white-space:nowrap}
+.chip-tim{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+.btn-endstop{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
 .btn-endstop:hover{filter:brightness(.9)}
+/* KPI shift cards */
+.shift-kpis{display:flex;gap:8px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0}
+.skpi{flex:1;background:var(--bg);border-radius:var(--radius);padding:10px;border:1px solid var(--border);text-align:center}
+.skpi.current{flex:2;background:var(--navy);color:#fff;border-color:var(--navy2);box-shadow:var(--shadow)}
+.skpi.current .sk-lbl{color:rgba(255,255,255,.7)}.skpi.current .sk-val{color:#93c5fd;font-size:26px}.skpi.current .sk-sub{color:rgba(255,255,255,.75)}
+.sk-lbl{font-size:9px;text-transform:uppercase;font-weight:700;color:var(--gray);letter-spacing:.7px;margin-bottom:3px}
+.sk-val{font-size:20px;font-weight:800;color:var(--navy);line-height:1}.sk-sub{font-size:10px;color:var(--gray);margin-top:3px}
+/* Merged table row types */
+.row-prod td{background:#f0fdf4}.row-evt td{background:#fff7ed}
+.row-prod:hover td,.row-evt:hover td{filter:brightness(.96)}
+.row-tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;text-transform:uppercase}
+.tag-p{background:#bbf7d0;color:#166534}.tag-e{background:#fed7aa;color:#9a3412}.tag-n{background:#bfdbfe;color:#1e40af}
 
 /* ── FIN DE POSTE ── */
 #v-finposte{padding:0}
@@ -1889,27 +1897,38 @@ body.stop-on .zq{background:#1f1208;border-color:#4d2a00}
   <!-- ════ MAIN VIEW ════ -->
   <div id="v-main" class="view" style="flex-direction:column">
     <div class="main-hdr">
-      <div class="mtabs">
-        <button class="mtab on" id="mt-decl" onclick="switchMTab('decl')">Déclarations</button>
-        <button class="mtab" id="mt-evt" onclick="switchMTab('evt')">Événements</button>
-      </div>
-      <div class="mbtns">
+      <div class="mbtns" style="margin-left:0">
         <button class="btn-sm btn-green" id="btn-start" onclick="doStartProd()">▶ Démarrer production</button>
         <button class="btn-sm btn-ghost" onclick="doFinPoste()">🏁 Fin de poste</button>
+        <button class="btn-sm btn-ghost" onclick="loadMainDecl()">↺ Actualiser</button>
       </div>
     </div>
-    <div id="mp-decl" class="table-wrap">
-      <table class="ktbl"><thead><tr>
-        <th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th>
-        <th>Début</th><th>Fin</th><th>Taille</th><th>Qté Fab</th>
-        <th>Éq</th><th>TRS%</th>
-      </tr></thead><tbody id="decl-body"></tbody></table>
+    <!-- KPI 3 derniers postes -->
+    <div class="shift-kpis">
+      <div class="skpi current">
+        <div class="sk-lbl">Poste actuel — TRS</div>
+        <div class="sk-val" id="kpi0-trs">--%</div>
+        <div class="sk-sub" id="kpi0-sub">0 OF</div>
+      </div>
+      <div class="skpi">
+        <div class="sk-lbl" id="kpi1-lbl">Hier</div>
+        <div class="sk-val" id="kpi1-trs">--%</div>
+        <div class="sk-sub" id="kpi1-sub">0 OF</div>
+      </div>
+      <div class="skpi">
+        <div class="sk-lbl" id="kpi2-lbl">Avant-hier</div>
+        <div class="sk-val" id="kpi2-trs">--%</div>
+        <div class="sk-sub" id="kpi2-sub">0 OF</div>
+      </div>
     </div>
-    <div id="mp-evt" class="table-wrap" style="display:none">
-      <table class="ktbl"><thead><tr>
-        <th>Type</th><th>OF</th><th>Date</th><th>Pilote</th>
-        <th>Début</th><th>Fin</th><th>Durée</th><th>Commentaire</th><th>Actions</th>
-      </tr></thead><tbody id="evt-body"></tbody></table>
+    <div class="table-wrap">
+      <table class="ktbl">
+        <thead><tr>
+          <th>Type</th><th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th>
+          <th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="main-body"></tbody>
+      </table>
     </div>
   </div>
 
@@ -1959,7 +1978,7 @@ body.stop-on .zq{background:#1f1208;border-color:#4d2a00}
           <!-- Zone Identification -->
           <div class="fzone zi">
             <h4>📋 Identification</h4>
-            <div class="fr"><label>N° OF *</label><input id="f-of_num" placeholder="OF123456" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>N° OF *</label><input id="f-of_num" oninput="scheduleAutoSave()"></div>
             <div class="fr ro"><label>Date</label><input id="f-date" readonly></div>
             <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
@@ -2017,14 +2036,10 @@ body.stop-on .zq{background:#1f1208;border-color:#4d2a00}
         </div>
       </div>
     </div>
-    <!-- Active stop bottom bar -->
+    <!-- Active stops bottom bar — chips -->
     <div id="stop-bottom">
-      <div>
-        <div class="sb-type" id="sb-type">—</div>
-        <div style="font-size:10px;opacity:.7">Arrêt / Pause en cours</div>
-      </div>
-      <div class="sb-timer" id="sb-timer">0:00</div>
-      <button class="btn-endstop" onclick="doEndStop()">✓ Terminer l'arrêt</button>
+      <div style="font-size:10px;opacity:.7;font-weight:700;white-space:nowrap">EN COURS :</div>
+      <div id="stop-chips" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1"></div>
     </div>
   </div>
 
@@ -2039,6 +2054,23 @@ body.stop-on .zq{background:#1f1208;border-color:#4d2a00}
         <div class="fp-card"><div class="fp-big" id="fp-nof">0</div><div class="fp-lbl">Nombre d'OF</div></div>
         <div class="fp-card"><div class="fp-big" id="fp-prod-t">0 min</div><div class="fp-lbl">Durée prod totale</div></div>
         <div class="fp-card"><div class="fp-big" id="fp-stop-t">0 min</div><div class="fp-lbl">Total arrêts (hors pause)</div></div>
+      </div>
+      <!-- Graphiques -->
+      <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+        <div class="card" style="flex:1;min-width:200px">
+          <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:6px">Répartition du temps</div>
+          <svg id="fp-pie" viewBox="0 0 130 115" style="width:130px;height:115px;display:block;margin:0 auto"></svg>
+          <div id="fp-pie-leg" style="margin-top:4px;font-size:10px"></div>
+        </div>
+        <div class="card" style="flex:0 0 148px;text-align:center">
+          <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:4px">TRS Poste</div>
+          <svg id="fp-gauge" viewBox="0 0 100 58" style="width:100%;max-width:148px;display:block;margin:0 auto">
+            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
+            <path id="fp-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
+            <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="fp-gauge-pct">--%</text>
+          </svg>
+          <div style="font-size:11px;color:var(--gray);font-weight:600;margin-top:4px" id="fp-trs-lbl2">—</div>
+        </div>
       </div>
       <div class="card" style="margin-bottom:12px">
         <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:8px">Timeline du poste</div>
@@ -2147,7 +2179,23 @@ body.stop-on .zq{background:#1f1208;border-color:#4d2a00}
   <div class="mbox wide">
     <div class="mhdr"><h2 id="ep-title">⏹ Fin de production</h2></div>
     <div class="mbody">
-      <div class="ep-grid" id="ep-stats"></div>
+      <div style="display:flex;gap:10px;margin-bottom:8px;align-items:flex-start;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px"><div class="ep-grid" id="ep-stats"></div></div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <div style="text-align:center">
+            <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:2px">Répartition</div>
+            <svg id="ep-pie" viewBox="0 0 130 115" style="width:110px;height:97px;display:block"></svg>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:2px">TRS</div>
+            <svg id="ep-gauge" viewBox="0 0 100 58" style="width:90px;display:block;margin:0 auto;margin-top:8px">
+              <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
+              <path id="ep-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
+              <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="ep-gauge-pct">--%</text>
+            </svg>
+          </div>
+        </div>
+      </div>
       <div style="margin-bottom:10px">
         <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:5px">Arrêts &amp; pauses</div>
         <table class="ep-tbl"><thead><tr><th>Type</th><th>Durée</th><th>%</th></tr></thead><tbody id="ep-stops"></tbody></table>
@@ -2181,6 +2229,54 @@ body.stop-on .zq{background:#1f1208;border-color:#4d2a00}
       <button class="btn btn-sec" onclick="closeM('m-editstop')">Annuler</button>
       <button class="btn btn-danger" onclick="deleteStop()">🗑 Supprimer</button>
       <button class="btn btn-ok" onclick="saveEditStop()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ MODAL: Éditer ligne ════ -->
+<div class="overlay" id="m-editrow">
+  <div class="mbox wide">
+    <div class="mhdr">
+      <h2 id="er-title">✏ Modifier la ligne</h2>
+      <button style="background:none;border:none;cursor:pointer;font-size:16px" onclick="closeM('m-editrow')">✕</button>
+    </div>
+    <div class="mbody">
+      <input type="hidden" id="er-rownum"><input type="hidden" id="er-rowtype">
+      <div id="er-pw-row" style="margin-bottom:8px">
+        <div class="fr" style="max-width:200px"><label>MDP Admin</label><input type="password" id="er-pw" placeholder="••••"></div>
+      </div>
+      <div id="er-prod-fields">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+          <div class="fr"><label>N° OF</label><input id="er-of"></div>
+          <div class="fr"><label>Heure Début</label><input type="time" id="er-deb" step="60"></div>
+          <div class="fr"><label>Heure Fin</label><input type="time" id="er-fin" step="60"></div>
+          <div class="fr"><label>Poste</label><input id="er-poste"></div>
+          <div class="fr"><label>Pilote</label><input id="er-pilote"></div>
+          <div class="fr"><label>Co-Pilote</label><input id="er-copilote"></div>
+          <div class="fr"><label>Nb Personnes</label><input type="number" id="er-nbpers"></div>
+          <div class="fr"><label>Taille</label><select id="er-taille"><option value="">--</option></select></div>
+          <div class="fr"><label>Code Produit</label><input id="er-codeprod"></div>
+          <div class="fr"><label>Type Produit</label><select id="er-typeprod"><option value="">--</option></select></div>
+          <div class="fr"><label>Qté Fabriquée</label><input type="number" id="er-qtefab"></div>
+          <div class="fr"><label>Qté Emballée</label><input type="number" id="er-qteemb"></div>
+        </div>
+        <div class="fr"><label>Commentaire</label><textarea id="er-comment-prod" style="height:44px;resize:none;width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px"></textarea></div>
+      </div>
+      <div id="er-evt-fields" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+          <div class="fr"><label>Type d'arrêt</label><select id="er-evttype"><option value="">--</option></select></div>
+          <div class="fr"><label>N° OF</label><input id="er-evtof"></div>
+          <div class="fr"><label>Heure Début</label><input type="time" id="er-evtdeb" step="60"></div>
+          <div class="fr"><label>Heure Fin</label><input type="time" id="er-evtfin" step="60"></div>
+        </div>
+        <div class="fr"><label>Commentaire</label><textarea id="er-evtcomment" style="height:44px;resize:none;width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px"></textarea></div>
+        <div class="fr" style="margin-top:6px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;font-size:12px"><input type="checkbox" id="er-horstrs"> Hors TRS</label></div>
+      </div>
+    </div>
+    <div class="mftr">
+      <button class="btn btn-sec" onclick="closeM('m-editrow')">Annuler</button>
+      <button class="btn btn-danger" onclick="deleteRow(null,'er-rownum')">🗑 Supprimer</button>
+      <button class="btn btn-ok" onclick="saveEditRow()">💾 Enregistrer</button>
     </div>
   </div>
 </div>
@@ -2269,6 +2365,8 @@ async function loadLists() {
   popSel('f-type_prod', d.types_prod||[]);
   popSel('f-fibre', d.fibres||[]);
   popSel('f-traca', d.tracas||[]);
+  popSel('er-taille', d.tailles||[]);
+  popSel('er-typeprod', d.types_prod||[]);
   const pil = d.pilotes||[];
   const sel = document.getElementById('ln-pilot');
   pil.forEach(p => { const o=document.createElement('option'); o.value=p; o.textContent=p; sel.appendChild(o); });
@@ -2382,13 +2480,7 @@ function goTab(tab) {
   }
 }
 
-function switchMTab(t) {
-  document.getElementById('mp-decl').style.display=t==='decl'?'':'none';
-  document.getElementById('mp-evt').style.display=t==='evt'?'':'none';
-  document.getElementById('mt-decl').classList.toggle('on',t==='decl');
-  document.getElementById('mt-evt').classList.toggle('on',t==='evt');
-  if(t==='evt') loadMainEvts();
-}
+function switchMTab(t) { loadMainDecl(); } // kept for compatibility
 
 // ── SETTINGS LOCK ──
 async function unlockSettings() {
@@ -2475,14 +2567,8 @@ function applyState(s) {
     fillFormFromState(s.form);
   }
 
-  // Stop bar
-  const sb=document.getElementById('stop-bottom');
-  if(_curStopKey) {
-    sb.classList.add('on');
-    document.getElementById('sb-type').textContent=_curStopKey==='_pause'?'Pause pilote':getEvtLabel(_curStopKey);
-  } else {
-    sb.classList.remove('on');
-  }
+  // Render active stop chips
+  renderStopChips(s);
 
   // Pause button text
   const pbtn=document.getElementById('btn-pause');
@@ -2494,9 +2580,30 @@ function applyState(s) {
 
 function getEvtLabel(key) {
   const ev=EVENTS.find(e=>e[1]===key);
-  if(ev) return (ev[2]==='ratt'?'Rattrapage: ':ev[2]==='pb'?'PB Technique: ':'')+ev[0];
+  if(ev) return (ev[2]==='ratt'?'Rattrapage: ':ev[2]==='pb'?'PB: ':'')+ev[0];
   if(key==='nettoyage') return 'Nettoyage';
   return key||'Arrêt';
+}
+
+function renderStopChips(s) {
+  const cont=document.getElementById('stop-chips');
+  const sb=document.getElementById('stop-bottom');
+  if(!cont||!sb) return;
+  const stops=s.active_stops||[];
+  const hasAny=stops.length>0||s.is_paused;
+  if(!hasAny){sb.classList.remove('on');cont.innerHTML='';return;}
+  sb.classList.add('on');
+  let html='';
+  stops.forEach(k=>{
+    const lbl=getEvtLabel(k);
+    const elap=s.timers&&s.timers[k]?s.timers[k].elapsed:0;
+    html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="chip-t-${esc(k)}">${fmtDur2(elap)}</span><button class="btn-endstop" onclick="doEndStop('${esc(k)}')">✓ Terminer</button></div>`;
+  });
+  if(s.is_paused){
+    const pe=(s.pause_total_s||0)+(s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0);
+    html+=`<div class="stop-chip"><span class="chip-lbl">⏸ Pause pilote</span><span class="chip-tim" id="chip-t-_pause">${fmtDur2(pe)}</span><button class="btn-endstop" onclick="doPause()">▶ Reprendre</button></div>`;
+  }
+  cont.innerHTML=html;
 }
 
 // ── TICKER ──
@@ -2517,62 +2624,79 @@ function startTicker() {
     const pt=_pauseTotalAtPoll+(_curStopKey==='_pause'?dt:0);
     const tp=document.getElementById('sc-pause');
     if(tp) tp.textContent=fmtDur(pt);
-    // Stop bottom timer
-    if(_curStopKey) {
-      const se=_curStopElap+dt;
-      const sbt=document.getElementById('sb-timer');
-      if(sbt) sbt.textContent=fmtDur2(se);
+    // Update stop chips timers
+    if(ST.active_stops){
+      ST.active_stops.forEach(k=>{
+        const cel=document.getElementById('chip-t-'+k);
+        if(cel&&ST.timers&&ST.timers[k]) cel.textContent=fmtDur2(ST.timers[k].elapsed+dt);
+      });
+    }
+    if(ST.is_paused){
+      const cel=document.getElementById('chip-t-_pause');
+      if(cel) cel.textContent=fmtDur2(_pauseTotalAtPoll+dt);
     }
   },1000);
 }
 
 // ── MAIN VIEW ──
 async function loadMainDecl() {
-  const dt=new Date().toISOString().slice(0,10);
-  const d=await apiFetch('/api/history?date='+dt);
-  const rows=Array.isArray(d)?d:(d&&d.rows?d.rows:[]);
-  const bd=document.getElementById('decl-body');
+  const now=new Date();
+  const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0'),yyyy=now.getFullYear();
+  const todayPfx=dd+'/'+mm;
+  const [declData,evtData]=await Promise.all([apiFetch('/api/history'),apiFetch('/api/events_list')]);
+  const decls=(Array.isArray(declData)?declData:(declData&&declData.rows?declData.rows:[])).filter(r=>!r.date||r.date.startsWith(todayPfx));
+  const evts=(Array.isArray(evtData)?evtData:[]).filter(r=>!r.date||r.date.startsWith(todayPfx));
+  const allRows=[];
+  decls.forEach(r=>allRows.push({...r,_rowType:'prod'}));
+  evts.forEach(r=>allRows.push({...r,_rowType:'evt'}));
+  allRows.sort((a,b)=>(b.debut||'').localeCompare(a.debut||''));
+  const bd=document.getElementById('main-body');
   if(!bd) return;
-  if(!rows.length){bd.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';return;}
-  bd.innerHTML=rows.map(r=>{
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();return;}
+  window._rowMap={};
+  bd.innerHTML=allRows.map(r=>{
+    const key=r.row_num||r.debut;
+    window._rowMap[String(key)]=r;
+    const isProd=r._rowType==='prod';
     const t=parseFloat(r.trs||0);
-    return `<tr>
-      <td style="font-weight:600">${esc(r.of||'')}</td>
-      <td>${esc(r.date||'')}</td>
-      <td>${esc(r.poste||'')}</td>
-      <td>${esc(r.pilote||'')}</td>
-      <td>${esc(r.debut||'')}</td>
-      <td>${esc(r.fin||'')}</td>
-      <td>${esc(r.taille||'')}</td>
-      <td>${esc(String(r.qte_fab||''))}</td>
-      <td>${esc(String(r.equiv||''))}</td>
-      <td class="${t>=90?'tg':t>=75?'tm':t>0?'tb':''}">${t>0?fmtTRS(t):''}</td>
+    const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.type&&r.type.toLowerCase().includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>');
+    const details=isProd?esc(r.taille||''):esc(r.type||'');
+    const qty=isProd?esc(String(r.qte_fab||'')):esc(r.duree||'');
+    const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:`<span style="color:var(--gray);font-size:10px">${esc(r.comment||'')}</span>`;
+    return `<tr class="${isProd?'row-prod':'row-evt'}">
+      <td>${tag}</td><td style="font-weight:600">${esc(r.of||'')}</td>
+      <td style="font-size:10px">${esc(r.date||'')}</td><td style="font-size:10px">${esc(r.poste||'')}</td>
+      <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
+      <td style="font-size:11px">${details}</td><td style="font-size:11px">${qty}</td><td>${info}</td>
+      <td><button class="btn-tbl btn-prim" style="margin-right:2px" onclick="openEditRow('${esc(String(key))}')">✏</button><button class="btn-tbl" style="background:#fef2f2;color:#dc2626" onclick="deleteRow('${esc(String(key))}')">🗑</button></td>
     </tr>`;
   }).join('');
+  loadMainKPI();
 }
 
-async function loadMainEvts() {
-  const e=await apiFetch('/api/events_list');
-  const evts=Array.isArray(e)?e:[];
-  const bd=document.getElementById('evt-body');
-  if(!bd) return;
-  if(!evts.length){bd.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--gray);padding:16px">Aucun événement</td></tr>';return;}
-  window._evMap={};
-  bd.innerHTML=evts.map((ev,i)=>{
-    const key=ev.debut||i;
-    window._evMap[String(key)]=ev;
-    return `<tr>
-      <td style="font-weight:600">${esc(ev.type||'')}</td>
-      <td>${esc(ev.of||'')}</td>
-      <td>${esc(ev.date||'')}</td>
-      <td>${esc(ev.pilote||'')}</td>
-      <td>${esc(ev.debut||'')}</td>
-      <td>${esc(ev.fin||'')}</td>
-      <td>${esc(ev.duree||'')}</td>
-      <td>${esc(ev.comment||'')}</td>
-      <td><button class="btn-tbl btn-prim" onclick="openEditStop('${esc(String(key))}')">✏</button></td>
-    </tr>`;
-  }).join('');
+async function loadMainKPI() {
+  const d=await apiFetch('/api/history_today');
+  if(d){
+    const trs=d.trs_shift!==undefined?d.trs_shift:d.trs;
+    const el0t=document.getElementById('kpi0-trs'),el0s=document.getElementById('kpi0-sub');
+    if(el0t) el0t.textContent=fmtTRSv(trs);
+    if(el0s) el0s.textContent=(d.rows?d.rows.length:0)+' OF | '+(d.tot_eq||0).toFixed(1)+' éq';
+  }
+  const now=new Date();
+  for(let i=1;i<=2;i++){
+    const past=new Date(now);past.setDate(past.getDate()-i);
+    const dds=String(past.getDate()).padStart(2,'0'),mms=String(past.getMonth()+1).padStart(2,'0');
+    const pastPfx=dds+'/'+mms;
+    const rows=await apiFetch('/api/history');
+    const pr=(Array.isArray(rows)?rows:[]).filter(r=>r.date&&r.date.startsWith(pastPfx));
+    const nof=pr.length,eq=pr.reduce((a,r)=>a+parseFloat(r.equiv||0),0);
+    const sumT=pr.reduce((a,r)=>a+(parseFloat(r.trs||0)>0?parseFloat(r.trs):0),0);
+    const avgT=nof>0?sumT/nof:-1;
+    const lbl=document.getElementById('kpi'+i+'-lbl'),tv=document.getElementById('kpi'+i+'-trs'),sv=document.getElementById('kpi'+i+'-sub');
+    if(lbl) lbl.textContent=(i===1?'Hier':'Avant-hier')+' ('+dds+'/'+mms+')';
+    if(tv) tv.textContent=fmtTRSv(avgT);
+    if(sv) sv.textContent=nof+' OF | '+eq.toFixed(1)+' éq';
+  }
 }
 
 // ── START PROD ──
@@ -2628,13 +2752,14 @@ async function doStartStop(key,cat){
   await pollEvts();
 }
 
-async function doEndStop(){
-  if(_curStopKey==='_pause'){
+async function doEndStop(key){
+  const k=key||_curStopKey;
+  if(!k||k==='_pause'){
     await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  } else if(_curStopKey==='nettoyage') {
+  } else if(k==='nettoyage'){
     await fetch('/api/end_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  } else if(_curStopKey){
-    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:_curStopKey})});
+  } else {
+    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});
   }
   await pollState();
   await pollEvts();
@@ -2715,6 +2840,12 @@ async function doEndProdPreview(){
 function renderEPModal(d,f){
   const ofNum=f.of_num||d.of_num||'';
   document.getElementById('ep-title').textContent=`⏹ Fin de production${ofNum?' — '+ofNum:''}`;
+  // Graphs
+  drawPie('ep-pie',[
+    {label:'Prod',value:d.prod_s||0,color:'#16a34a'},
+    {label:'Arrêts',value:d.stop_s||0,color:'#dc2626'},
+  ]);
+  drawGauge('ep-gauge-arc','ep-gauge-pct',d.trs>=0?d.trs:0);
   document.getElementById('ep-stats').innerHTML=`
     <div class="ep-stat"><div class="val">${fmtTRS(d.trs)}</div><div class="lbl">TRS OF</div></div>
     <div class="ep-stat"><div class="val">${(d.equiv||0).toFixed(1)}</div><div class="lbl">Équivalence</div></div>
@@ -2753,7 +2884,43 @@ async function confirmEndProd(){
   } else toast(d.error||'Erreur','err');
 }
 
-// ── GAUGE ──
+// ── PIE & GAUGE CHARTS ──
+function drawPie(svgId, segments) {
+  const svg=document.getElementById(svgId);if(!svg) return;
+  const total=segments.reduce((a,s)=>a+s.value,0);
+  if(total<=0){svg.innerHTML='<text x="65" y="60" text-anchor="middle" font-size="9" fill="#94a3b8">Pas de données</text>';return;}
+  const cx=65,cy=57,r=44,ir=24;let html='',startAngle=-Math.PI/2;
+  segments.forEach(seg=>{
+    if(seg.value<=0) return;
+    const angle=(seg.value/total)*2*Math.PI;if(angle<0.001) return;
+    const endAngle=startAngle+angle,large=angle>Math.PI?1:0;
+    const x1=(cx+r*Math.cos(startAngle)).toFixed(2),y1=(cy+r*Math.sin(startAngle)).toFixed(2);
+    const x2=(cx+r*Math.cos(endAngle)).toFixed(2),y2=(cy+r*Math.sin(endAngle)).toFixed(2);
+    const ix1=(cx+ir*Math.cos(startAngle)).toFixed(2),iy1=(cy+ir*Math.sin(startAngle)).toFixed(2);
+    const ix2=(cx+ir*Math.cos(endAngle)).toFixed(2),iy2=(cy+ir*Math.sin(endAngle)).toFixed(2);
+    html+=`<path d="M${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} L${ix2},${iy2} A${ir},${ir} 0 ${large},0 ${ix1},${iy1} Z" fill="${seg.color}"/>`;
+    startAngle=endAngle;
+  });
+  const m=segments[0],mp=total>0?Math.round(m.value/total*100):0;
+  html+=`<text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e">${mp}%</text>`;
+  html+=`<text x="${cx}" y="${cy+15}" text-anchor="middle" font-size="7" fill="#64748b">${esc(m.label)}</text>`;
+  let lx=0;segments.filter(s=>s.value>0).forEach(s=>{
+    const p=Math.round(s.value/total*100);
+    html+=`<rect x="${lx}" y="108" width="7" height="7" fill="${s.color}" rx="1"/>`;
+    html+=`<text x="${lx+9}" y="115" font-size="7" fill="#475569">${esc(s.label)} ${p}%</text>`;lx+=65;
+  });
+  svg.innerHTML=html;
+}
+
+function drawGauge(arcId,pctId,trs) {
+  const arc=document.getElementById(arcId),pct=document.getElementById(pctId);if(!arc||!pct) return;
+  const pArc=132,v=Math.max(0,Math.min(100,trs||0)),dash=(v/100)*pArc;
+  const col=v>=90?'#16a34a':v>=75?'#d97706':'#dc2626';
+  arc.setAttribute('stroke-dasharray',`${dash.toFixed(1)},${pArc}`);arc.setAttribute('stroke',col);
+  pct.textContent=trs>=0?fmtTRS(trs):'--%';pct.setAttribute('fill',col);
+}
+
+// ── GAUGE (prod view) ──
 function updateGauge(s){
   const arc=document.getElementById('gauge-arc');
   const pct=document.getElementById('gauge-pct');
@@ -2780,15 +2947,85 @@ function updateGauge(s){
   arc.setAttribute('stroke',col);
 }
 
-// ── EDIT STOP ──
+// ── EDIT ROW (accueil) ──
+function openEditRow(key) {
+  const row=window._rowMap[String(key)];if(!row) return;
+  const isProd=row._rowType==='prod';
+  document.getElementById('er-rownum').value=row.row_num||'';
+  document.getElementById('er-rowtype').value=row._rowType||'';
+  document.getElementById('er-title').textContent=isProd?'✏ Modifier déclaration':'✏ Modifier événement';
+  const pwRow=document.getElementById('er-pw-row'),pwEl=document.getElementById('er-pw');
+  if(_adminPw){pwEl.value=_adminPw;pwRow.style.display='none';}else{pwEl.value='';pwRow.style.display='';}
+  document.getElementById('er-prod-fields').style.display=isProd?'':'none';
+  document.getElementById('er-evt-fields').style.display=isProd?'none':'';
+  if(isProd){
+    document.getElementById('er-of').value=row.of||'';
+    document.getElementById('er-deb').value=(row.debut||'').slice(0,5);
+    document.getElementById('er-fin').value=(row.fin||'').slice(0,5);
+    document.getElementById('er-poste').value=row.poste||'';
+    document.getElementById('er-pilote').value=row.pilote||'';
+    document.getElementById('er-copilote').value=row.copilote||'';
+    document.getElementById('er-nbpers').value=row.nb_pers||'';
+    document.getElementById('er-taille').value=row.taille||'';
+    document.getElementById('er-codeprod').value=row.code_prod||'';
+    document.getElementById('er-typeprod').value=row.type_prod||'';
+    document.getElementById('er-qtefab').value=row.qte_fab||'';
+    document.getElementById('er-qteemb').value=row.qte_emb||'';
+    document.getElementById('er-comment-prod').value=row.comment||'';
+  } else {
+    document.getElementById('er-evttype').value=row.type||'';
+    document.getElementById('er-evtof').value=row.of||'';
+    document.getElementById('er-evtdeb').value=(row.debut||'').slice(0,5);
+    document.getElementById('er-evtfin').value=(row.fin||'').slice(0,5);
+    document.getElementById('er-evtcomment').value=row.comment||'';
+    document.getElementById('er-horstrs').checked=row.hors_trs||false;
+  }
+  openM('m-editrow');
+}
+
+async function saveEditRow() {
+  const rowNum=parseInt(document.getElementById('er-rownum').value);
+  const rowType=document.getElementById('er-rowtype').value;
+  const pw=document.getElementById('er-pw').value||_adminPw;
+  if(!rowNum){toast('Ligne invalide','err');return;}
+  const v=id=>document.getElementById(id)?.value||'';
+  const n=id=>parseFloat(document.getElementById(id)?.value)||0;
+  let updates={};
+  if(rowType==='prod'){
+    updates={'2':v('er-of'),'4':v('er-poste'),'5':v('er-pilote'),'6':v('er-copilote'),
+      '7':n('er-nbpers'),'8':v('er-taille'),'9':v('er-codeprod'),'10':v('er-typeprod'),
+      '17':v('er-deb'),'18':v('er-fin'),'20':n('er-qtefab'),'21':n('er-qteemb'),'36':v('er-comment-prod')};
+  } else {
+    updates={'1':v('er-evttype'),'2':v('er-evtof'),'17':v('er-evtdeb'),'18':v('er-evtfin'),
+      '36':v('er-evtcomment'),'37':document.getElementById('er-horstrs').checked?'OUI':''};
+  }
+  const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rowNum,updates})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();toast('Ligne modifiée','ok');}
+  else toast(d?.error||'Erreur modification','err');
+}
+
+async function deleteRow(key,rowNumId) {
+  const rn=rowNumId?parseInt(document.getElementById(rowNumId)?.value):parseInt(window._rowMap[String(key)]?.row_num);
+  if(!rn||!confirm('Supprimer cette ligne ?')) return;
+  const pw=document.getElementById('er-pw')?.value||_adminPw||'';
+  const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rn})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();toast('Supprimé','ok');}
+  else toast(d?.error||'Erreur suppression','err');
+}
+
+// ── EDIT STOP (recap prod view) ──
 function buildEditStopOpts(){
   const s=document.getElementById('es-type');
-  if(!s) return;
-  [['Pause pilote','_pause',''],
-   ['Nettoyage','nettoyage','nettoyage'],
-   ...EVENTS,
-   ['Arrêt libre','autre','autre']
-  ].forEach(([lbl,key])=>{const o=document.createElement('option');o.value=key;o.textContent=lbl;s.appendChild(o);});
+  const s2=document.getElementById('er-evttype');
+  const allOpts=[['Pause pilote','_pause'],['Nettoyage','nettoyage'],...EVENTS.map(e=>[e[0],e[0]]),['Arrêt libre','Arrêt libre']];
+  [s,s2].forEach(sel=>{
+    if(!sel) return;
+    allOpts.forEach(([lbl,val])=>{const o=document.createElement('option');o.value=val;o.textContent=lbl;sel.appendChild(o);});
+  });
+  // es-type uses key values (not display)
+  if(s){s.innerHTML='';[['Pause pilote','_pause'],['Nettoyage','nettoyage'],...EVENTS,['Arrêt libre','autre']].forEach(([lbl,key])=>{const o=document.createElement('option');o.value=key;o.textContent=lbl;s.appendChild(o);});}
 }
 
 function openEditStop(key){
@@ -2809,7 +3046,7 @@ async function saveEditStop(){
   if(!ev) return;
   const data={row_num:ev.row_num,type:document.getElementById('es-type').value,heure_debut:document.getElementById('es-deb').value,heure_fin:document.getElementById('es-fin').value,comment:document.getElementById('es-cmt').value};
   const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainEvts();toast('Modifié','ok');}
+  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();toast('Modifié','ok');}
   else toast('Erreur','err');
 }
 
@@ -2818,7 +3055,7 @@ async function deleteStop(){
   const ev=window._evMap[key];
   if(!ev||!confirm('Supprimer ?')) return;
   const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:ev.row_num})});
-  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainEvts();toast('Supprimé','ok');}
+  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();toast('Supprimé','ok');}
 }
 
 // ── TIMELINE ──
@@ -2992,6 +3229,17 @@ async function loadFPData(){
         <span style="color:var(--gray)">${Math.round(s/60)} min</span>
       </div>`).join('')||'<span style="color:var(--gray);font-size:11px">Aucun arrêt</span>';
   }
+
+  // Graphs
+  const prodS=d.tot_s||0;
+  const stopS=stopTotal;
+  drawPie('fp-pie',[
+    {label:'Prod',value:prodS,color:'#16a34a'},
+    {label:'Arrêts',value:stopS,color:'#dc2626'},
+  ]);
+  const trsS=d.trs_shift!==undefined?d.trs_shift:d.trs;
+  drawGauge('fp-gauge-arc','fp-gauge-pct',trsS>=0?trsS:0);
+  const fpL=document.getElementById('fp-trs-lbl2');if(fpL) fpL.textContent=fmtTRSv(trsS);
 }
 
 async function confirmFinPoste(){
@@ -3108,6 +3356,8 @@ document.addEventListener('click',e=>{if(e.target.classList.contains('overlay'))
 
 // ── UTILS ──
 async function apiFetch(url){try{const r=await fetch(url);return r.ok?await r.json():null;}catch(e){return null;}}
+function fmtDur2(s){if(!s||s<0)return'0:00';const m=Math.floor(s/60),sec=Math.floor(s%60);return m+':'+String(sec).padStart(2,'0');}
+function fmtTRSv(v){return(v===null||v===undefined||isNaN(v)||v<0)?'--%':parseFloat(v).toFixed(1)+'%';}
 function fmtDur(s){if(!s||s<0)return'00:00:00';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);return[h,m,sec].map(x=>String(x).padStart(2,'0')).join(':');}
 function fmtD2(s){if(!s||s<0)return'0 min';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?h+'h'+String(m).padStart(2,'0'):m+' min';}
 function fmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}
