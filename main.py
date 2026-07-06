@@ -778,7 +778,7 @@ def _state_json():
     stop_wall_s = t_wall_clock_stops()
     of_elapsed = 0.0
     if _S["of_start"]:
-        of_elapsed = (datetime.datetime.now()-_S["of_start"]).total_seconds() + _S["inter_of_s"]
+        of_elapsed = (datetime.datetime.now()-_S["of_start"]).total_seconds()
         if _S["is_paused"] and _S["pause_start"]:
             of_elapsed -= (datetime.datetime.now()-_S["pause_start"]).total_seconds()
     timers_out = {}
@@ -1641,8 +1641,23 @@ def generate_dashboard_html():
     tot_equiv = sum(float(str(r[21] or "0").replace(",",".") or 0) for r in today_prod)
     nb_of_today = len(today_prod)
 
-    if shift_start_dt and last_fin_dt and prod_ref > 0:
-        elapsed_for_trs = (last_fin_dt - shift_start_dt).total_seconds()
+    # Use model horaire debut as shift reference (not shift_start which may include pre-shift events)
+    model_debut_dt = None
+    _day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
+    _dk = _day_map.get(datetime.date.today().weekday(), 'lun')
+    for _m in cfg.get("modeles_horaires", []):
+        if str(_m.get("nom","")).strip() == str(poste_now).strip():
+            _j = _m.get("jours",{}).get(_dk,{})
+            _deb = _j.get("debut","") or _m.get("debut","")
+            if _deb:
+                try:
+                    _h, _mi = map(int, _deb.split(":"))
+                    model_debut_dt = datetime.datetime.combine(datetime.date.today(), datetime.time(_h, _mi))
+                except: pass
+            break
+    ref_start_dt = model_debut_dt or shift_start_dt
+    if ref_start_dt and last_fin_dt and prod_ref > 0:
+        elapsed_for_trs = (last_fin_dt - ref_start_dt).total_seconds()
         if elapsed_for_trs > 0:
             trs_poste = round(tot_equiv / (prod_ref * elapsed_for_trs / 28800) * 100, 1)
 
@@ -2624,23 +2639,26 @@ select{cursor:default}
         <div style="font-size:15px;font-weight:800">🏁 Fin de poste</div>
         <div id="fp-who" style="font-size:11px;opacity:.8"></div>
       </div>
-      <div id="fp-date" style="font-size:12px;font-weight:700;opacity:.9"></div>
+      <div style="text-align:right">
+        <div style="font-size:14px;font-weight:800;color:#fbbf24" id="fp-horaire-display">—</div>
+        <div id="fp-date" style="font-size:11px;font-weight:700;opacity:.8"></div>
+      </div>
     </div>
     <!-- Graphiques + KPI (en haut, compact) -->
     <div style="display:flex;gap:12px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;flex-wrap:wrap">
       <div style="text-align:center;flex-shrink:0">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">TRS Poste</div>
-        <svg id="fp-gauge" viewBox="0 0 100 58" style="width:140px;display:block;margin:0 auto">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">TRS Poste</div>
+        <svg id="fp-gauge" viewBox="0 0 100 58" style="width:200px;display:block;margin:0 auto">
           <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
           <path id="fp-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
           <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="fp-gauge-pct">--%</text>
         </svg>
-        <div style="font-size:13px;font-weight:800;color:var(--navy);margin-top:2px" id="fp-trs-lbl2">—</div>
-        <div style="font-size:11px;color:var(--gray);margin-top:1px" id="fp-shift-hours">—</div>
+        <div style="font-size:18px;font-weight:800;color:var(--navy);margin-top:4px" id="fp-trs-lbl2">—</div>
+        <div style="font-size:12px;color:var(--gray);margin-top:2px" id="fp-shift-hours">—</div>
       </div>
       <div style="text-align:center;flex-shrink:0">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">Répartition</div>
-        <svg id="fp-pie" viewBox="0 0 130 115" style="width:140px;height:124px;display:block;margin:0 auto"></svg>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Répartition</div>
+        <svg id="fp-pie" viewBox="0 0 130 115" style="width:200px;height:177px;display:block;margin:0 auto"></svg>
       </div>
       <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:5px">
         <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-trs">--%</div><div class="fp-lbl">TRS Shift</div></div>
@@ -2654,8 +2672,8 @@ select{cursor:default}
     <!-- Timeline compact -->
     <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline du poste</div>
-      <svg id="fp-tl" viewBox="0 0 800 32" preserveAspectRatio="none" style="width:100%;height:32px;display:block">
-        <rect x="0" y="2" width="800" height="24" fill="#e2e8f0" rx="4"/>
+      <svg id="fp-tl" viewBox="0 0 800 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block">
+        <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
       </svg>
       <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
     </div>
@@ -3775,9 +3793,10 @@ function saveMainModelHours(){
   fetch('/api/update_model_today',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:poste,day_key:dk,debut,fin})});
   const el=document.getElementById('main-model-times');
   if(el) el.textContent=debut+' → '+fin;
-  // Refresh Prod view model display and TRS gauges
+  // Refresh Prod view model display and all TRS gauges/KPIs
   updatePobModel(poste);
   updateGauge(ST);
+  loadMainKPI();
   toast('Horaires mis à jour','ok');
 }
 
@@ -4773,12 +4792,14 @@ async function loadFPData(){
   const fpFin=document.getElementById('fp-fin-dt');
   if(fpDeb) fpDeb.value=toLocalDT(debDt);
   if(fpFin) fpFin.value=toLocalDT(finDt);
-  // Show model horaire info
+  // Show model horaire info (in header and gauge footer)
   const fpShiftInfo=document.getElementById('fp-shift-info');
   const fpShiftH=document.getElementById('fp-shift-hours');
+  const fpHoraireDisp=document.getElementById('fp-horaire-display');
   const hStr2=jourFP&&jourFP.debut&&jourFP.fin?`${jourFP.debut} → ${jourFP.fin}`:'—';
   if(fpShiftInfo) fpShiftInfo.textContent=hStr2;
   if(fpShiftH) fpShiftH.textContent=hStr2;
+  if(fpHoraireDisp) fpHoraireDisp.textContent=hStr2 !== '—' ? `Poste : ${hStr2}` : '—';
   drawTLFromISO('fp-tl',allEvtsForTL,debDt.toISOString(),finDt.toISOString(),d.of_list||[]);
 
   // Productions
@@ -4861,9 +4882,11 @@ function recalcFPTRS(){
   const jour=jours[dk]||{};
   const shiftInfo=document.getElementById('fp-shift-info');
   const shiftHours=document.getElementById('fp-shift-hours');
+  const fpHD=document.getElementById('fp-horaire-display');
   const hStr=jour.debut&&jour.fin?`${jour.debut} → ${jour.fin}`:'—';
   if(shiftInfo) shiftInfo.textContent=hStr;
   if(shiftHours) shiftHours.textContent=hStr;
+  if(fpHD) fpHD.textContent=hStr !== '—' ? `Poste : ${hStr}` : '—';
   // Recalculate TRS using this model's shift duration
   if(jour.debut&&jour.fin){
     const p=s=>{const[h,m]=s.split(':').map(Number);return h*3600+m*60;};
