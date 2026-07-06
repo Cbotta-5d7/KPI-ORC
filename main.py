@@ -2102,7 +2102,19 @@ select{cursor:default}
     </div>
     <div class="lf">
       <label>Modèle horaire (Poste)</label>
-      <select id="ln-model"><option value="">-- Choisir --</option></select>
+      <select id="ln-model" onchange="onLoginModelChange()"><option value="">-- Choisir --</option></select>
+    </div>
+    <!-- Horaires du jour -->
+    <div id="ln-model-info" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;border-radius:7px;padding:8px 10px;font-size:12px;margin-bottom:6px">
+      <div style="color:#0369a1;font-weight:700;margin-bottom:3px">Horaires aujourd'hui :</div>
+      <div id="ln-model-times" style="font-size:15px;font-weight:800;color:#0c4a6e;margin-bottom:5px"></div>
+      <div id="ln-model-modify" style="display:none;margin-bottom:5px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:11px;font-weight:600">Début <input type="time" id="ln-new-debut" style="padding:3px 6px;border:1.5px solid #bae6fd;border-radius:5px;font-size:12px"></label>
+          <label style="font-size:11px;font-weight:600">Fin <input type="time" id="ln-new-fin" style="padding:3px 6px;border:1.5px solid #bae6fd;border-radius:5px;font-size:12px"></label>
+        </div>
+      </div>
+      <button style="font-size:11px;padding:3px 8px;background:none;border:1px solid #0369a1;border-radius:5px;color:#0369a1;cursor:pointer" onclick="toggleLoginModelModify()">✏ Modifier les horaires d'aujourd'hui</button>
     </div>
     <div class="lf">
       <label>Mot de passe</label>
@@ -2459,6 +2471,15 @@ select{cursor:default}
     </div>
     <div id="v-settings-content">
       <div class="ss">
+        <h3>📂 Fichier Excel de données</h3>
+        <div style="font-size:11px;color:var(--gray);margin-bottom:8px">Chemin complet vers le fichier Excel (.xlsx) contenant les onglets Declarations et Listes.</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+          <input id="cfg-db-path" placeholder="C:\chemin\vers\fichier.xlsx" style="flex:1;min-width:200px;padding:7px 10px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
+          <button class="btn btn-prim" onclick="setDbPath()">💾 Enregistrer</button>
+        </div>
+        <div id="cfg-db-status" style="font-size:11px;color:var(--gray)"></div>
+      </div>
+      <div class="ss">
         <h3>🔐 Mots de passe pilotes</h3>
         <div id="pwd-list"></div>
         <div class="flex mt8">
@@ -2500,8 +2521,11 @@ select{cursor:default}
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:8px;border-radius:7px;border:1px solid var(--border)">
           <input id="ev-new-label" placeholder="Nom de l'arrêt" style="flex:1;min-width:120px;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
           <select id="ev-new-cat" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
-            <option value="pb">Panne (rouge)</option>
-            <option value="ratt">Rattrapage (orange)</option>
+            <option value="pb">🔴 Panne</option>
+            <option value="ratt">🟠 Rattrapage</option>
+            <option value="nettoyage">🟡 Nettoyage</option>
+            <option value="organisation">🔵 Organisation</option>
+            <option value="autre">⚫ Autre</option>
           </select>
           <button class="btn btn-green" style="font-size:11px;padding:5px 12px" onclick="addEvtItem()">+ Ajouter</button>
         </div>
@@ -2524,6 +2548,10 @@ select{cursor:default}
       <div class="stops-grid ratt" id="sgrid-ratt"></div>
       <div class="stop-section-lbl">🔧 PB Technique</div>
       <div class="stops-grid pb" id="sgrid-pb"></div>
+      <div class="stop-section-lbl" id="sgrid-nett-lbl" style="display:none">🟡 Nettoyage</div>
+      <div class="stops-grid" id="sgrid-nettoyage" style="display:none"></div>
+      <div class="stop-section-lbl" id="sgrid-org-lbl" style="display:none">🔵 Organisation</div>
+      <div class="stops-grid" id="sgrid-organisation" style="display:none"></div>
       <div class="stop-section-lbl">✏ Arrêt libre / autre</div>
       <div class="custom-row">
         <input id="custom-stop-input" placeholder="Nom de l'arrêt…" maxlength="60">
@@ -2703,8 +2731,9 @@ const EVENTS = [
 ];
 
 const STOP_COL = {
-  ratt:"#dc2626",pb:"#dc2626",autre:"#dc2626",
+  ratt:"#dc2626",pb:"#dc2626",autre:"#64748b",
   nettoyage:"#f59e0b",
+  organisation:"#3b82f6",
   "_pause":"#94a3b8","Pause pilote":"#94a3b8"
 };
 
@@ -2813,6 +2842,34 @@ function popSel(id, vals) {
   if (cur) s.value = cur;
 }
 
+// ── Login model horaire info ──
+function onLoginModelChange(){
+  const nom=document.getElementById('ln-model').value;
+  const info=document.getElementById('ln-model-info');
+  const timesEl=document.getElementById('ln-model-times');
+  const modifyDiv=document.getElementById('ln-model-modify');
+  if(!nom){if(info)info.style.display='none';return;}
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const todayKey=DAY_KEYS[new Date().getDay()];
+  const model=_cfgModels.find(m=>m.nom===nom);
+  let debut='',fin='';
+  if(model&&model.jours&&model.jours[todayKey]){
+    debut=model.jours[todayKey].debut||'';
+    fin=model.jours[todayKey].fin||'';
+  }
+  if(timesEl) timesEl.textContent=debut&&fin?`${debut} → ${fin}`:'Aucun horaire défini pour aujourd\'hui';
+  // Pre-fill modify inputs
+  const nd=document.getElementById('ln-new-debut'),nf=document.getElementById('ln-new-fin');
+  if(nd) nd.value=debut; if(nf) nf.value=fin;
+  if(modifyDiv) modifyDiv.style.display='none';
+  if(info) info.style.display='block';
+}
+
+function toggleLoginModelModify(){
+  const d=document.getElementById('ln-model-modify');
+  if(d) d.style.display=d.style.display==='none'?'block':'none';
+}
+
 // ── LOGIN ──
 async function doLogin() {
   const pilot = document.getElementById('ln-pilot').value;
@@ -2825,6 +2882,24 @@ async function doLogin() {
   if (!r) return;
   const d = await r.json();
   if (d.ok) {
+    // Si l'utilisateur a modifié les horaires du jour, les sauvegarder avant d'entrer
+    const modifyDiv=document.getElementById('ln-model-modify');
+    if(modifyDiv&&modifyDiv.style.display!=='none'){
+      const newDebut=document.getElementById('ln-new-debut').value;
+      const newFin=document.getElementById('ln-new-fin').value;
+      if(newDebut&&newFin){
+        const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+        const todayKey=DAY_KEYS[new Date().getDay()];
+        const mi=_cfgModels.findIndex(m=>m.nom===poste);
+        if(mi>=0){
+          if(!_cfgModels[mi].jours)_cfgModels[mi].jours={};
+          if(!_cfgModels[mi].jours[todayKey])_cfgModels[mi].jours[todayKey]={};
+          _cfgModels[mi].jours[todayKey].debut=newDebut;
+          _cfgModels[mi].jours[todayKey].fin=newFin;
+          await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw||'',modeles_horaires:_cfgModels})});
+        }
+      }
+    }
     const s = await apiFetch('/api/state');
     document.getElementById('v-login').classList.remove('on');
     showApp(s||{pilot,poste});
@@ -2842,6 +2917,9 @@ function showApp(s) {
   // Show prod tab button immediately if prod is active (don't wait for applyState)
   const tp=document.getElementById('ht-prod');
   if(tp) tp.style.display=s.prod_active?'':'none';
+  // Also show the main banner immediately
+  const mpb=document.getElementById('main-prod-banner');
+  if(mpb) mpb.style.display=s.prod_active?'block':'none';
   setToday();
   restoreFormFromStorage();
   pollState();
@@ -3383,21 +3461,20 @@ async function loadEvtsList(){
 
 function rebuildStopGrids(){
   const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
-  const rattGrid=document.getElementById('sgrid-ratt');
-  const pbGrid=document.getElementById('sgrid-pb');
-  if(!rattGrid||!pbGrid) return;
-  rattGrid.innerHTML='';pbGrid.innerHTML='';
-  evts.filter(e=>e.cat==='ratt').forEach(e=>{
+  const GRIDS={ratt:'sgrid-ratt',pb:'sgrid-pb',nettoyage:'sgrid-nettoyage',organisation:'sgrid-organisation'};
+  const LABELS={nettoyage:'sgrid-nett-lbl',organisation:'sgrid-org-lbl'};
+  Object.values(GRIDS).forEach(id=>{const g=document.getElementById(id);if(g)g.innerHTML='';});
+  evts.forEach(e=>{
+    const gid=GRIDS[e.cat]; if(!gid) return;
+    const g=document.getElementById(gid); if(!g) return;
     const b=document.createElement('button');
-    b.className='stop-btn ratt'; b.textContent=e.label;
-    b.onclick=()=>{closeM('m-stop');doStartStop(e.key,'ratt');};
-    rattGrid.appendChild(b);
-  });
-  evts.filter(e=>e.cat==='pb').forEach(e=>{
-    const b=document.createElement('button');
-    b.className='stop-btn pb'; b.textContent=e.label;
-    b.onclick=()=>{closeM('m-stop');doStartStop(e.key,'pb');};
-    pbGrid.appendChild(b);
+    const col=STOP_COL[e.cat]||'#64748b';
+    b.style.cssText=`background:${col};color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer`;
+    b.textContent=e.label;
+    b.onclick=()=>{closeM('m-stop');doStartStop(e.key,e.cat);};
+    g.appendChild(b);
+    g.style.display='';
+    if(LABELS[e.cat]){const l=document.getElementById(LABELS[e.cat]);if(l)l.style.display='';}
   });
 }
 
@@ -3418,7 +3495,7 @@ function renderEvtListUI(){
 
 function _renderEvtListHTML(){
   const c=document.getElementById('events-list-ui');if(!c) return;
-  const catLbl={pb:'🔴 Panne',ratt:'🟠 Rattrapage'};
+  const catLbl={pb:'🔴 Panne',ratt:'🟠 Rattrapage',nettoyage:'🟡 Nettoyage',organisation:'🔵 Organisation',autre:'⚫ Autre'};
   c.innerHTML=_evtsEditing.map((e,i)=>`
     <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:12px">
       <span style="flex:1;font-weight:600">${esc(e.label)}</span>
@@ -4153,6 +4230,23 @@ async function loadHist(){
 }
 
 // ── SETTINGS ──
+async function setDbPath(){
+  const path=document.getElementById('cfg-db-path').value.trim();
+  if(!path){toast('Chemin requis','err');return;}
+  const st=document.getElementById('cfg-db-status');
+  if(st){st.textContent='Enregistrement…';st.style.color='var(--amber)';}
+  const r=await fetch('/api/set_db',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,path})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){
+    if(st){st.textContent='✓ Fichier Excel configuré';st.style.color='var(--green)';}
+    toast('Fichier Excel enregistré','ok');
+    loadCfg();
+  } else {
+    if(st){st.textContent='✗ '+(d&&d.error||'Erreur — vérifiez le chemin');st.style.color='var(--red)';}
+    toast(d&&d.error||'Chemin invalide','err');
+  }
+}
+
 async function loadCfg(){
   const d=await apiFetch('/api/config');
   if(!d) return;
@@ -4160,6 +4254,11 @@ async function loadCfg(){
   _cfgModels=d.modeles_horaires||[];
   const prEl=document.getElementById('cfg-pr');
   if(prEl) prEl.value=d.prod_ref||200;
+  // Show current db path
+  const dbEl=document.getElementById('cfg-db-path');
+  const dbSt=document.getElementById('cfg-db-status');
+  if(dbEl&&d.db_path) dbEl.value=d.db_path;
+  if(dbSt&&d.db_name){dbSt.textContent='Fichier actuel : '+d.db_name;dbSt.style.color='var(--green)';}
   renderPwdList();
   renderModelList();
   await loadEvtsList();
