@@ -37,7 +37,7 @@ EVENTS = [
     ("Reunion",              "arret_reunion",    "ratt"),
 ]
 
-# Nouveau schéma unifié - 37 colonnes (remplace Data + Evenements)
+# Nouveau schéma unifié - 39 colonnes
 DECL_HEADERS = [
     "Type","OF","Date","Poste","Pilote","Co-Pilote","Nb Personnes",
     "Taille","Code Produit","Type Produit","Poids Garnissage","Fibre",
@@ -46,8 +46,9 @@ DECL_HEADERS = [
     "Qte Fabriquee","Qte Emballee","Equivalence","Cadence/h","Cadence/h/pers","TRS%",
     "Qte Init Taie","Nb Taie 2nd Choix","Nb Defaut Couture",
     "Mq Taie","Mq Housse/Encart","Nb PP Cousue",
-    "Changement de Serie","Manquant MP","Manquant Personnel/Reunion",
-    "Nettoyage Fin de Poste","Commentaire","Prevu/Hors TRS",
+    "","Manquant MP","Manquant Personnel/Reunion",
+    "","Commentaire","Prevu/Hors TRS",
+    "Duree Arrets","Duree Prod Pure",
 ]
 
 POSTES = ["Matin","Midi","Nuit","Jour"]
@@ -618,7 +619,7 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
 
-POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Totale (equiv)","TRS Poste %","TRS Prod %","Total Arrets (min)","Total Pauses (min)","Nettoyage (min)","Commentaire"]
+POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Total Arrets (min)","Total Pauses (min)","Nettoyage (min)","Durée Prod Totale (min)","Durée Prod Sans Arrêt (min)","Commentaire"]
 
 def write_pilots_to_excel(pilot_passwords):
     """Écrit la liste pilote+MDP dans l'onglet Listes col A+B."""
@@ -677,12 +678,14 @@ def write_poste_row(data):
                     data.get("copilote",""),
                     data.get("poste",""),
                     data.get("nb_of",0),
+                    round(float(data.get("prod_total",0) or 0),0),
                     round(float(data.get("tot_equiv",0) or 0),1),
                     data.get("trs_shift",""),
-                    data.get("trs_of",""),
                     round(float(data.get("arret_min",0) or 0),1),
                     round(float(data.get("pause_min",0) or 0),1),
                     round(float(data.get("nett_min",0) or 0),1),
+                    round(float(data.get("dur_prod_total_min",0) or 0),1),
+                    round(float(data.get("dur_prod_sans_arret_min",0) or 0),1),
                     data.get("comment",""),
                 ]
                 ws.append(row)
@@ -997,12 +1000,14 @@ def api_end_prod():
         _n(v.get("mq_taie",0)),
         _n(v.get("mq_housse_encart",0)),
         _n(v.get("nb_pp_cousue",0)),
-        fmt(_S["inter_of_s"]) if _S["inter_of_s"]>0 else "",
+        "",
         _min_str_to_hms(v.get("duree_mq_mp","")),
         _min_str_to_hms(v.get("manquant_pers","")),
-        fmt(_nett_s),
+        "",
         v.get("comment",""),
         "",
+        fmt(stop_s),
+        fmt(max(0, of_s_brut - stop_s)),
     ]
     evt_rows = build_decl_rows(
         dict(v, pilote=v.get("pilote",_S["pilot"] or ""), poste=v.get("poste",_S["poste"] or "")),
@@ -1150,9 +1155,26 @@ def api_save_form():
 @flask_app.route('/api/history')
 def api_history():
     rows = []
-    prod_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() in ("production","prod","")]
-    for rn, r in prod_rows[-100:]:
+    date_from = request.args.get("from","")
+    date_to = request.args.get("to","")
+    date_single = request.args.get("date","")
+    # Legacy single-date param
+    if date_single and not date_from:
+        date_from = date_to = date_single
+    def _parse_date(s):
         try:
+            if "-" in s: return datetime.datetime.strptime(s,"%Y-%m-%d").date()
+            if "/" in s: return datetime.datetime.strptime(s,"%d/%m/%Y").date()
+        except: pass
+        return None
+    d_from = _parse_date(date_from) if date_from else None
+    d_to = _parse_date(date_to) if date_to else None
+    all_rows = [(rn,r) for rn,r in _decl_cache]
+    for rn, r in all_rows[-500:]:
+        try:
+            row_d = _parse_date(_row_date(r[2])) if r[2] else None
+            if d_from and row_d and row_d < d_from: continue
+            if d_to and row_d and row_d > d_to: continue
             trs = -1
             try:
                 equiv_v = float(str(r[21] or 0).replace(",","."))
@@ -1982,21 +2004,19 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .sc-val.green{color:var(--green)}
 .sc-val.red{color:var(--red)}
 .sc-val.amber{color:var(--amber)}
-/* main 3-col layout */
+/* main 2-col layout */
 .prod-body{display:flex;flex:1;overflow:hidden}
-/* LEFT actions col */
-.act-col{width:190px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:8px;gap:6px}
-.big-stop-btn{width:100%;background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;border:none;border-radius:10px;padding:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;flex:0 0 90px;font-size:13px;font-weight:800;box-shadow:0 4px 12px rgba(185,28,28,.35);transition:all .15s;letter-spacing:.3px}
-.big-stop-btn:hover{filter:brightness(.9);transform:translateY(-1px)}
-.big-stop-btn .ico{font-size:22px}
-.act-btn{width:100%;border:none;border-radius:8px;padding:8px 4px;cursor:pointer;font-size:11px;font-weight:700;text-align:center;transition:all .15s}
+/* CENTER form col (now left) */
+.form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
+/* Action buttons row below timeline */
+.prod-act-row{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px}
+.act-btn{flex:1;min-width:90px;border:none;border-radius:8px;padding:9px 6px;cursor:pointer;font-size:12px;font-weight:700;text-align:center;transition:all .15s;white-space:nowrap}
 .act-btn:hover{filter:brightness(.9)}
+.act-stop{background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;font-size:13px;font-weight:800;box-shadow:0 3px 8px rgba(185,28,28,.3)}
 .act-nett{background:#e0f2fe;color:var(--blue)}
 .act-pause{background:#f3e8ff;color:var(--purple)}
-.act-spacer{flex:1}
-.act-endprod{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:12px;font-weight:800;padding:10px 4px;border-radius:8px;box-shadow:0 3px 8px rgba(217,119,6,.3)}
-/* CENTER form col */
-.form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
+.act-cancel{background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1}
+.act-endprod{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-weight:800;box-shadow:0 3px 8px rgba(217,119,6,.3)}
 /* 3-col form zones */
 .form-3col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 .fzone{border-radius:7px;padding:8px}
@@ -2024,8 +2044,8 @@ select{cursor:default}
 /* Timeline */
 .tl-wrap{background:var(--card);border-radius:7px;padding:7px 8px;border:1px solid var(--border)}
 .tl-wrap h5{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;letter-spacing:.7px;margin-bottom:4px}
-/* RIGHT recap col */
-.recap-col{width:215px;flex-shrink:0;border-left:1px solid var(--border);background:var(--card);display:flex;flex-direction:column;overflow:hidden}
+/* RIGHT recap col (wider) */
+.recap-col{width:280px;flex-shrink:0;border-left:1px solid var(--border);background:var(--card);display:flex;flex-direction:column;overflow:hidden}
 .recap-hdr{font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);letter-spacing:.6px;padding:8px 8px 4px}
 .recap-body{flex:1;overflow-y:auto;padding:0 6px 6px}
 .si{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid var(--border);font-size:11px}
@@ -2145,8 +2165,8 @@ select{cursor:default}
 .mt8{margin-top:8px}
 .card{background:var(--card);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);border:1px solid var(--border)}
 
-@media(max-width:900px){.form-3col{grid-template-columns:1fr 1fr}.recap-col{width:130px}.act-col{width:110px}}
-@media(max-width:650px){.form-3col{grid-template-columns:1fr}.prod-body{flex-direction:column}.act-col,.recap-col{width:100%;flex-direction:row;flex-wrap:wrap}.act-col{height:auto}}
+@media(max-width:900px){.form-3col{grid-template-columns:1fr 1fr}.recap-col{width:180px}}
+@media(max-width:650px){.form-3col{grid-template-columns:1fr}.prod-body{flex-direction:column}.recap-col{width:100%}}
 </style>
 </head>
 <body>
@@ -2303,18 +2323,7 @@ select{cursor:default}
     </div>
     <!-- Body -->
     <div class="prod-body">
-      <!-- LEFT: action buttons -->
-      <div class="act-col">
-        <button class="big-stop-btn" onclick="openStopModal()">
-          <span class="ico">⛔</span>
-          <span>Déclarer<br>un arrêt</span>
-        </button>
-        <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
-        <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause pilote</button>
-        <div class="act-spacer"></div>
-        <button class="act-btn act-endprod" onclick="doEndProdPreview()">🏁 Fin de<br>production</button>
-      </div>
-      <!-- CENTER: form -->
+      <!-- LEFT: form (now full center, no act-col) -->
       <div class="form-col">
         <div class="form-3col">
           <!-- Zone Identification -->
@@ -2363,6 +2372,14 @@ select{cursor:default}
             <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
           </svg>
           <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
+        </div>
+        <!-- Action buttons row (below timeline) -->
+        <div class="prod-act-row">
+          <button class="act-btn act-stop" onclick="openStopModal()">⛔ Déclarer un arrêt</button>
+          <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
+          <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause pilote</button>
+          <button class="act-btn act-cancel" onclick="doCancelProd()">✖ Annuler prod</button>
+          <button class="act-btn act-endprod" onclick="doEndProdPreview()">🏁 Fin de production</button>
         </div>
       </div>
       <!-- RIGHT: recap + gauge -->
@@ -2535,9 +2552,11 @@ select{cursor:default}
 
   <!-- ════ HISTORY ════ -->
   <div id="v-history" class="view" style="flex-direction:column;overflow:hidden">
-    <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+    <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap">
       <span style="font-size:12px;font-weight:700;color:var(--navy)">Historique</span>
-      <input type="date" id="hist-dt" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px" onchange="loadHist()">
+      <label style="font-size:11px;font-weight:600;color:var(--gray)">Du <input type="date" id="hist-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;margin-left:4px"></label>
+      <label style="font-size:11px;font-weight:600;color:var(--gray)">Au <input type="date" id="hist-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;margin-left:4px"></label>
+      <button class="btn btn-primary" onclick="loadHist()" style="padding:5px 12px;font-size:12px">Charger</button>
     </div>
     <div style="flex:1;overflow-y:auto">
       <table class="ktbl"><thead><tr id="hist-hd"></tr></thead><tbody id="hist-bd"></tbody></table>
@@ -3070,7 +3089,9 @@ function showApp(s) {
   pollEvts();
   loadCfg();
   goTab(s.prod_active ? 'prod' : 'main');
-  document.getElementById('hist-dt').value = new Date().toISOString().slice(0,10);
+  const _today=new Date().toISOString().slice(0,10);
+  const _hf=document.getElementById('hist-from'); if(_hf&&!_hf.value)_hf.value=_today;
+  const _ht=document.getElementById('hist-to'); if(_ht&&!_ht.value)_ht.value=_today;
 }
 
 async function doLogout() {
@@ -3587,7 +3608,18 @@ async function confirmInterposte(){
 async function skipInterposte(){
   window._psStartIso=null;
   closeM('m-interposte');
+  if(_pendingGapS>30){
+    await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inter_of_s:_pendingGapS,label:'Interposte',comment:''})});
+  }
   goTab('prod');
+}
+
+async function doCancelProd(){
+  if(!confirm('Annuler cette production ? Aucune donnée ne sera écrite dans Excel.')) return;
+  await fetch('/api/force_reset_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  await pollState();
+  goTab('main');
+  toast('Production annulée','ok');
 }
 
 // ── STOP/PAUSE ──
@@ -4333,7 +4365,6 @@ function recalcFPTRS(){
 }
 
 async function confirmFinPoste(){
-  // Gather stop/pause/nettoyage totals from gEvts
   const stops=gEvts.filter(e=>e.type);
   const pSec=s=>s?s.split(':').reduce((a,v,i)=>a+(i===0?+v*3600:i===1?+v*60:+v),0):0;
   let arret_s=0,pause_s=0,nett_s=0;
@@ -4345,18 +4376,24 @@ async function confirmFinPoste(){
     else arret_s+=dur;
   });
   const fpData=await apiFetch('/api/fin_poste_data');
+  const ofList=fpData&&fpData.of_list||[];
+  const prod_total=ofList.reduce((s,o)=>s+parseInt(o.qte_fab||0),0);
+  const dur_prod_total_s=ofList.reduce((s,o)=>s+pSec(o.duree||''),0);
+  const dur_prod_sans_arret_s=Math.max(0,dur_prod_total_s-arret_s);
   const posteRow={
     date:new Date().toLocaleDateString('fr-FR'),
     pilot:ST.pilot||'',
     copilote:ST.form&&ST.form.copilote||'',
     poste:ST.poste||'',
     nb_of:fpData?fpData.nb_of||0:0,
+    prod_total,
     tot_equiv:fpData?fpData.tot_equiv||0:0,
     trs_shift:fpData?fpData.trs_shift||0:0,
-    trs_of:fpData?fpData.trs||0:0,
     arret_min:Math.round(arret_s/60),
     pause_min:Math.round(pause_s/60),
     nett_min:Math.round(nett_s/60),
+    dur_prod_total_min:Math.round(dur_prod_total_s/60),
+    dur_prod_sans_arret_min:Math.round(dur_prod_sans_arret_s/60),
     comment:''
   };
   await fetch('/api/save_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posteRow)});
@@ -4367,8 +4404,10 @@ async function confirmFinPoste(){
 
 // ── HISTORY ──
 async function loadHist(){
-  const dt=document.getElementById('hist-dt').value||new Date().toISOString().slice(0,10);
-  const d=await apiFetch('/api/history?date='+dt);
+  const today=new Date().toISOString().slice(0,10);
+  const from=document.getElementById('hist-from').value||today;
+  const to=document.getElementById('hist-to').value||today;
+  const d=await apiFetch(`/api/history?from=${from}&to=${to}`);
   const rows=Array.isArray(d)?d:(d&&d.rows?d.rows:[]);
   const hd=document.getElementById('hist-hd'),bd=document.getElementById('hist-bd');
   if(!hd||!bd) return;
@@ -4535,6 +4574,14 @@ def _session_autosave():
         try: save_session()
         except: pass
 
+def _dashboard_autogen():
+    while True:
+        time.sleep(30)
+        try:
+            if cfg.get("db_path") and _S.get("pilot"):
+                generate_dashboard_html()
+        except: pass
+
 def main():
     global cfg
     cfg = load_cfg()
@@ -4542,6 +4589,7 @@ def main():
     threading.Thread(target=load_lists, daemon=True).start()
     threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_session_autosave, daemon=True).start()
+    threading.Thread(target=_dashboard_autogen, daemon=True).start()
 
     # Recover pending Excel write after crash
     try:
