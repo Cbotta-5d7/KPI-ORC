@@ -1,5 +1,5 @@
 """KPI-ORC v6.3 - Flask + pywebview"""
-import json, os, sys, datetime, threading, math, shutil
+import json, os, sys, datetime, threading, math, shutil, time
 from flask import Flask, request, jsonify, render_template_string
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Border, Side, PatternFill
@@ -355,6 +355,15 @@ def load_lists():
                     pil_map[str(pil_v).strip()] = str(pw_v or "").strip()
             if pil_map:
                 cfg["pilot_passwords"] = pil_map
+            # Also read fixed-position columns: C=copilotes, D=fibres, E=tailles
+            for col_idx, list_key in [(3,"copilotes"),(4,"fibres_col"),(5,"tailles_col")]:
+                vals = []
+                for ri in range(2, ws.max_row+1):
+                    v = ws.cell(ri, col_idx).value
+                    if v is not None and str(v).strip():
+                        vals.append(str(v).strip())
+                if vals:
+                    _lists[list_key] = vals
         wb.close()
     except: pass
 
@@ -526,20 +535,28 @@ def write_excel_bg(prod_row, evt_rows):
             json.dump({"db_path":path,"prod_row":prod_row,"evt_rows":evt_rows},f,ensure_ascii=False,default=str)
     except: pass
     def _bg():
-        try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _ensure_decl_sheet(wb)
-                ws.append(prod_row)
-                _format_row(ws, ws.max_row)
-                for er in evt_rows:
-                    ws.append(er)
+        for attempt in range(15):
+            try:
+                with _excel_lock:
+                    wb = _get_wb(path)
+                    if wb is None:
+                        time.sleep(4)
+                        continue
+                    ws = _ensure_decl_sheet(wb)
+                    ws.append(prod_row)
                     _format_row(ws, ws.max_row)
-                _safe_excel_save(wb, path)
-                try: os.remove(PENDING_FILE)
-                except: pass
-        except: pass
+                    for er in evt_rows:
+                        ws.append(er)
+                        _format_row(ws, ws.max_row)
+                    _safe_excel_save(wb, path)
+                    try: os.remove(PENDING_FILE)
+                    except: pass
+                    break  # success — exit retry loop
+            except PermissionError:
+                # Excel a le fichier ouvert — on réessaie dans 5s
+                time.sleep(5)
+            except Exception:
+                break
         threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_bg, daemon=True).start()
 
@@ -706,9 +723,10 @@ def api_state():
 def api_lists():
     return jsonify({
         "pilotes": get_list("Pilotes") or get_list("pilotes") or get_list("Pilote") or get_list("pilote") or list(cfg.get("pilot_passwords",{}).keys()),
-        "tailles": get_list("Tailles") or get_list("taille"),
+        "copilotes": get_list("copilotes") or get_list("Co-Pilote") or get_list("Copilote") or get_list("Pilotes") or get_list("pilotes") or list(cfg.get("pilot_passwords",{}).keys()),
+        "tailles": get_list("tailles_col") or get_list("Tailles") or get_list("taille"),
         "types_prod": get_list("Type produit") or get_list("types_prod"),
-        "fibres": get_list("Fibres") or get_list("fibre"),
+        "fibres": get_list("fibres_col") or get_list("Fibres") or get_list("fibre"),
         "tracas": get_list("Traca") or get_list("tracas"),
         "equivalences": get_list("Equivalence coef") or get_list("Equivalence") or [],
     })
@@ -1837,7 +1855,12 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .fr.comment-big textarea{height:80px;font-size:13px;border:2px solid #f59e0b;background:#fffbeb;font-weight:500}
 .fr.comment-big label{color:#d97706;font-size:10px}
 input[type=checkbox]{cursor:pointer}
-input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]),textarea{cursor:text}
+input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]),textarea{cursor:text!important}
+input,select,textarea{cursor:auto}
+input[type=text],input[type=number],input[type=password],input[type=time],input[type=date],textarea{cursor:text!important}
+.tl-legend{display:flex;gap:12px;padding:2px 4px;font-size:10px;color:var(--gray);flex-wrap:wrap;align-items:center}
+.tl-legend span{display:flex;align-items:center;gap:3px}
+.tl-legend i{display:inline-block;width:12px;height:10px;border-radius:2px;flex-shrink:0}
 select{cursor:default}
 .fr.big input{font-size:16px;font-weight:700;padding:5px 6px;color:var(--green)}
 .fr.ro input{background:#f8fafc;color:var(--gray)}
@@ -2099,7 +2122,7 @@ select{cursor:default}
             <div class="fr ro"><label>Date</label><input id="f-date" readonly></div>
             <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
-            <div class="fr"><label>Co-Pilote</label><input id="f-copilote" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Co-Pilote</label><select id="f-copilote" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="2" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Code Produit</label><input id="f-code_prod" oninput="scheduleAutoSave()"></div>
@@ -2112,9 +2135,9 @@ select{cursor:default}
             <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
             <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
+            <div class="fr"><label>Fibre</label><input type="text" id="f-fibre" oninput="scheduleAutoSave()" placeholder="ex: polyester"></div>
             <div class="fr"><label>OF Taie</label><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Traca Fibre</label><select id="f-traca" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
+            <div class="fr"><label>Traca Fibre</label><input type="text" id="f-traca" oninput="scheduleAutoSave()" placeholder="n° de traca"></div>
             <div class="fr"><label>Réf Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Mq MP (min)</label><input id="f-duree_mq_mp" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Mq Personnel (min)</label><input id="f-manquant_pers" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
@@ -2137,6 +2160,7 @@ select{cursor:default}
           <svg id="tl-svg" viewBox="0 0 800 40" preserveAspectRatio="none" style="width:100%;height:40px;display:block">
             <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
           </svg>
+          <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
         </div>
       </div>
       <!-- RIGHT: recap + gauge -->
@@ -2200,6 +2224,7 @@ select{cursor:default}
       <svg id="fp-tl" viewBox="0 0 800 32" preserveAspectRatio="none" style="width:100%;height:32px;display:block">
         <rect x="0" y="2" width="800" height="24" fill="#e2e8f0" rx="4"/>
       </svg>
+      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
     </div>
     <!-- Corps défilant : productions + arrêts côte à côte -->
     <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -2222,11 +2247,32 @@ select{cursor:default}
         <option value="">-- Choisir --</option>
       </select>
       <span id="fp-shift-info" style="font-size:11px;color:var(--gray)"></span>
+      <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="openM('m-fp-horaires')">✏ Modifier horaires de mon poste</button>
     </div>
     <!-- Boutons -->
     <div style="padding:8px 12px;background:var(--card);border-top:1px solid var(--border);flex-shrink:0;display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-sec" onclick="goTab('main')">← Retour</button>
       <button class="btn btn-danger btn-lg" onclick="confirmFinPoste()">⏹ Confirmer fin de poste &amp; Déconnexion</button>
+    </div>
+  </div>
+
+  <!-- ════ MODAL : horaires de poste ════ -->
+  <div id="m-fp-horaires" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;align-items:center;justify-content:center">
+    <div class="card" style="width:340px;padding:20px;background:#fff;border-radius:12px">
+      <div style="font-size:14px;font-weight:800;color:var(--navy);margin-bottom:14px">✏ Horaires de mon poste</div>
+      <div style="font-size:11px;color:var(--gray);margin-bottom:10px">Ces horaires servent uniquement au calcul du TRS de poste (non sauvegardés).</div>
+      <div class="lf" style="margin-bottom:10px">
+        <label>Début de poste</label>
+        <input type="datetime-local" id="fp-debut-dt" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+      </div>
+      <div class="lf" style="margin-bottom:14px">
+        <label>Fin de poste</label>
+        <input type="datetime-local" id="fp-fin-dt" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sec" onclick="closeM('m-fp-horaires')">Annuler</button>
+        <button class="btn btn-prim" onclick="applyFPHoraires()">✓ Appliquer</button>
+      </div>
     </div>
   </div>
 
@@ -2346,6 +2392,7 @@ select{cursor:default}
         <svg id="ep-tl" viewBox="0 0 800 40" preserveAspectRatio="none" style="width:100%;height:40px;display:block">
           <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
         </svg>
+        <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span></div>
       </div>
     </div>
     <div class="mftr">
@@ -2483,8 +2530,9 @@ const EVENTS = [
 ];
 
 const STOP_COL = {
-  ratt:"#7c3aed",pb:"#b91c1c",nettoyage:"#0891b2",
-  "Pause pilote":"#7c3aed","_pause":"#7c3aed"
+  ratt:"#dc2626",pb:"#dc2626",autre:"#dc2626",
+  nettoyage:"#f59e0b",
+  "_pause":"#94a3b8","Pause pilote":"#94a3b8"
 };
 
 function getStopColor(key, cat) {
@@ -2534,8 +2582,7 @@ async function loadLists() {
   if (!d) return;
   popSel('f-taille', d.tailles||[]);
   popSel('f-type_prod', d.types_prod||[]);
-  popSel('f-fibre', d.fibres||[]);
-  popSel('f-traca', d.tracas||[]);
+  popSel('f-copilote', d.copilotes||[]);
   popSel('er-taille', d.tailles||[]);
   popSel('er-typeprod', d.types_prod||[]);
   popSel('er-fibre', d.fibres||[]);
@@ -2858,7 +2905,7 @@ function startTicker() {
     if(thEl&&ST.prod_ref){
       const typeProd=ST.form&&ST.form.type_prod||'';
       const coef=(window._equivCoefs&&window._equivCoefs[typeProd])||1;
-      const theo=Math.round(ST.prod_ref*(_ofElapAtPoll+dt)/28800*coef);
+      const theo=Math.round(ST.prod_ref*(_ofElapAtPoll+dt)/28800/coef);
       thEl.textContent=theo>0?theo+' éq.':'—';
     }
     // Update stop chips timers
@@ -3530,9 +3577,21 @@ async function loadFPData(){
   },0);
   document.getElementById('fp-stop-t').textContent=Math.round(stopTotal/60)+' min';
 
-  // Timeline
+  // Timeline — refresh events first, then combine historical + live
+  await pollEvts();
   const shiftStart=d.shift_start_iso||new Date(Date.now()-8*3600*1000).toISOString();
-  drawTLFromISO('fp-tl',gEvts,shiftStart,new Date().toISOString());
+  // Use gEvts (historical) + convert live tl_events to display format
+  const liveEvts=tlEventsToDisplayFmt(ST.tl_events||[]);
+  const allEvtsForTL=[...gEvts,...liveEvts];
+  // Pre-fill datetime-local inputs for "Modifier horaires" modal
+  const debDt=new Date(shiftStart);
+  const nowDt=new Date();
+  const toLocalDT=dt=>{const y=dt.getFullYear(),mo=String(dt.getMonth()+1).padStart(2,'0'),dy=String(dt.getDate()).padStart(2,'0'),h=String(dt.getHours()).padStart(2,'0'),mi=String(dt.getMinutes()).padStart(2,'0');return `${y}-${mo}-${dy}T${h}:${mi}`;};
+  const fpDeb=document.getElementById('fp-debut-dt');
+  const fpFin=document.getElementById('fp-fin-dt');
+  if(fpDeb) fpDeb.value=toLocalDT(debDt);
+  if(fpFin) fpFin.value=toLocalDT(nowDt);
+  drawTLFromISO('fp-tl',allEvtsForTL,shiftStart,nowDt.toISOString());
 
   // Productions
   const fpb=document.getElementById('fp-prods');
@@ -3572,6 +3631,31 @@ async function loadFPData(){
   const trsS=d.trs_shift!==undefined?d.trs_shift:d.trs;
   drawGauge('fp-gauge-arc','fp-gauge-pct',trsS>=0?trsS:0);
   const fpL=document.getElementById('fp-trs-lbl2');if(fpL) fpL.textContent=fmtTRSv(trsS);
+}
+
+function applyFPHoraires(){
+  const debStr=document.getElementById('fp-debut-dt').value;
+  const finStr=document.getElementById('fp-fin-dt').value;
+  if(!debStr||!finStr){toast('Renseigner début et fin','err');return;}
+  const deb=new Date(debStr),fin=new Date(finStr);
+  if(fin<=deb){toast('Fin doit être après début','err');return;}
+  const shiftS=(fin.getTime()-deb.getTime())/1000;
+  const shiftInfo=document.getElementById('fp-shift-info');
+  const pad=n=>String(n).padStart(2,'0');
+  const fmt=d=>pad(d.getHours())+':'+pad(d.getMinutes());
+  if(shiftInfo) shiftInfo.textContent=fmt(deb)+'→'+fmt(fin);
+  // Recalc TRS
+  const d=window._fpData;
+  if(d){
+    const totEquiv=d.tot_equiv||0;
+    const prodRef=d.prod_ref||ST.prod_ref||200;
+    const trs=shiftS>0&&prodRef>0?Math.round(totEquiv/(prodRef*shiftS/28800)*1000)/10:0;
+    document.getElementById('fp-trs').textContent=fmtTRS(trs);
+  }
+  // Redraw timeline with custom range
+  drawTLFromISO('fp-tl',gEvts,deb.toISOString(),fin.toISOString());
+  closeM('m-fp-horaires');
+  toast('Horaires appliqués','ok');
 }
 
 function recalcFPTRS(){
