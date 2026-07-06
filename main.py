@@ -1699,7 +1699,7 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 /* main 3-col layout */
 .prod-body{display:flex;flex:1;overflow:hidden}
 /* LEFT actions col */
-.act-col{width:140px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:8px;gap:6px}
+.act-col{width:190px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:8px;gap:6px}
 .big-stop-btn{width:100%;background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;border:none;border-radius:10px;padding:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;flex:0 0 90px;font-size:13px;font-weight:800;box-shadow:0 4px 12px rgba(185,28,28,.35);transition:all .15s;letter-spacing:.3px}
 .big-stop-btn:hover{filter:brightness(.9);transform:translateY(-1px)}
 .big-stop-btn .ico{font-size:22px}
@@ -1723,13 +1723,16 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .fr input,.fr select,.fr textarea{padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--card);color:var(--text);width:100%;outline:none;transition:border .15s}
 .fr input:focus,.fr select:focus{border-color:#6366f1}
 .fr textarea{resize:none;height:42px}
+.fr.comment-big textarea{height:80px;font-size:13px;border:2px solid #f59e0b;background:#fffbeb;font-weight:500}
+.fr.comment-big label{color:#d97706;font-size:10px}
+input[type=checkbox]{cursor:pointer}
 .fr.big input{font-size:16px;font-weight:700;padding:5px 6px;color:var(--green)}
 .fr.ro input{background:#f8fafc;color:var(--gray)}
 /* Timeline */
 .tl-wrap{background:var(--card);border-radius:7px;padding:7px 8px;border:1px solid var(--border)}
 .tl-wrap h5{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;letter-spacing:.7px;margin-bottom:4px}
 /* RIGHT recap col */
-.recap-col{width:160px;flex-shrink:0;border-left:1px solid var(--border);background:var(--card);display:flex;flex-direction:column;overflow:hidden}
+.recap-col{width:215px;flex-shrink:0;border-left:1px solid var(--border);background:var(--card);display:flex;flex-direction:column;overflow:hidden}
 .recap-hdr{font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);letter-spacing:.6px;padding:8px 8px 4px}
 .recap-body{flex:1;overflow-y:auto;padding:0 6px 6px}
 .si{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid var(--border);font-size:11px}
@@ -1898,9 +1901,9 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
   <div id="v-main" class="view" style="flex-direction:column">
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0">
-        <button class="btn-sm btn-green" id="btn-start" onclick="doStartProd()">▶ Démarrer production</button>
-        <button class="btn-sm btn-ghost" onclick="doFinPoste()">🏁 Fin de poste</button>
-        <button class="btn-sm btn-ghost" onclick="loadMainDecl()">↺ Actualiser</button>
+        <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:14px;padding:10px 18px;font-weight:800">▶ Démarrer production</button>
+        <button class="btn btn-amber" onclick="doFinPoste()" style="font-size:14px;padding:10px 18px;font-weight:800">🏁 Fin de poste</button>
+        <button class="btn btn-sec" onclick="loadMainDecl()" style="font-size:12px;padding:8px 14px">↺ Actualiser</button>
       </div>
     </div>
     <!-- KPI 3 derniers postes -->
@@ -1958,6 +1961,7 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
       <div class="sc"><div class="sc-lbl">⏱ Durée OF</div><div class="sc-val green" id="sc-of">00:00:00</div></div>
       <div class="sc"><div class="sc-lbl">⛔ Arrêts</div><div class="sc-val red" id="sc-stops">00:00:00</div></div>
       <div class="sc"><div class="sc-lbl">⏸ Pauses</div><div class="sc-val amber" id="sc-pause">00:00:00</div></div>
+      <div class="sc"><div class="sc-lbl">🎯 Pièces théo.</div><div class="sc-val" id="sc-theo" style="color:var(--blue)">—</div></div>
     </div>
     <!-- Body -->
     <div class="prod-body">
@@ -2011,7 +2015,7 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
             <div class="fr"><label>Mq Taie</label><input id="f-mq_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Mq Housse/Encart</label><input id="f-mq_housse_encart" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Nb PP Cousue</label><input id="f-nb_pp_cousue" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Commentaire</label><textarea id="f-comment" oninput="scheduleAutoSave()"></textarea></div>
+            <div class="fr comment-big"><label>💬 Commentaire</label><textarea id="f-comment" oninput="scheduleAutoSave()" placeholder="Commentaire libre…"></textarea></div>
           </div>
         </div>
         <!-- Timeline 4h -->
@@ -2233,6 +2237,22 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
   </div>
 </div>
 
+<!-- ════ MODAL: Commentaire fin d'arrêt ════ -->
+<div class="overlay" id="m-stopcmt">
+  <div class="mbox" style="max-width:400px">
+    <div class="mhdr red"><h2>✓ Terminer l'arrêt</h2></div>
+    <div class="mbody">
+      <input type="hidden" id="cmt-stop-key">
+      <div id="cmt-stop-lbl" style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px"></div>
+      <div class="fr"><label>Commentaire (optionnel)</label><textarea id="cmt-stop-text" style="height:70px;resize:none;width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px" placeholder="Description de l'arrêt…"></textarea></div>
+    </div>
+    <div class="mftr">
+      <button class="btn btn-sec" onclick="closeM('m-stopcmt')">Annuler</button>
+      <button class="btn btn-ok btn-lg" onclick="confirmEndStop()">✓ Confirmer fin d'arrêt</button>
+    </div>
+  </div>
+</div>
+
 <!-- ════ MODAL: Éditer ligne ════ -->
 <div class="overlay" id="m-editrow">
   <div class="mbox wide">
@@ -2259,8 +2279,22 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
           <div class="fr"><label>Type Produit</label><select id="er-typeprod"><option value="">--</option></select></div>
           <div class="fr"><label>Qté Fabriquée</label><input type="number" id="er-qtefab"></div>
           <div class="fr"><label>Qté Emballée</label><input type="number" id="er-qteemb"></div>
+          <div class="fr"><label>Poids Garnissage (g)</label><input type="number" id="er-poids"></div>
+          <div class="fr"><label>Fibre</label><select id="er-fibre"><option value="">--</option></select></div>
+          <div class="fr"><label>OF Taie</label><input id="er-oftaie"></div>
+          <div class="fr"><label>Traca Fibre</label><select id="er-traca"><option value="">--</option></select></div>
+          <div class="fr"><label>Réf Taie</label><input id="er-reftaie"></div>
+          <div class="fr"><label>Kit</label><select id="er-kit"><option value="">Non</option><option value="oui">Oui</option></select></div>
+          <div class="fr"><label>Qté Init Taie</label><input type="number" id="er-qteinit"></div>
+          <div class="fr"><label>Nb Taie 2nd Choix</label><input type="number" id="er-nbtaie2"></div>
+          <div class="fr"><label>Nb Défaut Couture</label><input type="number" id="er-nbdef"></div>
+          <div class="fr"><label>Mq Taie</label><input type="number" id="er-mqtaie"></div>
+          <div class="fr"><label>Mq Housse/Encart</label><input type="number" id="er-mqhousse"></div>
+          <div class="fr"><label>Nb PP Cousue</label><input type="number" id="er-nbpp"></div>
+          <div class="fr"><label>Duree MQ MP (min)</label><input type="number" id="er-dureemq"></div>
+          <div class="fr"><label>Manquant Personnel (min)</label><input type="number" id="er-manqpers"></div>
         </div>
-        <div class="fr"><label>Commentaire</label><textarea id="er-comment-prod" style="height:44px;resize:none;width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px"></textarea></div>
+        <div class="fr comment-big"><label>💬 Commentaire</label><textarea id="er-comment-prod" style="height:60px;resize:none;width:100%;padding:4px 6px;border:2px solid #f59e0b;border-radius:4px;font-size:12px;background:#fffbeb"></textarea></div>
       </div>
       <div id="er-evt-fields" style="display:none">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
@@ -2367,6 +2401,8 @@ async function loadLists() {
   popSel('f-traca', d.tracas||[]);
   popSel('er-taille', d.tailles||[]);
   popSel('er-typeprod', d.types_prod||[]);
+  popSel('er-fibre', d.fibres||[]);
+  popSel('er-traca', d.tracas||[]);
   const pil = d.pilotes||[];
   const sel = document.getElementById('ln-pilot');
   pil.forEach(p => { const o=document.createElement('option'); o.value=p; o.textContent=p; sel.appendChild(o); });
@@ -2528,7 +2564,16 @@ async function pollState() {
 async function pollEvts() {
   const e = await apiFetch('/api/events_list');
   if(!Array.isArray(e)) return;
-  gEvts=e;
+  // Filter to current pilot + today
+  const now=new Date();
+  const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0');
+  const todayPfx=dd+'/'+mm;
+  const pilot=ST.pilot||'';
+  gEvts=e.filter(ev=>{
+    const dateOk=!ev.date||ev.date.startsWith(todayPfx);
+    const pilotOk=!pilot||!ev.pilote||ev.pilote===pilot;
+    return dateOk&&pilotOk;
+  });
   renderTL('tl-svg',gEvts);
   renderRecap(gEvts);
 }
@@ -2624,6 +2669,12 @@ function startTicker() {
     const pt=_pauseTotalAtPoll+(_curStopKey==='_pause'?dt:0);
     const tp=document.getElementById('sc-pause');
     if(tp) tp.textContent=fmtDur(pt);
+    // Pièces théoriques
+    const thEl=document.getElementById('sc-theo');
+    if(thEl&&ST.prod_ref&&ST.of_elapsed_s){
+      const theo=Math.round(ST.prod_ref*(_ofElapAtPoll+dt)/28800);
+      thEl.textContent=theo>0?theo+' pcs':'—';
+    }
     // Update stop chips timers
     if(ST.active_stops){
       ST.active_stops.forEach(k=>{
@@ -2652,7 +2703,7 @@ async function loadMainDecl() {
   allRows.sort((a,b)=>(b.debut||'').localeCompare(a.debut||''));
   const bd=document.getElementById('main-body');
   if(!bd) return;
-  if(!allRows.length){bd.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();return;}
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();return;}
   window._rowMap={};
   bd.innerHTML=allRows.map(r=>{
     const key=r.row_num||r.debut;
@@ -2668,34 +2719,63 @@ async function loadMainDecl() {
       <td style="font-size:10px">${esc(r.date||'')}</td><td style="font-size:10px">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
       <td style="font-size:11px">${details}</td><td style="font-size:11px">${qty}</td><td>${info}</td>
-      <td><button class="btn-tbl btn-prim" style="margin-right:2px" onclick="openEditRow('${esc(String(key))}')">✏</button><button class="btn-tbl" style="background:#fef2f2;color:#dc2626" onclick="deleteRow('${esc(String(key))}')">🗑</button></td>
+      <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:15px;cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
     </tr>`;
   }).join('');
   loadMainKPI();
 }
 
 async function loadMainKPI() {
+  // Current shift
   const d=await apiFetch('/api/history_today');
+  const evAll=await apiFetch('/api/events_list');
+  const evArr=Array.isArray(evAll)?evAll:[];
+  const now=new Date();
+  const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0');
+  const todayPfx=dd+'/'+mm;
+  const curPilot=ST.pilot||'';
+
+  // Current shift stop time (today + current pilot)
+  const curEvts=evArr.filter(e=>e.date&&e.date.startsWith(todayPfx)&&(!curPilot||!e.pilote||e.pilote===curPilot));
+  const curStopS=curEvts.reduce((a,e)=>{try{const p=s=>s.split(':').reduce((acc,v,i)=>acc+(i===0?+v*3600:i===1?+v*60:+v),0);return a+Math.max(0,p(e.fin||'0:0:0')-p(e.debut||'0:0:0'));}catch(x){return a;}},0);
   if(d){
     const trs=d.trs_shift!==undefined?d.trs_shift:d.trs;
     const el0t=document.getElementById('kpi0-trs'),el0s=document.getElementById('kpi0-sub');
     if(el0t) el0t.textContent=fmtTRSv(trs);
-    if(el0s) el0s.textContent=(d.rows?d.rows.length:0)+' OF | '+(d.tot_eq||0).toFixed(1)+' éq';
+    if(el0s) el0s.textContent=(d.rows?d.rows.length:0)+' OF | Arrêts '+Math.round(curStopS/60)+' min';
   }
-  const now=new Date();
-  for(let i=1;i<=2;i++){
-    const past=new Date(now);past.setDate(past.getDate()-i);
-    const dds=String(past.getDate()).padStart(2,'0'),mms=String(past.getMonth()+1).padStart(2,'0');
-    const pastPfx=dds+'/'+mms;
-    const rows=await apiFetch('/api/history');
-    const pr=(Array.isArray(rows)?rows:[]).filter(r=>r.date&&r.date.startsWith(pastPfx));
-    const nof=pr.length,eq=pr.reduce((a,r)=>a+parseFloat(r.equiv||0),0);
-    const sumT=pr.reduce((a,r)=>a+(parseFloat(r.trs||0)>0?parseFloat(r.trs):0),0);
-    const avgT=nof>0?sumT/nof:-1;
-    const lbl=document.getElementById('kpi'+i+'-lbl'),tv=document.getElementById('kpi'+i+'-trs'),sv=document.getElementById('kpi'+i+'-sub');
-    if(lbl) lbl.textContent=(i===1?'Hier':'Avant-hier')+' ('+dds+'/'+mms+')';
-    if(tv) tv.textContent=fmtTRSv(avgT);
-    if(sv) sv.textContent=nof+' OF | '+eq.toFixed(1)+' éq';
+
+  // Previous sessions from history (group by pilot+date, exclude current session)
+  const allRows=await apiFetch('/api/history');
+  const rows=Array.isArray(allRows)?allRows:[];
+  // Build sessions: group by pilot+date, excluding today+curPilot
+  const sessions={};
+  rows.forEach(r=>{
+    const key=(r.pilote||'?')+'|'+(r.date||'?');
+    if(r.date&&r.date.startsWith(todayPfx)&&r.pilote===curPilot) return; // skip current session
+    if(!sessions[key]) sessions[key]={pilot:r.pilote||'?',poste:r.poste||'?',date:r.date||'?',rows:[],eq:0,trs_sum:0,trs_cnt:0};
+    sessions[key].rows.push(r);
+    sessions[key].eq+=parseFloat(r.equiv||0);
+    const t=parseFloat(r.trs||0);
+    if(t>0){sessions[key].trs_sum+=t;sessions[key].trs_cnt++;}
+  });
+  const sessArr=Object.values(sessions).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,2);
+  for(let i=0;i<2;i++){
+    const lbl=document.getElementById('kpi'+(i+1)+'-lbl'),tv=document.getElementById('kpi'+(i+1)+'-trs'),sv=document.getElementById('kpi'+(i+1)+'-sub');
+    if(!lbl||!tv||!sv) continue;
+    if(sessArr[i]){
+      const s=sessArr[i];
+      const avgT=s.trs_cnt>0?s.trs_sum/s.trs_cnt:-1;
+      // Count stops for this session
+      const sEvts=evArr.filter(e=>e.date===s.date&&e.pilote===s.pilot);
+      const sStopS=sEvts.reduce((a,e)=>{try{const p=t=>t.split(':').reduce((acc,v,ii)=>acc+(ii===0?+v*3600:ii===1?+v*60:+v),0);return a+Math.max(0,p(e.fin||'0:0:0')-p(e.debut||'0:0:0'));}catch(x){return a;}},0);
+      lbl.textContent=s.pilot+' — '+s.poste;
+      tv.textContent=fmtTRSv(avgT);
+      sv.textContent=s.rows.length+' OF | Arrêts '+Math.round(sStopS/60)+' min';
+    } else {
+      lbl.textContent=i===0?'Poste précédent':'Avant-dernier';
+      tv.textContent='--%'; sv.textContent='—';
+    }
   }
 }
 
@@ -2752,15 +2832,26 @@ async function doStartStop(key,cat){
   await pollEvts();
 }
 
-async function doEndStop(key){
+function doEndStop(key) {
   const k=key||_curStopKey;
-  if(!k||k==='_pause'){
-    await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  } else if(k==='nettoyage'){
-    await fetch('/api/end_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  } else {
-    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})});
+  if(!k||k==='_pause'){doPause();return;}
+  if(k==='nettoyage'){
+    fetch('/api/end_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(()=>{pollState();pollEvts();});
+    return;
   }
+  // Show comment modal
+  document.getElementById('cmt-stop-key').value=k;
+  document.getElementById('cmt-stop-lbl').textContent='Arrêt : '+getEvtLabel(k);
+  document.getElementById('cmt-stop-text').value='';
+  openM('m-stopcmt');
+  setTimeout(()=>document.getElementById('cmt-stop-text').focus(),100);
+}
+
+async function confirmEndStop() {
+  const k=document.getElementById('cmt-stop-key').value;
+  const cmt=document.getElementById('cmt-stop-text').value.trim();
+  closeM('m-stopcmt');
+  await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,comment:cmt})});
   await pollState();
   await pollEvts();
 }
@@ -2971,6 +3062,20 @@ function openEditRow(key) {
     document.getElementById('er-typeprod').value=row.type_prod||'';
     document.getElementById('er-qtefab').value=row.qte_fab||'';
     document.getElementById('er-qteemb').value=row.qte_emb||'';
+    document.getElementById('er-poids').value=row.poids||'';
+    document.getElementById('er-fibre').value=row.fibre||'';
+    document.getElementById('er-oftaie').value=row.of_taie||'';
+    document.getElementById('er-traca').value=row.traca||'';
+    document.getElementById('er-reftaie').value=row.ref_taie||'';
+    document.getElementById('er-kit').value=row.kit||'';
+    document.getElementById('er-qteinit').value=row.qte_init_taie||'';
+    document.getElementById('er-nbtaie2').value=row.nb_taie2_choix||'';
+    document.getElementById('er-nbdef').value=row.nb_def_cout||'';
+    document.getElementById('er-mqtaie').value=row.mq_taie||'';
+    document.getElementById('er-mqhousse').value=row.mq_housse_encart||'';
+    document.getElementById('er-nbpp').value=row.nb_pp_cousue||'';
+    document.getElementById('er-dureemq').value=row.duree_mq_mp||'';
+    document.getElementById('er-manqpers').value=row.manquant_pers||'';
     document.getElementById('er-comment-prod').value=row.comment||'';
   } else {
     document.getElementById('er-evttype').value=row.type||'';
@@ -2992,9 +3097,20 @@ async function saveEditRow() {
   const n=id=>parseFloat(document.getElementById(id)?.value)||0;
   let updates={};
   if(rowType==='prod'){
+    // Col indices per DECL_HEADERS (1-based):
+    // 2=OF,4=Poste,5=Pilote,6=Co-Pilote,7=Nb Pers,8=Taille,9=Code Prod,10=Type Prod
+    // 11=Poids,12=Fibre,13=OF Taie,14=Traca,15=Ref Taie,16=Kit
+    // 17=Heure Debut,18=Heure Fin,20=Qte Fab,21=Qte Emb
+    // 26=Qte Init Taie,27=Nb Taie 2nd,28=Nb Def Cout,29=Mq Taie,30=Mq Housse,31=Nb PP
+    // 33=Manquant MP (duree),34=Manquant Pers,36=Commentaire
     updates={'2':v('er-of'),'4':v('er-poste'),'5':v('er-pilote'),'6':v('er-copilote'),
       '7':n('er-nbpers'),'8':v('er-taille'),'9':v('er-codeprod'),'10':v('er-typeprod'),
-      '17':v('er-deb'),'18':v('er-fin'),'20':n('er-qtefab'),'21':n('er-qteemb'),'36':v('er-comment-prod')};
+      '11':n('er-poids'),'12':v('er-fibre'),'13':v('er-oftaie'),'14':v('er-traca'),
+      '15':v('er-reftaie'),'16':v('er-kit'),
+      '17':v('er-deb'),'18':v('er-fin'),'20':n('er-qtefab'),'21':n('er-qteemb'),
+      '26':n('er-qteinit'),'27':n('er-nbtaie2'),'28':n('er-nbdef'),
+      '29':n('er-mqtaie'),'30':n('er-mqhousse'),'31':n('er-nbpp'),
+      '33':n('er-dureemq'),'34':n('er-manqpers'),'36':v('er-comment-prod')};
   } else {
     updates={'1':v('er-evttype'),'2':v('er-evtof'),'17':v('er-evtdeb'),'18':v('er-evtfin'),
       '36':v('er-evtcomment'),'37':document.getElementById('er-horstrs').checked?'OUI':''};
@@ -3097,11 +3213,12 @@ function drawTLFromISO(svgId,evts,startIso,endIso){
   const tS=new Date(startIso).getTime(),tE=new Date(endIso).getTime();
   const span=tE-tS;if(span<=0){svg.innerHTML=html;return;}
   const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
-  // Prod background
-  if(ST.prod_active&&ST.of_start_iso){
+  // Prod background — show for current prod AND keep events from previous prods visible
+  if(ST.of_start_iso){
     const ps=new Date(ST.of_start_iso).getTime();
-    const x1=toX(ps),x2=toX(tE);
-    if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="#bbf7d0" rx="4"/>`;
+    const pe=ST.prod_active?tE:(ST.last_of_end_iso?new Date(ST.last_of_end_iso).getTime():tE);
+    const x1=toX(ps),x2=toX(pe);
+    if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${ST.prod_active?'#bbf7d0':'#e0f2fe'}" rx="4"/>`;
   }
   // Events
   (evts||[]).forEach((ev,i)=>{
