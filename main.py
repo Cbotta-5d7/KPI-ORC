@@ -67,6 +67,7 @@ _S = {
     "is_paused": False, "pause_start": None,
     "pause_total_s": 0.0, "pause_periods": [],
     "of_count_shift": 0,
+    "shift_start": None,
 }
 _excel_lock = threading.Lock()
 _lists = {}
@@ -149,6 +150,30 @@ def get_prod_ref():
         if fv>0: return fv
     except: pass
     return _prod_ref_cached
+
+def get_shift_duration_s(poste, date_obj=None):
+    """Durée nominale du poste en secondes selon le modèle horaire."""
+    models = cfg.get("modeles_horaires", [])
+    if not models: return 28800
+    model = next((m for m in models if str(m.get("nom","")).strip().lower()==str(poste or "").strip().lower()), None)
+    if not model: return 28800
+    jours = model.get("jours", {})
+    if date_obj and jours:
+        day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
+        day_cfg = jours.get(day_map.get(date_obj.weekday(),'lun'))
+    else:
+        day_cfg = next((v for k,v in jours.items() if v and v.get("debut") and v.get("fin")), None) if jours else None
+    if not day_cfg:
+        debut_str = model.get("debut","05:00"); fin_str = model.get("fin","13:00")
+    else:
+        debut_str = day_cfg.get("debut","05:00"); fin_str = day_cfg.get("fin","13:00")
+    def to_min(t):
+        try:
+            p=str(t).split(":"); return int(p[0])*60+int(p[1])
+        except: return 0
+    d=to_min(debut_str); f=to_min(fin_str)
+    if f<=d: f+=1440
+    return (f-d)*60
 
 # ── Timers ────────────────────────────────────────────────────────────────────
 def t_start(key):
@@ -254,6 +279,7 @@ def save_session():
             "pause_periods": [[_dt_str(a),_dt_str(b)] for a,b in _S["pause_periods"]],
             "of_count_shift": _S["of_count_shift"],
             "form": _S["form"],
+            "shift_start": _dt_str(_S.get("shift_start")),
         }
         with open(SESSION_FILE,"w",encoding="utf-8") as f: json.dump(d,f,default=str)
     except: pass
@@ -275,6 +301,7 @@ def load_session():
         _S["pause_periods"] = [[_str_dt(a),_str_dt(b)] for a,b in d.get("pause_periods",[])]
         _S["of_count_shift"]= d.get("of_count_shift",0)
         _S["form"]          = d.get("form",{})
+        _S["shift_start"]   = _str_dt(d.get("shift_start"))
         raw_timers = d.get("timers",{})
         _S["timers"] = {}
         for k,t in raw_timers.items():
@@ -579,6 +606,8 @@ def _state_json():
         "prod_ref": get_prod_ref(),
         "of_count_shift": _S["of_count_shift"],
         "tl_events": [serialize_event(e) for e in _S["tl_events"]],
+        "shift_duration_s": get_shift_duration_s(_S["poste"]),
+        "shift_start_iso": _dt_str(_S.get("shift_start")),
     }
 
 @flask_app.route('/')
@@ -604,10 +633,18 @@ def api_login():
     data = request.json or {}
     pilot = data.get("pilot","").strip()
     poste = data.get("poste","").strip()
+    pw = str(data.get("pw",""))
     if not pilot or not poste:
         return jsonify({"ok":False,"error":"Pilote et poste requis"}),400
+    # Check pilot password if configured
+    pilot_pws = cfg.get("pilot_passwords",{})
+    if pilot in pilot_pws and pilot_pws[pilot]:
+        if pw != str(pilot_pws[pilot]):
+            return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
     _S["pilot"] = pilot
     _S["poste"] = poste
+    if not _S.get("shift_start"):
+        _S["shift_start"] = datetime.datetime.now()
     save_session()
     return jsonify({"ok":True})
 
@@ -617,6 +654,7 @@ def api_logout():
         return jsonify({"ok":False,"error":"Production en cours"}),400
     _S["pilot"] = None
     _S["poste"] = None
+    _S["shift_start"] = None
     save_session()
     return jsonify({"ok":True})
 
@@ -639,6 +677,8 @@ def api_start_prod():
     _S["tl_events"] = []
     _S["of_count_shift"] += 1
     _S["form"] = {"of_num": ""}  # OF vide au démarrage
+    if not _S.get("shift_start"):
+        _S["shift_start"] = now
     t_reset()
     save_session()
     return jsonify({"ok":True,"gap_s":round(gap_s,0)})
@@ -768,6 +808,40 @@ def api_end_prod():
     save_session()
     write_excel_bg(prod_row, evt_rows)
     return jsonify({"ok":True,"recap":recap})
+
+@flask_app.route('/api/preview_end_prod', methods=['POST'])
+def api_preview_end_prod():
+    if not _S["prod_active"] or not _S["of_start"]:
+        return jsonify({"ok":False}),400
+    data = request.json or {}
+    v = data.get("form",{})
+    now = datetime.datetime.now()
+    of_s_brut = (now-_S["of_start"]).total_seconds()
+    pause_max_s = int(cfg.get("pause_max_min",20))*60
+    of_s = max(1, of_s_brut+_S["inter_of_s"]-min(_S["pause_total_s"],pause_max_s))
+    stop_s = t_wall_clock_stops()
+    qte_fab = _n(v.get("qte_fab",0))
+    nb_pers = max(1,_n(v.get("nb_pers",1)) or 1)
+    equiv = calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
+    of_hrs = of_s/3600
+    c1 = round(equiv/of_hrs,2) if of_hrs>0 else 0
+    c2 = round(equiv/(nb_pers*of_hrs),2) if of_hrs>0 else 0
+    prod_ref = get_prod_ref()
+    trs=-1.0
+    if prod_ref>0 and of_s>0:
+        trs=round(equiv/(prod_ref*of_s/28800)*100,1)
+    return jsonify({
+        "ok":True,
+        "of_s":round(of_s,0),"of_s_brut":round(of_s_brut,0),
+        "stop_s":round(stop_s,0),"prod_s":round(max(0,of_s-stop_s),0),
+        "pause_s":round(_S["pause_total_s"],0),
+        "equiv":equiv,"c1":c1,"c2":c2,"trs":trs,
+        "qte_fab":qte_fab,"qte_emb":_n(v.get("qte_emb",0)),
+        "tl_events":[serialize_event(e) for e in _S["tl_events"]],
+        "debut":_S["of_start"].strftime("%H:%M:%S"),
+        "now_str":now.strftime("%H:%M:%S"),
+        "of_num":v.get("of_num",""),
+    })
 
 @flask_app.route('/api/start_stop', methods=['POST'])
 def api_start_stop():
@@ -1022,6 +1096,7 @@ def api_edit_row():
 def api_fin_poste_data():
     today = datetime.date.today().strftime("%d/%m/%Y")
     pilot = _S["pilot"] or ""
+    pilot_poste = _S["poste"] or ""
     prod_ref = get_prod_ref()
     tot_eq=0.0; tot_s=0.0
     of_list=[]
@@ -1050,12 +1125,46 @@ def api_fin_poste_data():
         except: pass
     trs_poste=-1.0
     if prod_ref>0 and tot_s>0: trs_poste=round(tot_eq/(prod_ref*tot_s/28800)*100,1)
+    shift_s = get_shift_duration_s(pilot_poste, datetime.date.today())
+    trs_poste_shift = -1.0
+    if prod_ref > 0 and shift_s > 0:
+        trs_poste_shift = round(tot_eq/(prod_ref*shift_s/28800)*100,1)
     return jsonify({
         "pilot":pilot,"date":today,
-        "nb_of":len(of_list),"trs":trs_poste,
+        "nb_of":len(of_list),"trs":trs_poste,"trs_shift":trs_poste_shift,
         "tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
         "of_list":of_list,"of_count_shift":_S["of_count_shift"],
+        "shift_start_iso": _dt_str(_S.get("shift_start")),
     })
+
+@flask_app.route('/api/history_today')
+def api_history_today():
+    today = datetime.date.today().strftime("%d/%m/%Y")
+    pilot = _S["pilot"] or ""
+    poste = _S["poste"] or ""
+    prod_ref = get_prod_ref()
+    shift_s = get_shift_duration_s(poste, datetime.date.today())
+    rows = []
+    tot_eq=0.0; tot_s=0.0
+    for rn,r in _decl_cache:
+        if str(r[0] or "").strip().lower() not in ("production","prod",""): continue
+        if _row_date(r[2]) != today: continue
+        if str(r[4] or "") != pilot: continue
+        eq=float(str(r[21] or 0).replace(",",".") or 0)
+        s=_hms_to_sec(str(r[18] or "00:00:00"))
+        tot_eq+=eq; tot_s+=s
+        trs_of=-1
+        try:
+            trs_col=str(r[24] or "")
+            if trs_col: trs_of=round(float(trs_col.replace(",",".")),1)
+            elif prod_ref>0 and s>0: trs_of=round(eq/(prod_ref*s/28800)*100,1)
+        except: pass
+        rows.append({"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"trs":trs_of,"equiv":eq,"qte_fab":str(r[19] or "")})
+    trs_shift=-1.0
+    if prod_ref>0 and shift_s>0: trs_shift=round(tot_eq/(prod_ref*shift_s/28800)*100,1)
+    trs_of_time=-1.0
+    if prod_ref>0 and tot_s>0: trs_of_time=round(tot_eq/(prod_ref*tot_s/28800)*100,1)
+    return jsonify({"rows":rows,"trs_shift":trs_shift,"trs_of":trs_of_time,"tot_eq":round(tot_eq,1),"shift_s":shift_s})
 
 @flask_app.route('/api/reload', methods=['POST'])
 def api_reload():
@@ -1069,7 +1178,7 @@ def api_generate_dashboard():
     if err: return jsonify({"ok":False,"error":err})
     return jsonify({"ok":True,"path":html_path})
 
-# ── Dashboard HTML ─────────────────────────────────────────────────────────────
+# ── Dashboard HTML superviseur ─────────────────────────────────────────────────
 def generate_dashboard_html():
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path):
@@ -1079,367 +1188,415 @@ def generate_dashboard_html():
     except Exception as e:
         return None, f"Erreur lecture Excel: {e}"
 
-    today_str = datetime.date.today().strftime("%d/%m/%Y")
     prod_ref = get_prod_ref()
     from collections import defaultdict
 
-    # Lire depuis la feuille unifiée Declarations
     decl_rows = []
     if "Declarations" in wb.sheetnames:
         ws = wb["Declarations"]
         for r in ws.iter_rows(min_row=2, values_only=True):
-            if r and any(r):
-                decl_rows.append(list(r)+[None]*5)
-    # Rétro-compat: lire Data si Declarations absent
+            if r and any(r): decl_rows.append(list(r)+[None]*5)
     elif "Data" in wb.sheetnames:
         ws = wb["Data"]
         for r in ws.iter_rows(min_row=2, values_only=True):
             if r and any(r):
-                row = list(r)+[None]*10
-                unified = [None]*37
-                unified[0]="Production"; unified[1]=row[0]; unified[2]=row[1]; unified[3]=row[2]
-                unified[4]=row[3]; unified[5]=row[4]; unified[6]=row[5]; unified[7]=row[6]
-                unified[8]=row[7]; unified[9]=row[8]; unified[16]=row[17]; unified[17]=row[18]
-                unified[18]=row[16]; unified[19]=row[13]; unified[20]=row[14]; unified[21]=row[15]
-                unified[22]=row[19]; unified[23]=row[20]; unified[35]=row[57] if len(row)>57 else None
-                decl_rows.append(unified)
+                row = list(r)+[None]*10; u=[None]*37
+                u[0]="Production";u[1]=row[0];u[2]=row[1];u[3]=row[2];u[4]=row[3]
+                u[16]=row[17];u[17]=row[18];u[18]=row[16];u[19]=row[13]
+                u[20]=row[14];u[21]=row[15];u[22]=row[19];u[23]=row[20];u[24]=None
+                decl_rows.append(u)
     wb.close()
 
     prod_rows_all = [r for r in decl_rows if str(r[0] or "").strip().lower() in ("production","prod","")]
     evt_rows_all  = [r for r in decl_rows if str(r[0] or "").strip().lower() not in ("production","prod","")]
 
-    # Calcul TRS global d'une liste de lignes prod
-    def calc_trs(rows):
-        eq = sum(float(str(r[21] or 0).replace(",",".") or 0) for r in rows)
-        s  = sum(_hms_to_sec(str(r[18] or "00:00:00")) for r in rows)
-        if prod_ref>0 and s>0: return round(eq/(prod_ref*s/28800)*100,1)
-        return -1
-
-    # TRS couleur
-    def trs_color(t):
+    def trs_color_hex(t):
         if t<0: return "#94a3b8"
         if t>=70: return "#1a8c4e"
         if t>=50: return "#d97706"
         return "#e31e24"
 
-    # Grouper par (poste, date)
-    sessions = defaultdict(list)
+    def trs_bg(t):
+        if t<0: return "#f1f5f9"
+        if t>=70: return "#d1fae5"
+        if t>=50: return "#fef3c7"
+        return "#fee2e2"
+
+    def calc_trs_of(rows):
+        eq=sum(float(str(r[21] or 0).replace(",",".") or 0) for r in rows)
+        s=sum(_hms_to_sec(str(r[18] or "00:00:00")) for r in rows)
+        if prod_ref>0 and s>0: return round(eq/(prod_ref*s/28800)*100,1)
+        return -1
+
+    def calc_trs_shift(rows, poste, date_str):
+        try: d=datetime.datetime.strptime(date_str,"%d/%m/%Y").date()
+        except: d=None
+        shift_s=get_shift_duration_s(poste,d)
+        eq=sum(float(str(r[21] or 0).replace(",",".") or 0) for r in rows)
+        if prod_ref>0 and shift_s>0: return round(eq/(prod_ref*shift_s/28800)*100,1)
+        return -1
+
+    # Grouper par (date, poste, pilote)
+    sessions_map = defaultdict(list)
     for r in prod_rows_all:
-        key = (str(r[3] or ""), _row_date(r[2]))
-        sessions[key].append(r)
+        key=(str(_row_date(r[2])),str(r[3] or ""),str(r[4] or ""))
+        sessions_map[key].append(r)
 
-    sess_list = sorted(sessions.items(), key=lambda x: (x[0][1],x[0][0]), reverse=True)[:6]
+    # Trier par date desc
+    sess_sorted = sorted(sessions_map.items(), key=lambda x:x[0][0], reverse=True)
 
-    # KPI cards (3 dernières séances)
-    poste_data = []
-    for (poste,date),rows in sess_list[:3]:
-        trs  = calc_trs(rows)
-        tot_eq = sum(float(str(r[21] or 0).replace(",",".") or 0) for r in rows)
-        of_count = len(rows)
-        pilots = list({str(r[4] or "") for r in rows if r[4]})
-        poste_data.append({"poste":poste,"date":date,"trs":trs,"of_count":of_count,"equiv":round(tot_eq,1),"pilots":", ".join(pilots)})
-
-    gauge_js_list = []
-    cards_html = ""
-    for i,pd in enumerate(poste_data):
-        t   = pd["trs"]
-        col = trs_color(t)
-        trs_lbl = f"{t:.1f}%" if t>=0 else "—"
-        raw  = max(0, t if t>=0 else 0)
-        rest = max(0, 100-raw)
-        cards_html += f"""
-        <div class="kpi-card">
-          <div class="kpi-card-hdr">{pd['poste']} — {pd['date']}</div>
-          <canvas id="gauge-{i}" width="160" height="100"></canvas>
-          <div class="kpi-trs" style="color:{col}">{trs_lbl}</div>
-          <div class="kpi-sub">{pd['of_count']} OF &nbsp;|&nbsp; Equiv: {pd['equiv']}</div>
-          <div class="kpi-sub" style="margin-top:3px">{pd['pilots']}</div>
-        </div>"""
-        gauge_js_list.append(f"""
-        new Chart(document.getElementById('gauge-{i}'),{{
-          type:'doughnut',
-          data:{{datasets:[{{data:[{raw},{rest}],backgroundColor:['{col}','#dde4ef'],borderWidth:0}}]}},
-          options:{{circumference:180,rotation:-90,cutout:'70%',plugins:{{legend:{{display:false}},tooltip:{{enabled:false}}}}}}
-        }});""")
-
-    # Pareto arrêts
-    evt_durations = defaultdict(float)
-    for r in evt_rows_all:
-        t = str(r[0] or "")
-        if not t or t.lower() in ("pause pilote","changement d'of"): continue
-        dur = _hms_to_sec(str(r[18] or "00:00:00"))
-        evt_durations[t] += dur
-    pareto = sorted(evt_durations.items(), key=lambda x:-x[1])[:14]
-    pareto_labels = json.dumps([p[0][:25] for p in pareto])
-    pareto_vals   = json.dumps([round(p[1]/60,1) for p in pareto])
-    def _pcol(lbl):
-        if "PB" in lbl or "Technique" in lbl: return "#e31e24"
-        if "Ratt" in lbl: return "#d97706"
-        if "Nettoyage" in lbl: return "#0891b2"
-        return "#7c3aed"
-    pareto_colors = json.dumps([_pcol(p[0]) for p in pareto])
-
-    # TRS par pilote (semaine courante)
-    pilot_sessions = defaultdict(lambda: {"eq":0.0,"s":0.0,"nb":0})
-    for r in prod_rows_all:
-        p = str(r[4] or "")
-        if not p: continue
-        pilot_sessions[p]["eq"] += float(str(r[21] or 0).replace(",",".") or 0)
-        pilot_sessions[p]["s"]  += _hms_to_sec(str(r[18] or "00:00:00"))
-        pilot_sessions[p]["nb"] += 1
-    pilot_trs_labels = []; pilot_trs_vals = []; pilot_trs_colors = []
-    for pname, d in sorted(pilot_sessions.items(), key=lambda x:-x[1]["nb"])[:10]:
-        t = calc_trs([]) if d["s"]==0 else round(d["eq"]/(prod_ref*d["s"]/28800)*100,1) if prod_ref>0 else -1
-        pilot_trs_labels.append(pname)
-        pilot_trs_vals.append(max(0,t) if t>=0 else 0)
-        pilot_trs_colors.append(trs_color(t))
-    pilot_trs_labels_j = json.dumps(pilot_trs_labels)
-    pilot_trs_vals_j   = json.dumps(pilot_trs_vals)
-    pilot_trs_colors_j = json.dumps(pilot_trs_colors)
-
-    # Table derniers événements (50)
-    evt_table_rows = ""
-    for r in list(reversed(evt_rows_all))[:50]:
-        typ = str(r[0] or "")
-        if "PB" in typ or "Technique" in typ: col_cls="badge-red"
-        elif "Ratt" in typ: col_cls="badge-amber"
-        elif "Nettoyage" in typ: col_cls="badge-cyan"
-        else: col_cls="badge-navy"
-        evt_table_rows += f"""<tr>
-          <td><span class='badge {col_cls}'>{typ}</span></td>
-          <td>{r[1] or ''}</td><td>{_row_date(r[2])}</td>
-          <td>{r[4] or ''}</td><td>{str(r[16] or '')[:8]}</td>
-          <td>{str(r[17] or '')[:8]}</td><td>{r[18] or ''}</td>
-          <td style='text-align:left;max-width:200px;overflow:hidden;text-overflow:ellipsis'>{r[35] or ''}</td>
-        </tr>"""
-
-    # Table dernières productions (30)
-    prod_table_rows = ""
-    for r in list(reversed(prod_rows_all))[:30]:
-        trs_v = str(r[24] or "")
-        try: tv = float(trs_v.replace(",","."))
-        except: tv = -1
-        trs_cls = "color:#1a8c4e;font-weight:800" if tv>=70 else "color:#d97706;font-weight:800" if tv>=50 else "color:#e31e24;font-weight:800" if tv>=0 else "color:#94a3b8"
-        prod_table_rows += f"""<tr>
-          <td>{str(r[1] or '')}</td><td>{_row_date(r[2])}</td>
-          <td>{r[3] or ''}</td><td>{r[4] or ''}</td>
-          <td>{str(r[16] or '')[:5]}</td><td>{str(r[17] or '')[:5]}</td>
-          <td>{r[7] or ''}</td><td>{r[19] or ''}</td><td>{r[20] or ''}</td><td>{r[21] or ''}</td>
-          <td style="{trs_cls}">{trs_v or '—'}{'%' if trs_v else ''}</td>
-        </tr>"""
-
-    # Supervision live
-    session_active = _S.get("prod_active", False)
-    active_stops = [k for k,t in _S.get("timers",{}).items() if t.get("running") and not k.startswith("_")]
-    pilot_now  = _S.get("pilot","—") or "—"
-    poste_now  = _S.get("poste","—") or "—"
+    # Session en cours (live)
+    today_str  = datetime.date.today().strftime("%d/%m/%Y")
+    pilot_now  = _S.get("pilot","") or ""
+    poste_now  = _S.get("poste","") or ""
+    prod_active= bool(_S.get("prod_active"))
+    active_stops=[k for k,t in _S.get("timers",{}).items() if t.get("running") and not k.startswith("_")]
     of_num_now = (_S.get("form") or {}).get("of_num","") or "—"
-    of_start_str = ""
+    of_start_str=""
     if _S.get("of_start"):
-        try: of_start_str = _S["of_start"].strftime("%H:%M:%S")
+        try: of_start_str=_S["of_start"].strftime("%H:%M:%S")
         except: pass
 
-    stops_html = ""
+    # Sessions du jour (live)
+    today_rows = sessions_map.get((today_str,poste_now,pilot_now),[])
+    today_trs_shift = calc_trs_shift(today_rows,poste_now,today_str) if today_rows else -1
+    today_trs_of    = calc_trs_of(today_rows) if today_rows else -1
+    today_eq = sum(float(str(r[21] or 0).replace(",",".") or 0) for r in today_rows)
+
+    # 3 derniers postes terminés
+    last3 = [(k,v) for k,v in sess_sorted if not (k[0]==today_str and k[1]==poste_now and k[2]==pilot_now)][:3]
+
+    # Pareto arrêts (tous)
+    evt_dur = defaultdict(float)
+    for r in evt_rows_all:
+        t=str(r[0] or "")
+        if not t or t.lower() in ("pause pilote","changement d'of"): continue
+        evt_dur[t] += _hms_to_sec(str(r[18] or "00:00:00"))
+    pareto = sorted(evt_dur.items(),key=lambda x:-x[1])[:12]
+
+    # Événements du poste en cours
+    today_evts = [r for r in evt_rows_all if _row_date(r[2])==today_str and str(r[4] or "")==pilot_now]
+
+    # Arrêts actifs live
+    stops_live_html=""
     for k in active_stops:
-        ev = next((e for e in EVENTS if e[1]==k), None)
-        lbl = ev[0] if ev else k
-        t = _S.get("timers",{}).get(k,{})
-        elapsed = t.get("elapsed",0)
-        if t.get("running") and t.get("start"):
-            try: elapsed += (datetime.datetime.now()-t["start"]).total_seconds()
-            except: pass
-        stops_html += f"""<div class='stop-live-card'>
-          <div class='slc-lbl'>{lbl}</div>
-          <div class='slc-timer'>{fmt(elapsed)}</div>
+        ev=next((e for e in EVENTS if e[1]==k),None)
+        lbl=ev[0] if ev else k
+        t=_S.get("timers",{}).get(k,{})
+        el=t.get("elapsed",0)
+        stops_live_html+=f'<div class="slv-card"><div class="slv-name">{lbl}</div><div class="slv-timer">{fmt(el)}</div></div>'
+
+    gen_time=datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    sup_col="#e31e24" if prod_active else "#1a8c4e"
+    sup_txt="⬤ PRODUCTION EN COURS" if prod_active else "○ Aucune production active"
+
+    # Gauge SVG helper
+    def gauge_svg(trs, size=120):
+        pct=max(0,min(100,trs)) if trs>=0 else 0
+        col=trs_color_hex(trs)
+        r_out=50; r_in=33; cx=60; cy=65
+        import math
+        def arc_pt(r,deg):
+            rad=math.radians(deg)
+            return cx+r*math.cos(rad), cy+r*math.sin(rad)
+        x1,y1=arc_pt(r_out,180); x2,y2=arc_pt(r_out,0)
+        xi1,yi1=arc_pt(r_in,180); xi2,yi2=arc_pt(r_in,0)
+        bg=f'<path d="M{x1},{y1} A{r_out},{r_out} 0 0,1 {x2},{y2} L{xi2},{yi2} A{r_in},{r_in} 0 0,0 {xi1},{yi1} Z" fill="#e2e8f0"/>'
+        if pct>0:
+            end_deg=180-pct*1.8
+            fx1,fy1=arc_pt(r_out,180); fx2,fy2=arc_pt(r_out,end_deg)
+            fxi1,fyi1=arc_pt(r_in,180); fxi2,fyi2=arc_pt(r_in,end_deg)
+            lg=1 if pct>50 else 0
+            fg=f'<path d="M{fx1},{fy1} A{r_out},{r_out} 0 {lg},1 {fx2},{fy2} L{fxi2},{fyi2} A{r_in},{r_in} 0 {lg},0 {fxi1},{fyi1} Z" fill="{col}"/>'
+        else: fg=""
+        lbl=f"{trs:.1f}%" if trs>=0 else "—"
+        txt=f'<text x="{cx}" y="{cy+10}" text-anchor="middle" font-size="18" font-weight="900" fill="{col}">{lbl}</text>'
+        return f'<svg width="{size}" height="{size*65//120}" viewBox="0 0 120 65">{bg}{fg}{txt}</svg>'
+
+    # Build 3 last sessions cards
+    last3_html=""
+    for (date,poste,pilot),rows in last3:
+        t_shift=calc_trs_shift(rows,poste,date)
+        t_of=calc_trs_of(rows)
+        eq=sum(float(str(r[21] or 0).replace(",",".") or 0) for r in rows)
+        nb_of=len(rows)
+        last3_html+=f"""
+        <div class="sess-card">
+          <div class="sess-hdr" style="background:{trs_bg(t_shift)};border-left:4px solid {trs_color_hex(t_shift)}">
+            <div class="sess-title">{poste} — {date}</div>
+            <div class="sess-pilot">👤 {pilot}</div>
+          </div>
+          {gauge_svg(t_shift)}
+          <div class="sess-stats">
+            <div><span class="sl">OF</span><span class="sv">{nb_of}</span></div>
+            <div><span class="sl">Equiv</span><span class="sv">{round(eq,1)}</span></div>
+            <div><span class="sl">TRS(OF)</span><span class="sv" style="color:{trs_color_hex(t_of)}">{f"{t_of:.1f}%" if t_of>=0 else "—"}</span></div>
+          </div>
         </div>"""
 
-    gen_time = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    gauge_js = "\n".join(gauge_js_list)
-    sup_bg = "#e31e24" if session_active else "#1a8c4e"
-    sup_status = "● PRODUCTION EN COURS" if session_active else "○ Aucune production active"
+    # Productions table du poste en cours
+    prod_table_html=""
+    for r in list(reversed(today_rows))[:20]:
+        trs_v=str(r[24] or "")
+        try: tv=float(trs_v.replace(",","."))
+        except: tv=-1
+        tc=trs_color_hex(tv)
+        prod_table_html+=f"""<tr>
+          <td><strong>{r[1] or ''}</strong></td>
+          <td>{str(r[16] or '')[:5]}</td><td>{str(r[17] or '')[:5]}</td>
+          <td>{r[18] or ''}</td><td>{r[7] or ''}</td>
+          <td>{r[19] or ''}</td><td>{r[20] or ''}</td><td>{r[21] or ''}</td>
+          <td style="color:{tc};font-weight:800">{trs_v+'%' if trs_v else '—'}</td>
+        </tr>"""
 
-    html = f"""<!DOCTYPE html>
+    # Arrêts table du poste en cours
+    evts_table_html=""
+    for r in list(reversed(today_evts))[:20]:
+        t=str(r[0] or "")
+        cls="badge-red" if "PB" in t or "Technique" in t else "badge-amber" if "Ratt" in t else "badge-cyan" if "Nett" in t else "badge-navy"
+        evts_table_html+=f"""<tr>
+          <td><span class="badge {cls}">{t}</span></td>
+          <td>{str(r[16] or '')[:8]}</td><td>{str(r[17] or '')[:8]}</td>
+          <td>{r[18] or ''}</td><td style="text-align:left;max-width:150px;overflow:hidden">{r[35] or ''}</td>
+        </tr>"""
+
+    # Pareto bars (inline SVG)
+    pareto_html=""
+    if pareto:
+        max_dur=pareto[0][1]/60
+        for lbl,dur in pareto[:8]:
+            pct=dur/60/max_dur*100
+            col="#e31e24" if "PB" in lbl or "Technique" in lbl else "#d97706" if "Ratt" in lbl else "#0891b2" if "Nett" in lbl else "#7c3aed"
+            pareto_html+=f"""<div class="pareto-row">
+              <div class="pareto-lbl">{lbl[:28]}</div>
+              <div class="pareto-bar-wrap"><div class="pareto-bar" style="width:{pct:.1f}%;background:{col}"></div></div>
+              <div class="pareto-val">{dur/60:.0f}min</div>
+            </div>"""
+
+    # Build timeline SVG for today
+    def build_tl_svg(events, width=700):
+        import math
+        now_ts=datetime.datetime.now()
+        win_end=now_ts
+        win_start=now_ts-datetime.timedelta(hours=8)
+        def to_x(dt_str):
+            try:
+                dt=datetime.datetime.strptime(f"{today_str} {str(dt_str)[:8]}","%d/%m/%Y %H:%M:%S")
+                frac=(dt-win_start).total_seconds()/(8*3600)
+                return max(0,min(width,int(frac*width)))
+            except: return 0
+        catcol={"pb":"#e31e24","ratt":"#d97706","nettoyage":"#0891b2","pause":"#7c3aed"}
+        svg=f'<svg width="{width}" height="52" viewBox="0 0 {width} 52" style="display:block">'
+        svg+=f'<rect x="0" y="16" width="{width}" height="20" fill="#e2e8f0" rx="4"/>'
+        for r in events:
+            x1=to_x(str(r[16] or ""))
+            x2=to_x(str(r[17] or "")) if r[17] else int((datetime.datetime.now()-win_start).total_seconds()/(8*3600)*width)
+            x2=max(x2,x1+2)
+            t=str(r[0] or "")
+            col="#e31e24" if "PB" in t or "Technique" in t else "#d97706" if "Ratt" in t else "#0891b2" if "Nett" in t else "#7c3aed"
+            svg+=f'<rect x="{x1}" y="16" width="{x2-x1}" height="20" fill="{col}" rx="2" opacity="0.85"/>'
+        for r in today_rows:
+            x1=to_x(str(r[16] or ""))
+            x2=to_x(str(r[17] or "")) if r[17] else int((datetime.datetime.now()-win_start).total_seconds()/(8*3600)*width)
+            svg+=f'<rect x="{x1}" y="16" width="{max(2,x2-x1)}" height="20" fill="#1a8c4e" rx="2" opacity="0.4"/>'
+        # Hour marks
+        for h in range(9):
+            dt=win_start+datetime.timedelta(hours=h)
+            x=int(h/8*width)
+            svg+=f'<line x1="{x}" y1="12" x2="{x}" y2="36" stroke="#94a3b8" stroke-width="0.5"/>'
+            svg+=f'<text x="{x}" y="10" font-size="9" fill="#64748b" text-anchor="middle">{dt.strftime("%H:%M")}</text>'
+        # Now marker
+        now_x=int((datetime.datetime.now()-win_start).total_seconds()/(8*3600)*width)
+        svg+=f'<line x1="{now_x}" y1="8" x2="{now_x}" y2="44" stroke="#1a1f5e" stroke-width="2"/>'
+        svg+='<defs><svg><rect x="0" y="44" width="60" height="8" fill="#1a1f5e" rx="2"/></svg></defs>'
+        # Legend
+        for i,(lbl,col) in enumerate([("Prod","#1a8c4e"),("PB Technique","#e31e24"),("Rattrapage","#d97706"),("Nettoyage","#0891b2"),("Pause","#7c3aed")]):
+            svg+=f'<rect x="{i*140}" y="44" width="10" height="8" fill="{col}" rx="2"/>'
+            svg+=f'<text x="{i*140+14}" y="52" font-size="8" fill="#475569">{lbl}</text>'
+        svg+='</svg>'
+        return svg
+
+    tl_svg=build_tl_svg(today_evts)
+
+    shift_duration_s=get_shift_duration_s(poste_now,datetime.date.today())
+    shift_h=shift_duration_s/3600
+
+    html=f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="60">
-<title>KPI Dashboard — ORC1</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<meta http-equiv="refresh" content="30">
+<title>KPI Supervision — ORC1</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,Segoe UI,Arial,sans-serif;background:#f0f4fb;color:#0f172a}}
-.page-hdr{{background:#1a1f5e;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}}
-.page-hdr h1{{font-size:18px;font-weight:800;letter-spacing:.3px}}
-.page-hdr .gen-time{{font-size:12px;opacity:.7}}
-.section{{padding:18px 24px}}
-.section h2{{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#1a1f5e;margin-bottom:14px;display:flex;align-items:center;gap:8px}}
-.section h2::after{{content:'';flex:1;height:2px;background:#dde4ef}}
-.kpi-row{{display:flex;gap:14px;flex-wrap:wrap}}
-.kpi-card{{background:#fff;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.08);padding:16px 20px;min-width:200px;text-align:center;flex:1}}
-.kpi-card-hdr{{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#64748b;margin-bottom:8px}}
-.kpi-trs{{font-size:30px;font-weight:900;margin:4px 0}}
-.kpi-sub{{font-size:11px;color:#64748b;margin-top:2px}}
-.charts-row{{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px}}
-.charts-row-2{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
-.chart-card{{background:#fff;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.08);padding:16px}}
-.chart-card h3{{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#64748b;margin-bottom:12px}}
-table{{width:100%;border-collapse:collapse;background:#fff;font-size:11px}}
-th{{background:#dde4ef;font-weight:700;padding:8px 10px;text-align:center;white-space:nowrap;border-bottom:2px solid #c0cde0}}
-td{{padding:6px 10px;text-align:center;border-bottom:1px solid #edf0f7;white-space:nowrap}}
-tr:hover td{{background:#f0f4fb}}
-.table-wrap{{border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.07)}}
-.badge{{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap}}
+body{{font-family:-apple-system,Segoe UI,Arial,sans-serif;background:#f0f4fb;color:#0f172a;font-size:12px}}
+.page-hdr{{background:#1a1f5e;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}}
+.page-hdr h1{{font-size:15px;font-weight:800;letter-spacing:.3px}}
+.page-hdr .gen-info{{font-size:11px;opacity:.75}}
+{'div.alert-strip{background:#e31e24;color:#fff;padding:8px 20px;font-weight:800;font-size:13px;text-align:center;animation:blink 1s infinite}' if active_stops else ''}
+@keyframes blink{{0%,100%{{opacity:1}}50%{{opacity:.7}}}}
+.grid-main{{display:grid;grid-template-columns:320px 1fr;gap:12px;padding:12px 16px;min-height:0}}
+.col-left{{display:flex;flex-direction:column;gap:10px}}
+.col-right{{display:flex;flex-direction:column;gap:10px}}
+.block{{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden}}
+.block-hdr{{background:#1a1f5e;color:#fff;padding:10px 14px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;justify-content:space-between}}
+.block-hdr.green{{background:#1a8c4e}}
+.block-hdr.red{{background:#e31e24}}
+.block-hdr.amber{{background:#d97706}}
+.block-body{{padding:12px 14px}}
+/* Supervision live */
+.sup-hdr{{background:{sup_col};color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between}}
+.sup-status{{font-size:16px;font-weight:900}}
+.sup-meta{{font-size:11px;opacity:.85}}
+.sup-kpis{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 14px}}
+.sup-kpi{{background:#f8fafc;border-radius:8px;padding:8px 12px;text-align:center}}
+.sup-kpi-lbl{{font-size:9px;font-weight:700;text-transform:uppercase;color:#64748b}}
+.sup-kpi-val{{font-size:20px;font-weight:900;margin-top:2px}}
+.stops-live-row{{display:flex;gap:8px;flex-wrap:wrap;padding:0 14px 12px}}
+.slv-card{{background:#fee2e2;border:2px solid #e31e24;border-radius:8px;padding:8px 14px;text-align:center}}
+.slv-name{{font-size:11px;font-weight:700;color:#991b1b}}
+.slv-timer{{font-size:18px;font-weight:900;color:#e31e24;font-variant-numeric:tabular-nums}}
+/* Sessions cards */
+.sessions-row{{display:flex;gap:8px;padding:12px 14px;flex-wrap:wrap}}
+.sess-card{{background:#f8fafc;border-radius:10px;padding:10px 12px;flex:1;min-width:180px;text-align:center}}
+.sess-hdr{{border-radius:8px 8px 0 0;padding:8px 10px;margin:-10px -12px 8px}}
+.sess-title{{font-size:11px;font-weight:800;color:#1a1f5e}}
+.sess-pilot{{font-size:10px;color:#64748b;margin-top:2px}}
+.sess-stats{{display:flex;justify-content:space-around;margin-top:8px;font-size:10px}}
+.sl{{color:#64748b;display:block}}
+.sv{{font-weight:800;font-size:13px;display:block}}
+/* Tables */
+table{{width:100%;border-collapse:collapse;font-size:11px}}
+th{{background:#dde4ef;padding:7px 8px;font-weight:700;text-align:center;border-bottom:2px solid #c0cde0;white-space:nowrap}}
+td{{padding:5px 8px;text-align:center;border-bottom:1px solid #edf0f7;white-space:nowrap}}
+tr:hover td{{background:#f8fafc}}
+.badge{{display:inline-block;padding:1px 6px;border-radius:12px;font-size:10px;font-weight:700}}
 .badge-red{{background:#fee2e2;color:#991b1b}}
 .badge-amber{{background:#fef3c7;color:#92400e}}
-.badge-navy{{background:#dbeafe;color:#1e40af}}
 .badge-cyan{{background:#cffafe;color:#0e7490}}
-.supervision-block{{background:#fff;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.08);overflow:hidden;margin:0 0 14px}}
-.sup-hdr{{background:{sup_bg};color:#fff;padding:14px 20px;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:space-between}}
-.sup-hdr .sup-meta{{font-size:13px;opacity:.85;font-weight:600}}
-.sup-body{{padding:16px 20px;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}}
-.sup-info-grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;flex:1}}
-.sup-cell{{background:#f8fafc;border-radius:8px;padding:10px 14px;text-align:center}}
-.sup-cell-lbl{{font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b}}
-.sup-cell-val{{font-size:18px;font-weight:800;margin-top:2px;color:#0f172a}}
-.stops-live{{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}}
-.stop-live-card{{background:#fee2e2;border:2px solid #e31e24;border-radius:10px;padding:10px 16px;text-align:center}}
-.slc-lbl{{font-size:12px;font-weight:700;color:#991b1b}}
-.slc-timer{{font-size:20px;font-weight:900;color:#e31e24;font-variant-numeric:tabular-nums}}
-.no-stops{{color:#1a8c4e;font-weight:700;padding:8px 0}}
-{'div.alert-banner{background:#e31e24;color:#fff;padding:10px 24px;font-weight:700;font-size:14px;text-align:center;animation:blink 1.2s infinite}' if active_stops else ''}
-@keyframes blink{{0%,100%{{opacity:1}}50%{{opacity:.75}}}}
-.footer{{padding:14px 24px;color:#94a3b8;font-size:11px;text-align:center;border-top:1px solid #e2e8f0;margin-top:8px}}
+.badge-navy{{background:#dbeafe;color:#1e40af}}
+/* Pareto */
+.pareto-row{{display:flex;align-items:center;gap:8px;margin-bottom:6px}}
+.pareto-lbl{{width:160px;font-size:10px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}}
+.pareto-bar-wrap{{flex:1;background:#f0f4fb;border-radius:4px;height:16px;overflow:hidden}}
+.pareto-bar{{height:16px;border-radius:4px;transition:width .3s}}
+.pareto-val{{width:42px;font-size:10px;font-weight:700;text-align:right;flex-shrink:0}}
+/* Timeline */
+.tl-wrap{{padding:12px 14px;overflow-x:auto}}
+/* Footer */
+.footer{{padding:10px 20px;color:#94a3b8;font-size:10px;text-align:center;border-top:1px solid #e2e8f0}}
 </style>
 </head>
 <body>
 <div class="page-hdr">
-  <h1>&#127981; KPI Dashboard — ORC1</h1>
-  <div class="gen-time">Généré le {gen_time} &nbsp;|&nbsp; Actualisation auto. 60s</div>
+  <h1>&#127981; KPI Supervision ORC1 — Dashboard encadrant</h1>
+  <div class="gen-info">Généré le {gen_time} &nbsp;|&nbsp; Actualisation auto. 30s</div>
 </div>
-{'<div class="alert-banner">&#9888; ' + str(len(active_stops)) + " arrêt(s) en cours — Poste " + poste_now + "</div>" if active_stops else ""}
+{'<div class="alert-strip">&#9888; ' + str(len(active_stops)) + ' ARRÊT(S) EN COURS — Poste ' + poste_now + ' — ' + pilot_now + '</div>' if active_stops else ''}
 
-<!-- Supervision live -->
-<div class="section">
-  <h2>&#128308; Supervision live</h2>
-  <div class="supervision-block">
-    <div class="sup-hdr">
-      <span>{sup_status}</span>
-      {f'<span class="sup-meta">Pilote: {pilot_now} | Poste: {poste_now} | OF: {of_num_now} | Début: {of_start_str}</span>' if session_active else ''}
-    </div>
-    <div class="sup-body">
-      <div style="flex:1">
-        <div class="sup-info-grid">
-          <div class="sup-cell"><div class="sup-cell-lbl">Pilote</div><div class="sup-cell-val">{pilot_now}</div></div>
-          <div class="sup-cell"><div class="sup-cell-lbl">Poste</div><div class="sup-cell-val">{poste_now}</div></div>
-          <div class="sup-cell"><div class="sup-cell-lbl">OF</div><div class="sup-cell-val">{of_num_now}</div></div>
-          <div class="sup-cell"><div class="sup-cell-lbl">Début</div><div class="sup-cell-val">{of_start_str or "—"}</div></div>
-        </div>
-        <div style="margin-top:12px">
-          {"<div style='font-weight:700;color:#991b1b;margin-bottom:8px;font-size:12px'>Arrêts actifs :</div><div class='stops-live'>" + stops_html + "</div>" if active_stops else "<div class='no-stops'>&#10004; Aucun arrêt actif</div>"}
+<div class="grid-main">
+  <!-- Colonne gauche -->
+  <div class="col-left">
+
+    <!-- Supervision live -->
+    <div class="block">
+      <div class="sup-hdr">
+        <div>
+          <div class="sup-status">{sup_txt}</div>
+          {'<div class="sup-meta">Pilote : ' + pilot_now + ' | Poste : ' + poste_now + ' | OF : ' + of_num_now + ' | Début : ' + of_start_str + '</div>' if prod_active else '<div class="sup-meta">En attente de déclaration</div>'}
         </div>
       </div>
+      <div class="sup-kpis">
+        <div class="sup-kpi">
+          <div class="sup-kpi-lbl">TRS Poste</div>
+          <div class="sup-kpi-val" style="color:{trs_color_hex(today_trs_shift)}">{f"{today_trs_shift:.1f}%" if today_trs_shift>=0 else "—"}</div>
+        </div>
+        <div class="sup-kpi">
+          <div class="sup-kpi-lbl">Equiv. totale</div>
+          <div class="sup-kpi-val">{round(today_eq,1)}</div>
+        </div>
+        <div class="sup-kpi">
+          <div class="sup-kpi-lbl">Nb OF</div>
+          <div class="sup-kpi-val">{len(today_rows)}</div>
+        </div>
+        <div class="sup-kpi">
+          <div class="sup-kpi-lbl">Durée poste</div>
+          <div class="sup-kpi-val">{shift_h:.1f}h</div>
+        </div>
+      </div>
+      {('<div class="stops-live-row">' + stops_live_html + '</div>') if active_stops else '<div style="padding:0 14px 12px;color:#1a8c4e;font-weight:700;font-size:12px">✔ Aucun arrêt actif</div>'}
     </div>
-  </div>
-</div>
 
-<!-- KPI TRS par séance -->
-<div class="section">
-  <h2>&#128202; TRS par séance (dernières sessions)</h2>
-  <div class="kpi-row">
-    {cards_html if cards_html else "<div style='color:#94a3b8;padding:20px'>Aucune donnée</div>"}
-  </div>
-</div>
-
-<!-- Pareto + TRS pilotes -->
-<div class="section">
-  <h2>&#128200; Analyse des arrêts &amp; TRS pilotes</h2>
-  <div class="charts-row">
-    <div class="chart-card">
-      <h3>Pareto des arrêts — Temps total (min)</h3>
-      <canvas id="pareto-chart" height="220"></canvas>
+    <!-- TRS gauge poste actuel -->
+    <div class="block">
+      <div class="block-hdr">TRS Poste en cours (vs modèle horaire)</div>
+      <div class="block-body" style="text-align:center">
+        {gauge_svg(today_trs_shift, 160)}
+        <div style="font-size:11px;color:#64748b;margin-top:6px">Poste {poste_now} — {today_str}</div>
+        <div style="font-size:11px;color:#64748b">Durée poste : {shift_h:.1f}h | Équiv : {round(today_eq,1)}</div>
+      </div>
     </div>
-    <div class="chart-card">
-      <h3>Répartition par catégorie</h3>
-      <canvas id="pie-chart" height="220"></canvas>
+
+    <!-- 3 derniers postes -->
+    <div class="block">
+      <div class="block-hdr">3 derniers postes</div>
+      <div class="sessions-row">
+        {last3_html if last3_html else '<div style="color:#94a3b8;padding:10px">Aucun historique</div>'}
+      </div>
     </div>
+
+    <!-- Pareto arrêts -->
+    <div class="block">
+      <div class="block-hdr">Pareto des arrêts (toutes sessions)</div>
+      <div class="block-body">
+        {pareto_html if pareto_html else '<div style="color:#94a3b8">Aucun arrêt enregistré</div>'}
+      </div>
+    </div>
+
   </div>
-  <div class="chart-card">
-    <h3>TRS par pilote (toutes sessions)</h3>
-    <canvas id="pilot-chart" height="100"></canvas>
+
+  <!-- Colonne droite -->
+  <div class="col-right">
+
+    <!-- Timeline 8h du poste -->
+    <div class="block">
+      <div class="block-hdr">Timeline du poste (8 dernières heures)</div>
+      <div class="tl-wrap">{tl_svg}</div>
+    </div>
+
+    <!-- Productions du poste en cours -->
+    <div class="block">
+      <div class="block-hdr green">Productions du poste en cours</div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Durée</th><th>Taille</th><th>Qté Fab</th><th>Qté Emb</th><th>Equiv</th><th>TRS%</th></tr></thead>
+          <tbody>{prod_table_html if prod_table_html else '<tr><td colspan="9" style="color:#94a3b8;padding:14px">Aucune production déclarée</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Arrêts du poste en cours -->
+    <div class="block">
+      <div class="block-hdr red">Arrêts / événements du poste</div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Type</th><th>Début</th><th>Fin</th><th>Durée</th><th>Commentaire</th></tr></thead>
+          <tbody>{evts_table_html if evts_table_html else '<tr><td colspan="5" style="color:#94a3b8;padding:14px">Aucun arrêt</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 </div>
 
-<!-- Dernières productions -->
-<div class="section">
-  <h2>&#128203; Dernières productions</h2>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Début</th><th>Fin</th><th>Taille</th><th>Qté Fab</th><th>Qté Emb</th><th>Equiv</th><th>TRS%</th></tr></thead>
-      <tbody>{prod_table_rows if prod_table_rows else "<tr><td colspan='11' style='color:#94a3b8;padding:20px'>Aucune production</td></tr>"}</tbody>
-    </table>
-  </div>
-</div>
-
-<!-- Derniers événements -->
-<div class="section">
-  <h2>&#128221; Derniers événements / arrêts</h2>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Type</th><th>OF</th><th>Date</th><th>Pilote</th><th>Début</th><th>Fin</th><th>Durée</th><th>Commentaire</th></tr></thead>
-      <tbody>{evt_table_rows if evt_table_rows else "<tr><td colspan='8' style='color:#94a3b8;padding:20px'>Aucun événement</td></tr>"}</tbody>
-    </table>
-  </div>
-</div>
-
-<div class="footer">KPI-ORC v6.3 — Généré le {gen_time} — Actualisation toutes les 60 secondes</div>
-
-<script>
-{gauge_js}
-
-new Chart(document.getElementById('pareto-chart'),{{
-  type:'bar',
-  data:{{
-    labels:{pareto_labels},
-    datasets:[{{label:'Temps (min)',data:{pareto_vals},backgroundColor:{pareto_colors},borderRadius:4}}]
-  }},
-  options:{{
-    indexAxis:'y',
-    plugins:{{legend:{{display:false}}}},
-    scales:{{x:{{grid:{{color:'#f0f4fb'}},ticks:{{font:{{size:10}}}}}},y:{{grid:{{display:false}},ticks:{{font:{{size:11}}}}}}}}
-  }}
-}});
-
-new Chart(document.getElementById('pie-chart'),{{
-  type:'doughnut',
-  data:{{
-    labels:{pareto_labels},
-    datasets:[{{data:{pareto_vals},backgroundColor:{pareto_colors},borderWidth:2,borderColor:'#fff'}}]
-  }},
-  options:{{plugins:{{legend:{{position:'right',labels:{{font:{{size:10}},boxWidth:10,padding:8}}}}}}}}
-}});
-
-new Chart(document.getElementById('pilot-chart'),{{
-  type:'bar',
-  data:{{
-    labels:{pilot_trs_labels_j},
-    datasets:[{{label:'TRS%',data:{pilot_trs_vals_j},backgroundColor:{pilot_trs_colors_j},borderRadius:4}}]
-  }},
-  options:{{
-    plugins:{{legend:{{display:false}}}},
-    scales:{{
-      y:{{min:0,max:110,grid:{{color:'#f0f4fb'}},ticks:{{callback:v=>v+'%',font:{{size:10}}}}}},
-      x:{{grid:{{display:false}},ticks:{{font:{{size:11}}}}}}
-    }}
-  }}
-}});
-</script>
+<div class="footer">KPI-ORC v6.4 — Généré le {gen_time} — Actualisation toutes les 30 secondes</div>
 </body>
 </html>"""
+
     try:
         html_path = os.path.join(os.path.dirname(path), "KPI_Dashboard.html")
-        with open(html_path, "w", encoding="utf-8") as f:
-            f.write(html)
+        with open(html_path, "w", encoding="utf-8") as f: f.write(html)
         return html_path, None
     except Exception as e:
         return None, str(e)
@@ -1449,1771 +1606,1220 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KPI-ORC | ORC1</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KPI-ORC</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --navy:#1a1f5e;--navy-l:#2d3490;--red:#e31e24;--green:#1a8c4e;
-  --amber:#d97706;--cyan:#0891b2;--purple:#7c3aed;
-  --bg:#f0f4fb;--white:#ffffff;--gray:#64748b;--lgray:#dde4ef;--dark:#0f172a;
-  --shadow:0 2px 8px rgba(0,0,0,.10);--shadow-lg:0 4px 20px rgba(0,0,0,.14);
+  --c-bg:#f4f6fb;--c-card:#fff;--c-border:#e2e8f0;--c-text:#1e293b;--c-muted:#64748b;
+  --c-primary:#1a1f5e;--c-primary-light:#e8eaf6;--c-accent:#3b82f6;
+  --c-green:#16a34a;--c-red:#dc2626;--c-yellow:#d97706;--c-orange:#ea580c;
+  --radius:10px;--shadow:0 2px 12px rgba(0,0,0,.08);--header-h:54px;
 }
-/* Dark theme quand arrêt actif */
-body.stop-active{
-  --bg:#0f172a;--white:#1e293b;--lgray:#334155;--gray:#94a3b8;--dark:#f1f5f9;
-}
-body{font-family:-apple-system,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--dark);overflow:hidden;height:100vh;transition:background .3s}
-.view{display:none;height:100vh;flex-direction:column;overflow:hidden}
-.view.active{display:flex}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--c-bg);color:var(--c-text);font-size:13px;line-height:1.4}
+body.stop-active{--c-bg:#1a0808;--c-card:#2d1010;--c-border:#5a2020;--c-text:#f8d7d7;--c-muted:#c98888;--c-primary-light:#3d1010}
+body.stop-active #app-header{background:#7f0000!important}
 
-/* Header */
-.hdr{background:var(--white);border-bottom:2px solid var(--lgray);display:flex;align-items:center;padding:0 12px;height:52px;flex-shrink:0;box-shadow:var(--shadow);transition:background .3s}
-body.stop-active .hdr{background:#1e293b;border-bottom-color:#334155}
-.hdr-logo{font-size:15px;font-weight:800;color:var(--navy);letter-spacing:.5px;margin-right:10px}
-body.stop-active .hdr-logo{color:#93c5fd}
-.hdr-accent{width:4px;height:32px;border-radius:2px;background:var(--green);margin-right:10px;flex-shrink:0}
-.hdr-accent.red{background:var(--red)}
-.hdr-right{margin-left:auto;display:flex;gap:6px;align-items:center}
-.hdr-pilot{font-size:12px;color:var(--gray);white-space:nowrap}
-.hdr-pilot strong{color:var(--dark)}
+#app-header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:var(--c-primary);display:flex;align-items:center;padding:0 12px;gap:6px;z-index:100;border-bottom:2px solid #2d3480}
+#app-header .logo{color:#fff;font-weight:800;font-size:16px;letter-spacing:1px;margin-right:10px;white-space:nowrap}
+#app-header nav{display:flex;gap:2px;flex:1}
+.nav-tab{background:none;border:none;color:rgba(255,255,255,.7);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s;white-space:nowrap}
+.nav-tab:hover{background:rgba(255,255,255,.12);color:#fff}
+.nav-tab.active{background:rgba(255,255,255,.2);color:#fff;font-weight:700}
+.tab-prod{background:#16a34a!important;color:#fff!important;animation:pt 2s infinite}
+@keyframes pt{0%,100%{opacity:1}50%{opacity:.75}}
+#hdr-info{color:rgba(255,255,255,.8);font-size:11px;text-align:right;line-height:1.3;margin-left:auto}
+.alert-strip{background:#b91c1c;color:#fff;text-align:center;padding:5px;font-weight:700;font-size:12px;position:fixed;top:var(--header-h);left:0;right:0;z-index:99;display:none;animation:blink .9s step-start infinite}
+.alert-strip.on{display:block}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
 
-/* Tab nav */
-.hdr-tabs{display:flex;gap:2px;align-items:center;margin:0 8px}
-.hdr-tab{padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;border-radius:6px;color:var(--gray);transition:all .15s;border:none;background:none}
-.hdr-tab.active{background:var(--navy);color:#fff}
-.hdr-tab:not(.active):hover{background:var(--lgray);color:var(--dark)}
-.hdr-tab .tab-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px;background:var(--red);animation:pulse 1.2s infinite}
+.view{display:none;padding-top:calc(var(--header-h) + 10px);min-height:100vh}
+.view.on{display:block}
+.ctr{max-width:1400px;margin:0 auto;padding:10px 14px}
 
-/* Buttons */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:7px 14px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap}
-.btn:active{transform:scale(.97)}
-.btn-navy{background:var(--navy);color:#fff}.btn-navy:hover{background:var(--navy-l)}
-.btn-green{background:var(--green);color:#fff}.btn-green:hover{filter:brightness(1.1)}
-.btn-red{background:var(--red);color:#fff}.btn-red:hover{filter:brightness(1.1)}
-.btn-amber{background:var(--amber);color:#fff}.btn-amber:hover{filter:brightness(1.1)}
-.btn-cyan{background:var(--cyan);color:#fff}.btn-cyan:hover{filter:brightness(1.1)}
-.btn-ghost{background:var(--lgray);color:var(--dark)}.btn-ghost:hover{background:#c8d4e8}
-.btn-lg{padding:12px 20px;font-size:14px;border-radius:10px}
-.btn-xl{padding:18px 28px;font-size:16px;border-radius:12px;width:100%}
-.btn-sm{padding:4px 10px;font-size:11px;border-radius:6px}
-.btn-icon{background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:6px;font-size:15px;line-height:1;transition:background .15s}
-.btn-icon:hover{background:var(--lgray)}
-.btn-icon.edit{color:#2563eb}
-.btn-icon.del{color:#e31e24}
+/* LOGIN */
+#v-login{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#1a1f5e,#2d3480,#1e3a8a);padding:20px}
+.login-card{background:#fff;border-radius:16px;padding:36px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.login-card h1{color:var(--c-primary);font-size:26px;font-weight:800;margin-bottom:2px;text-align:center}
+.login-card .sub{color:#64748b;text-align:center;margin-bottom:24px;font-size:12px}
+.lf{margin-bottom:14px}
+.lf label{display:block;font-weight:600;margin-bottom:4px;color:#374151;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.lf select,.lf input{width:100%;padding:10px 12px;border:2px solid #e5e7eb;border-radius:7px;font-size:14px;outline:none;transition:border .2s;background:#fff;color:#1e293b}
+.lf select:focus,.lf input:focus{border-color:var(--c-primary)}
+.btn-login{width:100%;padding:12px;background:var(--c-primary);color:#fff;border:none;border-radius:7px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;transition:opacity .2s}
+.btn-login:hover{opacity:.88}
+.login-err{color:#dc2626;text-align:center;margin-top:8px;font-size:12px;min-height:18px}
 
-/* Cards */
-.card{background:var(--white);border-radius:12px;box-shadow:var(--shadow);padding:14px;transition:background .3s}
-.card-hdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--gray);margin-bottom:10px}
+/* MAIN */
+.main-row{display:grid;grid-template-columns:3fr 1fr;gap:14px;margin-bottom:16px;height:170px}
+.btn-start{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:var(--radius);font-size:26px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .15s;box-shadow:0 8px 28px rgba(22,163,74,.3)}
+.btn-start:hover{transform:translateY(-2px);box-shadow:0 12px 36px rgba(22,163,74,.4)}
+.btn-start:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-fp{background:linear-gradient(135deg,#1a1f5e,#2d3480);color:#fff;border:none;border-radius:var(--radius);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;transition:all .15s;box-shadow:0 4px 14px rgba(26,31,94,.25)}
+.btn-fp:hover{opacity:.88;transform:translateY(-1px)}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:14px}
+.card{background:var(--c-card);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);border:1px solid var(--c-border)}
+.card h3{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--c-muted);margin-bottom:8px;font-weight:700}
+.prod-active-card{background:var(--c-card);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);border:2px solid var(--c-green);margin-bottom:12px}
 
-/* Status bar */
-.status-bar{display:flex;gap:8px;padding:6px 12px;flex-shrink:0}
-.status-cell{background:var(--white);border-radius:10px;padding:8px 16px;text-align:center;box-shadow:var(--shadow);flex:1;transition:background .3s}
-.status-cell.running{background:var(--red);color:#fff}
-.status-cell.ok{background:var(--green);color:#fff}
-.status-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;opacity:.75}
-.status-value{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
-.status-sub{font-size:10px;opacity:.7}
+/* PROD VIEW */
+.ph-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.of-badge{background:var(--c-primary);color:#fff;padding:5px 14px;border-radius:18px;font-size:17px;font-weight:800;letter-spacing:1px}
+.of-timer{font-size:36px;font-weight:800;color:var(--c-green);font-variant-numeric:tabular-nums}
+.stop-timer-big{font-size:24px;font-weight:800;color:#dc2626;font-variant-numeric:tabular-nums}
+.stop-lbl{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;padding:3px 10px;border-radius:14px;font-weight:700;font-size:11px;animation:blink .8s step-start infinite}
 
-/* Production layout */
-.prod-body{display:grid;grid-template-columns:240px 1fr 220px;gap:8px;padding:8px 12px;flex:1;min-height:0;overflow:hidden}
-.prod-col{min-height:0;overflow:hidden}
+/* 3-col form */
+.form-3col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.fzone{border-radius:8px;padding:10px 10px}
+.fzone h4{font-size:9px;text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:7px;padding-bottom:3px;border-bottom:1px solid rgba(0,0,0,.1)}
+.zi{background:#eef2ff;border:1px solid #c7d2fe}
+.zi h4{color:#3730a3}
+.zp{background:#f0fdf4;border:1px solid #bbf7d0}
+.zp h4{color:#166534}
+.zq{background:#fff7ed;border:1px solid #fed7aa}
+.zq h4{color:#9a3412}
+body.stop-active .zi{background:#1e1b3a;border-color:#4c4a8a}
+body.stop-active .zp{background:#0a1f0a;border-color:#1a4d1a}
+body.stop-active .zq{background:#1f1208;border-color:#4d2a00}
+.fr{display:flex;flex-direction:column;margin-bottom:5px}
+.fr label{font-size:9px;font-weight:700;color:var(--c-muted);margin-bottom:2px;text-transform:uppercase;letter-spacing:.3px}
+.fr input,.fr select,.fr textarea{padding:5px 7px;border:1px solid var(--c-border);border-radius:5px;font-size:12px;background:var(--c-card);color:var(--c-text);width:100%;outline:none;transition:border .15s}
+.fr input:focus,.fr select:focus,.fr textarea:focus{border-color:var(--c-accent)}
+.fr textarea{resize:none;height:46px}
+.fr.big input{font-size:17px;font-weight:700;padding:6px 7px;color:var(--c-green)}
+.fr.ro input{background:#f8fafc;color:var(--c-muted)}
 
-/* Action col */
-.action-col{display:flex;flex-direction:column;gap:8px}
-.big-stop-btn{
-  background:var(--red);color:#fff;border:none;border-radius:14px;
-  padding:0;cursor:pointer;font-weight:900;font-size:17px;
-  box-shadow:0 5px 0 #9b0f14;transition:all .12s;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  height:100px;width:100%;gap:4px
-}
-body.stop-active .big-stop-btn{
-  height:120px;font-size:20px;animation:pulse 1.2s infinite;
-  box-shadow:0 5px 0 #9b0f14,0 0 30px rgba(227,30,36,.5)
-}
-.big-stop-btn:active{transform:translateY(4px);box-shadow:0 1px 0 #9b0f14}
-.big-stop-btn .stop-sub{font-size:11px;font-weight:600;opacity:.85}
-.action-btn{
-  display:flex;align-items:center;justify-content:center;gap:8px;
-  border:none;border-radius:12px;padding:14px;cursor:pointer;
-  font-size:14px;font-weight:700;color:#fff;width:100%;
-  box-shadow:0 3px 0 rgba(0,0,0,.25);transition:all .12s
-}
-.action-btn:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.25)}
-.action-btn.nett{background:var(--cyan)}
-.action-btn.pause{background:var(--navy)}
-.action-btn.end{background:var(--dark)}
-.action-spacer{flex:1}
+/* Controls */
+.ctrls{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.btn{padding:8px 16px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+.btn:hover{filter:brightness(.92)}
+.btn-pause{background:#7c3aed;color:#fff}
+.btn-arret{background:#dc2626;color:#fff}
+.btn-endstop{background:#16a34a;color:#fff}
+.btn-endprod{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:14px;font-weight:800;padding:9px 20px;box-shadow:0 4px 14px rgba(217,119,6,.3)}
+.btn-sec{background:var(--c-border);color:var(--c-text)}
+.btn-danger{background:#dc2626;color:#fff}
+.btn-prim{background:var(--c-primary);color:#fff}
+.btn-ok{background:#16a34a;color:#fff}
 
-/* Form col */
-.form-col{display:flex;flex-direction:column;overflow:hidden}
-.form-toggle{
-  background:var(--white);border:2px solid var(--lgray);border-radius:10px;
-  padding:10px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;
-  font-size:12px;font-weight:700;color:var(--dark);flex-shrink:0;margin-bottom:6px;
-  transition:border-color .15s
-}
-.form-toggle:hover{border-color:var(--navy-l)}
-.form-toggle .toggle-arrow{transition:transform .2s;font-size:14px}
-.form-toggle.open .toggle-arrow{transform:rotate(180deg)}
-.form-body{background:var(--white);border-radius:10px;padding:12px;overflow-y:auto;flex:1;display:none}
-.form-body.visible{display:block}
-.form-essential{background:var(--white);border-radius:10px;padding:12px;flex-shrink:0}
-/* Pilote + OF très grands */
-.pilot-of-banner{background:var(--white);border-radius:10px;padding:10px 14px;flex-shrink:0;margin-bottom:6px;display:flex;gap:16px;align-items:center}
-body.stop-active .pilot-of-banner{background:#1e293b}
-.pob-item{flex:1;text-align:center}
-.pob-label{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.5px}
-.pob-value{font-size:28px;font-weight:900;color:var(--navy);letter-spacing:1px;line-height:1.1}
-body.stop-active .pob-value{color:#93c5fd}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.form-group{display:flex;flex-direction:column;gap:2px}
-.form-group.full{grid-column:1/-1}
-.form-group label{font-size:10px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px}
-.form-group input,.form-group select,.form-group textarea{
-  border:1.5px solid var(--lgray);border-radius:6px;padding:6px 8px;
-  font-size:12px;color:var(--dark);background:var(--white);outline:none;
-  transition:border-color .15s}
-.form-group input:focus,.form-group select:focus{border-color:var(--navy-l)}
-.form-group input[disabled],.form-group select[disabled]{background:#f0f4fb;color:var(--gray)}
-.form-group textarea{resize:none;height:48px;font-size:12px}
-.checkbox-row{display:flex;align-items:center;gap:6px;padding:6px 0}
-.checkbox-row input[type=checkbox]{width:16px;height:16px;cursor:pointer}
+/* Stop bar */
+.stop-bar{background:#7f0000;color:#fff;border-radius:8px;padding:9px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.stop-bar .stype{font-weight:700;font-size:13px}
+.stop-bar .selap{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
 
-/* Recap col */
-.recap-col{display:flex;flex-direction:column;gap:6px;overflow:hidden}
-.recap-stop-row{display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:6px;margin-bottom:3px;background:#f8fafc;cursor:pointer;transition:background .15s}
-.recap-stop-row:hover{background:#e2e8f0}
-body.stop-active .recap-stop-row{background:#1e293b}
-body.stop-active .recap-stop-row:hover{background:#334155}
-.recap-stop-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.recap-stop-name{font-size:11px;flex:1;font-weight:600}
-.recap-stop-time{font-size:11px;color:var(--gray);font-variant-numeric:tabular-nums}
-.recap-stop-row.running{background:#fff0f0;animation:pulse 1.5s infinite}
-body.stop-active .recap-stop-row.running{background:#3f1212}
+/* Timeline */
+.tl-wrap{background:var(--c-card);border-radius:var(--radius);padding:9px 10px;margin-bottom:8px;box-shadow:var(--shadow);border:1px solid var(--c-border)}
+.tl-wrap h4{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--c-muted);margin-bottom:5px;font-weight:700}
 
-/* Active stops bottom — beaucoup plus visibles */
-.active-stops-bottom{
-  background:#0f172a;border-top:4px solid var(--red);
-  padding:10px 12px;flex-shrink:0;
-  display:none;align-items:stretch;gap:10px;flex-wrap:nowrap;overflow-x:auto
-}
-body.stop-active .active-stops-bottom{border-top-color:#ff0000}
-.active-stops-bottom.has-stops{display:flex}
-.active-stop-card{
-  background:var(--red);color:#fff;border-radius:12px;
-  padding:12px 20px;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;cursor:pointer;min-width:170px;flex-shrink:0;
-  box-shadow:0 4px 0 #9b0f14,0 0 20px rgba(227,30,36,.4);transition:all .12s;
-  animation:pulse 1.4s infinite
-}
-.active-stop-card:active{transform:translateY(3px);box-shadow:0 1px 0 #9b0f14}
-.active-stop-card.nett{background:var(--cyan);box-shadow:0 4px 0 #065981,0 0 16px rgba(8,145,178,.3);animation:none}
-.active-stop-card .asc-label{font-size:13px;font-weight:800;letter-spacing:.3px}
-.active-stop-card .asc-timer{font-size:26px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:2px}
-.active-stop-card .asc-hint{font-size:10px;opacity:.7;margin-top:3px}
+/* Recap stops */
+.recap{background:var(--c-card);border-radius:var(--radius);padding:9px 10px;box-shadow:var(--shadow);border:1px solid var(--c-border);margin-bottom:8px}
+.recap h4{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--c-muted);margin-bottom:5px;font-weight:700}
+.si{display:flex;align-items:center;gap:7px;padding:4px 0;border-bottom:1px solid var(--c-border);font-size:12px}
+.si:last-child{border:none}
+.sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.si .sname{flex:1;font-weight:600}
+.si .sdur{color:var(--c-muted);min-width:50px;text-align:right;font-size:11px}
+.btn-edit{background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:3px;color:var(--c-accent);font-size:13px}
+.btn-edit:hover{background:var(--c-primary-light)}
 
-/* TRS gauge */
-.gauge-wrap{position:relative;width:140px;height:80px;margin:0 auto}
-.gauge-svg{width:140px;height:80px}
-.gauge-text{position:absolute;bottom:0;left:50%;transform:translateX(-50%);text-align:center}
-.gauge-pct{font-size:24px;font-weight:800}
-.gauge-lbl{font-size:10px;color:var(--gray);font-weight:700;text-transform:uppercase}
+/* Modals */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center}
+.overlay.on{display:flex}
+.mbox{background:var(--c-card);border-radius:12px;padding:22px;width:90%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:90vh;overflow-y:auto}
+.mbox.wide{max-width:880px}
+.mbox h2{font-size:16px;font-weight:700;margin-bottom:14px;color:var(--c-primary)}
+.m-acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+.stop-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:14px}
+.stop-btn{padding:11px;border:2px solid var(--c-border);border-radius:7px;background:var(--c-card);cursor:pointer;font-size:12px;font-weight:600;text-align:center;transition:all .15s;color:var(--c-text)}
+.stop-btn:hover{border-color:var(--c-red);background:#fee2e2;color:#b91c1c}
 
-/* Tables */
-.table-wrap{overflow-x:auto;border-radius:10px;box-shadow:var(--shadow)}
-.ktable{width:100%;border-collapse:collapse;background:var(--white);font-size:11px;transition:background .3s}
-.ktable th{background:var(--lgray);color:var(--dark);font-weight:700;padding:8px 8px;text-align:center;white-space:nowrap;border-bottom:2px solid #c0cde0}
-.ktable td{padding:6px 8px;text-align:center;border-bottom:1px solid #edf0f7;white-space:nowrap}
-.ktable tr:hover td{background:#f0f4fb}
-body.stop-active .ktable tr:hover td{background:#1e293b}
-.trs-hi{background:#f0fdf4}.trs-hi .trs-cell{color:var(--green);font-weight:800}
-.trs-warn{background:#fffbeb}.trs-warn .trs-cell{color:var(--amber);font-weight:800}
-.trs-low{background:#fef2f2}.trs-low .trs-cell{color:var(--red);font-weight:800}
+/* End-prod modal */
+.ep-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.ep-stat{text-align:center;padding:10px;background:var(--c-bg);border-radius:7px}
+.ep-stat .val{font-size:26px;font-weight:800;color:var(--c-primary)}
+.ep-stat .lbl{font-size:9px;text-transform:uppercase;color:var(--c-muted);font-weight:700}
+.ep-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.ep-tbl th{text-align:left;padding:4px 7px;background:var(--c-bg);font-size:9px;text-transform:uppercase;color:var(--c-muted)}
+.ep-tbl td{padding:4px 7px;border-bottom:1px solid var(--c-border)}
 
-/* Modal */
-.modal{display:none;position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.6);align-items:center;justify-content:center}
-.modal.active{display:flex}
-.modal-box{background:var(--white);border-radius:16px;box-shadow:var(--shadow-lg);width:min(700px,95vw);max-height:92vh;overflow-y:auto;display:flex;flex-direction:column}
-.modal-box.narrow{width:min(480px,95vw)}
-.modal-box.wide{width:min(900px,98vw)}
-.modal-hdr{background:var(--navy);color:#fff;padding:16px 22px;border-radius:16px 16px 0 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-.modal-hdr h2{font-size:15px;font-weight:800}
-.modal-hdr.green{background:var(--green)}
-.modal-hdr.red{background:var(--red)}
-.modal-hdr.amber{background:var(--amber)}
-.modal-body{padding:18px 22px;flex:1}
-.modal-footer{padding:14px 22px;border-top:1px solid var(--lgray);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0}
+/* Settings */
+.ss{background:var(--c-card);border-radius:var(--radius);padding:14px;margin-bottom:14px;box-shadow:var(--shadow);border:1px solid var(--c-border)}
+.ss h3{font-size:12px;font-weight:700;margin-bottom:10px;color:var(--c-primary)}
+.pr{display:flex;align-items:center;gap:7px;margin-bottom:7px;padding:5px;border-radius:5px;background:var(--c-bg)}
+.pr .pn{font-weight:600;min-width:110px;font-size:11px}
+.pr input{flex:1;padding:5px 7px;border:1px solid var(--c-border);border-radius:4px;font-size:12px}
+.btn-eye{background:none;border:none;cursor:pointer;padding:3px;color:var(--c-muted);font-size:13px}
+.day-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:8px}
+.day-box{background:var(--c-bg);border-radius:5px;padding:5px;text-align:center}
+.day-box .dl{font-size:8px;font-weight:700;text-transform:uppercase;color:var(--c-muted);margin-bottom:3px}
+.day-box input{width:100%;padding:3px;border:1px solid var(--c-border);border-radius:3px;font-size:10px;text-align:center}
+.model-card{border:1px solid var(--c-border);border-radius:7px;padding:10px;margin-bottom:8px}
+.mch{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+.mch input{flex:1;font-size:12px;font-weight:600;padding:4px 7px;border:1px solid var(--c-border);border-radius:4px}
 
-/* Settings tabs */
-.set-tabs{display:flex;gap:2px;border-bottom:2px solid var(--lgray);margin-bottom:16px}
-.set-tab{padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;border-radius:8px 8px 0 0;color:var(--gray);transition:all .15s;border:none;background:none}
-.set-tab.active{background:var(--navy);color:#fff}
-.set-panel{display:none}.set-panel.active{display:block}
+/* Fin de poste */
+.fp-top{text-align:center;padding:16px 0 8px}
+.fp-top h2{font-size:22px;font-weight:800;color:var(--c-primary)}
+.fp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.fp-sc{background:var(--c-card);border-radius:var(--radius);padding:14px;text-align:center;box-shadow:var(--shadow);border:1px solid var(--c-border)}
+.fp-sc .big{font-size:30px;font-weight:800;color:var(--c-primary)}
+.fp-sc .lbl{font-size:9px;text-transform:uppercase;color:var(--c-muted);font-weight:700;margin-top:3px}
+.fp-acts{display:flex;justify-content:center;gap:10px;padding:16px 0}
 
-/* Stop selector */
-.stops-grid{display:grid;gap:6px;margin-bottom:10px}
-.stops-grid.ratt{grid-template-columns:repeat(3,1fr)}
-.stops-grid.pb{grid-template-columns:repeat(4,1fr)}
-.stops-grid.special{grid-template-columns:repeat(2,1fr)}
-.stop-btn{
-  border:none;border-radius:10px;padding:10px 6px;cursor:pointer;
-  font-size:11px;font-weight:700;color:#fff;text-align:center;
-  transition:all .15s;position:relative;box-shadow:0 3px 0 rgba(0,0,0,.25)}
-.stop-btn:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.25)}
-.stop-btn.ratt{background:var(--amber)}
-.stop-btn.pb{background:var(--navy)}
-.stop-btn.running{animation:pulse 1.2s infinite}
-.stop-btn.running::after{content:'● EN COURS';display:block;font-size:8px;margin-top:3px;opacity:.85}
-.custom-stop-row{display:flex;gap:6px;margin-top:6px}
-.custom-stop-row input{flex:1;border:2px solid var(--lgray);border-radius:8px;padding:8px 12px;font-size:12px;outline:none}
-.custom-stop-row input:focus{border-color:var(--navy)}
+/* History */
+.htbl{width:100%;border-collapse:collapse;font-size:12px}
+.htbl th{text-align:left;padding:7px 9px;background:var(--c-primary);color:#fff;font-size:9px;text-transform:uppercase;letter-spacing:.5px}
+.htbl td{padding:6px 9px;border-bottom:1px solid var(--c-border)}
+.htbl tr:hover td{background:var(--c-primary-light)}
+.tg{color:#16a34a;font-weight:700}
+.tm{color:#d97706;font-weight:700}
+.tb{color:#dc2626;font-weight:700}
 
-/* Modèles horaires */
-.modele-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 40px;gap:8px;align-items:center;margin-bottom:8px}
-.modele-row input{border:1.5px solid var(--lgray);border-radius:6px;padding:6px 8px;font-size:12px;width:100%}
+/* Utils */
+.hidden{display:none!important}
+.flex{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.mt8{margin-top:8px}
+.sl{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--c-muted);font-weight:700;margin-bottom:7px}
 
-/* Fin poste table */
-.fp-table{width:100%;border-collapse:collapse;font-size:12px}
-.fp-table th{background:var(--lgray);padding:8px;font-weight:700;text-align:center}
-.fp-table td{padding:7px 8px;border-bottom:1px solid #edf0f7;text-align:center}
-
-/* Edit row modal fields */
-.edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.edit-group{display:flex;flex-direction:column;gap:3px}
-.edit-group.full{grid-column:1/-1}
-.edit-group label{font-size:10px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px}
-.edit-group input,.edit-group select,.edit-group textarea{
-  border:1.5px solid var(--lgray);border-radius:6px;padding:6px 8px;
-  font-size:12px;color:var(--dark);background:var(--white);outline:none}
-.edit-group input:focus{border-color:var(--navy)}
-
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.65}}
-@keyframes pulseScale{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
+@media(max-width:880px){.form-3col{grid-template-columns:1fr 1fr}}
+@media(max-width:580px){.form-3col{grid-template-columns:1fr};.main-row{grid-template-columns:1fr;height:auto}}
 </style>
 </head>
 <body>
 
-<!-- ══ VIEW: LOGIN ══════════════════════════════════════════════════════════ -->
-<div class="view active" id="view-login">
-  <div style="flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg)">
-    <div style="width:340px">
-      <div style="text-align:center;margin-bottom:30px">
-        <div style="font-size:36px">🏭</div>
-        <div style="font-size:22px;font-weight:900;color:var(--navy);margin-top:8px">KPI-ORC</div>
-        <div style="font-size:13px;color:var(--gray);margin-top:4px">ORC1 — Gestion de production</div>
+<!-- LOGIN -->
+<div id="v-login" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#1a1f5e,#2d3480)">
+  <div class="login-card">
+    <h1>⚙ KPI-ORC</h1>
+    <p class="sub">Système de suivi de production</p>
+    <div class="lf">
+      <label>Pilote</label>
+      <select id="ln-pilot"><option value="">-- Choisir --</option></select>
+    </div>
+    <div class="lf">
+      <label>Poste</label>
+      <select id="ln-poste">
+        <option value="Matin">Matin (05h–13h)</option>
+        <option value="Après-midi">Après-midi (13h–21h)</option>
+        <option value="Nuit">Nuit (21h–05h)</option>
+      </select>
+    </div>
+    <div class="lf">
+      <label>Mot de passe</label>
+      <input type="password" id="ln-pw" placeholder="••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn-login" onclick="doLogin()">Valider</button>
+    <div class="login-err" id="ln-err"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <div id="app-header">
+    <div class="logo">⚙ KPI-ORC</div>
+    <nav>
+      <button class="nav-tab" id="nt-main" onclick="goTab('main')">Accueil</button>
+      <button class="nav-tab" id="nt-prod" style="display:none" onclick="goTab('prod')">▶ Prod en cours</button>
+      <button class="nav-tab" id="nt-hist" onclick="goTab('history')">Historique</button>
+      <button class="nav-tab" id="nt-cfg" onclick="goTab('settings')">Paramètres</button>
+    </nav>
+    <div id="hdr-info"></div>
+  </div>
+  <div id="alert-strip" class="alert-strip"></div>
+
+  <!-- MAIN -->
+  <div id="v-main" class="view">
+    <div class="ctr">
+      <div id="mc-active" class="prod-active-card hidden">
+        <div class="flex">
+          <span class="of-badge" id="mc-of">OF ---</span>
+          <span id="mc-inf" style="font-weight:600;color:var(--c-muted)"></span>
+          <span style="margin-left:auto">
+            <button class="btn btn-prim" onclick="goTab('prod')">▶ Reprendre la production</button>
+          </span>
+        </div>
       </div>
-      <div class="card" style="padding:24px">
-        <div class="form-group" style="margin-bottom:14px">
-          <label>Pilote</label>
-          <select id="login-pilot" style="height:38px;font-size:14px">
-            <option value="">— Sélectionner —</option>
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom:14px">
-          <label>Poste</label>
-          <select id="login-poste" style="height:38px;font-size:14px">
-            <option value="">— Sélectionner —</option>
-            <option>Matin</option><option>Midi</option><option>Nuit</option><option>Jour</option>
-          </select>
-        </div>
-        <button class="btn btn-navy btn-xl" onclick="doLogin()" style="margin-top:6px">
-          Connexion
+      <div class="main-row">
+        <button class="btn-start" id="btn-start" onclick="doStartProd()">▶ Démarrer production</button>
+        <button class="btn-fp" onclick="doFinPoste()">
+          <span style="font-size:20px">⏹</span>
+          <span>Fin de poste</span>
         </button>
-        <div id="login-err" style="color:var(--red);font-size:12px;margin-top:8px;text-align:center"></div>
       </div>
-      <div style="text-align:center;margin-top:14px">
-        <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙ Paramètres</button>
+      <div class="kpi-grid">
+        <div class="card"><h3>Poste en cours — TRS</h3><div id="mkpi-cur" style="min-height:70px"></div></div>
+        <div class="card"><h3>Dernier poste</h3><div id="mkpi-prev" style="min-height:70px"></div></div>
+        <div class="card"><h3>Derniers OF</h3><div id="mkpi-of" style="min-height:70px"></div></div>
       </div>
+    </div>
+  </div>
+
+  <!-- PROD -->
+  <div id="v-prod" class="view">
+    <div class="ctr">
+      <div class="ph-row">
+        <span class="of-badge" id="ph-of">OF ---</span>
+        <div>
+          <div style="font-size:9px;text-transform:uppercase;color:var(--c-muted);font-weight:700">Durée OF</div>
+          <div class="of-timer" id="ph-timer">00:00:00</div>
+        </div>
+        <div id="ph-stop-area" class="hidden">
+          <div style="font-size:9px;text-transform:uppercase;color:var(--c-muted);font-weight:700">Arrêt / Pause</div>
+          <div class="stop-timer-big" id="ph-stop-tmr">00:00:00</div>
+        </div>
+        <div id="ph-slbl" class="stop-lbl hidden">ARRÊT</div>
+        <div style="margin-left:auto">
+          <button class="btn btn-endprod" onclick="doEndProdPreview()">⏹ Fin de production</button>
+        </div>
+      </div>
+
+      <div id="stop-bar" class="stop-bar hidden">
+        <div><div class="stype" id="sb-type">—</div><div style="font-size:10px;opacity:.8">en cours</div></div>
+        <div class="selap" id="sb-elap">0:00</div>
+        <button class="btn btn-endstop" onclick="doEndStop()">✓ Terminer</button>
+      </div>
+
+      <div class="ctrls" id="prod-ctrls">
+        <button class="btn btn-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
+        <button class="btn btn-arret" onclick="openStopModal()">⚠ Arrêt</button>
+        <button class="btn btn-sec" onclick="saveFormNow()" style="margin-left:auto">💾 Sauvegarder</button>
+      </div>
+
+      <div class="form-3col">
+        <!-- Zone Identification -->
+        <div class="fzone zi">
+          <h4>📋 Identification</h4>
+          <div class="fr"><label>N° OF *</label><input id="f-of_num" placeholder="OF123456"></div>
+          <div class="fr ro"><label>Date</label><input id="f-date" readonly></div>
+          <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
+          <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
+          <div class="fr"><label>Co-Pilote</label><input id="f-copilote" placeholder="Nom"></div>
+          <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="2"></div>
+          <div class="fr"><label>Taille</label><select id="f-taille"><option value="">--</option></select></div>
+          <div class="fr"><label>Code Produit</label><input id="f-code_prod" placeholder="CODE01"></div>
+          <div class="fr"><label>Type Produit</label><select id="f-type_prod"><option value="">--</option></select></div>
+          <div class="fr"><label>Kit</label><select id="f-kit"><option value="">Non</option><option value="oui">Oui</option></select></div>
+        </div>
+
+        <!-- Zone Production -->
+        <div class="fzone zp">
+          <h4>🏭 Production</h4>
+          <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0"></div>
+          <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0"></div>
+          <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" placeholder="350"></div>
+          <div class="fr"><label>Fibre</label><select id="f-fibre"><option value="">--</option></select></div>
+          <div class="fr"><label>OF Taie</label><input id="f-of_taie" placeholder="OF-T001"></div>
+          <div class="fr"><label>Traca Fibre</label><select id="f-traca"><option value="">--</option></select></div>
+          <div class="fr"><label>Réf Taie</label><input id="f-ref_taie" placeholder="REF-T01"></div>
+          <div class="fr"><label>Manquant MP (min)</label><input id="f-duree_mq_mp" type="number" min="0" placeholder="0"></div>
+          <div class="fr"><label>Manquant Personnel (min)</label><input id="f-manquant_pers" type="number" min="0" placeholder="0"></div>
+        </div>
+
+        <!-- Zone Qualité -->
+        <div class="fzone zq">
+          <h4>✅ Qualité</h4>
+          <div class="fr"><label>Qté Init Taie</label><input id="f-qte_init_taie" type="number" min="0" value="0"></div>
+          <div class="fr"><label>Nb Taie 2nd Choix</label><input id="f-nb_taie2_choix" type="number" min="0" value="0"></div>
+          <div class="fr"><label>Nb Défaut Couture</label><input id="f-nb_def_cout" type="number" min="0" value="0"></div>
+          <div class="fr"><label>Mq Taie</label><input id="f-mq_taie" type="number" min="0" value="0"></div>
+          <div class="fr"><label>Mq Housse/Encart</label><input id="f-mq_housse_encart" type="number" min="0" value="0"></div>
+          <div class="fr"><label>Nb PP Cousue</label><input id="f-nb_pp_cousue" type="number" min="0" value="0"></div>
+          <div class="fr"><label>Commentaire</label><textarea id="f-comment" placeholder="Observations..."></textarea></div>
+        </div>
+      </div>
+
+      <!-- Timeline 4h -->
+      <div class="tl-wrap">
+        <h4>Timeline — 4 dernières heures</h4>
+        <svg id="tl-svg" viewBox="0 0 800 48" preserveAspectRatio="none" style="width:100%;height:48px;display:block">
+          <rect x="0" y="8" width="800" height="32" fill="#e2e8f0" rx="4"/>
+          <text x="2" y="46" font-size="9" fill="#94a3b8">-4h</text>
+          <text x="770" y="46" font-size="9" fill="#94a3b8">Maintenant</text>
+        </svg>
+      </div>
+
+      <!-- Recap stops -->
+      <div class="recap">
+        <h4>Arrêts &amp; pauses du poste</h4>
+        <div id="recap-list"><span style="color:var(--c-muted);font-size:11px">Aucun arrêt enregistré</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIN DE POSTE -->
+  <div id="v-finposte" class="view">
+    <div class="ctr">
+      <div class="fp-top"><h2>Fin de poste</h2><p id="fp-who" style="color:var(--c-muted);margin-top:3px"></p></div>
+      <div class="fp-stats" id="fp-stats">
+        <div class="fp-sc"><div class="big" id="fp-trs">--%</div><div class="lbl">TRS Poste (shift)</div></div>
+        <div class="fp-sc"><div class="big" id="fp-eq">0</div><div class="lbl">Équivalence totale</div></div>
+        <div class="fp-sc"><div class="big" id="fp-nof">0</div><div class="lbl">Nb OF</div></div>
+        <div class="fp-sc"><div class="big" id="fp-st">0 min</div><div class="lbl">Durée prod totale</div></div>
+      </div>
+      <div class="tl-wrap"><h4>Timeline du poste</h4>
+        <svg id="fp-tl" viewBox="0 0 800 48" preserveAspectRatio="none" style="width:100%;height:48px;display:block">
+          <rect x="0" y="8" width="800" height="32" fill="#e2e8f0" rx="4"/>
+        </svg>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <h3>Productions du poste</h3>
+        <div id="fp-prods"></div>
+      </div>
+      <div class="fp-acts">
+        <button class="btn btn-sec" onclick="goTab('main')">← Retour</button>
+        <button class="btn btn-danger" onclick="confirmFinPoste()" style="font-size:14px;padding:11px 22px">⏹ Confirmer fin de poste &amp; Déconnexion</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div id="v-history" class="view">
+    <div class="ctr">
+      <div class="flex" style="margin-bottom:10px">
+        <div class="sl" style="margin:0;font-size:13px">Historique</div>
+        <input type="date" id="hist-dt" style="padding:5px 9px;border:1px solid var(--c-border);border-radius:5px;font-size:12px" onchange="loadHist()">
+      </div>
+      <div style="overflow-x:auto">
+        <table class="htbl"><thead><tr id="hist-hd"></tr></thead><tbody id="hist-bd"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="v-settings" class="view">
+    <div class="ctr">
+      <div class="sl" style="font-size:13px;margin-bottom:12px">Paramètres</div>
+
+      <div class="ss">
+        <h3>🔐 Mots de passe pilotes</h3>
+        <div id="pwd-list"></div>
+        <div class="flex mt8">
+          <input id="np-name" placeholder="Nom pilote" style="flex:1;padding:6px 9px;border:1px solid var(--c-border);border-radius:5px;font-size:12px">
+          <input id="np-pw" type="password" placeholder="Mot de passe" style="flex:1;padding:6px 9px;border:1px solid var(--c-border);border-radius:5px;font-size:12px">
+          <button class="btn btn-prim" onclick="addPilot()">+ Ajouter</button>
+        </div>
+        <div class="flex mt8">
+          <label style="font-size:11px;font-weight:600">MDP admin requis :</label>
+          <input id="adm-pw" type="password" value="1234" style="width:80px;padding:5px 7px;border:1px solid var(--c-border);border-radius:5px;font-size:12px">
+          <button class="btn btn-ok" onclick="savePwds()">💾 Enregistrer MDP</button>
+        </div>
+      </div>
+
+      <div class="ss">
+        <h3>🕐 Modèles horaires (par poste &amp; par jour)</h3>
+        <div id="models-list"></div>
+        <button class="btn btn-sec mt8" onclick="addModel()">+ Nouveau modèle</button>
+        <div class="flex mt8">
+          <label style="font-size:11px;font-weight:600">MDP admin :</label>
+          <input id="adm-pw2" type="password" value="1234" style="width:80px;padding:5px 7px;border:1px solid var(--c-border);border-radius:5px;font-size:12px">
+          <button class="btn btn-ok" onclick="saveModels()">💾 Enregistrer modèles</button>
+        </div>
+      </div>
+
+      <div class="ss">
+        <h3>⚙ Référence production 8h</h3>
+        <div class="flex">
+          <label style="font-weight:600;font-size:12px">Prod ref (unités/8h) :</label>
+          <input id="cfg-pr" type="number" style="width:90px;padding:5px 7px;border:1px solid var(--c-border);border-radius:5px">
+          <input id="adm-pw3" type="password" value="1234" placeholder="MDP admin" style="width:80px;padding:5px 7px;border:1px solid var(--c-border);border-radius:5px;font-size:12px">
+          <button class="btn btn-ok" onclick="saveProdRef()">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<!-- MODAL: type d'arrêt -->
+<div class="overlay" id="m-stop">
+  <div class="mbox">
+    <h2>⚠ Type d'arrêt</h2>
+    <div class="stop-grid" id="stop-grid"></div>
+    <div class="m-acts"><button class="btn btn-sec" onclick="closeM('m-stop')">Annuler</button></div>
+  </div>
+</div>
+
+<!-- MODAL: fin de production -->
+<div class="overlay" id="m-endprod">
+  <div class="mbox wide">
+    <h2>⏹ Fin de production — Récapitulatif</h2>
+    <div class="ep-grid" id="ep-stats"></div>
+    <div style="margin-bottom:10px">
+      <div class="sl">Arrêts &amp; pauses</div>
+      <table class="ep-tbl"><thead><tr><th>Type</th><th>Durée</th><th>%</th></tr></thead><tbody id="ep-stops"></tbody></table>
+    </div>
+    <div class="tl-wrap"><h4>Timeline</h4>
+      <svg id="ep-tl" viewBox="0 0 800 48" preserveAspectRatio="none" style="width:100%;height:48px;display:block">
+        <rect x="0" y="8" width="800" height="32" fill="#e2e8f0" rx="4"/>
+      </svg>
+    </div>
+    <div class="m-acts">
+      <button class="btn btn-sec" onclick="closeM('m-endprod')">Annuler</button>
+      <button class="btn btn-danger" onclick="confirmEndProd()" style="font-size:14px;padding:10px 20px">✓ Confirmer fin de production</button>
     </div>
   </div>
 </div>
 
-<!-- ══ VIEW: MAIN ═══════════════════════════════════════════════════════════ -->
-<div class="view" id="view-main">
-  <div class="hdr">
-    <div class="hdr-accent" id="hdr-accent-main"></div>
-    <div class="hdr-logo">KPI-ORC</div>
-    <div class="hdr-tabs">
-      <button class="hdr-tab active" id="main-tab-decl" onclick="switchMainTab('decl')">Déclarations</button>
-      <button class="hdr-tab" id="main-tab-evt" onclick="switchMainTab('evt')">Événements</button>
-    </div>
-    <div class="hdr-right">
-      <span class="hdr-pilot">Pilote: <strong id="main-pilot-name">—</strong> | Poste: <strong id="main-poste-name">—</strong></span>
-      <button class="btn btn-green btn-sm" onclick="openStartProd()">▶ Démarrer prod</button>
-      <button class="btn btn-ghost btn-sm" onclick="openFinPoste()">🏁 Fin de poste</button>
-      <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙</button>
-      <button class="btn btn-ghost btn-sm" onclick="doLogout()">Déconnexion</button>
-    </div>
-  </div>
-
-  <!-- Déclarations tab -->
-  <div id="main-panel-decl" style="flex:1;overflow:auto;padding:12px">
-    <div class="table-wrap">
-      <table class="ktable" id="hist-table">
-        <thead><tr>
-          <th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th>
-          <th>Début</th><th>Fin</th><th>Taille</th><th>Qté Fab</th>
-          <th>Qté Emb</th><th>Equiv</th><th>TRS%</th><th>Actions</th>
-        </tr></thead>
-        <tbody id="hist-body"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Événements tab -->
-  <div id="main-panel-evt" style="flex:1;overflow:auto;padding:12px;display:none">
-    <div class="table-wrap">
-      <table class="ktable" id="evt-table">
-        <thead><tr>
-          <th>Type</th><th>OF</th><th>Date</th><th>Pilote</th>
-          <th>Début</th><th>Fin</th><th>Durée</th><th>Commentaire</th><th>Actions</th>
-        </tr></thead>
-        <tbody id="evt-body"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<!-- ══ VIEW: PRODUCTION ════════════════════════════════════════════════════ -->
-<div class="view" id="view-prod">
-  <div class="hdr">
-    <div class="hdr-accent red" id="hdr-accent-prod"></div>
-    <div class="hdr-logo">KPI-ORC</div>
-    <div class="hdr-tabs">
-      <button class="hdr-tab" onclick="showView('main')">← Déclarations</button>
-      <button class="hdr-tab active"><span class="tab-dot"></span>Prod en cours</button>
-    </div>
-    <div class="hdr-right">
-      <span class="hdr-pilot">Pilote: <strong id="prod-hdr-pilot">—</strong></span>
-      <button class="btn btn-ghost btn-sm" onclick="openSettings()">⚙</button>
-    </div>
-  </div>
-
-  <!-- Pilot / OF banner -->
-  <div class="pilot-of-banner">
-    <div class="pob-item">
-      <div class="pob-label">Pilote</div>
-      <div class="pob-value" id="pob-pilot">—</div>
-    </div>
-    <div class="pob-item">
-      <div class="pob-label">OF</div>
-      <div class="pob-value" id="pob-of">—</div>
-    </div>
-    <div class="pob-item">
-      <div class="pob-label">Poste</div>
-      <div class="pob-value" id="pob-poste" style="font-size:22px">—</div>
-    </div>
-  </div>
-
-  <!-- Status bar -->
-  <div class="status-bar">
-    <div class="status-cell running" id="sc-of">
-      <div class="status-label">Durée OF</div>
-      <div class="status-value" id="sc-of-val">00:00:00</div>
-    </div>
-    <div class="status-cell" id="sc-stop">
-      <div class="status-label">⛔ Arrêts</div>
-      <div class="status-value" id="sc-stop-val">00:00:00</div>
-    </div>
-    <div class="status-cell" id="sc-trs">
-      <div class="status-label">TRS%</div>
-      <div class="status-value" id="sc-trs-val">—</div>
-    </div>
-  </div>
-
-  <!-- Main 3-col layout -->
-  <div class="prod-body">
-    <!-- LEFT: actions -->
-    <div class="prod-col action-col">
-      <button class="big-stop-btn" onclick="openStopModal()">
-        <span>⛔</span>
-        <span>Déclarer un arrêt</span>
-        <span class="stop-sub" id="stop-count-lbl"></span>
-      </button>
-      <button class="action-btn nett" onclick="openNettModal()">🧹 Nettoyage</button>
-      <button class="action-btn pause" id="pause-btn" onclick="togglePause()">⏸ Pause pilote</button>
-      <div class="action-spacer"></div>
-      <button class="action-btn end" onclick="openEndProd()">🏁 Fin de production</button>
-    </div>
-
-    <!-- CENTER: form -->
-    <div class="prod-col form-col">
-      <!-- Infos essentielles always visible -->
-      <div class="form-essential">
-        <div class="form-grid">
-          <div class="form-group">
-            <label>N° OF</label>
-            <input id="of-num" placeholder="OF123456" oninput="autoSaveForm()">
-          </div>
-          <div class="form-group">
-            <label>Taille</label>
-            <select id="of-taille" onchange="autoSaveForm()"><option value="">—</option></select>
-          </div>
-          <div class="form-group">
-            <label>Code produit</label>
-            <input id="of-code" placeholder="CODE" oninput="autoSaveForm()">
-          </div>
-          <div class="form-group">
-            <label>Type produit</label>
-            <select id="of-type" onchange="autoSaveForm()"><option value="">—</option></select>
-          </div>
-          <div class="form-group">
-            <label>Nb personnes</label>
-            <input id="of-nbpers" type="number" min="1" value="1" oninput="autoSaveForm()">
-          </div>
-          <div class="form-group">
-            <label>Co-Pilote</label>
-            <input id="of-copilote" oninput="autoSaveForm()">
-          </div>
-        </div>
-      </div>
-
-      <!-- Collapsible details -->
-      <div class="form-toggle" id="form-toggle-btn" onclick="toggleFormBody()">
-        <span>Détails OF (taie, fibre, qualité…)</span>
-        <span class="toggle-arrow">▼</span>
-      </div>
-      <div class="form-body" id="form-body">
-        <div class="form-grid">
-          <div class="form-group"><label>Poids garnissage</label><input id="of-poids" oninput="autoSaveForm()"></div>
-          <div class="form-group"><label>Fibre</label><select id="of-fibre" onchange="autoSaveForm()"><option value="">—</option></select></div>
-          <div class="form-group"><label>OF Taie</label><input id="of-taie" oninput="autoSaveForm()"></div>
-          <div class="form-group"><label>Traca Fibre</label><select id="of-traca" onchange="autoSaveForm()"><option value="">—</option></select></div>
-          <div class="form-group"><label>Réf Taie</label><input id="of-ref-taie" oninput="autoSaveForm()"></div>
-          <div class="form-group checkbox-row"><input type="checkbox" id="of-kit" onchange="autoSaveForm()"><label for="of-kit" style="text-transform:none;font-size:12px;letter-spacing:0">Kit</label></div>
-          <div class="form-group"><label>Qté fab.</label><input id="of-qtefab" type="number" min="0" oninput="autoSaveForm()"></div>
-          <div class="form-group"><label>Qté emb.</label><input id="of-qteemb" type="number" min="0" oninput="autoSaveForm()"></div>
-          <div class="form-group"><label>Qté init. taie</label><input id="of-qte-init-taie" type="number" min="0" oninput="autoSaveForm()"></div>
-          <div class="form-group"><label>Nb taie 2nd choix</label><input id="of-nb-taie2" type="number" min="0" oninput="autoSaveForm()"></div>
-          <div class="form-group"><label>Nb défaut couture</label><input id="of-nb-def-cout" type="number" min="0" oninput="autoSaveForm()"></div>
-          <div class="form-group"><label>Mq taie</label><input id="of-mq-taie" type="number" min="0" oninput="autoSaveForm()"></div>
-          <div class="form-group"><label>Mq housse/encart</label><input id="of-mq-housse" type="number" min="0" oninput="autoSaveForm()"></div>
-          <div class="form-group"><label>Nb PP cousue</label><input id="of-nb-pp" type="number" min="0" oninput="autoSaveForm()"></div>
-          <div class="form-group"><label>Mq MP (min)</label><input id="of-duree-mq-mp" type="number" min="0" oninput="autoSaveForm()"></div>
-          <div class="form-group"><label>Mq Personnel (min)</label><input id="of-mq-pers" type="number" min="0" oninput="autoSaveForm()"></div>
-          <div class="form-group full"><label>Commentaire</label><textarea id="of-comment" oninput="autoSaveForm()"></textarea></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- RIGHT: stops list -->
-    <div class="prod-col recap-col">
-      <div class="card" style="flex:1;overflow:hidden;display:flex;flex-direction:column">
-        <div class="card-hdr">Arrêts / pauses</div>
-        <div id="recap-stops-list" style="overflow-y:auto;flex:1"></div>
-      </div>
-      <!-- TRS gauge -->
-      <div class="card">
-        <div class="card-hdr">TRS estimé</div>
-        <div class="gauge-wrap">
-          <svg class="gauge-svg" viewBox="0 0 140 80">
-            <path d="M10,70 A60,60 0 0,1 130,70" fill="none" stroke="#dde4ef" stroke-width="14" stroke-linecap="round"/>
-            <path id="gauge-arc" d="M10,70 A60,60 0 0,1 130,70" fill="none" stroke="#1a8c4e" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,1000"/>
-          </svg>
-          <div class="gauge-text">
-            <div class="gauge-pct" id="gauge-pct">—</div>
-            <div class="gauge-lbl">TRS</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Active stops bottom bar -->
-  <div class="active-stops-bottom" id="active-stops-bottom"></div>
-</div>
-
-<!-- ══ MODAL: START PROD ═══════════════════════════════════════════════════ -->
-<div class="modal" id="modal-start-prod">
-  <div class="modal-box narrow">
-    <div class="modal-hdr green"><h2>▶ Démarrer une production</h2><button class="btn btn-sm btn-ghost" onclick="closeModal('modal-start-prod')">✕</button></div>
-    <div class="modal-body">
-      <p style="font-size:13px;color:var(--gray);margin-bottom:14px">La production démarrera immédiatement avec les infos du formulaire.</p>
-      <div id="start-prod-gap" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;margin-bottom:12px;display:none"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-start-prod')">Annuler</button>
-      <button class="btn btn-green btn-lg" onclick="doStartProd()">▶ Démarrer</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: STOP SELECTOR ════════════════════════════════════════════════ -->
-<div class="modal" id="modal-stop">
-  <div class="modal-box">
-    <div class="modal-hdr red"><h2>⛔ Déclarer un arrêt</h2><button class="btn btn-sm btn-ghost" onclick="closeModal('modal-stop')">✕</button></div>
-    <div class="modal-body">
-      <div style="font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Rattrapages</div>
-      <div class="stops-grid ratt" id="stop-grid-ratt"></div>
-      <div style="font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.6px;margin:10px 0 6px">PB Technique</div>
-      <div class="stops-grid pb" id="stop-grid-pb"></div>
-      <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.6px;margin:10px 0 6px">Arrêt libre / autre</div>
-      <div class="custom-stop-row">
-        <input id="custom-stop-input" placeholder="Nom de l'arrêt personnalisé…" maxlength="60">
-        <button class="btn btn-amber" onclick="declareCustomStop()">Déclarer</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: END STOP ═════════════════════════════════════════════════════ -->
-<div class="modal" id="modal-end-stop">
-  <div class="modal-box narrow">
-    <div class="modal-hdr amber"><h2 id="end-stop-title">Terminer l'arrêt</h2><button class="btn btn-sm btn-ghost" onclick="closeModal('modal-end-stop')">✕</button></div>
-    <div class="modal-body">
-      <div style="font-size:13px;color:var(--gray);margin-bottom:12px" id="end-stop-timer-display"></div>
-      <div class="form-group">
-        <label>Commentaire (optionnel)</label>
-        <textarea id="end-stop-comment" style="height:72px;width:100%;border:1.5px solid var(--lgray);border-radius:8px;padding:8px;font-size:13px;resize:none;outline:none"></textarea>
-      </div>
-      <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
-        <input type="checkbox" id="end-stop-hors-trs" style="width:16px;height:16px">
-        <label for="end-stop-hors-trs" style="font-size:13px;cursor:pointer">Hors TRS (prévu)</label>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-end-stop')">Annuler</button>
-      <button class="btn btn-amber btn-lg" id="end-stop-confirm-btn">✔ Terminer l'arrêt</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: NETTOYAGE ═══════════════════════════════════════════════════ -->
-<div class="modal" id="modal-nett">
-  <div class="modal-box narrow">
-    <div class="modal-hdr" style="background:var(--cyan)"><h2>🧹 Nettoyage</h2><button class="btn btn-sm btn-ghost" onclick="closeModal('modal-nett')">✕</button></div>
-    <div class="modal-body">
-      <div id="nett-running-info" style="display:none;background:#cffafe;border-radius:8px;padding:12px;margin-bottom:12px">
-        <div style="font-weight:700;color:#0e7490;font-size:13px">Nettoyage en cours…</div>
-        <div id="nett-timer-disp" style="font-size:22px;font-weight:900;color:#0891b2;font-variant-numeric:tabular-nums"></div>
-      </div>
-      <div id="nett-start-section">
-        <p style="font-size:13px;color:var(--gray);margin-bottom:14px">Choisissez le type de nettoyage :</p>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <button class="btn btn-cyan btn-lg" onclick="startNett('court')">Court (~10 min)</button>
-          <button class="btn btn-cyan btn-lg" onclick="startNett('long')">Long (~30 min)</button>
-          <button class="btn btn-cyan btn-lg" onclick="startNett('grand')">Grand nettoyage (~60 min)</button>
-        </div>
-      </div>
-      <div id="nett-end-section" style="display:none;margin-top:14px">
-        <div class="form-group">
-          <label>Commentaire</label>
-          <textarea id="nett-comment" style="height:60px;width:100%;border:1.5px solid var(--lgray);border-radius:8px;padding:8px;font-size:13px;resize:none;outline:none"></textarea>
-        </div>
-        <div class="modal-footer" style="padding:12px 0 0;border:none">
-          <button class="btn btn-cyan btn-lg" onclick="endNett()">✔ Terminer le nettoyage</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: END PROD ════════════════════════════════════════════════════ -->
-<div class="modal" id="modal-end-prod">
-  <div class="modal-box wide">
-    <div class="modal-hdr"><h2>🏁 Fin de production</h2><button class="btn btn-sm btn-ghost" onclick="closeModal('modal-end-prod')">✕</button></div>
-    <div class="modal-body">
-      <div id="end-prod-recap" style="background:#f8fafc;border-radius:10px;padding:14px;margin-bottom:16px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px"></div>
-      <div class="form-grid" style="gap:10px">
-        <div class="form-group"><label>Pilote</label><input id="ep-pilote"></div>
-        <div class="form-group"><label>Poste</label><select id="ep-poste"><option>Matin</option><option>Midi</option><option>Nuit</option><option>Jour</option></select></div>
-        <div class="form-group"><label>Qté fabriquée</label><input id="ep-qtefab" type="number" min="0" oninput="updateEpEquiv()"></div>
-        <div class="form-group"><label>Qté emballée</label><input id="ep-qteemb" type="number" min="0"></div>
-        <div class="form-group"><label>Mq MP (min)</label><input id="ep-duree-mq-mp" type="number" min="0"></div>
-        <div class="form-group"><label>Mq Personnel (min)</label><input id="ep-manquant-pers" type="number" min="0"></div>
-        <div class="form-group"><label>Commentaire</label><textarea id="ep-comment" style="height:48px"></textarea></div>
-        <div class="form-group"><label>Équivalence calculée</label><input id="ep-equiv" readonly style="background:#f0f4fb;font-weight:700;color:var(--navy)"></div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-end-prod')">Annuler</button>
-      <button class="btn btn-navy btn-lg" onclick="doEndProd()">✔ Valider la production</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: END PROD RECAP ═════════════════════════════════════════════ -->
-<div class="modal" id="modal-recap">
-  <div class="modal-box">
-    <div class="modal-hdr green"><h2>✔ Production enregistrée</h2><button class="btn btn-sm btn-ghost" onclick="closeRecap()">✕</button></div>
-    <div class="modal-body" id="recap-body"></div>
-    <div class="modal-footer">
-      <button class="btn btn-green btn-lg" onclick="closeRecap()">Nouvelle production</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: FIN DE POSTE ════════════════════════════════════════════════ -->
-<div class="modal" id="modal-fin-poste">
-  <div class="modal-box">
-    <div class="modal-hdr"><h2>🏁 Fin de mon poste</h2><button class="btn btn-sm btn-ghost" onclick="closeModal('modal-fin-poste')">✕</button></div>
-    <div class="modal-body" id="fin-poste-body">
-      <div style="text-align:center;padding:20px;color:var(--gray)">Chargement…</div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-fin-poste')">Fermer</button>
-      <button class="btn btn-navy btn-lg" onclick="generateDashboard()">📊 Générer supervision</button>
-      <button class="btn btn-green btn-lg" onclick="validateFinPoste()">✔ Valider fin de poste</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: EDIT ROW (déclaration ou événement) ═════════════════════════ -->
-<div class="modal" id="modal-edit-row">
-  <div class="modal-box wide">
-    <div class="modal-hdr amber"><h2 id="edit-row-title">Modifier la déclaration</h2><button class="btn btn-sm btn-ghost" onclick="closeModal('modal-edit-row')">✕</button></div>
-    <div class="modal-body">
-      <div id="edit-row-pw-block" style="margin-bottom:14px">
-        <div class="form-group">
-          <label>Mot de passe administrateur</label>
-          <input type="password" id="edit-row-pw" placeholder="Mot de passe…" style="max-width:260px">
-        </div>
-        <div id="edit-row-pw-err" style="color:var(--red);font-size:12px;margin-top:6px"></div>
-      </div>
-      <div id="edit-row-fields" style="display:none">
-        <div class="edit-grid" id="edit-row-fields-grid"></div>
-        <div style="margin-top:14px;display:flex;gap:10px">
-          <button class="btn btn-red" onclick="confirmDeleteRow()">🗑 Supprimer cette ligne</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-edit-row')">Annuler</button>
-      <button class="btn btn-ghost" id="edit-row-auth-btn" onclick="authenticateEditRow()">Vérifier MDP</button>
-      <button class="btn btn-amber btn-lg" id="edit-row-save-btn" style="display:none" onclick="saveEditRow()">💾 Enregistrer</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: EDIT STOP (depuis liste arrêts droite) ═════════════════════ -->
-<div class="modal" id="modal-edit-stop">
-  <div class="modal-box narrow">
-    <div class="modal-hdr amber"><h2>Modifier l'arrêt</h2><button class="btn btn-sm btn-ghost" onclick="closeModal('modal-edit-stop')">✕</button></div>
-    <div class="modal-body">
-      <div id="edit-stop-pw-block">
-        <div class="form-group" style="margin-bottom:10px">
-          <label>Mot de passe administrateur</label>
-          <input type="password" id="edit-stop-pw" placeholder="Mot de passe…">
-        </div>
-        <div id="edit-stop-pw-err" style="color:var(--red);font-size:12px"></div>
-      </div>
-      <div id="edit-stop-fields" style="display:none">
-        <input type="hidden" id="edit-stop-row-num">
-        <div class="form-group" style="margin-bottom:10px">
-          <label>Type d'arrêt</label>
-          <input id="edit-stop-type">
-        </div>
-        <div class="form-grid" style="gap:10px">
-          <div class="form-group">
-            <label>Heure début</label>
-            <input id="edit-stop-debut" type="time" step="1">
-          </div>
-          <div class="form-group">
-            <label>Heure fin</label>
-            <input id="edit-stop-fin" type="time" step="1">
-          </div>
-        </div>
-        <div class="form-group" style="margin-top:10px">
-          <label>Commentaire</label>
-          <textarea id="edit-stop-comment" style="height:60px;width:100%;border:1.5px solid var(--lgray);border-radius:8px;padding:8px;font-size:13px;resize:none;outline:none"></textarea>
-        </div>
-        <div style="margin-top:10px">
-          <button class="btn btn-red btn-sm" onclick="deleteStopFromEdit()">🗑 Supprimer cet arrêt</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-edit-stop')">Annuler</button>
-      <button class="btn btn-ghost" id="edit-stop-auth-btn" onclick="authenticateEditStop()">Vérifier MDP</button>
-      <button class="btn btn-amber btn-lg" id="edit-stop-save-btn" style="display:none" onclick="saveEditStop()">💾 Enregistrer</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ MODAL: SETTINGS ════════════════════════════════════════════════════ -->
-<div class="modal" id="modal-settings">
-  <div class="modal-box wide">
-    <div class="modal-hdr"><h2>⚙ Paramètres</h2><button class="btn btn-sm btn-ghost" onclick="closeModal('modal-settings')">✕</button></div>
-    <div class="modal-body">
-      <div class="set-tabs">
-        <button class="set-tab active" onclick="switchSetTab(0)">Général</button>
-        <button class="set-tab" onclick="switchSetTab(1)">Modèles horaires</button>
-        <button class="set-tab" onclick="switchSetTab(2)">Pilotes</button>
-        <button class="set-tab" onclick="switchSetTab(3)">Administrateur</button>
-      </div>
-      <!-- Général -->
-      <div class="set-panel active" id="set-panel-0">
-        <div class="form-group" style="margin-bottom:12px">
-          <label>Fichier Excel (base de données)</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input id="set-db-path" placeholder="Chemin vers le fichier .xlsx" style="flex:1;border:1.5px solid var(--lgray);border-radius:6px;padding:7px 10px;font-size:12px">
-            <button class="btn btn-navy btn-sm" onclick="setDb()">Appliquer</button>
-          </div>
-          <div id="set-db-name" style="font-size:11px;color:var(--gray);margin-top:4px"></div>
-        </div>
-        <div class="form-grid" style="gap:12px">
-          <div class="form-group"><label>Prod. ref 8h (equiv/8h)</label><input id="set-prod-ref" type="number" min="0"></div>
-          <div class="form-group"><label>Pause max imputée (min)</label><input id="set-pause-max" type="number" min="0"></div>
-          <div class="form-group"><label>Nett. court (min)</label><input id="set-clean-short" type="number" min="0"></div>
-          <div class="form-group"><label>Nett. long (min)</label><input id="set-clean-long" type="number" min="0"></div>
-          <div class="form-group"><label>Grand nettoyage (min)</label><input id="set-clean-grand" type="number" min="0"></div>
-          <div class="form-group"><label>Tolérance réunion (min)</label><input id="set-meeting-tol" type="number" min="0"></div>
-        </div>
-        <div style="margin-top:14px">
-          <button class="btn btn-navy" onclick="saveSettings()">Enregistrer</button>
-          <span id="set-save-ok" style="color:var(--green);font-size:12px;margin-left:10px"></span>
-        </div>
-      </div>
-      <!-- Modèles horaires -->
-      <div class="set-panel" id="set-panel-1">
-        <p style="font-size:12px;color:var(--gray);margin-bottom:14px">Définissez les plages horaires de chaque poste (pour calcul TRS par poste).</p>
-        <div id="modeles-list"></div>
-        <button class="btn btn-navy btn-sm" style="margin-top:10px" onclick="addModele()">+ Ajouter un modèle</button>
-        <div style="margin-top:14px">
-          <button class="btn btn-navy" onclick="saveSettings()">Enregistrer</button>
-        </div>
-        <div style="margin-top:14px;background:#f8fafc;border-radius:8px;padding:12px;font-size:12px;color:var(--gray)">
-          <strong>Formule TRS :</strong><br>
-          TRS% = Equiv / (Prod_ref × Durée_OF_s / 28800) × 100<br>
-          Durée_OF_s = (Fin − Début) + Changements_OF − min(Pauses, Pause_max)
-        </div>
-      </div>
-      <!-- Pilotes -->
-      <div class="set-panel" id="set-panel-2">
-        <p style="font-size:12px;color:var(--gray);margin-bottom:14px">Les pilotes sont définis dans la feuille "Listes" du fichier Excel. Rechargez le fichier pour mettre à jour.</p>
-        <button class="btn btn-ghost" onclick="reloadLists()">🔄 Recharger les listes</button>
-        <div id="set-pilots-list" style="margin-top:14px;font-size:12px"></div>
-      </div>
-      <!-- Admin -->
-      <div class="set-panel" id="set-panel-3">
-        <div style="margin-bottom:12px">
-          <div class="form-group"><label>Mot de passe actuel</label><input type="password" id="set-cur-pw" style="max-width:260px"></div>
-          <div class="form-group" style="margin-top:8px"><label>Nouveau mot de passe</label><input type="password" id="set-new-pw" style="max-width:260px"></div>
-          <button class="btn btn-navy" style="margin-top:10px" onclick="saveSettings()">Changer le mot de passe</button>
-          <div id="set-pw-err" style="color:var(--red);font-size:12px;margin-top:6px"></div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-settings')">Fermer</button>
+<!-- MODAL: éditer arrêt -->
+<div class="overlay" id="m-editstop">
+  <div class="mbox">
+    <h2>✏ Modifier l'arrêt</h2>
+    <input type="hidden" id="es-key">
+    <div class="fr" style="margin-bottom:9px"><label>Type</label><select id="es-type"></select></div>
+    <div class="fr" style="margin-bottom:9px"><label>Heure début</label><input type="time" id="es-deb" step="60"></div>
+    <div class="fr" style="margin-bottom:9px"><label>Heure fin</label><input type="time" id="es-fin" step="60"></div>
+    <div class="fr" style="margin-bottom:9px"><label>Commentaire</label><input type="text" id="es-cmt"></div>
+    <div class="m-acts">
+      <button class="btn btn-sec" onclick="closeM('m-editstop')">Annuler</button>
+      <button class="btn btn-danger" onclick="deleteStop()">🗑 Supprimer</button>
+      <button class="btn btn-ok" onclick="saveEditStop()">💾 Enregistrer</button>
     </div>
   </div>
 </div>
 
 <script>
-// ─── State ──────────────────────────────────────────────────────────────────
-let st = {}, lists = {}, histRows = [], evtRows = [];
-let pollTimer = null;
-let tickInterval = null;  // 1-second tick for active stop timers
-let stopActiveKeys = [];  // clés des arrêts actifs
-let currentEditRowNum = null;
-let currentEditRowData = null;
-let currentEndStopKey = null;
-let nettType = null;
-let formSaveTimer = null;
-let setTabIdx = 0;
-
-// ─── Init ────────────────────────────────────────────────────────────────────
-async function init() {
-  const r = await fetch('/api/state');
-  st = await r.json();
-  const lr = await fetch('/api/lists');
-  lists = await lr.json();
-  populateLists();
-  const cr = await fetch('/api/config');
-  const cfg = await cr.json();
-  window._cfg = cfg;
-  if (st.pilot) {
-    if (st.prod_active) { showView('prod'); restoreForm(); }
-    else showView('main');
-  } else {
-    showView('login');
-  }
-  startTick();
-  startPoll();
-  buildStopGrid();
-}
-
-function startPoll() {
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(doPoll, 5000);
-}
-
-function startTick() {
-  if (tickInterval) clearInterval(tickInterval);
-  tickInterval = setInterval(tickTimers, 1000);
-}
-
-async function doPoll() {
-  try {
-    const r = await fetch('/api/state');
-    st = await r.json();
-    updateUI();
-  } catch(e){}
-}
-
-// Tick every second — updates only active stop timers locally
-function tickTimers() {
-  if (!st || !st.timers) return;
-  const now = Date.now() / 1000;
-  stopActiveKeys = st.active_stops || [];
-  for (const k of stopActiveKeys) {
-    const t = st.timers[k];
-    if (t && t.running) t.elapsed += 1;
-  }
-  // Also increment of_elapsed if prod active
-  if (st.prod_active && !st.is_paused) {
-    st.of_elapsed_s = (st.of_elapsed_s || 0) + 1;
-  }
-  updateTimerDisplays();
-  updateDarkTheme();
-}
-
-function updateDarkTheme() {
-  const hasStop = stopActiveKeys.length > 0;
-  document.body.classList.toggle('stop-active', hasStop);
-}
-
-// ─── UI Update ───────────────────────────────────────────────────────────────
-function updateUI() {
-  // Header pilot
-  const pilot = st.pilot || '—';
-  const poste = st.poste || '—';
-  document.getElementById('main-pilot-name').textContent = pilot;
-  document.getElementById('main-poste-name').textContent = poste;
-  document.getElementById('prod-hdr-pilot').textContent = pilot;
-  document.getElementById('pob-pilot').textContent = pilot;
-  document.getElementById('pob-poste').textContent = poste;
-  // OF from form
-  const ofNum = (st.form || {}).of_num || '—';
-  document.getElementById('pob-of').textContent = ofNum || '—';
-
-  updateTimerDisplays();
-  updateDarkTheme();
-  renderActiveStopsBottom();
-  renderRecapStops();
-  updateStopBtnStates();
-  stopActiveKeys = st.active_stops || [];
-}
-
-function updateTimerDisplays() {
-  // OF timer
-  const ofEl = document.getElementById('sc-of-val');
-  if (ofEl && st.prod_active) ofEl.textContent = fmtS(st.of_elapsed_s || 0);
-
-  // Stop total
-  const stEl = document.getElementById('sc-stop-val');
-  if (stEl) {
-    let total = 0;
-    for (const k in (st.timers || {})) {
-      if (k.startsWith('_')) continue;
-      const t = st.timers[k];
-      total += t.elapsed || 0;
-    }
-    stEl.textContent = fmtS(total);
-  }
-
-  // TRS estimate
-  const pr = st.prod_ref || 0;
-  const ofS = st.of_elapsed_s || 0;
-  const form = st.form || {};
-  const qte = parseFloat(form.qte_fab || 0) || 0;
-  const trsEl = document.getElementById('sc-trs-val');
-  const gaugePct = document.getElementById('gauge-pct');
-  const gaugeArc = document.getElementById('gauge-arc');
-  if (pr > 0 && ofS > 0 && qte > 0) {
-    const trs = Math.round(qte / (pr * ofS / 28800) * 100 * 10) / 10;
-    if (trsEl) { trsEl.textContent = trs + '%'; trsEl.style.color = trsColor(trs); }
-    if (gaugePct) { gaugePct.textContent = trs + '%'; gaugePct.style.color = trsColor(trs); }
-    if (gaugeArc) {
-      const pct = Math.min(100, trs);
-      const total = Math.PI * 60;
-      gaugeArc.style.strokeDasharray = (pct/100*total) + ',' + total;
-      gaugeArc.style.stroke = trsColor(trs);
-    }
-  } else {
-    if (trsEl) { trsEl.textContent = '—'; trsEl.style.color = ''; }
-    if (gaugePct) { gaugePct.textContent = '—'; }
-  }
-
-  // Active stop cards bottom
-  renderActiveStopsBottom();
-}
-
-function renderActiveStopsBottom() {
-  const bar = document.getElementById('active-stops-bottom');
-  if (!bar) return;
-  const active = st.active_stops || [];
-  bar.innerHTML = '';
-  if (active.length === 0) {
-    bar.classList.remove('has-stops');
-    return;
-  }
-  bar.classList.add('has-stops');
-  for (const k of active) {
-    const t = st.timers[k] || {};
-    const el = t.elapsed || 0;
-    const isNett = k === 'nettoyage';
-    const label = k === 'nettoyage' ? '🧹 Nettoyage' : (getEvtLabel(k) || k);
-    const cls = isNett ? 'active-stop-card nett' : 'active-stop-card';
-    const div = document.createElement('div');
-    div.className = cls;
-    div.innerHTML = `<div class="asc-label">${label}</div><div class="asc-timer">${fmtS(el)}</div><div class="asc-hint">Cliquer pour terminer</div>`;
-    div.onclick = () => openEndStop(k);
-    bar.appendChild(div);
-  }
-}
-
-function renderRecapStops() {
-  const el = document.getElementById('recap-stops-list');
-  if (!el) return;
-  const events = st.tl_events || [];
-  el.innerHTML = '';
-  const colors = {ratt:'#d97706', pb:'#1a1f5e', nettoyage:'#0891b2'};
-  events.forEach(ev => {
-    if (ev.key.startsWith('_')) return;
-    const running = !ev.end;
-    const dur = running ? ((Date.now()/1000) - new Date(ev.start).getTime()/1000) : ((new Date(ev.end)-new Date(ev.start))/1000);
-    const color = colors[ev.cat] || '#64748b';
-    const label = ev.key === 'nettoyage' ? 'Nettoyage' : (getEvtLabel(ev.key) || ev.key);
-    const row = document.createElement('div');
-    row.className = 'recap-stop-row' + (running ? ' running' : '');
-    row.title = 'Cliquer pour modifier';
-    row.innerHTML = `<div class="recap-stop-dot" style="background:${color}"></div>
-      <div class="recap-stop-name">${label}</div>
-      <div class="recap-stop-time">${fmtS(Math.abs(dur))}</div>
-      <button class="btn-icon edit" onclick="openEditStopFromList(event, ${JSON.stringify(ev)})">✏️</button>`;
-    el.appendChild(row);
-  });
-}
-
-function getEvtLabel(key) {
-  const evtMap = {
-    ratt_pochon:'Pochon / Fibre', ratt_couture:'Couture', ratt_emb:'Emballage',
-    ratt_presse_soud:'Presse Souder', ratt_presse_zip:'Presse ZIP',
-    nettoyage:'Nettoyage', pb_chargeuse:'Chargeuse', pb_carde:'Carde',
-    pb_etaleur:'Etaleur / Tour', pb_coupe:'Coupe / Circ.', pb_tapis1:'Tapis Bascule',
-    pb_enrouleur:'Enrouleur Pochon', pb_pesee:'Pesée / Tapis 2',
-    pb_deviation:'Déviation / Table', pb_enfileur:'Enfileur Pochon',
-    pb_kinna:'Kinna / Stroebel', pb_tapeuse:'Tapeuse', pb_table_rot:'Table Rot. / Twin',
-    pb_h100:'Enfileuse H100', pb_traversin:'Enfileuse Traversin',
-    pb_presse_orc:'Presse ORC', pb_presse_zip2:'Presse Housse ZIP',
-    pb_cercleuse:'Cercleuse', pb_enrouleuse:'Enrouleuse Traversin',
-    arret_mp:'Matière première', arret_reunion:'Réunion',
-  };
-  return evtMap[key] || key;
-}
-
-function updateStopBtnStates() {
-  const active = st.active_stops || [];
-  document.querySelectorAll('.stop-btn').forEach(btn => {
-    const k = btn.dataset.key;
-    const isActive = active.includes(k);
-    btn.classList.toggle('running', isActive);
-    btn.onclick = isActive ? () => openEndStop(k) : () => doStartStop(k, btn.dataset.cat);
-  });
-  const lbl = document.getElementById('stop-count-lbl');
-  if (lbl) lbl.textContent = active.length ? `${active.length} en cours` : '';
-  const pauseBtn = document.getElementById('pause-btn');
-  if (pauseBtn) pauseBtn.textContent = st.is_paused ? '▶ Reprendre' : '⏸ Pause pilote';
-}
-
-// ─── Views ───────────────────────────────────────────────────────────────────
-function showView(name) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById('view-' + name).classList.add('active');
-  if (name === 'main') {
-    loadHistory();
-    loadEvents();
-  }
-}
-
-function switchMainTab(tab) {
-  document.getElementById('main-panel-decl').style.display = tab === 'decl' ? 'block' : 'none';
-  document.getElementById('main-panel-evt').style.display  = tab === 'evt'  ? 'block' : 'none';
-  document.getElementById('main-tab-decl').classList.toggle('active', tab === 'decl');
-  document.getElementById('main-tab-evt').classList.toggle('active', tab === 'evt');
-}
-
-// ─── Login ───────────────────────────────────────────────────────────────────
-function populateLists() {
-  const pilotSel = document.getElementById('login-pilot');
-  (lists.pilotes || []).forEach(p => {
-    const o = document.createElement('option');
-    o.value = o.textContent = p;
-    pilotSel.appendChild(o);
-  });
-  const tailleSel = document.getElementById('of-taille');
-  (lists.tailles || []).forEach(t => { const o=document.createElement('option'); o.value=o.textContent=t; tailleSel.appendChild(o); });
-  const typeSel = document.getElementById('of-type');
-  (lists.types_prod || []).forEach(t => { const o=document.createElement('option'); o.value=o.textContent=t; typeSel.appendChild(o); });
-  const fibreSel = document.getElementById('of-fibre');
-  (lists.fibres || []).forEach(t => { const o=document.createElement('option'); o.value=o.textContent=t; fibreSel.appendChild(o); });
-  const tracaSel = document.getElementById('of-traca');
-  (lists.tracas || []).forEach(t => { const o=document.createElement('option'); o.value=o.textContent=t; tracaSel.appendChild(o); });
-}
-
-async function doLogin() {
-  const pilot = document.getElementById('login-pilot').value;
-  const poste = document.getElementById('login-poste').value;
-  if (!pilot || !poste) { document.getElementById('login-err').textContent = 'Sélectionnez pilote et poste'; return; }
-  const r = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({pilot, poste})});
-  const d = await r.json();
-  if (d.ok) {
-    st.pilot = pilot; st.poste = poste;
-    showView('main');
-    // Prefill form
-    document.getElementById('of-num').value = '';
-  } else {
-    document.getElementById('login-err').textContent = d.error || 'Erreur';
-  }
-}
-
-async function doLogout() {
-  const r = await fetch('/api/logout', {method:'POST'});
-  const d = await r.json();
-  if (d.ok) showView('login');
-  else alert(d.error);
-}
-
-// ─── History / Events ────────────────────────────────────────────────────────
-async function loadHistory() {
-  const r = await fetch('/api/history');
-  histRows = await r.json();
-  const tbody = document.getElementById('hist-body');
-  tbody.innerHTML = '';
-  for (const row of histRows) {
-    const trs = row.trs >= 0 ? row.trs + '%' : '—';
-    const trsCls = row.trs >= 70 ? 'trs-hi' : row.trs >= 50 ? 'trs-warn' : row.trs >= 0 ? 'trs-low' : '';
-    const tr = document.createElement('tr');
-    tr.className = trsCls;
-    tr.innerHTML = `
-      <td><strong>${row.of||'—'}</strong></td>
-      <td>${row.date||''}</td><td>${row.poste||''}</td><td>${row.pilote||''}</td>
-      <td>${row.debut||''}</td><td>${row.fin||''}</td><td>${row.taille||''}</td>
-      <td>${row.qte_fab||''}</td><td>${row.qte_emb||''}</td><td>${row.equiv||''}</td>
-      <td class="trs-cell">${trs}</td>
-      <td>
-        <button class="btn-icon edit" title="Modifier" onclick="openEditRow(${row.row_num}, 'prod')">✏️</button>
-        <button class="btn-icon del" title="Supprimer" onclick="openEditRow(${row.row_num}, 'prod')">🗑️</button>
-      </td>`;
-    tbody.appendChild(tr);
-  }
-}
-
-async function loadEvents() {
-  const r = await fetch('/api/events_list');
-  evtRows = await r.json();
-  const tbody = document.getElementById('evt-body');
-  tbody.innerHTML = '';
-  for (const row of evtRows) {
-    const tr = document.createElement('tr');
-    const cls = row.hors_trs ? '' : '';
-    tr.innerHTML = `
-      <td><strong>${row.type||''}</strong></td>
-      <td>${row.of||''}</td><td>${row.date||''}</td><td>${row.pilote||''}</td>
-      <td>${row.debut||''}</td><td>${row.fin||''}</td><td>${row.duree||''}</td>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">${row.comment||''}</td>
-      <td>
-        <button class="btn-icon edit" title="Modifier" onclick="openEditRow(${row.row_num}, 'evt')">✏️</button>
-        <button class="btn-icon del" title="Supprimer" onclick="openEditRow(${row.row_num}, 'evt')">🗑️</button>
-      </td>`;
-    tbody.appendChild(tr);
-  }
-}
-
-// ─── Edit Row Modal ───────────────────────────────────────────────────────────
-const DECL_HEADERS = [
-  "Type","OF","Date","Poste","Pilote","Co-Pilote","Nb Personnes",
-  "Taille","Code Produit","Type Produit","Poids Garnissage","Fibre",
-  "OF Taie","Traca Fibre","Ref Taie","Kit",
-  "Heure Debut","Heure Fin","Duree",
-  "Qte Fabriquee","Qte Emballee","Equivalence","Cadence/h","Cadence/h/pers","TRS%",
-  "Qte Init Taie","Nb Taie 2nd Choix","Nb Defaut Couture",
-  "Mq Taie","Mq Housse/Encart","Nb PP Cousue",
-  "Changement de Serie","Manquant MP","Manquant Personnel/Reunion",
-  "Nettoyage Fin de Poste","Commentaire","Prevu/Hors TRS"
+// ── Constants ──
+const STOP_TYPES = [
+  "PB Technique: Carde","PB Technique: Gainonnage","PB Technique: Finition",
+  "PB Technique: Encartage","PB Qualité","Manque MP",
+  "Formation / Réunion","Nettoyage","Divers"
 ];
+const STOP_COL = {
+  "PB Technique: Carde":"#b91c1c","PB Technique: Gainonnage":"#dc2626",
+  "PB Technique: Finition":"#ef4444","PB Technique: Encartage":"#f87171",
+  "PB Qualité":"#ea580c","Manque MP":"#d97706",
+  "Formation / Réunion":"#7c3aed","Nettoyage":"#0891b2",
+  "Divers":"#64748b","Pause Pilote":"#7c3aed","nettoyage":"#0891b2"
+};
+const FORM_FIELDS = ["of_num","copilote","nb_pers","taille","code_prod","type_prod","poids","fibre","of_taie","traca","ref_taie","kit","qte_fab","qte_emb","qte_init_taie","nb_taie2_choix","nb_def_cout","mq_taie","mq_housse_encart","nb_pp_cousue","duree_mq_mp","manquant_pers","comment"];
 
-function openEditRow(rowNum, mode) {
-  currentEditRowNum = rowNum;
-  document.getElementById('edit-row-title').textContent = mode === 'prod' ? 'Modifier la déclaration' : "Modifier l'événement";
-  document.getElementById('edit-row-pw').value = '';
-  document.getElementById('edit-row-pw-err').textContent = '';
-  document.getElementById('edit-row-fields').style.display = 'none';
-  document.getElementById('edit-row-save-btn').style.display = 'none';
-  document.getElementById('edit-row-auth-btn').style.display = '';
-  document.getElementById('edit-row-fields-grid').innerHTML = '';
-  openModal('modal-edit-row');
+// ── State ──
+let ST = {};
+let gEvts = [];
+let _curStopKey = null;
+let _curStopElap = 0;
+let _ofElapAtPoll = 0;
+let _lastPoll = Date.now();
+let _ticker = null;
+let _curTab = 'main';
+let _cfgPwds = {};
+let _cfgModels = [];
+window._evMap = {};
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', async () => {
+  buildStopGrid();
+  buildStopTypeOpts();
+  await loadLists();
+  const s = await apiFetch('/api/state');
+  if (s && s.pilot) showApp(s);
+  else { document.getElementById('v-login').style.display=''; }
+  setInterval(pollState, 5000);
+  setInterval(pollEvts, 8000);
+});
+
+async function loadLists() {
+  const d = await apiFetch('/api/lists');
+  if (!d) return;
+  popSel('f-taille', d.tailles||[]);
+  popSel('f-type_prod', d.types_prod||[]);
+  popSel('f-fibre', d.fibres||[]);
+  popSel('f-traca', d.tracas||[]);
+  const pil = d.pilotes||[];
+  const sel = document.getElementById('ln-pilot');
+  pil.forEach(p => { const o=document.createElement('option'); o.value=p; o.textContent=p; sel.appendChild(o); });
 }
 
-async function authenticateEditRow() {
-  const pw = document.getElementById('edit-row-pw').value;
-  // Try a dummy edit to verify password
-  const r = await fetch('/api/edit_row', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({pw, row_num: currentEditRowNum, updates: {}})});
-  const d = await r.json();
-  if (!d.ok) {
-    document.getElementById('edit-row-pw-err').textContent = d.error || 'Mot de passe incorrect';
-    return;
-  }
-  // Find row data
-  let rowData = histRows.find(r => r.row_num === currentEditRowNum) || evtRows.find(r => r.row_num === currentEditRowNum);
-  document.getElementById('edit-row-pw-block').style.display = 'none';
-  document.getElementById('edit-row-auth-btn').style.display = 'none';
-  document.getElementById('edit-row-save-btn').style.display = '';
-  document.getElementById('edit-row-fields').style.display = 'block';
-  buildEditRowFields(rowData);
+function popSel(id, vals) {
+  const s = document.getElementById(id);
+  if (!s) return;
+  const cur = s.value;
+  while (s.options.length>1) s.remove(1);
+  vals.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; s.appendChild(o); });
+  if (cur) s.value = cur;
 }
 
-function buildEditRowFields(row) {
-  const grid = document.getElementById('edit-row-fields-grid');
-  grid.innerHTML = '';
-  if (!row) {
-    // Fallback: show all 37 headers as blank inputs
-    DECL_HEADERS.forEach((h, i) => {
-      const div = document.createElement('div');
-      div.className = 'edit-group';
-      div.innerHTML = `<label>${h}</label><input data-col="${i+1}" value="">`;
-      grid.appendChild(div);
-    });
-    return;
-  }
-  const isProd = (row.type || '').toLowerCase() === 'production' || !row.type;
-  // Build fields from known row keys
-  const fieldMap = [
-    {col:1, label:'Type', val: row.type||''},
-    {col:2, label:'OF', val: row.of||''},
-    {col:3, label:'Date (jj/mm/aaaa)', val: row.date||''},
-    {col:4, label:'Poste', val: row.poste||''},
-    {col:5, label:'Pilote', val: row.pilote||''},
-    {col:6, label:'Co-Pilote', val: row.copilote||''},
-    {col:7, label:'Nb Personnes', val: row.nb_pers||''},
-    {col:8, label:'Taille', val: row.taille||''},
-    {col:9, label:'Code Produit', val: row.code_prod||''},
-    {col:10,label:'Type Produit', val: row.type_prod||''},
-    {col:11,label:'Poids Garnissage', val: row.poids||''},
-    {col:12,label:'Fibre', val: row.fibre||''},
-    {col:13,label:'OF Taie', val: row.of_taie||''},
-    {col:14,label:'Traca Fibre', val: row.traca||''},
-    {col:15,label:'Ref Taie', val: row.ref_taie||''},
-    {col:16,label:'Kit', val: row.kit||''},
-    {col:17,label:'Heure Debut', val: row.debut||''},
-    {col:18,label:'Heure Fin', val: row.fin||''},
-    {col:19,label:'Durée', val: row.duree||''},
-    ...(isProd ? [
-      {col:20,label:'Qté Fabriquée', val: row.qte_fab||''},
-      {col:21,label:'Qté Emballée', val: row.qte_emb||''},
-      {col:22,label:'Équivalence', val: row.equiv||''},
-      {col:23,label:'Cadence/h', val: row.c1||''},
-      {col:24,label:'Cadence/h/pers', val: row.c2||''},
-      {col:25,label:'TRS%', val: row.trs >= 0 ? String(row.trs) : ''},
-    ] : []),
-    {col:36,label:'Commentaire', val: row.comment||''},
-    {col:37,label:'Prevu/Hors TRS', val: row.hors_trs ? 'OUI' : ''},
-  ];
-  fieldMap.forEach(f => {
-    const div = document.createElement('div');
-    div.className = 'edit-group' + (f.col===36 ? ' full' : '');
-    div.innerHTML = `<label>${f.label}</label><input data-col="${f.col}" value="${(f.val||'').toString().replace(/"/g,'&quot;')}">`;
-    grid.appendChild(div);
-  });
-}
-
-async function saveEditRow() {
-  const pw = document.getElementById('edit-row-pw').value;
-  const updates = {};
-  document.querySelectorAll('#edit-row-fields-grid input[data-col]').forEach(inp => {
-    updates[inp.dataset.col] = inp.value;
-  });
-  const r = await fetch('/api/edit_row', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({pw, row_num: currentEditRowNum, updates})});
+// ── Login ──
+async function doLogin() {
+  const pilot = document.getElementById('ln-pilot').value;
+  const poste = document.getElementById('ln-poste').value;
+  const pw = document.getElementById('ln-pw').value;
+  document.getElementById('ln-err').textContent = '';
+  if (!pilot) { document.getElementById('ln-err').textContent='Choisir un pilote'; return; }
+  const r = await fetch('/api/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pilot,poste,pw})});
+  if (!r) return;
   const d = await r.json();
   if (d.ok) {
-    closeModal('modal-edit-row');
-    setTimeout(() => { loadHistory(); loadEvents(); }, 800);
-  } else alert(d.error || 'Erreur');
-}
-
-async function confirmDeleteRow() {
-  if (!confirm('Supprimer définitivement cette ligne ?')) return;
-  const pw = document.getElementById('edit-row-pw').value;
-  const r = await fetch('/api/delete_row', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({pw, row_num: currentEditRowNum})});
-  const d = await r.json();
-  if (d.ok) {
-    closeModal('modal-edit-row');
-    setTimeout(() => { loadHistory(); loadEvents(); }, 800);
-  } else alert(d.error || 'Erreur');
-}
-
-// ─── Edit Stop from list (right panel) ───────────────────────────────────────
-function openEditStopFromList(ev, evData) {
-  ev.stopPropagation();
-  document.getElementById('edit-stop-pw').value = '';
-  document.getElementById('edit-stop-pw-err').textContent = '';
-  document.getElementById('edit-stop-fields').style.display = 'none';
-  document.getElementById('edit-stop-save-btn').style.display = 'none';
-  document.getElementById('edit-stop-auth-btn').style.display = '';
-  window._editStopEvData = evData;
-  openModal('modal-edit-stop');
-}
-
-async function authenticateEditStop() {
-  const pw = document.getElementById('edit-stop-pw').value;
-  const r = await fetch('/api/edit_row', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({pw, row_num: 1, updates: {}})});
-  const d = await r.json();
-  if (!d.ok && d.error && d.error.includes('Mot de passe')) {
-    document.getElementById('edit-stop-pw-err').textContent = 'Mot de passe incorrect';
-    return;
+    const s = await apiFetch('/api/state');
+    showApp(s||{pilot,poste});
+  } else {
+    document.getElementById('ln-err').textContent = d.error||'Erreur connexion';
   }
-  // For live session events there's no row_num yet (not saved to Excel)
-  // But we authenticate and show the edit fields
-  const ev = window._editStopEvData;
-  document.getElementById('edit-stop-pw-block').style.display = 'none';
-  document.getElementById('edit-stop-auth-btn').style.display = 'none';
-  document.getElementById('edit-stop-save-btn').style.display = '';
-  document.getElementById('edit-stop-fields').style.display = 'block';
-  document.getElementById('edit-stop-type').value = getEvtLabel(ev.key) || ev.key;
-  document.getElementById('edit-stop-debut').value = ev.start ? ev.start.substring(11,19) : '';
-  document.getElementById('edit-stop-fin').value = ev.end ? ev.end.substring(11,19) : '';
-  document.getElementById('edit-stop-comment').value = ev.comment || '';
-  document.getElementById('edit-stop-row-num').value = ev.row_num || '';
 }
 
-async function saveEditStop() {
-  const pw = document.getElementById('edit-stop-pw').value;
-  const rowNum = parseInt(document.getElementById('edit-stop-row-num').value) || 0;
-  if (rowNum) {
-    const updates = {
-      1: document.getElementById('edit-stop-type').value,
-      17: document.getElementById('edit-stop-debut').value,
-      18: document.getElementById('edit-stop-fin').value,
-      36: document.getElementById('edit-stop-comment').value,
-    };
-    const r = await fetch('/api/edit_row', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({pw, row_num: rowNum, updates})});
-    const d = await r.json();
-    if (!d.ok) { alert(d.error); return; }
+function showApp(s) {
+  document.getElementById('v-login').style.display='none';
+  document.getElementById('app').classList.remove('hidden');
+  if (s.poste) { document.getElementById('f-poste').value=s.poste; }
+  if (s.pilot) { document.getElementById('f-pilote').value=s.pilot; }
+  setToday();
+  pollState();
+  pollEvts();
+  startTicker();
+  loadCfg();
+  goTab(s.prod_active ? 'prod' : 'main');
+  document.getElementById('hist-dt').value = new Date().toISOString().slice(0,10);
+}
+
+function setToday() {
+  const d = document.getElementById('f-date');
+  if (d) d.value = new Date().toLocaleDateString('fr-CA');
+}
+
+// ── Navigation ──
+function goTab(tab) {
+  _curTab = tab;
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active','tab-prod'));
+  const vm = {main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte'};
+  const el = document.getElementById(vm[tab]);
+  if (el) el.classList.add('on');
+  const ntm = {main:'nt-main',prod:'nt-prod',history:'nt-hist',settings:'nt-cfg'};
+  const nt = document.getElementById(ntm[tab]);
+  if (nt) nt.classList.add('active');
+  if (tab==='history') loadHist();
+  if (tab==='finposte') loadFPData();
+}
+
+// ── State polling ──
+async function pollState() {
+  const s = await apiFetch('/api/state');
+  if (!s) return;
+  ST = s;
+  _ofElapAtPoll = s.of_elapsed_s||0;
+  _lastPoll = Date.now();
+
+  // Determine current stop
+  if (s.is_paused) {
+    _curStopKey = '_pause';
+    _curStopElap = s.pause_total_s||0;
+    if (s.pause_start_iso) {
+      _curStopElap += (Date.now() - new Date(s.pause_start_iso).getTime())/1000;
+    }
+  } else if (s.active_stops && s.active_stops.length>0) {
+    const k = s.active_stops[0];
+    _curStopKey = k;
+    _curStopElap = s.timers&&s.timers[k] ? s.timers[k].elapsed : 0;
+  } else {
+    _curStopKey = null;
+    _curStopElap = 0;
   }
-  closeModal('modal-edit-stop');
+
+  applyState(s);
+  renderMainKpi();
 }
 
-async function deleteStopFromEdit() {
-  if (!confirm('Supprimer cet arrêt ?')) return;
-  const pw = document.getElementById('edit-stop-pw').value;
-  const rowNum = parseInt(document.getElementById('edit-stop-row-num').value) || 0;
-  if (rowNum) {
-    const r = await fetch('/api/delete_row', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({pw, row_num: rowNum})});
-    const d = await r.json();
-    if (!d.ok) { alert(d.error); return; }
+async function pollEvts() {
+  const e = await apiFetch('/api/events_list');
+  if (!Array.isArray(e)) return;
+  gEvts = e;
+  renderTL('tl-svg', gEvts);
+  renderRecap(gEvts);
+}
+
+function applyState(s) {
+  // Header info
+  const hi = document.getElementById('hdr-info');
+  if (hi && s.pilot) hi.innerHTML = `${s.pilot}<br><span style="opacity:.7">${s.poste||''}</span>`;
+
+  // Stop alert
+  const al = document.getElementById('alert-strip');
+  const stopOn = _curStopKey !== null;
+  if (stopOn) {
+    const lbl = _curStopKey==='_pause' ? 'PAUSE' : _curStopKey;
+    al.textContent = `⚠ ${lbl} EN COURS`;
+    al.classList.add('on');
+    document.body.classList.add('stop-active');
+  } else {
+    al.classList.remove('on');
+    document.body.classList.remove('stop-active');
   }
-  closeModal('modal-edit-stop');
+
+  // Prod tab
+  const tp = document.getElementById('nt-prod');
+  if (tp) tp.style.display = s.prod_active ? '' : 'none';
+
+  // Main: active card
+  const mac = document.getElementById('mc-active');
+  const mof = document.getElementById('mc-of');
+  const minf = document.getElementById('mc-inf');
+  const bstart = document.getElementById('btn-start');
+  if (s.prod_active) {
+    mac&&mac.classList.remove('hidden');
+    mof&&(mof.textContent=s.form&&s.form.of_num?s.form.of_num:'OF ---');
+    minf&&(minf.textContent=`${(s.form&&s.form.taille)||''} ${(s.form&&s.form.type_prod)||''} • ${s.pilot||''}`);
+    bstart&&(bstart.disabled=true);
+  } else {
+    mac&&mac.classList.add('hidden');
+    bstart&&(bstart.disabled=false);
+  }
+
+  // Prod header
+  if (s.prod_active && s.form) {
+    const el = document.getElementById('ph-of');
+    if (el) el.textContent = s.form.of_num||'OF ---';
+    fillFormFromState(s.form);
+  }
+
+  // Stop/pause bar
+  const sb = document.getElementById('stop-bar');
+  const pc = document.getElementById('prod-ctrls');
+  const psa = document.getElementById('ph-stop-area');
+  const psl = document.getElementById('ph-slbl');
+  const pbtn = document.getElementById('btn-pause');
+  if (_curStopKey) {
+    sb&&sb.classList.remove('hidden');
+    pc&&pc.classList.add('hidden');
+    psa&&psa.classList.remove('hidden');
+    psl&&psl.classList.remove('hidden');
+    const sbt = document.getElementById('sb-type');
+    if (sbt) sbt.textContent = _curStopKey==='_pause'?'Pause Pilote':_curStopKey;
+  } else {
+    sb&&sb.classList.add('hidden');
+    psa&&psa.classList.add('hidden');
+    psl&&psl.classList.add('hidden');
+    if (s.prod_active) {
+      pc&&pc.classList.remove('hidden');
+    }
+  }
+  // Pause button label
+  if (pbtn) pbtn.textContent = s.is_paused ? '▶ Reprendre' : '⏸ Pause';
 }
 
-// ─── Stop grid ────────────────────────────────────────────────────────────────
+// ── Local ticker ──
+function startTicker() {
+  if (_ticker) clearInterval(_ticker);
+  _ticker = setInterval(() => {
+    if (!ST.prod_active) return;
+    const dt = (Date.now()-_lastPoll)/1000;
+
+    // OF timer ticks unless paused
+    const ofEl = _ofElapAtPoll + (!ST.is_paused ? dt : 0);
+    const phT = document.getElementById('ph-timer');
+    if (phT) phT.textContent = fmtDur(ofEl);
+
+    // Stop/pause elapsed
+    if (_curStopKey) {
+      const stopEl = _curStopElap + dt;
+      const phS = document.getElementById('ph-stop-tmr');
+      if (phS) phS.textContent = fmtDur(stopEl);
+      const sbE = document.getElementById('sb-elap');
+      if (sbE) sbE.textContent = fmtDur2(stopEl);
+    }
+  }, 1000);
+}
+
+// ── Start prod ──
+async function doStartProd() {
+  const d = await fetch('/api/start_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  if (!d) return;
+  const r = await d.json();
+  if (r.ok) {
+    setToday();
+    await pollState();
+    await pollEvts();
+    goTab('prod');
+  } else { toast(r.error||'Erreur','err'); }
+}
+
+// ── Stop/Pause ──
 function buildStopGrid() {
-  const evts = [
-    {lbl:'Pochon / Fibre', key:'ratt_pochon', cat:'ratt'},
-    {lbl:'Couture', key:'ratt_couture', cat:'ratt'},
-    {lbl:'Emballage', key:'ratt_emb', cat:'ratt'},
-    {lbl:'Presse Souder', key:'ratt_presse_soud', cat:'ratt'},
-    {lbl:'Presse ZIP', key:'ratt_presse_zip', cat:'ratt'},
-    {lbl:'Matière Première', key:'arret_mp', cat:'ratt'},
-  ];
-  const pbs = [
-    {lbl:'Chargeuse', key:'pb_chargeuse', cat:'pb'},
-    {lbl:'Carde', key:'pb_carde', cat:'pb'},
-    {lbl:'Etaleur/Tour', key:'pb_etaleur', cat:'pb'},
-    {lbl:'Coupe/Circ.', key:'pb_coupe', cat:'pb'},
-    {lbl:'Tapis Bascule', key:'pb_tapis1', cat:'pb'},
-    {lbl:'Enrouleur Pochon', key:'pb_enrouleur', cat:'pb'},
-    {lbl:'Pesée/Tapis 2', key:'pb_pesee', cat:'pb'},
-    {lbl:'Déviation/Table', key:'pb_deviation', cat:'pb'},
-    {lbl:'Enfileur Pochon', key:'pb_enfileur', cat:'pb'},
-    {lbl:'Kinna/Stroebel', key:'pb_kinna', cat:'pb'},
-    {lbl:'Tapeuse', key:'pb_tapeuse', cat:'pb'},
-    {lbl:'Table Rot./Twin', key:'pb_table_rot', cat:'pb'},
-    {lbl:'Enfileuse H100', key:'pb_h100', cat:'pb'},
-    {lbl:'Enfileuse Traversin', key:'pb_traversin', cat:'pb'},
-    {lbl:'Presse ORC', key:'pb_presse_orc', cat:'pb'},
-    {lbl:'Presse Housse ZIP', key:'pb_presse_zip2', cat:'pb'},
-    {lbl:'Cercleuse', key:'pb_cercleuse', cat:'pb'},
-    {lbl:'Enrouleuse Traversin', key:'pb_enrouleuse', cat:'pb'},
-  ];
-  const rattGrid = document.getElementById('stop-grid-ratt');
-  const pbGrid = document.getElementById('stop-grid-pb');
-  evts.forEach(e => rattGrid.appendChild(makeStopBtn(e)));
-  pbs.forEach(e => pbGrid.appendChild(makeStopBtn(e)));
+  const g = document.getElementById('stop-grid');
+  if (!g) return;
+  STOP_TYPES.forEach(t => {
+    const b = document.createElement('button');
+    b.className='stop-btn';
+    b.textContent=t;
+    b.onclick=()=>{ closeM('m-stop'); doStartStop(t); };
+    g.appendChild(b);
+  });
 }
 
-function makeStopBtn(e) {
-  const btn = document.createElement('button');
-  btn.className = 'stop-btn ' + e.cat;
-  btn.dataset.key = e.key;
-  btn.dataset.cat = e.cat;
-  btn.textContent = e.lbl;
-  btn.onclick = () => doStartStop(e.key, e.cat);
-  return btn;
+function openStopModal() { openM('m-stop'); }
+
+async function doPause() {
+  await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  await pollState();
 }
 
-async function doStartStop(key, cat) {
-  // Start timer immediately (before closing modal)
-  const now = Date.now();
-  if (!st.timers) st.timers = {};
-  st.timers[key] = {elapsed: 0, running: true, start: now/1000};
-  if (!st.active_stops) st.active_stops = [];
-  if (!st.active_stops.includes(key)) st.active_stops.push(key);
-  stopActiveKeys = st.active_stops;
-  updateDarkTheme();
-  renderActiveStopsBottom();
-  closeModal('modal-stop');
-
-  await fetch('/api/start_stop', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({key, cat})});
-  doPoll();
-}
-
-async function declareCustomStop() {
-  const inp = document.getElementById('custom-stop-input');
-  const name = inp.value.trim();
-  if (!name) { inp.focus(); return; }
-  const key = 'custom_' + name.toLowerCase().replace(/\s+/g,'_').substring(0,30);
-  if (!st.timers) st.timers = {};
-  st.timers[key] = {elapsed: 0, running: true};
-  if (!st.active_stops) st.active_stops = [];
-  if (!st.active_stops.includes(key)) st.active_stops.push(key);
-  stopActiveKeys = st.active_stops;
-  // Register custom label
-  window._customLabels = window._customLabels || {};
-  window._customLabels[key] = name;
-  updateDarkTheme();
-  renderActiveStopsBottom();
-  closeModal('modal-stop');
-  inp.value = '';
-  await fetch('/api/start_stop', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({key, cat:'pb', label: name})});
-  doPoll();
-}
-
-// ─── End Stop ─────────────────────────────────────────────────────────────────
-function openEndStop(key) {
-  currentEndStopKey = key;
-  const lbl = key === 'nettoyage' ? '🧹 Nettoyage' : (getEvtLabel(key) || key);
-  document.getElementById('end-stop-title').textContent = 'Terminer : ' + lbl;
-  document.getElementById('end-stop-comment').value = '';
-  document.getElementById('end-stop-hors-trs').checked = false;
-  const t = (st.timers || {})[key] || {};
-  document.getElementById('end-stop-timer-display').textContent = 'Durée : ' + fmtS(t.elapsed || 0);
-  document.getElementById('end-stop-confirm-btn').onclick = doEndStop;
-  openModal('modal-end-stop');
+async function doStartStop(key) {
+  const cat = key.toLowerCase().startsWith('pb') ? 'pb' : key==='Pause Pilote'?'pause':key.toLowerCase().replace(/\s+/g,'_').slice(0,12);
+  await fetch('/api/start_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,cat})});
+  await pollState();
+  await pollEvts();
 }
 
 async function doEndStop() {
-  const comment = document.getElementById('end-stop-comment').value;
-  const horsTrs = document.getElementById('end-stop-hors-trs').checked;
-  if (currentEndStopKey === 'nettoyage') {
-    await fetch('/api/end_nettoyage', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({comment})});
+  const key = _curStopKey==='_pause' ? null : _curStopKey;
+  const body = key ? JSON.stringify({key}) : '{}';
+  if (_curStopKey==='_pause') {
+    await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   } else {
-    await fetch('/api/end_stop', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({key: currentEndStopKey, comment, hors_trs: horsTrs})});
+    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body});
   }
-  closeModal('modal-end-stop');
-  doPoll();
+  await pollState();
+  await pollEvts();
 }
 
-// ─── Nettoyage ────────────────────────────────────────────────────────────────
-function openNettModal() {
-  const isRunning = (st.active_stops || []).includes('nettoyage');
-  document.getElementById('nett-running-info').style.display = isRunning ? 'block' : 'none';
-  document.getElementById('nett-start-section').style.display = isRunning ? 'none' : 'block';
-  document.getElementById('nett-end-section').style.display = isRunning ? 'block' : 'none';
-  if (isRunning) {
-    const t = (st.timers || {}).nettoyage || {};
-    document.getElementById('nett-timer-disp').textContent = fmtS(t.elapsed || 0);
-  }
-  openModal('modal-nett');
-}
-
-async function startNett(type) {
-  nettType = type;
-  await fetch('/api/start_nettoyage', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ntype: type})});
-  closeModal('modal-nett');
-  doPoll();
-}
-
-async function endNett() {
-  const comment = document.getElementById('nett-comment').value;
-  await fetch('/api/end_nettoyage', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({comment})});
-  closeModal('modal-nett');
-  doPoll();
-}
-
-// ─── Start Prod ───────────────────────────────────────────────────────────────
-function openStartProd() {
-  document.getElementById('start-prod-gap').style.display = 'none';
-  openModal('modal-start-prod');
-}
-
-async function doStartProd() {
-  const r = await fetch('/api/start_prod', {method:'POST'});
-  const d = await r.json();
-  if (!d.ok) { alert(d.error); return; }
-  closeModal('modal-start-prod');
-  // Clear OF field immediately
-  document.getElementById('of-num').value = '';
-  st.prod_active = true;
-  st.form = {of_num: ''};
-  // Switch directly to production view
-  showView('prod');
-  doPoll();
-}
-
-// ─── Pause ────────────────────────────────────────────────────────────────────
-async function togglePause() {
-  await fetch('/api/toggle_pause', {method:'POST'});
-  doPoll();
-}
-
-// ─── Form save ────────────────────────────────────────────────────────────────
-function autoSaveForm() {
-  if (formSaveTimer) clearTimeout(formSaveTimer);
-  formSaveTimer = setTimeout(doSaveForm, 600);
-  // Update OF banner immediately
-  const ofVal = document.getElementById('of-num').value;
-  const el = document.getElementById('pob-of');
-  if (el) el.textContent = ofVal || '—';
-}
-
-async function doSaveForm() {
-  const form = collectForm();
-  st.form = form;
-  await fetch('/api/save_form', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(form)});
-}
-
+// ── Form ──
 function collectForm() {
-  return {
-    of_num: document.getElementById('of-num').value,
-    taille: document.getElementById('of-taille').value,
-    code_prod: document.getElementById('of-code').value,
-    type_prod: document.getElementById('of-type').value,
-    nb_pers: document.getElementById('of-nbpers').value,
-    copilote: document.getElementById('of-copilote').value,
-    poids: document.getElementById('of-poids').value,
-    fibre: document.getElementById('of-fibre').value,
-    of_taie: document.getElementById('of-taie').value,
-    traca: document.getElementById('of-traca').value,
-    ref_taie: document.getElementById('of-ref-taie').value,
-    kit: document.getElementById('of-kit').checked,
-    qte_fab: document.getElementById('of-qtefab').value,
-    qte_emb: document.getElementById('of-qteemb').value,
-    qte_init_taie: document.getElementById('of-qte-init-taie').value,
-    nb_taie2_choix: document.getElementById('of-nb-taie2').value,
-    nb_def_cout: document.getElementById('of-nb-def-cout').value,
-    mq_taie: document.getElementById('of-mq-taie').value,
-    mq_housse_encart: document.getElementById('of-mq-housse').value,
-    nb_pp_cousue: document.getElementById('of-nb-pp').value,
-    duree_mq_mp: document.getElementById('of-duree-mq-mp').value,
-    manquant_pers: document.getElementById('of-mq-pers').value,
-    comment: document.getElementById('of-comment').value,
-  };
+  const f = {};
+  FORM_FIELDS.forEach(k => {
+    const el = document.getElementById('f-'+k);
+    if (!el) return;
+    f[k] = el.type==='number' ? (parseFloat(el.value)||0) : el.value;
+  });
+  f.pilote = document.getElementById('f-pilote')?.value||ST.pilot||'';
+  f.poste = document.getElementById('f-poste')?.value||ST.poste||'';
+  return f;
 }
 
-function restoreForm() {
-  const f = st.form || {};
-  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
-  set('of-num', f.of_num); set('of-taille', f.taille); set('of-code', f.code_prod);
-  set('of-type', f.type_prod); set('of-nbpers', f.nb_pers || 1); set('of-copilote', f.copilote);
-  set('of-poids', f.poids); set('of-fibre', f.fibre); set('of-taie', f.of_taie);
-  set('of-traca', f.traca); set('of-ref-taie', f.ref_taie);
-  const kit = document.getElementById('of-kit'); if (kit) kit.checked = !!f.kit;
-  set('of-qtefab', f.qte_fab); set('of-qteemb', f.qte_emb);
-  set('of-qte-init-taie', f.qte_init_taie); set('of-nb-taie2', f.nb_taie2_choix);
-  set('of-nb-def-cout', f.nb_def_cout); set('of-mq-taie', f.mq_taie);
-  set('of-mq-housse', f.mq_housse_encart); set('of-nb-pp', f.nb_pp_cousue);
-  set('of-duree-mq-mp', f.duree_mq_mp); set('of-mq-pers', f.manquant_pers);
-  set('of-comment', f.comment);
-  const ofEl = document.getElementById('pob-of');
-  if (ofEl) ofEl.textContent = f.of_num || '—';
+function fillFormFromState(form) {
+  if (!form) return;
+  FORM_FIELDS.forEach(k => {
+    const el = document.getElementById('f-'+k);
+    if (!el) return;
+    const v = form[k];
+    if (v!==undefined && v!==null) el.value = v;
+  });
 }
 
-function toggleFormBody() {
-  const body = document.getElementById('form-body');
-  const btn = document.getElementById('form-toggle-btn');
-  body.classList.toggle('visible');
-  btn.classList.toggle('open');
-}
-
-// ─── End Production ──────────────────────────────────────────────────────────
-function openEndProd() {
+async function saveFormNow() {
   const f = collectForm();
-  document.getElementById('ep-pilote').value = st.pilot || '';
-  document.getElementById('ep-poste').value = st.poste || '';
-  document.getElementById('ep-qtefab').value = f.qte_fab || '';
-  document.getElementById('ep-qteemb').value = f.qte_emb || '';
-  document.getElementById('ep-comment').value = f.comment || '';
-  document.getElementById('ep-duree-mq-mp').value = f.duree_mq_mp || '';
-  document.getElementById('ep-manquant-pers').value = f.manquant_pers || '';
-  updateEpEquiv();
-
-  // Recap
-  const recapEl = document.getElementById('end-prod-recap');
-  recapEl.innerHTML = `
-    <div style="text-align:center"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase">OF</div><div style="font-size:18px;font-weight:800">${f.of_num||'—'}</div></div>
-    <div style="text-align:center"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase">Durée</div><div style="font-size:18px;font-weight:800">${fmtS(st.of_elapsed_s||0)}</div></div>
-    <div style="text-align:center"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase">Arrêts</div><div style="font-size:18px;font-weight:800">${fmtS(st.stop_wall_s||0)}</div></div>
-    <div style="text-align:center"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase">Pauses</div><div style="font-size:18px;font-weight:800">${fmtS(st.pause_total_s||0)}</div></div>`;
-  openModal('modal-end-prod');
+  await fetch('/api/save_form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});
+  toast('Formulaire sauvegardé','ok');
 }
 
-function updateEpEquiv() {
-  const qte = parseFloat(document.getElementById('ep-qtefab').value) || 0;
-  // Simplified equiv (1:1 if no type prod selected)
-  document.getElementById('ep-equiv').value = qte.toFixed(2);
-}
+// Auto-save form every 30s when prod active
+setInterval(()=>{ if(ST.prod_active&&_curTab==='prod') { const f=collectForm(); fetch('/api/save_form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)}); }}, 30000);
 
-async function doEndProd() {
-  const form = collectForm();
-  form.pilote = document.getElementById('ep-pilote').value;
-  form.poste  = document.getElementById('ep-poste').value;
-  form.qte_fab = document.getElementById('ep-qtefab').value;
-  form.qte_emb = document.getElementById('ep-qteemb').value;
-  form.comment = document.getElementById('ep-comment').value;
-  form.duree_mq_mp = document.getElementById('ep-duree-mq-mp').value;
-  form.manquant_pers = document.getElementById('ep-manquant-pers').value;
-  const r = await fetch('/api/end_prod', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({form})});
+// ── End production ──
+async function doEndProdPreview() {
+  const f = collectForm();
+  const r = await fetch('/api/preview_end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
+  if (!r||!r.ok) { if(confirm('Confirmer fin de production ?')) confirmEndProd(); return; }
   const d = await r.json();
-  if (!d.ok) { alert(d.error); return; }
-  closeModal('modal-end-prod');
-  st.prod_active = false;
-  document.body.classList.remove('stop-active');
-  showRecap(d.recap);
-  showView('main');
-  setTimeout(() => { loadHistory(); loadEvents(); }, 800);
+  renderEPModal(d, f);
+  openM('m-endprod');
 }
 
-function showRecap(recap) {
-  const trs = recap.trs >= 0 ? recap.trs + '%' : '—';
-  const col = recap.trs >= 70 ? '#1a8c4e' : recap.trs >= 50 ? '#d97706' : '#e31e24';
-  document.getElementById('recap-body').innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px">
-      <div class="card" style="text-align:center"><div class="card-hdr">TRS</div><div style="font-size:40px;font-weight:900;color:${col}">${trs}</div></div>
-      <div class="card" style="text-align:center"><div class="card-hdr">Qté fabriquée</div><div style="font-size:28px;font-weight:800">${recap.qte_fab}</div></div>
-      <div class="card" style="text-align:center"><div class="card-hdr">Équivalence</div><div style="font-size:28px;font-weight:800">${recap.equiv}</div></div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-      <div class="card" style="text-align:center"><div class="card-hdr">OF</div><div style="font-size:16px;font-weight:800">${recap.of_num||'—'}</div></div>
-      <div class="card" style="text-align:center"><div class="card-hdr">Pilote</div><div style="font-size:16px;font-weight:800">${recap.pilote}</div></div>
-      <div class="card" style="text-align:center"><div class="card-hdr">Début</div><div style="font-size:16px;font-weight:800">${recap.debut}</div></div>
-      <div class="card" style="text-align:center"><div class="card-hdr">Fin</div><div style="font-size:16px;font-weight:800">${recap.fin}</div></div>
-      <div class="card" style="text-align:center"><div class="card-hdr">Durée OF</div><div style="font-size:16px;font-weight:800">${fmtS(recap.of_s)}</div></div>
-      <div class="card" style="text-align:center"><div class="card-hdr">Pauses</div><div style="font-size:16px;font-weight:800">${fmtS(recap.pause_s)}</div></div>
-      <div class="card" style="text-align:center"><div class="card-hdr">Arrêts</div><div style="font-size:16px;font-weight:800">${fmtS(recap.stop_wall_s)}</div></div>
-      <div class="card" style="text-align:center"><div class="card-hdr">Qté emb.</div><div style="font-size:16px;font-weight:800">${recap.qte_emb}</div></div>
-    </div>`;
-  openModal('modal-recap');
+function renderEPModal(d, f) {
+  document.getElementById('ep-stats').innerHTML = `
+    <div class="ep-stat"><div class="val">${fmtTRS(d.trs)}</div><div class="lbl">TRS OF</div></div>
+    <div class="ep-stat"><div class="val">${(d.equiv||0).toFixed(1)}</div><div class="lbl">Équivalence</div></div>
+    <div class="ep-stat"><div class="val">${fmtD2(d.prod_s||0)}</div><div class="lbl">Durée prod</div></div>
+    <div class="ep-stat"><div class="val">${fmtD2(d.stop_s||0)}</div><div class="lbl">Total arrêts</div></div>
+    <div class="ep-stat"><div class="val">${d.c1||0}</div><div class="lbl">Cadence/h</div></div>
+    <div class="ep-stat"><div class="val">${d.c2||0}</div><div class="lbl">Cad/h/pers</div></div>
+  `;
+  // Build stop summary from tl_events
+  const evts = d.tl_events||[];
+  const stopMap = {};
+  const totalS = d.stop_s||1;
+  evts.forEach(e=>{
+    if (!e.key||e.key==='prod') return;
+    const dur = (e.dur_s||0);
+    stopMap[e.key] = (stopMap[e.key]||0)+dur;
+  });
+  const tbody = document.getElementById('ep-stops');
+  tbody.innerHTML = Object.entries(stopMap).map(([k,s])=>`
+    <tr><td>${k}</td><td>${fmtD2(s)}</td><td>${totalS>0?Math.round(s/totalS*100):0}%</td></tr>
+  `).join('')||'<tr><td colspan="3" style="color:var(--c-muted)">Aucun arrêt</td></tr>';
+  // Timeline in modal
+  drawTL('ep-tl', evts, d.debut, d.now_str);
 }
 
-function closeRecap() {
-  closeModal('modal-recap');
-}
-
-// ─── Fin de poste ────────────────────────────────────────────────────────────
-async function openFinPoste() {
-  openModal('modal-fin-poste');
-  const r = await fetch('/api/fin_poste_data');
+async function confirmEndProd() {
+  const f = collectForm();
+  closeM('m-endprod');
+  const r = await fetch('/api/end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
+  if (!r) return;
   const d = await r.json();
-  let html = `<div style="margin-bottom:16px;padding:14px;background:#f8fafc;border-radius:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
-    <div style="text-align:center"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase">Pilote</div><div style="font-size:18px;font-weight:800">${d.pilot||'—'}</div></div>
-    <div style="text-align:center"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase">Date</div><div style="font-size:18px;font-weight:800">${d.date||'—'}</div></div>
-    <div style="text-align:center"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase">Nb OF</div><div style="font-size:18px;font-weight:800">${d.nb_of}</div></div>
-    <div style="text-align:center"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase">TRS Poste</div><div style="font-size:18px;font-weight:800;color:${d.trs>=70?'#1a8c4e':d.trs>=50?'#d97706':'#e31e24'}">${d.trs>=0?d.trs+'%':'—'}</div></div>
-    <div style="text-align:center;grid-column:1/-1"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase">Équivalence totale</div><div style="font-size:20px;font-weight:800">${d.tot_equiv}</div></div>
-  </div>`;
-  if (d.of_list && d.of_list.length) {
-    html += `<table class="fp-table"><thead><tr><th>OF</th><th>Taille</th><th>Type</th><th>Qté Fab</th><th>Qté Emb</th><th>Equiv</th><th>Début</th><th>Fin</th><th>TRS%</th></tr></thead><tbody>`;
-    d.of_list.forEach(of => {
-      const tc = of.trs>=70?'color:#1a8c4e':of.trs>=50?'color:#d97706':'color:#e31e24';
-      html += `<tr><td>${of.of}</td><td>${of.taille}</td><td>${of.type_prod}</td><td>${of.qte_fab}</td><td>${of.qte_emb}</td><td>${of.equiv}</td><td>${of.debut}</td><td>${of.fin}</td><td style="${tc};font-weight:700">${of.trs>=0?of.trs+'%':'—'}</td></tr>`;
-    });
-    html += '</tbody></table>';
-  }
-  document.getElementById('fin-poste-body').innerHTML = html;
+  if (d.ok) { await pollState(); await pollEvts(); goTab('main'); toast('Production enregistrée','ok'); }
+  else toast(d.error||'Erreur','err');
 }
 
-function validateFinPoste() {
-  alert('Fin de poste validée. Bonne fin de journée !');
-  closeModal('modal-fin-poste');
-}
-
-async function generateDashboard() {
-  const r = await fetch('/api/generate_dashboard', {method:'POST'});
-  const d = await r.json();
-  if (d.ok) alert('Supervision générée : ' + d.path);
-  else alert('Erreur : ' + d.error);
-}
-
-// ─── Open Stop Modal ──────────────────────────────────────────────────────────
-function openStopModal() {
-  document.getElementById('custom-stop-input').value = '';
-  updateStopBtnStates();
-  openModal('modal-stop');
-}
-
-// ─── Settings ─────────────────────────────────────────────────────────────────
-async function openSettings() {
-  const r = await fetch('/api/config');
-  const cfg = await r.json();
-  window._cfg = cfg;
-  document.getElementById('set-prod-ref').value = cfg.prod_ref || 0;
-  document.getElementById('set-pause-max').value = cfg.pause_max_min || 20;
-  document.getElementById('set-clean-short').value = cfg.clean_short_min || 10;
-  document.getElementById('set-clean-long').value = cfg.clean_long_min || 30;
-  document.getElementById('set-clean-grand').value = cfg.clean_grand_min || 60;
-  document.getElementById('set-meeting-tol').value = cfg.meeting_tol_min || 5;
-  document.getElementById('set-db-path').value = cfg.db_path || '';
-  document.getElementById('set-db-name').textContent = cfg.db_name ? '📄 ' + cfg.db_name : '';
-  buildModelesList(cfg.modeles_horaires || []);
-  buildPilotsList(cfg);
-  openModal('modal-settings');
-}
-
-function buildModelesList(modeles) {
-  const el = document.getElementById('modeles-list');
-  el.innerHTML = '';
-  modeles.forEach((m, i) => {
-    const row = document.createElement('div');
-    row.className = 'modele-row';
-    row.innerHTML = `
-      <input placeholder="Nom (ex: Matin)" value="${m.nom||''}" data-mi="${i}" data-f="nom">
-      <input placeholder="Début (ex: 05:00)" value="${m.debut||''}" data-mi="${i}" data-f="debut">
-      <input placeholder="Fin (ex: 13:00)" value="${m.fin||''}" data-mi="${i}" data-f="fin">
-      <input placeholder="Durée OF max (h)" type="number" value="${m.duree_max||8}" data-mi="${i}" data-f="duree_max">
-      <button class="btn btn-red btn-sm" onclick="removeModele(${i})">✕</button>`;
-    el.appendChild(row);
+// ── Edit stop ──
+function buildStopTypeOpts() {
+  const s = document.getElementById('es-type');
+  if (!s) return;
+  ['Pause Pilote',...STOP_TYPES,'nettoyage'].forEach(t=>{
+    const o=document.createElement('option'); o.value=t; o.textContent=t; s.appendChild(o);
   });
 }
 
-function addModele() {
-  const cfg = window._cfg || {};
-  const modeles = cfg.modeles_horaires || [];
-  modeles.push({nom:'', debut:'', fin:'', duree_max: 8});
-  cfg.modeles_horaires = modeles;
-  window._cfg = cfg;
-  buildModelesList(modeles);
+function openEditStop(key) {
+  const ev = window._evMap[key];
+  if (!ev) return;
+  document.getElementById('es-key').value=key;
+  document.getElementById('es-type').value=ev.type||'';
+  const d=ev.debut||'',f2=ev.fin||'';
+  document.getElementById('es-deb').value=d.length>=5?d.slice(0,5):d;
+  document.getElementById('es-fin').value=f2.length>=5?f2.slice(0,5):f2;
+  document.getElementById('es-cmt').value=ev.comment||'';
+  openM('m-editstop');
 }
 
-function removeModele(i) {
-  const cfg = window._cfg || {};
-  const modeles = cfg.modeles_horaires || [];
-  modeles.splice(i, 1);
-  cfg.modeles_horaires = modeles;
-  window._cfg = cfg;
-  buildModelesList(modeles);
-}
-
-function buildPilotsList(cfg) {
-  const el = document.getElementById('set-pilots-list');
-  const pilots = (lists.pilotes || []);
-  el.innerHTML = pilots.length ? pilots.map(p => `<div style="padding:4px 0;border-bottom:1px solid var(--lgray)">👤 ${p}</div>`).join('') : '<div style="color:var(--gray)">Aucun pilote dans le fichier Excel.</div>';
-}
-
-async function setDb() {
-  const path = document.getElementById('set-db-path').value.trim();
-  const pw = document.getElementById('set-cur-pw').value || (window._cfg||{}).supervisor_pw || '1234';
-  const r = await fetch('/api/set_db', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({pw, path})});
-  const d = await r.json();
-  if (d.ok) {
-    document.getElementById('set-db-name').textContent = '✔ ' + path.split(/[\\/]/).pop();
-    setTimeout(() => { init(); }, 1200);
-  } else alert(d.error);
-}
-
-async function reloadLists() {
-  await fetch('/api/reload', {method:'POST'});
-  const lr = await fetch('/api/lists');
-  lists = await lr.json();
-  alert('Listes rechargées.');
-}
-
-function switchSetTab(i) {
-  document.querySelectorAll('.set-tab').forEach((t,j) => t.classList.toggle('active', j===i));
-  document.querySelectorAll('.set-panel').forEach((p,j) => p.classList.toggle('active', j===i));
-  setTabIdx = i;
-}
-
-async function saveSettings() {
-  const cfg = window._cfg || {};
-  // Collect modeles
-  const modeles = [];
-  document.querySelectorAll('.modele-row').forEach(row => {
-    const m = {};
-    row.querySelectorAll('input[data-f]').forEach(inp => { m[inp.dataset.f] = inp.value; });
-    if (m.nom) modeles.push(m);
-  });
-  const payload = {
-    pw: document.getElementById('set-cur-pw').value || '1234',
-    prod_ref: document.getElementById('set-prod-ref').value,
-    pause_max_min: document.getElementById('set-pause-max').value,
-    clean_short_min: document.getElementById('set-clean-short').value,
-    clean_long_min: document.getElementById('set-clean-long').value,
-    clean_grand_min: document.getElementById('set-clean-grand').value,
-    meeting_tol_min: document.getElementById('set-meeting-tol').value,
-    modeles_horaires: modeles,
+async function saveEditStop() {
+  const key = document.getElementById('es-key').value;
+  const ev = window._evMap[key];
+  if (!ev) return;
+  const data = {
+    row_num: ev.row_num,
+    type: document.getElementById('es-type').value,
+    heure_debut: document.getElementById('es-deb').value,
+    heure_fin: document.getElementById('es-fin').value,
+    comment: document.getElementById('es-cmt').value,
   };
-  const newPw = document.getElementById('set-new-pw').value;
-  if (newPw) payload.new_pw = newPw;
-  const r = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(payload)});
-  const d = await r.json();
-  if (d.ok) {
-    document.getElementById('set-save-ok').textContent = '✔ Enregistré';
-    setTimeout(() => document.getElementById('set-save-ok').textContent = '', 2000);
-  } else {
-    alert(d.error || 'Erreur');
+  const r = await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  if (r&&r.ok) { closeM('m-editstop'); await pollEvts(); toast('Modifié','ok'); }
+  else toast('Erreur','err');
+}
+
+async function deleteStop() {
+  const key=document.getElementById('es-key').value;
+  const ev=window._evMap[key];
+  if (!ev||!confirm('Supprimer ?')) return;
+  const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:ev.row_num})});
+  if (r&&r.ok) { closeM('m-editstop'); await pollEvts(); toast('Supprimé','ok'); }
+}
+
+// ── Timeline ──
+function renderTL(svgId, evts) {
+  const now = new Date();
+  const s4h = new Date(now-4*3600*1000);
+  drawTLFromISO(svgId, evts, s4h.toISOString(), now.toISOString());
+}
+
+function drawTL(svgId, tlEvts, debutHMS, finHMS) {
+  // tlEvts are {key, dur_s, ...} from preview
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  const W=800,Y=8,H2=32,H=48;
+  let html = `<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
+  // If debut/fin provided as HH:MM:SS, reconstruct
+  if (!debutHMS||!finHMS) { svg.innerHTML=html; return; }
+  const base = new Date(); base.setHours(0,0,0,0);
+  const parseHMS = s => { const [h,m,sec]=(s||'').split(':'); return base.getTime()+(parseInt(h)||0)*3600000+(parseInt(m)||0)*60000+(parseInt(sec)||0)*1000; };
+  const tS=parseHMS(debutHMS), tE=parseHMS(finHMS);
+  const span=tE-tS; if(span<=0){svg.innerHTML=html;return;}
+  const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
+  // Prod background
+  html+=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#bbf7d0" rx="4"/>`;
+  // Events
+  let cur=tS;
+  (tlEvts||[]).forEach(e=>{
+    if (!e.key||e.key==='prod') return;
+    const x1=toX(cur), x2=toX(cur+e.dur_s*1000);
+    const col=STOP_COL[e.key]||'#94a3b8';
+    html+=`<rect x="${x1}" y="${Y}" width="${Math.max(1,x2-x1)}" height="${H2}" fill="${col}" rx="2" opacity="0.9"/>`;
+    cur+=e.dur_s*1000;
+  });
+  const fmtHM=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
+  html+=`<text x="2" y="${H-2}" font-size="9" fill="#64748b">${debutHMS.slice(0,5)}</text>`;
+  html+=`<text x="${W-35}" y="${H-2}" font-size="9" fill="#64748b">${finHMS.slice(0,5)}</text>`;
+  svg.innerHTML=html;
+}
+
+function drawTLFromISO(svgId, evts, startIso, endIso) {
+  const svg = document.getElementById(svgId);
+  if (!svg) return;
+  const W=800,Y=8,H2=32,H=48;
+  let html = `<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
+  const tS=new Date(startIso).getTime(), tE=new Date(endIso).getTime();
+  const span=tE-tS; if(span<=0){svg.innerHTML=html;return;}
+  const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
+
+  // Prod background
+  if (ST.prod_active) {
+    const ps = ST.of_start_iso ? new Date(ST.of_start_iso).getTime() : tS;
+    const x1=toX(ps),x2=toX(tE);
+    if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="#bbf7d0" rx="4"/>`;
+  }
+
+  // Events (stops/pauses)
+  (evts||[]).forEach((ev,i)=>{
+    const key=ev.debut||i;
+    window._evMap[key]=ev;
+    const t1=parseHMStoT(ev.debut, ev.date), t2=parseHMStoT(ev.fin, ev.date);
+    if (!t1) return;
+    const x1=toX(t1),x2=toX(t2||tE);
+    if(x2<=x1) return;
+    const col=STOP_COL[ev.type||'']||'#94a3b8';
+    html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${col}" rx="2" opacity="0.85"/>`;
+  });
+
+  // Current stop
+  if (_curStopKey&&_curStopKey!=='_pause'&&ST.prod_active) {
+    const stopStart=tE-((_curStopElap+(Date.now()-_lastPoll)/1000)*1000);
+    const x1=toX(stopStart),x2=toX(tE);
+    if(x2>x1){const col=STOP_COL[_curStopKey]||'#dc2626';html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${col}" rx="2" opacity="0.9"/>`;}
+  }
+
+  const fmtT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
+  html+=`<text x="2" y="${H-2}" font-size="9" fill="#64748b">${fmtT(tS)}</text>`;
+  html+=`<text x="${W-35}" y="${H-2}" font-size="9" fill="#64748b">${fmtT(tE)}</text>`;
+  html+=`<line x1="${W/2}" y1="${Y}" x2="${W/2}" y2="${Y+H2}" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="2,2"/>`;
+  html+=`<text x="${W/2-12}" y="${H-2}" font-size="9" fill="#94a3b8">${fmtT((tS+tE)/2)}</text>`;
+  svg.innerHTML=html;
+}
+
+function parseHMStoT(hms, dateStr) {
+  if (!hms) return null;
+  try {
+    const base = dateStr ? new Date(dateStr.slice(0,10)).getTime() : new Date().setHours(0,0,0,0);
+    const [h,m,s]=(hms||'00:00:00').split(':').map(Number);
+    return base+h*3600000+m*60000+(s||0)*1000;
+  } catch(e){return null;}
+}
+
+// ── Recap stops list ──
+function renderRecap(evts) {
+  const c=document.getElementById('recap-list');
+  if (!c) return;
+  window._evMap={};
+  const stops=(evts||[]).filter(e=>e.type&&!['Production','prod',''].includes((e.type||'').toLowerCase()));
+  if (!stops.length) { c.innerHTML='<span style="color:var(--c-muted);font-size:11px">Aucun arrêt enregistré</span>'; return; }
+  let html='';
+  stops.forEach((ev,i)=>{
+    const key=ev.debut||i;
+    window._evMap[String(key)]=ev;
+    const col=STOP_COL[ev.type||'']||'#94a3b8';
+    html+=`<div class="si">
+      <div class="sdot" style="background:${col}"></div>
+      <div class="sname">${ev.type||'?'}</div>
+      <div class="sdur">${ev.duree||calcDur(ev.debut,ev.fin)||'?'}</div>
+      <button class="btn-edit" onclick="openEditStop('${esc(String(key))}')">✏</button>
+    </div>`;
+  });
+  // Current live stop
+  if (_curStopKey) {
+    const lbl=_curStopKey==='_pause'?'Pause Pilote':_curStopKey;
+    html+=`<div class="si" style="animation:blink .9s step-start infinite">
+      <div class="sdot" style="background:${STOP_COL[lbl]||'#dc2626'}"></div>
+      <div class="sname">${lbl} <span style="font-size:9px;color:var(--c-muted)">(en cours)</span></div>
+      <div class="sdur" id="recap-live">--:--</div>
+    </div>`;
+  }
+  c.innerHTML=html;
+}
+
+function calcDur(d,f){
+  if(!d||!f) return '';
+  try{const p=s=>s.split(':').reduce((a,v,i)=>a+(i===0?+v*3600:i===1?+v*60:+v),0);
+  const diff=p(f)-p(d); return diff>0?fmtDur(diff):'';}catch(e){return '';}
+}
+
+// ── Main KPI ──
+async function renderMainKpi() {
+  const d = await apiFetch('/api/history_today');
+  if (!d) return;
+  const cur=document.getElementById('mkpi-cur');
+  const prev=document.getElementById('mkpi-prev');
+  const ofL=document.getElementById('mkpi-of');
+  if (!cur||!prev||!ofL) return;
+  const trs=d.trs_shift||0;
+  const rows=d.rows||[];
+  if (rows.length) {
+    cur.innerHTML=`<div style="font-size:30px;font-weight:800;color:${trs>=90?'var(--c-green)':trs>=75?'var(--c-yellow)':'var(--c-red)'}">${fmtTRS(trs)}</div>
+    <div style="font-size:10px;color:var(--c-muted);margin-top:3px">${rows.length} OF • Éq: ${(d.tot_eq||0).toFixed(1)}</div>`;
+  } else cur.innerHTML='<span style="color:var(--c-muted);font-size:11px">Aucune production ce poste</span>';
+  prev.innerHTML='<span style="color:var(--c-muted);font-size:11px">—</span>';
+  ofL.innerHTML=rows.slice(-5).reverse().map(r=>`
+    <div class="flex" style="padding:3px 0;border-bottom:1px solid var(--c-border);font-size:11px">
+      <span style="font-weight:600;flex:1">${r.of||'?'}</span>
+      <span class="${(r.trs||0)>=90?'tg':(r.trs||0)>=75?'tm':'tb'}">${fmtTRS(r.trs)}</span>
+    </div>`).join('')||'<span style="color:var(--c-muted)">--</span>';
+}
+
+// ── Fin de poste ──
+async function doFinPoste() {
+  if (ST.prod_active) { toast('Terminer la production en cours avant de finir le poste','err'); return; }
+  goTab('finposte');
+}
+
+async function loadFPData() {
+  const d = await apiFetch('/api/fin_poste_data');
+  if (!d) return;
+  const trs = d.trs_shift!==undefined?d.trs_shift:d.trs;
+  document.getElementById('fp-trs').textContent = fmtTRS(trs);
+  document.getElementById('fp-eq').textContent = (d.tot_equiv||0).toFixed(1);
+  document.getElementById('fp-nof').textContent = d.nb_of||0;
+  document.getElementById('fp-st').textContent = Math.round((d.tot_s||0)/60)+' min';
+  document.getElementById('fp-who').textContent = `${d.pilot||ST.pilot||''} — ${ST.poste||''}`;
+
+  // Timeline
+  const shiftStart = d.shift_start_iso || new Date(Date.now()-8*3600*1000).toISOString();
+  drawTLFromISO('fp-tl', gEvts, shiftStart, new Date().toISOString());
+
+  // Productions list
+  const fp = document.getElementById('fp-prods');
+  if (fp && d.of_list) {
+    fp.innerHTML=d.of_list.map(p=>`
+      <div class="flex" style="padding:4px 0;border-bottom:1px solid var(--c-border);font-size:11px">
+        <span style="font-weight:600;min-width:80px">${p.of||'?'}</span>
+        <span style="color:var(--c-muted)">${p.taille||''} ${p.type_prod||''}</span>
+        <span style="margin-left:auto">${p.qte_fab||0} pcs</span>
+        <span class="${(p.trs||0)>=90?'tg':(p.trs||0)>=75?'tm':'tb'}">${fmtTRS(p.trs||0)}</span>
+      </div>`).join('')||'<span style="color:var(--c-muted)">Aucune production</span>';
   }
 }
 
-// ─── Modal helpers ────────────────────────────────────────────────────────────
-function openModal(id) {
-  document.getElementById(id).classList.add('active');
-}
-function closeModal(id) {
-  document.getElementById(id).classList.remove('active');
-}
-
-// ─── Utilities ────────────────────────────────────────────────────────────────
-function fmtS(s) {
-  const t = Math.max(0, Math.round(s || 0));
-  return String(Math.floor(t/3600)).padStart(2,'0') + ':' +
-         String(Math.floor((t%3600)/60)).padStart(2,'0') + ':' +
-         String(t%60).padStart(2,'0');
+async function confirmFinPoste() {
+  if (!confirm('Confirmer fin de poste et se déconnecter ?')) return;
+  await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  ST={}; _curStopKey=null;
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('ln-pw').value='';
+  document.getElementById('ln-err').textContent='';
+  document.getElementById('v-login').style.display='';
+  toast('Bonne fin de poste !','ok');
 }
 
-function trsColor(t) {
-  if (t < 0) return '#94a3b8';
-  if (t >= 70) return '#1a8c4e';
-  if (t >= 50) return '#d97706';
-  return '#e31e24';
+// ── History ──
+async function loadHist() {
+  const dt=document.getElementById('hist-dt').value||new Date().toISOString().slice(0,10);
+  const d=await apiFetch('/api/history?date='+dt);
+  const rows=Array.isArray(d)?(d):(d&&d.rows?d.rows:[]);
+  const hd=document.getElementById('hist-hd'), bd=document.getElementById('hist-bd');
+  if (!hd||!bd) return;
+  if (!rows.length) { bd.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--c-muted);padding:18px">Aucune donnée</td></tr>'; return; }
+  const ks=['type','of','poste','pilote','debut','fin','qte_fab','equiv','trs'];
+  const lb={type:'Type',of:'OF',poste:'Poste',pilote:'Pilote',debut:'Début',fin:'Fin',qte_fab:'Qté',equiv:'Éq',trs:'TRS'};
+  hd.innerHTML=ks.map(k=>`<th>${lb[k]||k}</th>`).join('');
+  bd.innerHTML=rows.map(row=>{
+    const t=parseFloat(row.trs||row['trs%']||0);
+    return '<tr>'+ks.map(k=>{
+      const v=row[k]||'';
+      if(k==='trs') return `<td class="${t>=90?'tg':t>=75?'tm':t>0?'tb':''}">${t>0?fmtTRS(t):''}</td>`;
+      return `<td>${esc(String(v))}</td>`;
+    }).join('')+'</tr>';
+  }).join('');
 }
 
-// Close modal on backdrop click
-document.querySelectorAll('.modal').forEach(m => {
-  m.addEventListener('click', e => { if (e.target === m) closeModal(m.id); });
-});
+// ── Settings ──
+async function loadCfg() {
+  const d=await apiFetch('/api/config');
+  if (!d) return;
+  _cfgPwds=d.pilot_passwords||{};
+  _cfgModels=d.modeles_horaires||[];
+  document.getElementById('cfg-pr').value=d.prod_ref||200;
+  renderPwdList();
+  renderModelList();
+}
 
-// ─── Start ────────────────────────────────────────────────────────────────────
-init();
+function renderPwdList() {
+  const c=document.getElementById('pwd-list');
+  if (!c) return;
+  c.innerHTML=Object.entries(_cfgPwds).map(([nm,pw])=>`
+    <div class="pr">
+      <div class="pn">${esc(nm)}</div>
+      <input type="password" id="pwi-${esc(nm)}" value="${esc(pw)}" data-n="${esc(nm)}">
+      <button class="btn-eye" onclick="toggleEye('pwi-${esc(nm)}')">👁</button>
+      <button class="btn btn-sec" style="font-size:10px;padding:3px 7px" onclick="rmPilot('${esc(nm)}')">✕</button>
+    </div>`).join('')||'<div style="color:var(--c-muted);font-size:11px;padding:3px">Aucun pilote</div>';
+}
+
+function toggleEye(id){const i=document.getElementById(id);if(i)i.type=i.type==='password'?'text':'password';}
+function addPilot(){
+  const n=document.getElementById('np-name').value.trim(),pw=document.getElementById('np-pw').value;
+  if(!n){toast('Nom requis','err');return;}
+  _cfgPwds[n]=pw;
+  document.getElementById('np-name').value='';document.getElementById('np-pw').value='';
+  renderPwdList();
+}
+function rmPilot(n){delete _cfgPwds[n];renderPwdList();}
+async function savePwds(){
+  document.querySelectorAll('#pwd-list input[data-n]').forEach(i=>_cfgPwds[i.dataset.n]=i.value);
+  const pw=document.getElementById('adm-pw').value||'1234';
+  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,pilot_passwords:_cfgPwds})});
+  const d=r?await r.json():{};
+  d&&d.ok?toast('MDP enregistrés','ok'):toast(d&&d.error||'Erreur (vérifier MDP admin)','err');
+}
+
+const DAYS=[{k:'lun',l:'Lun'},{k:'mar',l:'Mar'},{k:'mer',l:'Mer'},{k:'jeu',l:'Jeu'},{k:'ven',l:'Ven'},{k:'sam',l:'Sam'},{k:'dim',l:'Dim'}];
+
+function renderModelList(){
+  const c=document.getElementById('models-list');
+  if(!c) return;
+  c.innerHTML=_cfgModels.map((m,mi)=>{
+    const j=m.jours||{};
+    return `<div class="model-card">
+      <div class="mch">
+        <input value="${esc(m.nom||'Poste '+(mi+1))}" onchange="_cfgModels[${mi}].nom=this.value" placeholder="Nom du poste">
+        <button class="btn btn-danger" style="font-size:10px;padding:3px 7px" onclick="_cfgModels.splice(${mi},1);renderModelList()">✕</button>
+      </div>
+      <div class="day-grid">${DAYS.map(d=>{
+        const dc=j[d.k]||{};
+        return `<div class="day-box"><div class="dl">${d.l}</div>
+          <input type="time" onchange="setDay(${mi},'${d.k}','debut',this.value)" value="${dc.debut||'05:00'}" style="margin-bottom:2px">
+          <input type="time" onchange="setDay(${mi},'${d.k}','fin',this.value)" value="${dc.fin||'13:00'}">
+        </div>`;
+      }).join('')}</div>
+    </div>`;
+  }).join('')||'<div style="color:var(--c-muted);font-size:11px">Aucun modèle</div>';
+}
+
+function setDay(mi,day,field,val){
+  if(!_cfgModels[mi]) return;
+  if(!_cfgModels[mi].jours) _cfgModels[mi].jours={};
+  if(!_cfgModels[mi].jours[day]) _cfgModels[mi].jours[day]={};
+  _cfgModels[mi].jours[day][field]=val;
+}
+function addModel(){_cfgModels.push({nom:'Nouveau poste',jours:{lun:{debut:'05:00',fin:'13:00'},mar:{debut:'05:00',fin:'13:00'},mer:{debut:'05:00',fin:'13:00'},jeu:{debut:'05:00',fin:'13:00'},ven:{debut:'05:00',fin:'13:00'},sam:{debut:'',fin:''},dim:{debut:'',fin:''}}});renderModelList();}
+async function saveModels(){
+  const pw=document.getElementById('adm-pw2').value||'1234';
+  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,modeles_horaires:_cfgModels})});
+  const d=r?await r.json():{};
+  d&&d.ok?toast('Modèles enregistrés','ok'):toast(d&&d.error||'Erreur (vérifier MDP admin)','err');
+}
+async function saveProdRef(){
+  const v=parseFloat(document.getElementById('cfg-pr').value)||200;
+  const pw=document.getElementById('adm-pw3').value||'1234';
+  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,prod_ref:v})});
+  const d=r?await r.json():{};
+  d&&d.ok?toast('Référence enregistrée','ok'):toast(d&&d.error||'Erreur','err');
+}
+
+// ── Modals ──
+function openM(id){const m=document.getElementById(id);if(m){m.classList.add('on');m.style.display='flex';}}
+function closeM(id){const m=document.getElementById(id);if(m){m.classList.remove('on');m.style.display='';}}
+document.addEventListener('click',e=>{if(e.target.classList.contains('overlay'))closeM(e.target.id);});
+
+// ── Utils ──
+async function apiFetch(url){
+  try{const r=await fetch(url);return r.ok?await r.json():null;}catch(e){return null;}
+}
+function fmtDur(s){
+  if(!s||s<0) return '00:00:00';
+  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);
+  return [h,m,sec].map(x=>String(x).padStart(2,'0')).join(':');
+}
+function fmtD2(s){
+  if(!s||s<0) return '0 min';
+  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);
+  return h?h+'h'+String(m).padStart(2,'0'):m+' min';
+}
+function fmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+function toast(msg,type){
+  let t=document.getElementById('_toast');
+  if(!t){t=document.createElement('div');t.id='_toast';t.style.cssText='position:fixed;bottom:18px;right:18px;padding:9px 16px;border-radius:7px;font-size:13px;font-weight:600;z-index:999;transition:opacity .3s;box-shadow:0 4px 14px rgba(0,0,0,.18)';document.body.appendChild(t);}
+  t.textContent=msg;t.style.background=type==='ok'?'#16a34a':'#dc2626';t.style.color='#fff';t.style.opacity='1';
+  clearTimeout(t._to);t._to=setTimeout(()=>t.style.opacity='0',3000);
+}
 </script>
 </body>
 </html>"""
