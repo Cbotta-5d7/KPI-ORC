@@ -796,6 +796,22 @@ def api_logout():
     save_session()
     return jsonify({"ok":True})
 
+@flask_app.route('/api/force_reset_prod', methods=['POST'])
+def api_force_reset_prod():
+    """Reset d'urgence : annule la prod en cours sans écrire dans Excel."""
+    _S["prod_active"] = False
+    _S["of_start"] = None
+    _S["tl_events"] = []
+    _S["timers"] = {}
+    _S["is_paused"] = False
+    _S["pause_start"] = None
+    _S["pause_total_s"] = 0.0
+    _S["pause_periods"] = []
+    _S["inter_of_s"] = 0.0
+    _S["form"] = {}
+    save_session()
+    return jsonify({"ok":True})
+
 @flask_app.route('/api/start_prod', methods=['POST'])
 def api_start_prod():
     if not _S["pilot"]:
@@ -2145,8 +2161,9 @@ select{cursor:default}
   <!-- ════ MAIN VIEW ════ -->
   <div id="v-main" class="view" style="flex-direction:column">
     <!-- Bannière prod en cours (visible si prod_active mais sur vue accueil) -->
-    <div id="main-prod-banner" style="display:none;background:#16a34a;color:#fff;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;text-align:center" onclick="goTab('prod')">
-      ▶ Une production est en cours — Cliquer ici pour y accéder
+    <div id="main-prod-banner" style="display:none;background:#16a34a;color:#fff;padding:8px 14px;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:space-between">
+      <span style="cursor:pointer" onclick="goTab('prod')">▶ Production en cours — Cliquer ici pour y accéder</span>
+      <button onclick="forceResetProd()" style="background:rgba(0,0,0,.25);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:5px;font-size:11px;padding:3px 10px;cursor:pointer;white-space:nowrap">⚠ Annuler cette prod</button>
     </div>
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0">
@@ -2916,10 +2933,10 @@ function showApp(s) {
   if (s.poste) { document.getElementById('f-poste').value=s.poste; document.getElementById('pob-poste').textContent=s.poste; }
   // Show prod tab button immediately if prod is active (don't wait for applyState)
   const tp=document.getElementById('ht-prod');
-  if(tp) tp.style.display=s.prod_active?'':'none';
+  if(tp) tp.style.display=s.prod_active?'inline-block':'none';
   // Also show the main banner immediately
   const mpb=document.getElementById('main-prod-banner');
-  if(mpb) mpb.style.display=s.prod_active?'block':'none';
+  if(mpb) mpb.style.display=s.prod_active?'flex':'none';
   setToday();
   restoreFormFromStorage();
   pollState();
@@ -3059,7 +3076,7 @@ function applyState(s) {
 
   // Prod tab visibility
   const tp=document.getElementById('ht-prod');
-  if(tp) tp.style.display=s.prod_active?'':'none';
+  if(tp) tp.style.display=s.prod_active?'inline-block':'none';
 
   // Main prod banner (shown when prod active but user is on main view)
   const mpb=document.getElementById('main-prod-banner');
@@ -3698,12 +3715,24 @@ async function confirmEndProd(){
       if(!el) return;
       el.value='';
     });
+    document.getElementById('f-nb_pers').value='10';
     try{localStorage.removeItem('kpiorc_form');}catch(e){}
     await pollState();
     await pollEvts();
     goTab('main');
     toast('Production enregistrée','ok');
+    // Auto-generate dashboard
+    try{
+      await fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    }catch(e){}
   } else toast(d.error||'Erreur','err');
+}
+
+async function forceResetProd(){
+  if(!confirm('Annuler la prod en cours ? Les données non enregistrées seront perdues.')) return;
+  await fetch('/api/force_reset_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  await pollState();
+  toast('Production annulée','warn');
 }
 
 // ── PIE & GAUGE CHARTS ──
