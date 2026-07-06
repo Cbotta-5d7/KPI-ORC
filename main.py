@@ -52,6 +52,29 @@ DECL_HEADERS = [
 
 POSTES = ["Matin","Midi","Nuit","Jour"]
 
+# Catégories interposte prédéfinies
+INTERPOSTE_CATS = [
+    ("Changement de série", "changement_serie", "interposte"),
+    ("Réglage / Setup machine", "reglage_setup", "interposte"),
+    ("Attente matière première", "attente_mp", "interposte"),
+    ("Réunion / Formation", "reunion", "interposte"),
+    ("Nettoyage interposte", "nettoyage_inter", "interposte"),
+    ("Pause pilote interposte", "pause_inter", "interposte"),
+    ("Autre (interposte)", "autre_inter", "interposte"),
+]
+
+def get_events_list():
+    """Retourne la liste des arrêts configurés (depuis cfg ou EVENTS par défaut)."""
+    custom = cfg.get("events_list", [])
+    if custom:
+        return custom
+    # Convertir EVENTS tuple vers dict
+    return [{"label": e[0], "key": e[1], "cat": e[2]} for e in EVENTS]
+
+def save_events_list(ev_list):
+    cfg["events_list"] = ev_list
+    save_cfg_data()
+
 # ── État global ────────────────────────────────────────────────────────────────
 _S = {
     "pilot": None, "poste": None,
@@ -560,16 +583,17 @@ def write_excel_bg(prod_row, evt_rows):
         threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_bg, daemon=True).start()
 
-def write_changement_of(start_dt, end_dt):
+def write_changement_of(start_dt, end_dt, label=None, comment=""):
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return
     pilot = _S.get("last_of_pilot") or _S.get("pilot") or ""
     dur_s = (end_dt-start_dt).total_seconds()
+    row_type = label or "Changement d'OF"
     row = [
-        "Changement d'OF","",start_dt.strftime("%d/%m/%Y"),
+        row_type,"",start_dt.strftime("%d/%m/%Y"),
         _S.get("poste",""),pilot,"","","","","","","","","","","",
         start_dt.strftime("%H:%M:%S"),end_dt.strftime("%H:%M:%S"),fmt(dur_s),
-        "","","","","","","","","","","","","","","","","",
+        "","","","","","","","","","","","","","","","",comment,
     ]
     def _bg():
         try:
@@ -790,9 +814,25 @@ def api_start_prod():
 def api_inter_of_confirm():
     data = request.json or {}
     _S["inter_of_s"] = float(data.get("inter_of_s",0))
+    label = data.get("label","")
+    comment = data.get("comment","")
     if _S["inter_of_s"] > 30 and _S["last_of_end"] and _S["of_start"]:
-        write_changement_of(_S["last_of_end"], _S["of_start"])
+        write_changement_of(_S["last_of_end"], _S["of_start"], label=label or None, comment=comment)
     save_session()
+    return jsonify({"ok":True})
+
+@flask_app.route('/api/events_cfg', methods=['GET'])
+def api_events_cfg_get():
+    return jsonify({"ok":True,"events":get_events_list()})
+
+@flask_app.route('/api/events_cfg', methods=['POST'])
+def api_events_cfg_post():
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    ev_list = data.get("events",[])
+    save_events_list(ev_list)
     return jsonify({"ok":True})
 
 @flask_app.route('/api/end_prod', methods=['POST'])
@@ -2276,6 +2316,26 @@ select{cursor:default}
     </div>
   </div>
 
+  <!-- ════ MODAL INTERPOSTE ════ -->
+  <div id="m-interposte" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
+    <div class="card" style="width:420px;padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--amber)">
+      <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:4px">⏱ Temps hors production</div>
+      <div id="ip-duration" style="font-size:13px;color:var(--amber);font-weight:700;margin-bottom:12px"></div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:10px">Que s'est-il passé pendant cette période ?</div>
+      <div id="ip-btns" style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px"></div>
+      <div style="margin-bottom:10px">
+        <input id="ip-custom" placeholder="Ou saisir librement…" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+      </div>
+      <div style="margin-bottom:10px">
+        <input id="ip-comment" placeholder="Commentaire (optionnel)" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sec" onclick="skipInterposte()">Ignorer</button>
+        <button class="btn btn-prim" onclick="confirmInterposte()">✓ Valider</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ════ HISTORY ════ -->
   <div id="v-history" class="view" style="flex-direction:column;overflow:hidden">
     <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0">
@@ -2333,6 +2393,20 @@ select{cursor:default}
           <button class="btn btn-prim" onclick="generateDashboard()">🔄 Générer le Dashboard HTML</button>
           <span id="dash-status" style="font-size:11px;color:var(--gray);margin-left:8px"></span>
         </div>
+      </div>
+      <div class="ss">
+        <h3>⛔ Liste des arrêts configurables</h3>
+        <div style="font-size:11px;color:var(--gray);margin-bottom:8px">Ajouter, modifier ou supprimer les boutons d'arrêt disponibles en production. Pris en compte immédiatement.</div>
+        <div id="events-list-ui" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:8px;border-radius:7px;border:1px solid var(--border)">
+          <input id="ev-new-label" placeholder="Nom de l'arrêt" style="flex:1;min-width:120px;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
+          <select id="ev-new-cat" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
+            <option value="pb">Panne (rouge)</option>
+            <option value="ratt">Rattrapage (orange)</option>
+          </select>
+          <button class="btn btn-green" style="font-size:11px;padding:5px 12px" onclick="addEvtItem()">+ Ajouter</button>
+        </div>
+        <button class="btn btn-prim" style="margin-top:8px;font-size:12px" onclick="saveEvtList()">💾 Enregistrer la liste</button>
       </div>
     </div>
   </div>
@@ -2564,7 +2638,7 @@ window._evMap = {};
 
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', async () => {
-  buildStopGrids();
+  await loadEvtsList(); // charge la liste dynamique des arrêts avant de construire les grilles
   buildEditStopOpts();
   await loadLists();
   const s = await apiFetch('/api/state');
@@ -2835,6 +2909,9 @@ function applyState(s) {
 }
 
 function getEvtLabel(key) {
+  // Priorité : liste dynamique, puis EVENTS statique
+  const dynEv=_evtsList.find(e=>e.key===key);
+  if(dynEv) return (dynEv.cat==='ratt'?'Rattrapage: ':dynEv.cat==='pb'?'PB: ':'')+dynEv.label;
   const ev=EVENTS.find(e=>e[1]===key);
   if(ev) return (ev[2]==='ratt'?'Rattrapage: ':ev[2]==='pb'?'PB: ':'')+ev[0];
   if(key==='nettoyage') return 'Nettoyage';
@@ -3013,38 +3090,144 @@ async function loadMainKPI() {
 }
 
 // ── START PROD ──
+let _pendingGapS=0;
+const INTERPOSTE_LABELS=[
+  "Changement de série","Réglage / Setup machine","Attente matière première",
+  "Réunion / Formation","Nettoyage interposte","Pause pilote"
+];
+
 async function doStartProd() {
-  saveFormToStorage(); // save current form before clearing
+  saveFormToStorage();
   const r=await fetch('/api/start_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   if(!r) return;
   const d=await r.json();
-  if(d.ok){
-    // DON'T clear form - restore from storage or keep current
-    setToday();
-    restoreFormFromStorage();
-    await pollState();
-    await pollEvts();
+  if(!d.ok){toast(d.error||'Erreur','err');return;}
+  setToday();
+  restoreFormFromStorage();
+  await pollState();
+  await pollEvts();
+  _pendingGapS=d.gap_s||0;
+  if(_pendingGapS>120){
+    // Show interposte modal
+    const m=Math.round(_pendingGapS/60);
+    const h=Math.floor(m/60),mi=m%60;
+    document.getElementById('ip-duration').textContent=`Durée : ${h?h+'h ':''}${mi} min`;
+    document.getElementById('ip-custom').value='';
+    document.getElementById('ip-comment').value='';
+    // Build quick-choice buttons
+    const bc=document.getElementById('ip-btns');bc.innerHTML='';
+    INTERPOSTE_LABELS.forEach(lbl=>{
+      const b=document.createElement('button');
+      b.className='btn btn-ghost';b.style.fontSize='12px';b.textContent=lbl;
+      b.onclick=()=>{document.getElementById('ip-custom').value=lbl;};
+      bc.appendChild(b);
+    });
+    openM('m-interposte');
+  } else {
     goTab('prod');
-  } else toast(d.error||'Erreur','err');
+  }
+}
+
+async function confirmInterposte(){
+  const lbl=document.getElementById('ip-custom').value.trim()||'Interposte';
+  const cmt=document.getElementById('ip-comment').value.trim();
+  closeM('m-interposte');
+  await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inter_of_s:_pendingGapS,label:lbl,comment:cmt})});
+  await pollEvts();
+  goTab('prod');
+}
+
+async function skipInterposte(){
+  closeM('m-interposte');
+  goTab('prod');
 }
 
 // ── STOP/PAUSE ──
-function buildStopGrids() {
+let _evtsList=[]; // dynamic events list from server
+
+async function loadEvtsList(){
+  const d=await apiFetch('/api/events_cfg');
+  if(!d||!d.events) return;
+  _evtsList=d.events;
+  // Sync with JS EVENTS array for getEvtLabel compatibility
+  // EVENTS stays as fallback, but we prefer _evtsList
+  rebuildStopGrids();
+  renderEvtListUI();
+}
+
+function rebuildStopGrids(){
+  const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
   const rattGrid=document.getElementById('sgrid-ratt');
   const pbGrid=document.getElementById('sgrid-pb');
   if(!rattGrid||!pbGrid) return;
-  EVENTS.filter(e=>e[2]==='ratt').forEach(e=>{
+  rattGrid.innerHTML='';pbGrid.innerHTML='';
+  evts.filter(e=>e.cat==='ratt').forEach(e=>{
     const b=document.createElement('button');
-    b.className='stop-btn ratt'; b.textContent=e[0];
-    b.onclick=()=>{closeM('m-stop');doStartStop(e[1],'ratt');};
+    b.className='stop-btn ratt'; b.textContent=e.label;
+    b.onclick=()=>{closeM('m-stop');doStartStop(e.key,'ratt');};
     rattGrid.appendChild(b);
   });
-  EVENTS.filter(e=>e[2]==='pb').forEach(e=>{
+  evts.filter(e=>e.cat==='pb').forEach(e=>{
     const b=document.createElement('button');
-    b.className='stop-btn pb'; b.textContent=e[0];
-    b.onclick=()=>{closeM('m-stop');doStartStop(e[1],'pb');};
+    b.className='stop-btn pb'; b.textContent=e.label;
+    b.onclick=()=>{closeM('m-stop');doStartStop(e.key,'pb');};
     pbGrid.appendChild(b);
   });
+}
+
+function buildStopGrids(){rebuildStopGrids();}
+
+function getEvtLabelDynamic(key){
+  const ev=_evtsList.find(e=>e.key===key)||EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]})).find(e=>e.key===key);
+  if(!ev) return key||'Arrêt';
+  return (ev.cat==='ratt'?'Rattrapage: ':ev.cat==='pb'?'PB: ':'')+ev.label;
+}
+
+// ── EVENTS LIST UI (Settings) ──
+let _evtsEditing=[];
+function renderEvtListUI(){
+  _evtsEditing=(_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}))).map(e=>({...e}));
+  _renderEvtListHTML();
+}
+
+function _renderEvtListHTML(){
+  const c=document.getElementById('events-list-ui');if(!c) return;
+  const catLbl={pb:'🔴 Panne',ratt:'🟠 Rattrapage'};
+  c.innerHTML=_evtsEditing.map((e,i)=>`
+    <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="flex:1;font-weight:600">${esc(e.label)}</span>
+      <span style="font-size:10px;color:var(--gray)">${catLbl[e.cat]||e.cat}</span>
+      <button class="btn btn-ghost" style="font-size:10px;padding:2px 6px" onclick="editEvtItem(${i})">✏</button>
+      <button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="rmEvtItem(${i})">✕</button>
+    </div>`).join('')||'<div style="color:var(--gray);font-size:11px;padding:4px">Aucun arrêt configuré</div>';
+}
+
+function addEvtItem(){
+  const lbl=document.getElementById('ev-new-label').value.trim();
+  const cat=document.getElementById('ev-new-cat').value;
+  if(!lbl){toast('Nom requis','err');return;}
+  const key=lbl.toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,32)+'_'+Date.now().toString(36);
+  _evtsEditing.push({label:lbl,key,cat});
+  document.getElementById('ev-new-label').value='';
+  _renderEvtListHTML();
+}
+
+function rmEvtItem(i){_evtsEditing.splice(i,1);_renderEvtListHTML();}
+
+function editEvtItem(i){
+  const e=_evtsEditing[i];
+  const lbl=prompt('Nom de l\'arrêt :',e.label);
+  if(lbl&&lbl.trim()){_evtsEditing[i].label=lbl.trim();_renderEvtListHTML();}
+}
+
+async function saveEvtList(){
+  const r=await fetch('/api/events_cfg',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,events:_evtsEditing})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){
+    _evtsList=_evtsEditing.map(e=>({...e}));
+    rebuildStopGrids();
+    toast('Liste des arrêts enregistrée','ok');
+  } else toast(d?.error||'Erreur','err');
 }
 
 function openStopModal(){openM('m-stop');}
@@ -3748,6 +3931,7 @@ async function loadCfg(){
   if(prEl) prEl.value=d.prod_ref||200;
   renderPwdList();
   renderModelList();
+  await loadEvtsList();
   // Refresh login model dropdown
   const sel=document.getElementById('ln-model');
   if(sel){
