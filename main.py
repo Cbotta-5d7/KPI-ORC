@@ -796,6 +796,7 @@ def api_start_prod():
     if _S["last_of_end"]:
         gap_s = (now - _S["last_of_end"]).total_seconds()
         _S["interposte_s"] = gap_s
+    is_first_of = (_S["of_count_shift"] == 0)
     _S["prod_active"] = True
     _S["of_start"] = now
     _S["inter_of_s"] = 0.0
@@ -803,12 +804,57 @@ def api_start_prod():
     _S["pause_periods"] = []
     _S["tl_events"] = []
     _S["of_count_shift"] += 1
-    _S["form"] = {"of_num": ""}  # OF vide au démarrage
+    _S["form"] = {"of_num": ""}
     if not _S.get("shift_start"):
         _S["shift_start"] = now
     t_reset()
     save_session()
-    return jsonify({"ok":True,"gap_s":round(gap_s,0)})
+    # Calcul du gap pré-poste (1er OF vs heure début modèle horaire)
+    pre_shift_gap_s = 0.0
+    shift_model_start_str = ""
+    shift_model_start_iso = ""
+    if is_first_of:
+        poste = _S.get("poste","")
+        day_keys = ["lun","mar","mer","jeu","ven","sam","dim"]
+        dk = day_keys[now.weekday()]
+        for m in cfg.get("modeles_horaires",[]):
+            if m.get("nom","") == poste:
+                jour = m.get("jours",{}).get(dk,{})
+                debut_str = jour.get("debut","")
+                if debut_str:
+                    try:
+                        h, mi = map(int, debut_str.split(":"))
+                        shift_deb = now.replace(hour=h, minute=mi, second=0, microsecond=0)
+                        # Si shift commence la veille (poste de nuit), on ajuste
+                        if shift_deb > now:
+                            shift_deb -= datetime.timedelta(days=1)
+                        diff = (now - shift_deb).total_seconds()
+                        if 120 < diff < 7200:  # entre 2 min et 2h de retard
+                            pre_shift_gap_s = diff
+                            shift_model_start_str = debut_str
+                            shift_model_start_iso = shift_deb.isoformat()
+                    except: pass
+                break
+    return jsonify({"ok":True,"gap_s":round(gap_s,0),
+                    "pre_shift_gap_s":round(pre_shift_gap_s,0),
+                    "shift_model_start":shift_model_start_str,
+                    "shift_model_start_iso":shift_model_start_iso})
+
+@flask_app.route('/api/set_of_start', methods=['POST'])
+def api_set_of_start():
+    """Rétrodate le début de l'OF en cours (et shift_start) à l'heure du modèle horaire."""
+    data = request.json or {}
+    iso = data.get("iso","")
+    if not iso or not _S["prod_active"]:
+        return jsonify({"ok":False,"error":"Pas de production active"}),400
+    try:
+        dt = datetime.datetime.fromisoformat(iso)
+        _S["of_start"] = dt
+        _S["shift_start"] = dt
+        save_session()
+        return jsonify({"ok":True})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)}),400
 
 @flask_app.route('/api/inter_of_confirm', methods=['POST'])
 def api_inter_of_confirm():
@@ -2316,6 +2362,28 @@ select{cursor:default}
     </div>
   </div>
 
+  <!-- ════ MODAL PRÉ-POSTE (1er OF vs heure modèle) ════ -->
+  <div id="m-preshift" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:601;align-items:center;justify-content:center">
+    <div class="card" style="width:430px;padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--red)">
+      <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:4px">⚠ Début de poste non déclaré</div>
+      <div id="ps-text" style="font-size:13px;color:var(--red);font-weight:700;margin-bottom:10px"></div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:14px">Que souhaitez-vous faire ?</div>
+      <input type="hidden" id="ps-start-iso">
+      <input type="hidden" id="ps-gap-s">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn btn-prim" style="text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseInterposte()">
+          ⏱ Enregistrer comme temps interposte<br>
+          <span id="ps-interposte-lbl" style="font-size:11px;font-weight:400;opacity:.85"></span>
+        </button>
+        <button class="btn btn-green" style="text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseBackdate()">
+          ↩ Rétro-dater cet OF au début de poste<br>
+          <span id="ps-backdate-lbl" style="font-size:11px;font-weight:400;opacity:.85">L'OF sera considéré comme démarré à l'heure du modèle horaire</span>
+        </button>
+        <button class="btn btn-ghost" style="font-size:12px" onclick="psChooseIgnore()">Ignorer (ne rien déclarer)</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ════ MODAL INTERPOSTE ════ -->
   <div id="m-interposte" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
     <div class="card" style="width:420px;padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--amber)">
@@ -3096,6 +3164,8 @@ const INTERPOSTE_LABELS=[
   "Réunion / Formation","Nettoyage interposte","Pause pilote"
 ];
 
+function _fmtMin(s){const m=Math.round(s/60),h=Math.floor(m/60),mi=m%60;return h?`${h}h ${mi}min`:`${mi} min`;}
+
 async function doStartProd() {
   saveFormToStorage();
   const r=await fetch('/api/start_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
@@ -3107,15 +3177,26 @@ async function doStartProd() {
   await pollState();
   await pollEvts();
   _pendingGapS=d.gap_s||0;
+
+  // 1er OF du poste : gap vs modèle horaire
+  if((d.pre_shift_gap_s||0)>120 && d.shift_model_start){
+    const m=_fmtMin(d.pre_shift_gap_s);
+    document.getElementById('ps-text').textContent=
+      `${m} non déclarées depuis le début de poste (${d.shift_model_start})`;
+    document.getElementById('ps-interposte-lbl').textContent=
+      `Écrira une ligne interposte de ${m} dans Excel`;
+    document.getElementById('ps-start-iso').value=d.shift_model_start_iso||'';
+    document.getElementById('ps-gap-s').value=d.pre_shift_gap_s||0;
+    openM('m-preshift');
+    return;
+  }
+
+  // OF suivant : gap interposte classique
   if(_pendingGapS>120){
-    // Show interposte modal
-    const m=Math.round(_pendingGapS/60);
-    const h=Math.floor(m/60),mi=m%60;
-    document.getElementById('ip-duration').textContent=`Durée : ${h?h+'h ':''}${mi} min`;
+    const bc=document.getElementById('ip-btns');bc.innerHTML='';
+    document.getElementById('ip-duration').textContent=`Durée : ${_fmtMin(_pendingGapS)}`;
     document.getElementById('ip-custom').value='';
     document.getElementById('ip-comment').value='';
-    // Build quick-choice buttons
-    const bc=document.getElementById('ip-btns');bc.innerHTML='';
     INTERPOSTE_LABELS.forEach(lbl=>{
       const b=document.createElement('button');
       b.className='btn btn-ghost';b.style.fontSize='12px';b.textContent=lbl;
@@ -3123,9 +3204,48 @@ async function doStartProd() {
       bc.appendChild(b);
     });
     openM('m-interposte');
-  } else {
-    goTab('prod');
+    return;
   }
+
+  goTab('prod');
+}
+
+// ── Choix pré-poste ──
+async function psChooseInterposte(){
+  const gapS=parseFloat(document.getElementById('ps-gap-s').value)||0;
+  const startIso=document.getElementById('ps-start-iso').value;
+  closeM('m-preshift');
+  // Ouvrir le modal interposte pour laisser choisir le label
+  _pendingGapS=gapS;
+  document.getElementById('ip-duration').textContent=`Durée : ${_fmtMin(gapS)} (début de poste → 1er OF)`;
+  document.getElementById('ip-custom').value='Début de poste';
+  document.getElementById('ip-comment').value='';
+  const bc=document.getElementById('ip-btns');bc.innerHTML='';
+  ['Mise en route machine','Réunion début de poste','Attente / Préparation','Nettoyage arrivée'].forEach(lbl=>{
+    const b=document.createElement('button');
+    b.className='btn btn-ghost';b.style.fontSize='12px';b.textContent=lbl;
+    b.onclick=()=>{document.getElementById('ip-custom').value=lbl;};
+    bc.appendChild(b);
+  });
+  // Override confirm pour aussi corriger shift_start
+  window._psStartIso=startIso;
+  openM('m-interposte');
+}
+
+async function psChooseBackdate(){
+  const startIso=document.getElementById('ps-start-iso').value;
+  closeM('m-preshift');
+  if(startIso){
+    await fetch('/api/set_of_start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({iso:startIso})});
+    await pollState();
+  }
+  toast('OF rétro-daté au début de poste','ok');
+  goTab('prod');
+}
+
+function psChooseIgnore(){
+  closeM('m-preshift');
+  goTab('prod');
 }
 
 async function confirmInterposte(){
@@ -3133,11 +3253,18 @@ async function confirmInterposte(){
   const cmt=document.getElementById('ip-comment').value.trim();
   closeM('m-interposte');
   await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inter_of_s:_pendingGapS,label:lbl,comment:cmt})});
+  // Si on vient d'un popup pré-poste, rétrodater le shift_start aussi
+  if(window._psStartIso){
+    await fetch('/api/set_of_start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({iso:window._psStartIso})});
+    window._psStartIso=null;
+  }
+  await pollState();
   await pollEvts();
   goTab('prod');
 }
 
 async function skipInterposte(){
+  window._psStartIso=null;
   closeM('m-interposte');
   goTab('prod');
 }
