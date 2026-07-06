@@ -3543,6 +3543,7 @@ async function pollState() {
 
   applyState(s);
   if(_curTab==='main') loadMainDecl();
+  if(_curTab==='kpi') loadKPI();
 }
 
 async function pollEvts() {
@@ -3767,6 +3768,10 @@ async function loadMainDecl() {
   const _mLD=_cfgModels&&_cfgModels.find(m=>m.nom===(ST.poste||''));
   const _jLD=_mLD&&_mLD.jours&&_mLD.jours[_dkLD];
   const _mDebS=_jLD&&_jLD.debut?_hms2s(_jLD.debut):0;
+  // Set global _shiftRefDt so loadMainKPI and loadKPI use the same reference
+  if(_jLD&&_jLD.debut){const[_hS,_mS]=_jLD.debut.split(':').map(Number);_shiftRefDt=new Date();_shiftRefDt.setHours(_hS,_mS,0,0);}
+  else if(ST.shift_start_iso){_shiftRefDt=new Date(ST.shift_start_iso);}
+  else{_shiftRefDt=null;}
   const inShiftDecls=_mDebS>0?pilotDecls.filter(r=>_hms2s(r.fin||'')>=_mDebS||_hms2s(r.debut||'')>=_mDebS):pilotDecls;
   _todayEquivAccum=inShiftDecls.reduce((a,r)=>a+parseFloat(r.equiv||0),0);
   const _pilotEvts=evts.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD);
@@ -3777,7 +3782,7 @@ async function loadMainDecl() {
     const lastFin=inShiftDecls.map(r=>r.fin||'').filter(Boolean).sort().pop();
     if(lastFin){const[h,m,s]=(lastFin+'::').split(':').map(Number);const d=new Date();d.setHours(h,m,s||0,0);_lastProdDeclTime=d;}
   }
-  if(!allRows.length){bd.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();return;}
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();updateGauge(ST);return;}
   window._rowMap={};
   bd.innerHTML=allRows.map(r=>{
     const key=r.row_num||r.debut;
@@ -3797,6 +3802,7 @@ async function loadMainDecl() {
     </tr>`;
   }).join('');
   loadMainKPI();
+  updateGauge(ST);
 }
 
 function saveMainModelHours(){
@@ -3867,7 +3873,13 @@ async function loadMainKPI() {
   const elHeure=document.getElementById('kpi0-heure');
   if(elHeure) elHeure.textContent=heure;
   if(d){
-    const trs=d.trs_shift!==undefined?d.trs_shift:d.trs;
+    // TRS poste actuel : même formule que la jauge accueil (equiv / (ref * elapsed/28800))
+    let trs=-1;
+    if(_todayEquivAccum>0&&_shiftRefDt&&ST.prod_ref>0){
+      const refTime=_lastProdDeclTime||new Date();
+      const shiftElap=(refTime.getTime()-_shiftRefDt.getTime())/1000;
+      if(shiftElap>0) trs=Math.round(_todayEquivAccum/(ST.prod_ref*shiftElap/28800)*100*10)/10;
+    }
     const el0t=document.getElementById('kpi0-trs'),el0s=document.getElementById('kpi0-sub'),el0d=document.getElementById('kpi0-date');
     if(el0t) el0t.textContent=fmtTRSv(trs);
     if(el0s) el0s.textContent=(d.rows?d.rows.length:0)+' OF | Arrêts '+Math.round(curStopS/60)+' min';
@@ -4461,9 +4473,10 @@ function updateGauge(s){
   const _dkG=_dayKeysG[new Date().getDay()];
   const _modelG=_cfgModels&&_cfgModels.find(m=>m.nom===(s.poste||ST.poste||''));
   const _jourG=_modelG&&_modelG.jours&&_modelG.jours[_dkG];
-  let _shiftRefDt=null;
+  // Update global _shiftRefDt (shared with loadMainKPI / loadKPI)
   if(_jourG&&_jourG.debut){const[_hG,_mG]=_jourG.debut.split(':').map(Number);_shiftRefDt=new Date();_shiftRefDt.setHours(_hG,_mG,0,0);}
   else if(s.shift_start_iso){_shiftRefDt=new Date(s.shift_start_iso);}
+  else{_shiftRefDt=null;}
   if(_shiftRefDt&&s.prod_ref>0){
     const refTime=_lastProdDeclTime||new Date();
     const shiftElap=(refTime.getTime()-_shiftRefDt.getTime())/1000;
@@ -4490,7 +4503,7 @@ function updateGauge(s){
   drawPie('pie-poste',[{label:'Prod',value:shiftProd,color:'#16a34a'},{label:'Arrêts',value:shiftStop,color:'#dc2626'}]);
 }
 // Accumulateurs poste (mis à jour à chaque loadMainDecl)
-let _todayEquivAccum=0, _todayStopAccum=0, _lastProdDeclTime=null;
+let _todayEquivAccum=0, _todayStopAccum=0, _lastProdDeclTime=null, _shiftRefDt=null;
 
 // ── EDIT ROW (accueil) ──
 function openEditRow(key) {
@@ -4571,7 +4584,7 @@ async function saveEditRow() {
   }
   const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rowNum,updates})});
   const d=r?await r.json():{};
-  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();toast('Ligne modifiée','ok');}
+  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();loadKPI();toast('Ligne modifiée','ok');}
   else toast(d?.error||'Erreur modification','err');
 }
 
@@ -4580,7 +4593,7 @@ async function deleteRow(key,rowNumId) {
   if(!rn||!confirm('Supprimer cette ligne ?')) return;
   const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rn})});
   const d=r?await r.json():{};
-  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();toast('Supprimé','ok');}
+  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();loadKPI();toast('Supprimé','ok');}
   else toast(d?.error||'Erreur suppression','err');
 }
 
@@ -4615,7 +4628,7 @@ async function saveEditStop(){
   if(!ev) return;
   const data={row_num:ev.row_num,type:document.getElementById('es-type').value,heure_debut:document.getElementById('es-deb').value,heure_fin:document.getElementById('es-fin').value,comment:document.getElementById('es-cmt').value};
   const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();toast('Modifié','ok');}
+  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Modifié','ok');}
   else toast('Erreur','err');
 }
 
@@ -4624,7 +4637,7 @@ async function deleteStop(){
   const ev=window._evMap[key];
   if(!ev||!confirm('Supprimer ?')) return;
   const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:ev.row_num})});
-  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();toast('Supprimé','ok');}
+  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Supprimé','ok');}
 }
 
 // ── TIMELINE ──
@@ -5046,7 +5059,13 @@ async function loadKPI(){
   const curEvts=evts.filter(e=>e.date&&e.date.startsWith(todayPfx)&&(!curPilot||!e.pilote||e.pilote===curPilot));
   const curStopS=curEvts.reduce((a,e)=>a+Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0')),0);
   if(todayData){
-    const trs=todayData.trs_shift!==undefined?todayData.trs_shift:todayData.trs;
+    // Même formule que la jauge accueil : equiv / (prod_ref * elapsed / 28800)
+    let trs=-1;
+    if(_todayEquivAccum>0&&_shiftRefDt&&ST.prod_ref>0){
+      const refTime=_lastProdDeclTime||new Date();
+      const shiftElap=(refTime.getTime()-_shiftRefDt.getTime())/1000;
+      if(shiftElap>0) trs=Math.round(_todayEquivAccum/(ST.prod_ref*shiftElap/28800)*100*10)/10;
+    }
     _kpiGauge('kpi-g0-arc','kpi-g0-pct',trs>=0?trs:0,157);
     const cde=document.getElementById('kpi-cur-date');
     if(cde){const si=ST.shift_start_iso;const st=si?new Date(si).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):null;cde.textContent=todayFR+(st?' depuis '+st:'');}
@@ -5090,7 +5109,7 @@ async function loadKPI(){
 
   // ── 4 Timelines ──
   // TL0 : poste actuel
-  const shiftStart=ST.shift_start_iso||new Date(now.getTime()-8*3600*1000).toISOString();
+  const shiftStart=(_shiftRefDt?_shiftRefDt.toISOString():null)||ST.shift_start_iso||new Date(now.getTime()-8*3600*1000).toISOString();
   const tl0Lbl=document.getElementById('kpi-tl0-lbl');
   if(tl0Lbl) tl0Lbl.textContent='Poste actuel'+(ST.pilot?' — '+ST.pilot:'')+(ST.poste?' ('+ST.poste+')':'');
   _drawKpiTL('kpi-tl0',[...curEvts,...tlEventsToDisplayFmt(ST.tl_events||[])],shiftStart,now.toISOString(),true);
