@@ -65,16 +65,41 @@ INTERPOSTE_CATS = [
 ]
 
 def get_events_list():
-    """Retourne la liste des arrêts configurés (depuis cfg ou EVENTS par défaut)."""
+    """Retourne la liste des arrêts configurés (Excel col K > cfg > EVENTS défaut)."""
+    excel_evts = _lists.get("arrêts_k", [])
+    if excel_evts:
+        return excel_evts
     custom = cfg.get("events_list", [])
     if custom:
         return custom
-    # Convertir EVENTS tuple vers dict
     return [{"label": e[0], "key": e[1], "cat": e[2]} for e in EVENTS]
+
+def write_events_to_excel(ev_list):
+    """Écrit la liste des arrêts dans l'onglet Listes col K (format: label|cat)."""
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path): return
+    def _bg():
+        try:
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None: return
+                if "Listes" not in wb.sheetnames:
+                    wb.create_sheet("Listes")
+                ws = wb["Listes"]
+                ws.cell(1, 11).value = "Arrêts"
+                for ri in range(2, ws.max_row + 2):
+                    ws.cell(ri, 11).value = None
+                for ri, ev in enumerate(ev_list, start=2):
+                    ws.cell(ri, 11).value = f"{ev.get('label','')}|{ev.get('cat','pb')}"
+                _safe_excel_save(wb, path)
+            threading.Thread(target=load_lists, daemon=True).start()
+        except: pass
+    threading.Thread(target=_bg, daemon=True).start()
 
 def save_events_list(ev_list):
     cfg["events_list"] = ev_list
     save_cfg_data()
+    write_events_to_excel(ev_list)
 
 # ── État global ────────────────────────────────────────────────────────────────
 _S = {
@@ -400,6 +425,21 @@ def load_lists():
                         vals.append(str(v).strip())
                 if vals:
                     _lists[list_key] = vals
+            # Col K (11): liste des arrêts configurables (format: "label|cat")
+            evts_k = []
+            for ri in range(2, ws.max_row+1):
+                v = ws.cell(ri, 11).value
+                if v is not None and str(v).strip():
+                    parts = str(v).strip().split("|")
+                    lbl = parts[0].strip()
+                    cat = parts[1].strip() if len(parts) > 1 else "pb"
+                    if lbl:
+                        key = lbl.lower().replace(" ","_").replace("/","_").replace("é","e").replace("è","e").replace("ê","e").replace("à","a").replace("ç","c")[:28]
+                        evts_k.append({"label": lbl, "key": key, "cat": cat})
+            if evts_k:
+                _lists["arrêts_k"] = evts_k
+                cfg["events_list"] = evts_k
+                save_cfg_data()
         wb.close()
     except: pass
 
@@ -628,7 +668,7 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
 
-POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Total Arrets (min)","Total Pauses (min)","Nettoyage (min)","Durée Prod Totale (min)","Durée Prod Sans Arrêt (min)","Commentaire"]
+POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Total Arrets (min)","Total Pauses (min)","Nettoyage (min)","Durée Prod Totale (min)","Durée Prod Sans Arrêt (min)","Durée poste théorique (min)","Commentaire"]
 
 def write_pilots_to_excel(pilot_passwords):
     """Écrit la liste pilote+MDP dans l'onglet Listes col A+B."""
@@ -695,6 +735,7 @@ def write_poste_row(data):
                     round(float(data.get("nett_min",0) or 0),1),
                     round(float(data.get("dur_prod_total_min",0) or 0),1),
                     round(float(data.get("dur_prod_sans_arret_min",0) or 0),1),
+                    round(float(data.get("dur_poste_theorique_min",0) or 0),1),
                     data.get("comment",""),
                 ]
                 ws.append(row)
@@ -1061,6 +1102,7 @@ def api_end_prod():
     _S["form"] = {}
     save_session()
     write_excel_bg(prod_row, evt_rows)
+    threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True,"recap":recap})
 
 @flask_app.route('/api/preview_end_prod', methods=['POST'])
@@ -1105,6 +1147,7 @@ def api_start_stop():
     if not key: return jsonify({"ok":False,"error":"Clé manquante"}),400
     t_start(key)
     tl_open(key,cat)
+    threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True})
 
 @flask_app.route('/api/end_stop', methods=['POST'])
@@ -1114,6 +1157,7 @@ def api_end_stop():
     comment = data.get("comment","")
     t_stop(key)
     tl_close(key,comment)
+    threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True})
 
 def _toggle_pause_internal():
@@ -1473,6 +1517,8 @@ def api_reload():
 @flask_app.route('/api/save_poste', methods=['POST'])
 def api_save_poste():
     data = request.json or {}
+    if not data.get("dur_poste_theorique_min"):
+        data["dur_poste_theorique_min"] = round(get_shift_duration_s(_S.get("poste","")) / 60, 1)
     write_poste_row(data)
     return jsonify({"ok":True})
 
@@ -1506,6 +1552,7 @@ def generate_dashboard_html():
 
     prod_ref = get_prod_ref()
     from collections import defaultdict
+    import math
 
     decl_rows = []
     if "Declarations" in wb.sheetnames:
@@ -1526,387 +1573,395 @@ def generate_dashboard_html():
     prod_rows_all = [r for r in decl_rows if str(r[0] or "").strip().lower() in ("production","prod","")]
     evt_rows_all  = [r for r in decl_rows if str(r[0] or "").strip().lower() not in ("production","prod","")]
 
-    def trs_color_hex(t):
-        if t<0: return "#94a3b8"
-        if t>=70: return "#1a8c4e"
-        if t>=50: return "#d97706"
-        return "#e31e24"
+    def trs_color(t):
+        if t < 0: return "#94a3b8"
+        if t >= 70: return "#16a34a"
+        if t >= 50: return "#d97706"
+        return "#dc2626"
 
     def trs_bg(t):
-        if t<0: return "#f1f5f9"
-        if t>=70: return "#d1fae5"
-        if t>=50: return "#fef3c7"
+        if t < 0: return "#f1f5f9"
+        if t >= 70: return "#d1fae5"
+        if t >= 50: return "#fef3c7"
         return "#fee2e2"
 
-    def calc_trs_of(rows):
-        eq=sum(float(str(r[21] or 0).replace(",",".") or 0) for r in rows)
-        s=sum(_hms_to_sec(str(r[18] or "00:00:00")) for r in rows)
-        if prod_ref>0 and s>0: return round(eq/(prod_ref*s/28800)*100,1)
-        return -1
-
-    def calc_trs_shift(rows, poste, date_str):
-        try: d=datetime.datetime.strptime(date_str,"%d/%m/%Y").date()
-        except: d=None
-        shift_s=get_shift_duration_s(poste,d)
-        eq=sum(float(str(r[21] or 0).replace(",",".") or 0) for r in rows)
-        if prod_ref>0 and shift_s>0: return round(eq/(prod_ref*shift_s/28800)*100,1)
-        return -1
-
-    # Grouper par (date, poste, pilote)
-    sessions_map = defaultdict(list)
-    for r in prod_rows_all:
-        key=(str(_row_date(r[2])),str(r[3] or ""),str(r[4] or ""))
-        sessions_map[key].append(r)
-
-    # Trier par date desc
-    sess_sorted = sorted(sessions_map.items(), key=lambda x:x[0][0], reverse=True)
-
-    # Session en cours (live)
-    today_str  = datetime.date.today().strftime("%d/%m/%Y")
-    pilot_now  = _S.get("pilot","") or ""
-    poste_now  = _S.get("poste","") or ""
-    prod_active= bool(_S.get("prod_active"))
-    active_stops=[k for k,t in _S.get("timers",{}).items() if t.get("running") and not k.startswith("_")]
-    of_num_now = (_S.get("form") or {}).get("of_num","") or "—"
-    of_start_str=""
-    if _S.get("of_start"):
-        try: of_start_str=_S["of_start"].strftime("%H:%M:%S")
+    def hms2s(s):
+        try:
+            p = str(s).split(":")
+            if len(p)==3: return int(p[0])*3600+int(p[1])*60+float(p[2])
+            if len(p)==2: return int(p[0])*60+float(p[1])
         except: pass
+        return 0.0
 
-    # Sessions du jour (live)
-    today_rows = sessions_map.get((today_str,poste_now,pilot_now),[])
-    today_trs_shift = calc_trs_shift(today_rows,poste_now,today_str) if today_rows else -1
-    today_trs_of    = calc_trs_of(today_rows) if today_rows else -1
-    today_eq = sum(float(str(r[21] or 0).replace(",",".") or 0) for r in today_rows)
+    def fmt_s(s):
+        s = max(0, int(s or 0))
+        return f"{s//3600:02d}h{(s%3600)//60:02d}"
 
-    # 3 derniers postes terminés
-    last3 = [(k,v) for k,v in sess_sorted if not (k[0]==today_str and k[1]==poste_now and k[2]==pilot_now)][:3]
+    today_str = datetime.date.today().strftime("%d/%m/%Y")
+    pilot_now = _S.get("pilot","") or ""
+    poste_now = _S.get("poste","") or ""
+    prod_active = bool(_S.get("prod_active"))
+    active_stops = [k for k,t in _S.get("timers",{}).items() if t.get("running") and not k.startswith("_")]
+    of_num_now = (_S.get("form") or {}).get("of_num","") or "—"
+    is_paused = _S.get("is_paused", False)
 
-    # Pareto arrêts (tous)
-    evt_dur = defaultdict(float)
-    for r in evt_rows_all:
-        t=str(r[0] or "")
-        if not t or t.lower() in ("pause pilote","changement d'of"): continue
-        evt_dur[t] += _hms_to_sec(str(r[18] or "00:00:00"))
-    pareto = sorted(evt_dur.items(),key=lambda x:-x[1])[:12]
-
-    # Événements du poste en cours
+    # Productions + events du poste en cours
+    today_prod = [r for r in prod_rows_all if _row_date(r[2])==today_str and str(r[4] or "")==pilot_now]
     today_evts = [r for r in evt_rows_all if _row_date(r[2])==today_str and str(r[4] or "")==pilot_now]
 
-    # Arrêts actifs live
-    stops_live_html=""
-    for k in active_stops:
-        ev=next((e for e in EVENTS if e[1]==k),None)
-        lbl=ev[0] if ev else k
-        t=_S.get("timers",{}).get(k,{})
-        el=t.get("elapsed",0)
-        stops_live_html+=f'<div class="slv-card"><div class="slv-name">{lbl}</div><div class="slv-timer">{fmt(el)}</div></div>'
+    # TRS basé sur shift_start → fin de la dernière déclaration déclarée
+    shift_start_dt = _S.get("shift_start")
+    # Trouver la fin de la dernière déclaration
+    last_fin_dt = None
+    for r in today_prod:
+        fin_str = str(r[17] or "")
+        if fin_str and ":" in fin_str:
+            try:
+                t = datetime.datetime.strptime(f"{today_str} {fin_str[:8]}", "%d/%m/%Y %H:%M:%S")
+                if last_fin_dt is None or t > last_fin_dt:
+                    last_fin_dt = t
+            except: pass
+    # Si prod active, la fin est maintenant
+    if prod_active:
+        last_fin_dt = datetime.datetime.now()
 
-    gen_time=datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    sup_col="#e31e24" if prod_active else "#1a8c4e"
-    sup_txt="⬤ PRODUCTION EN COURS" if prod_active else "○ Aucune production active"
+    trs_poste = -1.0
+    elapsed_for_trs = 0.0
+    tot_equiv = sum(float(str(r[21] or "0").replace(",",".") or 0) for r in today_prod)
+    nb_of_today = len(today_prod)
 
-    # Gauge SVG helper
-    def gauge_svg(trs, size=120):
-        pct=max(0,min(100,trs)) if trs>=0 else 0
-        col=trs_color_hex(trs)
-        r_out=50; r_in=33; cx=60; cy=65
-        import math
-        def arc_pt(r,deg):
-            rad=math.radians(deg)
+    if shift_start_dt and last_fin_dt and prod_ref > 0:
+        elapsed_for_trs = (last_fin_dt - shift_start_dt).total_seconds()
+        if elapsed_for_trs > 0:
+            trs_poste = round(tot_equiv / (prod_ref * elapsed_for_trs / 28800) * 100, 1)
+
+    # Prod/arrêt temps
+    prod_s_total = sum(hms2s(str(r[18] or "0")) for r in today_prod)
+    stop_s_total = sum(hms2s(str(r[18] or "0")) for r in today_evts
+                       if str(r[0] or "").lower() not in ("pause pilote","changement d'of","interposte","changement de serie"))
+
+    # Pareto arrêts du poste en cours
+    evt_dur = defaultdict(float)
+    for r in today_evts:
+        t = str(r[0] or "")
+        if not t or t.lower() in ("pause pilote","changement d'of","interposte"): continue
+        evt_dur[t] += hms2s(str(r[18] or "0"))
+    pareto = sorted(evt_dur.items(), key=lambda x: -x[1])[:8]
+
+    # Nom de l'arrêt actif (pour popup)
+    active_stop_name = ""
+    active_stop_elapsed = 0.0
+    if active_stops:
+        k = active_stops[0]
+        evts_cfg_list = get_events_list()
+        ev = next((e for e in evts_cfg_list if e.get("key")==k), None)
+        active_stop_name = ev["label"] if ev else k
+        t_data = _S.get("timers",{}).get(k, {})
+        active_stop_elapsed = t_data.get("elapsed", 0)
+    elif is_paused:
+        active_stop_name = "Pause pilote"
+        active_stop_elapsed = _S.get("pause_total_s", 0)
+
+    has_alert = bool(active_stops or is_paused)
+    gen_time = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+    # ── Gauge SVG helper ──
+    def gauge_svg(trs, size=140, label=""):
+        pct = max(0, min(100, trs)) if trs >= 0 else 0
+        col = trs_color(trs)
+        r_out=50; r_in=34; cx=60; cy=62
+        def arc_pt(r, deg):
+            rad = math.radians(deg)
             return cx+r*math.cos(rad), cy+r*math.sin(rad)
         x1,y1=arc_pt(r_out,180); x2,y2=arc_pt(r_out,0)
         xi1,yi1=arc_pt(r_in,180); xi2,yi2=arc_pt(r_in,0)
-        bg=f'<path d="M{x1},{y1} A{r_out},{r_out} 0 0,1 {x2},{y2} L{xi2},{yi2} A{r_in},{r_in} 0 0,0 {xi1},{yi1} Z" fill="#e2e8f0"/>'
-        if pct>0:
-            end_deg=180-pct*1.8
+        bg=f'<path d="M{x1:.1f},{y1:.1f} A{r_out},{r_out} 0 0,1 {x2:.1f},{y2:.1f} L{xi2:.1f},{yi2:.1f} A{r_in},{r_in} 0 0,0 {xi1:.1f},{yi1:.1f} Z" fill="#e2e8f0"/>'
+        fg=""
+        if pct > 0:
+            end_deg = 180 - pct * 1.8
             fx1,fy1=arc_pt(r_out,180); fx2,fy2=arc_pt(r_out,end_deg)
             fxi1,fyi1=arc_pt(r_in,180); fxi2,fyi2=arc_pt(r_in,end_deg)
             lg=1 if pct>50 else 0
-            fg=f'<path d="M{fx1},{fy1} A{r_out},{r_out} 0 {lg},1 {fx2},{fy2} L{fxi2},{fyi2} A{r_in},{r_in} 0 {lg},0 {fxi1},{fyi1} Z" fill="{col}"/>'
-        else: fg=""
-        lbl=f"{trs:.1f}%" if trs>=0 else "—"
-        txt=f'<text x="{cx}" y="{cy+10}" text-anchor="middle" font-size="18" font-weight="900" fill="{col}">{lbl}</text>'
-        return f'<svg width="{size}" height="{size*65//120}" viewBox="0 0 120 65">{bg}{fg}{txt}</svg>'
+            fg=f'<path d="M{fx1:.1f},{fy1:.1f} A{r_out},{r_out} 0 {lg},1 {fx2:.1f},{fy2:.1f} L{fxi2:.1f},{fyi2:.1f} A{r_in},{r_in} 0 {lg},0 {fxi1:.1f},{fyi1:.1f} Z" fill="{col}"/>'
+        lbl_txt = f"{trs:.1f}%" if trs >= 0 else "—"
+        h = int(size * 68 // 140)
+        return (f'<svg width="{size}" height="{h}" viewBox="0 0 120 68">'
+                f'{bg}{fg}'
+                f'<text x="{cx}" y="{cy+8}" text-anchor="middle" font-size="17" font-weight="900" fill="{col}">{lbl_txt}</text>'
+                f'</svg>')
 
-    # Build 3 last sessions cards
-    last3_html=""
-    for (date,poste,pilot),rows in last3:
-        t_shift=calc_trs_shift(rows,poste,date)
-        t_of=calc_trs_of(rows)
-        eq=sum(float(str(r[21] or 0).replace(",",".") or 0) for r in rows)
-        nb_of=len(rows)
-        last3_html+=f"""
-        <div class="sess-card">
-          <div class="sess-hdr" style="background:{trs_bg(t_shift)};border-left:4px solid {trs_color_hex(t_shift)}">
-            <div class="sess-title">{poste} — {date}</div>
-            <div class="sess-pilot">👤 {pilot}</div>
-          </div>
-          {gauge_svg(t_shift)}
-          <div class="sess-stats">
-            <div><span class="sl">OF</span><span class="sv">{nb_of}</span></div>
-            <div><span class="sl">Equiv</span><span class="sv">{round(eq,1)}</span></div>
-            <div><span class="sl">TRS(OF)</span><span class="sv" style="color:{trs_color_hex(t_of)}">{f"{t_of:.1f}%" if t_of>=0 else "—"}</span></div>
-          </div>
-        </div>"""
+    # ── Pie chart SVG helper ──
+    def pie_svg(prod_s, stop_s, size=120):
+        total = prod_s + stop_s
+        if total <= 0:
+            return f'<svg width="{size}" height="{size}"><text x="{size//2}" y="{size//2}" text-anchor="middle" font-size="10" fill="#94a3b8">Pas de données</text></svg>'
+        cx = cy = size // 2
+        r = size // 2 - 4
+        def seg(start_a, end_a, color):
+            s = math.radians(start_a); e = math.radians(end_a)
+            lg = 1 if (end_a - start_a) > 180 else 0
+            x1,y1 = cx+r*math.cos(s), cy+r*math.sin(s)
+            x2,y2 = cx+r*math.cos(e), cy+r*math.sin(e)
+            return f'<path d="M{cx},{cy} L{x1:.1f},{y1:.1f} A{r},{r} 0 {lg},1 {x2:.1f},{y2:.1f} Z" fill="{color}"/>'
+        prod_pct = prod_s / total
+        prod_end = prod_pct * 360 - 90
+        parts = seg(-90, prod_end, "#16a34a") + seg(prod_end, 270, "#dc2626")
+        pp = int(prod_pct * 100); sp = 100 - pp
+        lbl = f'<text x="{cx}" y="{cy-6}" text-anchor="middle" font-size="11" font-weight="800" fill="#1e293b">{pp}%</text>'
+        lbl += f'<text x="{cx}" y="{cy+8}" text-anchor="middle" font-size="9" fill="#64748b">Prod</text>'
+        return f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">{parts}{lbl}</svg>'
 
-    # Productions table du poste en cours
-    prod_table_html=""
-    for r in list(reversed(today_rows))[:20]:
-        trs_v=str(r[24] or "")
-        try: tv=float(trs_v.replace(",","."))
-        except: tv=-1
-        tc=trs_color_hex(tv)
-        prod_table_html+=f"""<tr>
-          <td><strong>{r[1] or ''}</strong></td>
-          <td>{str(r[16] or '')[:5]}</td><td>{str(r[17] or '')[:5]}</td>
-          <td>{r[18] or ''}</td><td>{r[7] or ''}</td>
-          <td>{r[19] or ''}</td><td>{r[20] or ''}</td><td>{r[21] or ''}</td>
-          <td style="color:{tc};font-weight:800">{trs_v+'%' if trs_v else '—'}</td>
-        </tr>"""
-
-    # Arrêts table du poste en cours
-    evts_table_html=""
-    for r in list(reversed(today_evts))[:20]:
-        t=str(r[0] or "")
-        cls="badge-red" if "PB" in t or "Technique" in t else "badge-amber" if "Ratt" in t else "badge-cyan" if "Nett" in t else "badge-navy"
-        evts_table_html+=f"""<tr>
-          <td><span class="badge {cls}">{t}</span></td>
-          <td>{str(r[16] or '')[:8]}</td><td>{str(r[17] or '')[:8]}</td>
-          <td>{r[18] or ''}</td><td style="text-align:left;max-width:150px;overflow:hidden">{r[35] or ''}</td>
-        </tr>"""
-
-    # Pareto bars (inline SVG)
-    pareto_html=""
-    if pareto:
-        max_dur=pareto[0][1]/60
-        for lbl,dur in pareto[:8]:
-            pct=dur/60/max_dur*100
-            col="#e31e24" if "PB" in lbl or "Technique" in lbl else "#d97706" if "Ratt" in lbl else "#0891b2" if "Nett" in lbl else "#7c3aed"
-            pareto_html+=f"""<div class="pareto-row">
-              <div class="pareto-lbl">{lbl[:28]}</div>
-              <div class="pareto-bar-wrap"><div class="pareto-bar" style="width:{pct:.1f}%;background:{col}"></div></div>
-              <div class="pareto-val">{dur/60:.0f}min</div>
-            </div>"""
-
-    # Build timeline SVG for today
-    def build_tl_svg(events, width=700):
-        import math
-        now_ts=datetime.datetime.now()
-        win_end=now_ts
-        win_start=now_ts-datetime.timedelta(hours=8)
-        def to_x(dt_str):
+    # ── Timeline SVG ──
+    def timeline_svg(width=900):
+        now_ts = datetime.datetime.now()
+        if shift_start_dt:
+            win_start = shift_start_dt
+        else:
+            win_start = now_ts - datetime.timedelta(hours=8)
+        win_end = now_ts
+        span = (win_end - win_start).total_seconds()
+        if span <= 0: span = 28800
+        H = 36; Y = 8; H2 = 22
+        def to_x(dt_str, date_str=today_str):
             try:
-                dt=datetime.datetime.strptime(f"{today_str} {str(dt_str)[:8]}","%d/%m/%Y %H:%M:%S")
-                frac=(dt-win_start).total_seconds()/(8*3600)
-                return max(0,min(width,int(frac*width)))
+                dt = datetime.datetime.strptime(f"{date_str} {str(dt_str)[:8]}", "%d/%m/%Y %H:%M:%S")
+                frac = (dt - win_start).total_seconds() / span
+                return max(0, min(width, int(frac * width)))
             except: return 0
-        catcol={"pb":"#e31e24","ratt":"#d97706","nettoyage":"#0891b2","pause":"#7c3aed"}
-        svg=f'<svg width="{width}" height="52" viewBox="0 0 {width} 52" style="display:block">'
-        svg+=f'<rect x="0" y="16" width="{width}" height="20" fill="#e2e8f0" rx="4"/>'
-        for r in events:
-            x1=to_x(str(r[16] or ""))
-            x2=to_x(str(r[17] or "")) if r[17] else int((datetime.datetime.now()-win_start).total_seconds()/(8*3600)*width)
-            x2=max(x2,x1+2)
-            t=str(r[0] or "")
-            col="#e31e24" if "PB" in t or "Technique" in t else "#d97706" if "Ratt" in t else "#0891b2" if "Nett" in t else "#7c3aed"
-            svg+=f'<rect x="{x1}" y="16" width="{x2-x1}" height="20" fill="{col}" rx="2" opacity="0.85"/>'
-        for r in today_rows:
-            x1=to_x(str(r[16] or ""))
-            x2=to_x(str(r[17] or "")) if r[17] else int((datetime.datetime.now()-win_start).total_seconds()/(8*3600)*width)
-            svg+=f'<rect x="{x1}" y="16" width="{max(2,x2-x1)}" height="20" fill="#1a8c4e" rx="2" opacity="0.4"/>'
-        # Hour marks
-        for h in range(9):
-            dt=win_start+datetime.timedelta(hours=h)
-            x=int(h/8*width)
-            svg+=f'<line x1="{x}" y1="12" x2="{x}" y2="36" stroke="#94a3b8" stroke-width="0.5"/>'
-            svg+=f'<text x="{x}" y="10" font-size="9" fill="#64748b" text-anchor="middle">{dt.strftime("%H:%M")}</text>'
-        # Now marker
-        now_x=int((datetime.datetime.now()-win_start).total_seconds()/(8*3600)*width)
-        svg+=f'<line x1="{now_x}" y1="8" x2="{now_x}" y2="44" stroke="#1a1f5e" stroke-width="2"/>'
-        svg+='<defs><svg><rect x="0" y="44" width="60" height="8" fill="#1a1f5e" rx="2"/></svg></defs>'
-        # Legend
-        for i,(lbl,col) in enumerate([("Prod","#1a8c4e"),("PB Technique","#e31e24"),("Rattrapage","#d97706"),("Nettoyage","#0891b2"),("Pause","#7c3aed")]):
-            svg+=f'<rect x="{i*140}" y="44" width="10" height="8" fill="{col}" rx="2"/>'
-            svg+=f'<text x="{i*140+14}" y="52" font-size="8" fill="#475569">{lbl}</text>'
-        svg+='</svg>'
+        catcol = {"pb":"#dc2626","ratt":"#f59e0b","nettoyage":"#0891b2","pause":"#94a3b8","organisation":"#7c3aed"}
+        svg = f'<svg width="{width}" height="{H}" viewBox="0 0 {width} {H}" style="display:block">'
+        svg += f'<rect x="0" y="{Y}" width="{width}" height="{H2}" fill="#e2e8f0" rx="3"/>'
+        # Prod zones
+        for r in today_prod:
+            x1 = to_x(str(r[16] or ""))
+            x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*width)
+            x2 = max(x2, x1+2)
+            svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{H2}" fill="#86efac" rx="2" opacity="0.7"/>'
+        # Evt zones
+        for r in today_evts:
+            t = str(r[0] or "").lower()
+            x1 = to_x(str(r[16] or ""))
+            x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*width)
+            x2 = max(x2, x1+2)
+            col = "#94a3b8"
+            if "pb" in t or "panne" in t or "technique" in t: col = catcol["pb"]
+            elif "ratt" in t: col = catcol["ratt"]
+            elif "nett" in t: col = catcol["nettoyage"]
+            elif "pause" in t: col = catcol["pause"]
+            svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{H2}" fill="{col}" rx="2" opacity="0.9"/>'
+        # Heure marks
+        h_span = span / 3600
+        step = 1 if h_span <= 10 else 2
+        cur = win_start.replace(minute=0, second=0, microsecond=0)
+        if cur < win_start: cur += datetime.timedelta(hours=1)
+        while cur <= win_end:
+            frac = (cur-win_start).total_seconds()/span
+            x = int(frac*width)
+            svg += f'<line x1="{x}" y1="{Y}" x2="{x}" y2="{Y+H2}" stroke="#94a3b8" stroke-width="0.5"/>'
+            svg += f'<text x="{x}" y="{Y-1}" font-size="8" fill="#64748b" text-anchor="middle">{cur.strftime("%H:%M")}</text>'
+            cur += datetime.timedelta(hours=step)
+        # Maintenant
+        now_x = int((now_ts-win_start).total_seconds()/span*width)
+        svg += f'<line x1="{now_x}" y1="{Y-3}" x2="{now_x}" y2="{Y+H2+3}" stroke="#1e293b" stroke-width="2"/>'
+        svg += '</svg>'
         return svg
 
-    tl_svg=build_tl_svg(today_evts)
+    tl_svg = timeline_svg()
 
-    shift_duration_s=get_shift_duration_s(poste_now,datetime.date.today())
-    shift_h=shift_duration_s/3600
+    # ── Pareto bars HTML ──
+    pareto_html = ""
+    if pareto:
+        max_dur = pareto[0][1]
+        for lbl, dur in pareto:
+            pct = dur / max_dur * 100 if max_dur > 0 else 0
+            col = "#dc2626" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#0891b2" if "nett" in lbl.lower() else "#7c3aed"
+            pareto_html += f'''<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+              <div style="width:130px;font-size:10px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0">{lbl[:20]}</div>
+              <div style="flex:1;background:#f0f4fb;border-radius:3px;height:14px">
+                <div style="width:{pct:.0f}%;height:14px;background:{col};border-radius:3px"></div>
+              </div>
+              <div style="width:38px;font-size:10px;font-weight:700;text-align:right;flex-shrink:0">{dur/60:.0f}min</div>
+            </div>'''
 
-    html=f"""<!DOCTYPE html>
+    # ── Productions table ──
+    prod_rows_html = ""
+    for r in list(reversed(today_prod))[:10]:
+        trs_val = ""
+        try:
+            tv = float(str(r[24] or "").replace(",","."))
+            tc = trs_color(tv)
+            trs_val = f'<span style="color:{tc};font-weight:800">{tv:.1f}%</span>'
+        except: pass
+        prod_rows_html += f'''<tr>
+          <td style="font-weight:700">{r[1] or ""}</td>
+          <td>{str(r[16] or "")[:5]}</td><td>{str(r[17] or "")[:5]}</td>
+          <td>{r[18] or ""}</td>
+          <td>{r[19] or "0"}</td><td>{r[21] or ""}</td>
+          <td>{trs_val}</td>
+        </tr>'''
+    if not prod_rows_html:
+        prod_rows_html = '<tr><td colspan="7" style="color:#94a3b8;padding:10px;text-align:center">Aucune production</td></tr>'
+
+    # ── Layout adaptatif selon présence d'arrêt ──
+    alert_section = ""
+    if has_alert:
+        dur_fmt = fmt_s(active_stop_elapsed)
+        alert_section = f'''
+<div class="alert-banner">
+  <div class="siren">🚨</div>
+  <div class="alert-title">ARRÊT EN COURS</div>
+  <div class="alert-name">{active_stop_name}</div>
+  <div class="alert-dur">{dur_fmt}</div>
+  <div class="siren">🚨</div>
+</div>'''
+
+    shift_dur_h = get_shift_duration_s(poste_now, datetime.date.today()) / 3600
+    elapsed_str = fmt_s(elapsed_for_trs) if elapsed_for_trs > 0 else "—"
+    prod_pct = int(prod_s_total / (prod_s_total + stop_s_total) * 100) if (prod_s_total + stop_s_total) > 0 else 0
+
+    html = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="30">
-<title>KPI Supervision — ORC1</title>
+<meta http-equiv="refresh" content="15">
+<title>Dashboard Encadrant — ORC</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,Segoe UI,Arial,sans-serif;background:#f0f4fb;color:#0f172a;font-size:12px}}
-.page-hdr{{background:#1a1f5e;color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}}
-.page-hdr h1{{font-size:15px;font-weight:800;letter-spacing:.3px}}
-.page-hdr .gen-info{{font-size:11px;opacity:.75}}
-{'div.alert-strip{background:#e31e24;color:#fff;padding:8px 20px;font-weight:800;font-size:13px;text-align:center;animation:blink 1s infinite}' if active_stops else ''}
-@keyframes blink{{0%,100%{{opacity:1}}50%{{opacity:.7}}}}
-.grid-main{{display:grid;grid-template-columns:320px 1fr;gap:12px;padding:12px 16px;min-height:0}}
-.col-left{{display:flex;flex-direction:column;gap:10px}}
-.col-right{{display:flex;flex-direction:column;gap:10px}}
-.block{{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden}}
-.block-hdr{{background:#1a1f5e;color:#fff;padding:10px 14px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;justify-content:space-between}}
-.block-hdr.green{{background:#1a8c4e}}
-.block-hdr.red{{background:#e31e24}}
-.block-hdr.amber{{background:#d97706}}
-.block-body{{padding:12px 14px}}
-/* Supervision live */
-.sup-hdr{{background:{sup_col};color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between}}
-.sup-status{{font-size:16px;font-weight:900}}
-.sup-meta{{font-size:11px;opacity:.85}}
-.sup-kpis{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px 14px}}
-.sup-kpi{{background:#f8fafc;border-radius:8px;padding:8px 12px;text-align:center}}
-.sup-kpi-lbl{{font-size:9px;font-weight:700;text-transform:uppercase;color:#64748b}}
-.sup-kpi-val{{font-size:20px;font-weight:900;margin-top:2px}}
-.stops-live-row{{display:flex;gap:8px;flex-wrap:wrap;padding:0 14px 12px}}
-.slv-card{{background:#fee2e2;border:2px solid #e31e24;border-radius:8px;padding:8px 14px;text-align:center}}
-.slv-name{{font-size:11px;font-weight:700;color:#991b1b}}
-.slv-timer{{font-size:18px;font-weight:900;color:#e31e24;font-variant-numeric:tabular-nums}}
-/* Sessions cards */
-.sessions-row{{display:flex;gap:8px;padding:12px 14px;flex-wrap:wrap}}
-.sess-card{{background:#f8fafc;border-radius:10px;padding:10px 12px;flex:1;min-width:180px;text-align:center}}
-.sess-hdr{{border-radius:8px 8px 0 0;padding:8px 10px;margin:-10px -12px 8px}}
-.sess-title{{font-size:11px;font-weight:800;color:#1a1f5e}}
-.sess-pilot{{font-size:10px;color:#64748b;margin-top:2px}}
-.sess-stats{{display:flex;justify-content:space-around;margin-top:8px;font-size:10px}}
-.sl{{color:#64748b;display:block}}
-.sv{{font-weight:800;font-size:13px;display:block}}
-/* Tables */
-table{{width:100%;border-collapse:collapse;font-size:11px}}
-th{{background:#dde4ef;padding:7px 8px;font-weight:700;text-align:center;border-bottom:2px solid #c0cde0;white-space:nowrap}}
-td{{padding:5px 8px;text-align:center;border-bottom:1px solid #edf0f7;white-space:nowrap}}
-tr:hover td{{background:#f8fafc}}
-.badge{{display:inline-block;padding:1px 6px;border-radius:12px;font-size:10px;font-weight:700}}
-.badge-red{{background:#fee2e2;color:#991b1b}}
-.badge-amber{{background:#fef3c7;color:#92400e}}
-.badge-cyan{{background:#cffafe;color:#0e7490}}
-.badge-navy{{background:#dbeafe;color:#1e40af}}
-/* Pareto */
-.pareto-row{{display:flex;align-items:center;gap:8px;margin-bottom:6px}}
-.pareto-lbl{{width:160px;font-size:10px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}}
-.pareto-bar-wrap{{flex:1;background:#f0f4fb;border-radius:4px;height:16px;overflow:hidden}}
-.pareto-bar{{height:16px;border-radius:4px;transition:width .3s}}
-.pareto-val{{width:42px;font-size:10px;font-weight:700;text-align:right;flex-shrink:0}}
-/* Timeline */
-.tl-wrap{{padding:12px 14px;overflow-x:auto}}
-/* Footer */
-.footer{{padding:10px 20px;color:#94a3b8;font-size:10px;text-align:center;border-top:1px solid #e2e8f0}}
+html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#f0f4fb;color:#0f172a;font-size:12px}}
+/* HEADER */
+.hdr{{height:38px;background:#1a1f5e;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0}}
+.hdr-left{{font-size:13px;font-weight:800;display:flex;align-items:center;gap:10px}}
+.hdr-right{{font-size:10px;opacity:.8}}
+.hdr-pilot{{background:rgba(255,255,255,.15);border-radius:4px;padding:2px 8px;font-size:12px}}
+{'/* ALERT mode */' if has_alert else ''}
+/* ALERT BANNER */
+.alert-banner{{height:{'73vh' if has_alert else '0'};{'display:flex' if has_alert else 'display:none'};flex-direction:column;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#7f0000,#b91c1c);color:#fff;flex-shrink:0;
+  animation:pulse 1.2s ease-in-out infinite;border-bottom:4px solid #dc2626}}
+@keyframes pulse{{0%,100%{{background:linear-gradient(135deg,#7f0000,#b91c1c)}}50%{{background:linear-gradient(135deg,#b91c1c,#ef4444)}}}}
+.siren{{font-size:52px;line-height:1;animation:spin 0.8s linear infinite}}
+@keyframes spin{{0%{{transform:rotate(-5deg)}}50%{{transform:rotate(5deg)}}100%{{transform:rotate(-5deg)}}}}
+.alert-title{{font-size:42px;font-weight:900;letter-spacing:2px;margin:6px 0;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
+.alert-name{{font-size:28px;font-weight:700;opacity:.95;margin:4px 0}}
+.alert-dur{{font-size:22px;font-weight:700;opacity:.85;font-variant-numeric:tabular-nums}}
+/* DASHBOARD BODY */
+.dash{{height:{'calc(27vh - 38px)' if has_alert else 'calc(100vh - 38px)'};display:grid;
+  grid-template-columns:{'200px 1fr' if has_alert else '190px 1fr 1fr'};
+  grid-template-rows:{'1fr' if has_alert else 'auto auto 1fr'};
+  gap:6px;padding:6px;overflow:hidden}}
+/* TRS block */
+.trs-block{{background:#fff;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:8px}}
+.trs-lbl{{font-size:9px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.5px;margin-bottom:2px}}
+.trs-num{{font-size:{'36px' if not has_alert else '24px'};font-weight:900;color:{trs_color(trs_poste)};line-height:1}}
+.trs-sub{{font-size:9px;color:#94a3b8;margin-top:4px;text-align:center}}
+/* Stats block */
+.stats-block{{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:8px 12px;display:flex;flex-direction:{'row' if has_alert else 'column'};gap:{'8px' if has_alert else '6px'};align-items:center}}
+.stat-item{{text-align:center;{'flex:1' if has_alert else ''}}}
+.stat-val{{font-size:{'18px' if has_alert else '20px'};font-weight:800;color:#1a1f5e;line-height:1}}
+.stat-lbl{{font-size:8px;text-transform:uppercase;color:#94a3b8;font-weight:700;margin-top:1px}}
+/* Grid cells */
+.cell{{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;display:flex;flex-direction:column}}
+.cell-hdr{{background:#1a1f5e;color:#fff;padding:5px 10px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;flex-shrink:0}}
+.cell-hdr.green{{background:#15803d}}
+.cell-hdr.red{{background:#b91c1c}}
+.cell-hdr.amber{{background:#b45309}}
+.cell-body{{flex:1;overflow-y:auto;padding:6px 10px}}
+/* Table */
+.ktbl{{width:100%;border-collapse:collapse;font-size:10px}}
+.ktbl th{{background:#dde4ef;padding:4px 6px;font-weight:700;text-align:center;position:sticky;top:0}}
+.ktbl td{{padding:4px 6px;border-bottom:1px solid #f0f4fb;text-align:center}}
+.ktbl tr:hover td{{background:#f8fafc}}
 </style>
 </head>
 <body>
-<div class="page-hdr">
-  <h1>&#127981; KPI Supervision ORC1 — Dashboard encadrant</h1>
-  <div class="gen-info">Généré le {gen_time} &nbsp;|&nbsp; Actualisation auto. 30s</div>
-</div>
-{'<div class="alert-strip">&#9888; ' + str(len(active_stops)) + ' ARRÊT(S) EN COURS — Poste ' + poste_now + ' — ' + pilot_now + '</div>' if active_stops else ''}
 
-<div class="grid-main">
-  <!-- Colonne gauche -->
-  <div class="col-left">
-
-    <!-- Supervision live -->
-    <div class="block">
-      <div class="sup-hdr">
-        <div>
-          <div class="sup-status">{sup_txt}</div>
-          {'<div class="sup-meta">Pilote : ' + pilot_now + ' | Poste : ' + poste_now + ' | OF : ' + of_num_now + ' | Début : ' + of_start_str + '</div>' if prod_active else '<div class="sup-meta">En attente de déclaration</div>'}
-        </div>
-      </div>
-      <div class="sup-kpis">
-        <div class="sup-kpi">
-          <div class="sup-kpi-lbl">TRS Poste</div>
-          <div class="sup-kpi-val" style="color:{trs_color_hex(today_trs_shift)}">{f"{today_trs_shift:.1f}%" if today_trs_shift>=0 else "—"}</div>
-        </div>
-        <div class="sup-kpi">
-          <div class="sup-kpi-lbl">Equiv. totale</div>
-          <div class="sup-kpi-val">{round(today_eq,1)}</div>
-        </div>
-        <div class="sup-kpi">
-          <div class="sup-kpi-lbl">Nb OF</div>
-          <div class="sup-kpi-val">{len(today_rows)}</div>
-        </div>
-        <div class="sup-kpi">
-          <div class="sup-kpi-lbl">Durée poste</div>
-          <div class="sup-kpi-val">{shift_h:.1f}h</div>
-        </div>
-      </div>
-      {('<div class="stops-live-row">' + stops_live_html + '</div>') if active_stops else '<div style="padding:0 14px 12px;color:#1a8c4e;font-weight:700;font-size:12px">✔ Aucun arrêt actif</div>'}
-    </div>
-
-    <!-- TRS gauge poste actuel -->
-    <div class="block">
-      <div class="block-hdr">TRS Poste en cours (vs modèle horaire)</div>
-      <div class="block-body" style="text-align:center">
-        {gauge_svg(today_trs_shift, 160)}
-        <div style="font-size:11px;color:#64748b;margin-top:6px">Poste {poste_now} — {today_str}</div>
-        <div style="font-size:11px;color:#64748b">Durée poste : {shift_h:.1f}h | Équiv : {round(today_eq,1)}</div>
-      </div>
-    </div>
-
-    <!-- 3 derniers postes -->
-    <div class="block">
-      <div class="block-hdr">3 derniers postes</div>
-      <div class="sessions-row">
-        {last3_html if last3_html else '<div style="color:#94a3b8;padding:10px">Aucun historique</div>'}
-      </div>
-    </div>
-
-    <!-- Pareto arrêts -->
-    <div class="block">
-      <div class="block-hdr">Pareto des arrêts (toutes sessions)</div>
-      <div class="block-body">
-        {pareto_html if pareto_html else '<div style="color:#94a3b8">Aucun arrêt enregistré</div>'}
-      </div>
-    </div>
-
+<div class="hdr">
+  <div class="hdr-left">
+    &#127981; Dashboard Encadrant — ORC
+    {'<span class="hdr-pilot">👤 ' + pilot_now + ' | ' + poste_now + '</span>' if pilot_now else ''}
+    {'<span style="background:#16a34a;border-radius:4px;padding:2px 8px;font-size:11px">▶ PROD EN COURS — OF ' + of_num_now + '</span>' if prod_active else '<span style="background:#64748b;border-radius:4px;padding:2px 8px;font-size:11px">○ En attente</span>'}
   </div>
-
-  <!-- Colonne droite -->
-  <div class="col-right">
-
-    <!-- Timeline 8h du poste -->
-    <div class="block">
-      <div class="block-hdr">Timeline du poste (8 dernières heures)</div>
-      <div class="tl-wrap">{tl_svg}</div>
-    </div>
-
-    <!-- Productions du poste en cours -->
-    <div class="block">
-      <div class="block-hdr green">Productions du poste en cours</div>
-      <div style="overflow-x:auto">
-        <table>
-          <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Durée</th><th>Taille</th><th>Qté Fab</th><th>Qté Emb</th><th>Equiv</th><th>TRS%</th></tr></thead>
-          <tbody>{prod_table_html if prod_table_html else '<tr><td colspan="9" style="color:#94a3b8;padding:14px">Aucune production déclarée</td></tr>'}</tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Arrêts du poste en cours -->
-    <div class="block">
-      <div class="block-hdr red">Arrêts / événements du poste</div>
-      <div style="overflow-x:auto">
-        <table>
-          <thead><tr><th>Type</th><th>Début</th><th>Fin</th><th>Durée</th><th>Commentaire</th></tr></thead>
-          <tbody>{evts_table_html if evts_table_html else '<tr><td colspan="5" style="color:#94a3b8;padding:14px">Aucun arrêt</td></tr>'}</tbody>
-        </table>
-      </div>
-    </div>
-
-  </div>
+  <div class="hdr-right">Actualisation auto 15s &nbsp;|&nbsp; {gen_time}</div>
 </div>
 
-<div class="footer">KPI-ORC v6.4 — Généré le {gen_time} — Actualisation toutes les 30 secondes</div>
+{alert_section}
+
+<div class="dash">
+
+  <!-- TRS Poste (grand chiffre) -->
+  <div class="trs-block">
+    <div class="trs-lbl">TRS Poste en cours</div>
+    <div class="trs-num">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
+    {gauge_svg(trs_poste, 110) if not has_alert else ""}
+    <div class="trs-sub">{f"Durée mesurée : {elapsed_str}" if elapsed_for_trs>0 else "Aucune déclaration"}</div>
+    <div class="trs-sub">Réf : {prod_ref:.0f} éq/8h &nbsp;|&nbsp; Éq total : {tot_equiv:.1f}</div>
+  </div>
+
+{'  <!-- Bloc stats compact en mode alerte -->' if has_alert else ''}
+  <!-- Stats + Pie -->
+  <div style="display:flex;gap:6px;flex-direction:{'row' if has_alert else 'column'}">
+    <!-- Stats KPI -->
+    <div class="stats-block" style="{'flex:1' if has_alert else ''}">
+      <div class="stat-item">
+        <div class="stat-val">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-val">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-val" style="color:#dc2626">{stop_s_total/60:.0f}min</div><div class="stat-lbl">Arrêts</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-val" style="color:#16a34a">{prod_s_total/60:.0f}min</div><div class="stat-lbl">Production</div>
+      </div>
+    </div>
+    {'<!-- Pie prod/arrêt -->' if not has_alert else ''}
+    {f'<div class="trs-block" style="padding:6px"><div class="trs-lbl">Répartition</div>{pie_svg(prod_s_total, stop_s_total, 90)}<div class="trs-sub" style="margin-top:2px">Prod {prod_pct}% | Arrêts {100-prod_pct}%</div></div>' if not has_alert else ''}
+  </div>
+
+  {'''  <!-- Timeline + Pareto + Productions (mode normal) -->
+  <div style="display:flex;flex-direction:column;gap:6px;overflow:hidden">''' if not has_alert else ''}
+  {f'''
+    <!-- Timeline -->
+    <div class="cell" style="flex-shrink:0">
+      <div class="cell-hdr">Timeline du poste</div>
+      <div class="cell-body" style="overflow:hidden;padding:8px 10px 4px">
+        {tl_svg}
+        <div style="display:flex;gap:12px;font-size:9px;color:#64748b;margin-top:3px">
+          <span>■<span style="color:#86efac"> Prod</span></span>
+          <span>■<span style="color:#dc2626"> PB Technique</span></span>
+          <span>■<span style="color:#f59e0b"> Rattrapage</span></span>
+          <span>■<span style="color:#0891b2"> Nettoyage</span></span>
+          <span>■<span style="color:#94a3b8"> Pause</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:6px;flex:1;overflow:hidden">
+      <!-- Pareto -->
+      <div class="cell" style="flex:1">
+        <div class="cell-hdr amber">Pareto arrêts</div>
+        <div class="cell-body">
+          {pareto_html if pareto_html else '<div style="color:#94a3b8;padding:8px">Aucun arrêt</div>'}
+        </div>
+      </div>
+      <!-- Productions -->
+      <div class="cell" style="flex:1.2">
+        <div class="cell-hdr green">Productions déclarées</div>
+        <div class="cell-body" style="padding:0">
+          <table class="ktbl">
+            <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Éq.</th><th>TRS</th></tr></thead>
+            <tbody>{prod_rows_html}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  ''' if not has_alert else ''}
+  {('  </div>' if not has_alert else '')}
+
+</div>
+
 </body>
 </html>"""
 
@@ -2176,6 +2231,10 @@ select{cursor:default}
 .mt8{margin-top:8px}
 .card{background:var(--card);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);border:1px solid var(--border)}
 
+/* ── KPI VIEW ── */
+#v-kpi{background:var(--bg)}
+.kpi-prev-card{flex:1;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);text-align:center;padding:6px 8px;min-width:0}
+
 @media(max-width:900px){.form-3col{grid-template-columns:1fr 1fr}.recap-col{width:180px}}
 @media(max-width:650px){.form-3col{grid-template-columns:1fr}.prod-body{flex-direction:column}.recap-col{width:100%}}
 </style>
@@ -2227,6 +2286,7 @@ select{cursor:default}
       <button class="htab on" id="ht-main" onclick="goTab('main')">Accueil</button>
       <button class="htab prod-on" id="ht-prod" onclick="goTab('prod')">▶ Prod en cours</button>
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
+      <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📊 KPI</button>
       <button class="htab" id="ht-cfg" onclick="goTab('settings')">Paramètres</button>
     </div>
     <div id="hdr-right">
@@ -2578,6 +2638,86 @@ select{cursor:default}
     </div>
     <div style="flex:1;overflow-y:auto">
       <table class="ktbl"><thead><tr id="hist-hd"></tr></thead><tbody id="hist-bd"></tbody></table>
+    </div>
+  </div>
+
+  <!-- ════ KPI VIEW ════ -->
+  <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden">
+    <!-- Titre -->
+    <div style="background:var(--navy);color:#fff;padding:7px 14px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:14px;font-weight:800">📊 KPI — Vue d'ensemble</div>
+      <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="loadKPI()">↺ Actualiser</button>
+    </div>
+    <!-- Ligne TRS : big current + 3 postes précédents -->
+    <div style="display:flex;gap:8px;padding:8px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center">
+      <!-- Big TRS actuel -->
+      <div style="background:var(--navy);border-radius:var(--radius);padding:8px 12px;text-align:center;color:#fff;flex-shrink:0;min-width:150px">
+        <div style="font-size:9px;text-transform:uppercase;font-weight:700;opacity:.7;letter-spacing:.7px;margin-bottom:2px">TRS Poste actuel</div>
+        <svg viewBox="0 0 100 58" style="width:80px;display:block;margin:2px auto">
+          <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="12" stroke-linecap="round"/>
+          <path id="kpi-g0-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#86efac" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,132"/>
+          <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#86efac" id="kpi-g0-pct">--%</text>
+        </svg>
+        <div style="font-size:10px;color:#93c5fd;font-weight:600;margin-top:1px" id="kpi-cur-date">—</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.75);margin-top:1px" id="kpi-cur-sub">0 OF</div>
+      </div>
+      <!-- 3 postes précédents -->
+      <div style="display:flex;gap:6px;flex:1;min-width:0;overflow:hidden">
+        <div class="kpi-prev-card">
+          <div class="sk-lbl" id="kpi-p1-lbl">Poste précédent</div>
+          <svg viewBox="0 0 100 58" style="width:58px;display:block;margin:2px auto">
+            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
+            <path id="kpi-g1-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,132"/>
+            <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="kpi-g1-pct">--%</text>
+          </svg>
+          <div class="sk-sub" id="kpi-p1-date" style="font-size:9px"></div>
+          <div class="sk-sub" id="kpi-p1-sub">—</div>
+        </div>
+        <div class="kpi-prev-card">
+          <div class="sk-lbl" id="kpi-p2-lbl">Avant-dernier</div>
+          <svg viewBox="0 0 100 58" style="width:58px;display:block;margin:2px auto">
+            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
+            <path id="kpi-g2-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,132"/>
+            <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="kpi-g2-pct">--%</text>
+          </svg>
+          <div class="sk-sub" id="kpi-p2-date" style="font-size:9px"></div>
+          <div class="sk-sub" id="kpi-p2-sub">—</div>
+        </div>
+        <div class="kpi-prev-card">
+          <div class="sk-lbl" id="kpi-p3-lbl">Il y a 3 postes</div>
+          <svg viewBox="0 0 100 58" style="width:58px;display:block;margin:2px auto">
+            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
+            <path id="kpi-g3-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,132"/>
+            <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="kpi-g3-pct">--%</text>
+          </svg>
+          <div class="sk-sub" id="kpi-p3-date" style="font-size:9px"></div>
+          <div class="sk-sub" id="kpi-p3-sub">—</div>
+        </div>
+      </div>
+    </div>
+    <!-- Timeline poste -->
+    <div style="background:var(--card);padding:5px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline du poste en cours</div>
+      <svg id="kpi-tl" viewBox="0 0 800 32" preserveAspectRatio="none" style="width:100%;height:32px;display:block">
+        <rect x="0" y="2" width="800" height="24" fill="#e2e8f0" rx="4"/>
+      </svg>
+      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
+    </div>
+    <!-- Pareto + Camembert + Stats -->
+    <div style="display:grid;grid-template-columns:1fr 190px;gap:8px;padding:8px;flex:1;overflow:hidden;min-height:0">
+      <!-- Pareto arrêts -->
+      <div style="background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:8px;display:flex;flex-direction:column;overflow:hidden">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:6px;flex-shrink:0">Pareto des arrêts — poste actuel</div>
+        <div id="kpi-pareto" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:5px"></div>
+      </div>
+      <!-- Camembert + stats -->
+      <div style="display:flex;flex-direction:column;gap:8px;overflow:hidden">
+        <div style="background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:8px;text-align:center;flex-shrink:0">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">Répartition Prod / Arrêts</div>
+          <svg id="kpi-pie" viewBox="0 0 130 115" style="width:130px;max-height:95px;display:block;margin:0 auto"></svg>
+        </div>
+        <div id="kpi-stats" style="background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:8px;flex:1;overflow:hidden;font-size:11px"></div>
+      </div>
     </div>
   </div>
 
@@ -3137,15 +3277,16 @@ function goTab(tab) {
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   document.querySelectorAll('.htab').forEach(t=>t.classList.remove('on'));
-  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte'};
+  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi'};
   const el=document.getElementById(vm[tab]);
   if(el) el.classList.add('on');
-  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg'};
+  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi'};
   const ntEl=document.getElementById(nt[tab]);
   if(ntEl) ntEl.classList.add('on');
   if(tab==='history') loadHist();
   if(tab==='finposte') loadFPData();
   if(tab==='main') { loadMainDecl(); }
+  if(tab==='kpi') loadKPI();
   if(tab==='settings') {
     // Show lock screen if not unlocked
     document.getElementById('settings-lock').style.display = _settingsUnlocked?'none':'flex';
@@ -4430,12 +4571,138 @@ async function confirmFinPoste(){
     nett_min:Math.round(nett_s/60),
     dur_prod_total_min:Math.round(dur_prod_total_s/60),
     dur_prod_sans_arret_min:Math.round(dur_prod_sans_arret_s/60),
+    dur_poste_theorique_min:(()=>{
+      const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+      const dk=DAY_KEYS[new Date().getDay()];
+      const model=_cfgModels.find(m=>m.nom===(ST.poste||''));
+      if(model&&model.jours&&model.jours[dk]){
+        const j=model.jours[dk];
+        if(j.debut&&j.fin){
+          const toS=s=>{const[h,m2]=s.split(':').map(Number);return h*3600+m2*60;};
+          let s=toS(j.fin)-toS(j.debut);if(s<0)s+=86400;
+          return Math.round(s/60);
+        }
+      }
+      return 0;
+    })(),
     comment:''
   };
   await fetch('/api/save_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posteRow)});
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   resetToLogin();
   toast('Bonne fin de poste !','ok');
+}
+
+// ── KPI TAB ──
+async function loadKPI(){
+  const [histData,evtData,todayData]=await Promise.all([
+    apiFetch('/api/history'),
+    apiFetch('/api/events_list'),
+    apiFetch('/api/history_today')
+  ]);
+  const rows=Array.isArray(histData)?histData:[];
+  const evts=Array.isArray(evtData)?evtData:[];
+  const now=new Date();
+  const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0'),yyyy=now.getFullYear();
+  const todayPfx=dd+'/'+mm;
+  const todayFR=dd+'/'+mm+'/'+yyyy;
+  const curPilot=ST.pilot||'';
+  const pSec=s=>s?s.split(':').reduce((a,v,i)=>a+(i===0?+v*3600:i===1?+v*60:+v),0):0;
+
+  // ── Poste actuel ──
+  const curEvts=evts.filter(e=>e.date&&e.date.startsWith(todayPfx)&&(!curPilot||!e.pilote||e.pilote===curPilot));
+  const curStopS=curEvts.reduce((a,e)=>a+Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0')),0);
+  if(todayData){
+    const trs=todayData.trs_shift!==undefined?todayData.trs_shift:todayData.trs;
+    drawGauge('kpi-g0-arc','kpi-g0-pct',trs>=0?trs:0);
+    const cde=document.getElementById('kpi-cur-date');
+    if(cde){const si=ST.shift_start_iso;const st=si?new Date(si).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):null;cde.textContent=todayFR+(st?' — depuis '+st:'');}
+    const csu=document.getElementById('kpi-cur-sub');
+    if(csu) csu.textContent=(todayData.nb_of||0)+' OF | Arrêts '+Math.round(curStopS/60)+' min';
+  }
+
+  // ── Postes précédents (3 derniers) ──
+  const sessions={};
+  rows.forEach(r=>{
+    if(r.date&&r.date.startsWith(todayPfx)&&r.pilote===curPilot) return;
+    const key=(r.pilote||'?')+'|'+(r.date||'?')+'|'+(r.poste||'?');
+    if(!sessions[key]) sessions[key]={pilot:r.pilote||'?',poste:r.poste||'?',date:r.date||'?',rows:[],trs_sum:0,trs_cnt:0};
+    sessions[key].rows.push(r);
+    const t=parseFloat(r.trs||0);
+    if(t>0){sessions[key].trs_sum+=t;sessions[key].trs_cnt++;}
+  });
+  const sessArr=Object.values(sessions).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3);
+  for(let i=0;i<3;i++){
+    const arcId='kpi-g'+(i+1)+'-arc',pctId='kpi-g'+(i+1)+'-pct';
+    const lbl=document.getElementById('kpi-p'+(i+1)+'-lbl');
+    const dat=document.getElementById('kpi-p'+(i+1)+'-date');
+    const sub=document.getElementById('kpi-p'+(i+1)+'-sub');
+    if(sessArr[i]){
+      const s=sessArr[i];
+      const avgT=s.trs_cnt>0?s.trs_sum/s.trs_cnt:-1;
+      const sEvts=evts.filter(e=>e.date===s.date&&e.pilote===s.pilot);
+      const sStopS=sEvts.reduce((a,e)=>a+Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0')),0);
+      if(lbl) lbl.textContent=s.pilot+' — '+s.poste;
+      if(dat){const debs=s.rows.map(r=>r.debut||'').filter(Boolean).sort();const fins=s.rows.map(r=>r.fin||'').filter(Boolean).sort().reverse();dat.textContent=s.date+(debs.length&&fins.length?' '+debs[0].slice(0,5)+'→'+fins[0].slice(0,5):'');}
+      if(sub) sub.textContent=s.rows.length+' OF | '+Math.round(sStopS/60)+' min arrêts';
+      if(avgT>=0) drawGauge(arcId,pctId,avgT);
+      else{const p=document.getElementById(pctId);const a=document.getElementById(arcId);if(p){p.textContent='--%';p.setAttribute('fill','#94a3b8');}if(a){a.setAttribute('stroke-dasharray','0,132');a.setAttribute('stroke','#94a3b8');}}
+    } else {
+      if(lbl) lbl.textContent=['Poste précédent','Avant-dernier','Il y a 3 postes'][i];
+      if(dat) dat.textContent=''; if(sub) sub.textContent='—';
+      const p=document.getElementById(pctId);const a=document.getElementById(arcId);
+      if(p){p.textContent='--%';p.setAttribute('fill','#94a3b8');}
+      if(a){a.setAttribute('stroke-dasharray','0,132');a.setAttribute('stroke','#94a3b8');}
+    }
+  }
+
+  // ── Timeline ──
+  const shiftStart=ST.shift_start_iso||new Date(now.getTime()-8*3600*1000).toISOString();
+  const allEvtsForTL=[...gEvts,...tlEventsToDisplayFmt(ST.tl_events||[])];
+  drawTLFromISO('kpi-tl',allEvtsForTL,shiftStart,now.toISOString());
+
+  // ── Pareto des arrêts (poste actuel) ──
+  const stopMap={};const stopCat={};
+  curEvts.forEach(e=>{if(!e.type)return;const dur=Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0'));stopMap[e.type]=(stopMap[e.type]||0)+dur;if(!stopCat[e.type])stopCat[e.type]=e.cat||'autre';});
+  const sorted=Object.entries(stopMap).sort((a,b)=>b[1]-a[1]);
+  const maxS=sorted.length?sorted[0][1]:1;
+  const par=document.getElementById('kpi-pareto');
+  if(par){
+    if(!sorted.length){par.innerHTML='<div style="color:var(--gray);font-size:11px;padding:4px">Aucun arrêt ce poste</div>';}
+    else{par.innerHTML=sorted.map(([type,s])=>{
+      const pct=Math.round(s/maxS*100),min=Math.round(s/60);
+      const col=STOP_COL[stopCat[type]]||'#94a3b8';
+      const pctTotal=curStopS>0?Math.round(s/curStopS*100):0;
+      return `<div style="display:flex;align-items:center;gap:6px;font-size:11px">
+        <div style="min-width:110px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(type)}">${esc(type)}</div>
+        <div style="flex:1;background:#e2e8f0;border-radius:3px;height:14px;position:relative;overflow:hidden">
+          <div style="width:${pct}%;background:${col};height:100%;border-radius:3px"></div>
+        </div>
+        <div style="min-width:60px;text-align:right;color:var(--gray);font-size:10px;white-space:nowrap">${min} min (${pctTotal}%)</div>
+      </div>`;
+    }).join('');}
+  }
+
+  // ── Camembert Prod/Arrêts ──
+  const prodS=(todayData&&todayData.tot_s)||0;
+  drawPie('kpi-pie',[{label:'Prod',value:prodS,color:'#16a34a'},{label:'Arrêts',value:curStopS,color:'#dc2626'}]);
+
+  // ── Stats poste actuel ──
+  const statsEl=document.getElementById('kpi-stats');
+  if(statsEl&&todayData){
+    const totMin=Math.round((todayData.tot_s||0)/60);
+    const arrMin=Math.round(curStopS/60);
+    statsEl.innerHTML=`<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Poste en cours</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;justify-content:space-between"><span>TRS</span><span style="font-weight:800;color:var(--navy)">${fmtTRS(todayData.trs_shift!==undefined?todayData.trs_shift:todayData.trs)}</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Équivalence</span><span style="font-weight:700">${(todayData.tot_equiv||0).toFixed(1)}</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Prod nette</span><span style="font-weight:700">${totMin} min</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Arrêts</span><span style="font-weight:700;color:var(--red)">${arrMin} min</span></div>
+        <div style="display:flex;justify-content:space-between"><span>Nb OF</span><span style="font-weight:700">${todayData.nb_of||0}</span></div>
+      </div>`;
+  } else if(statsEl){
+    statsEl.innerHTML='<div style="color:var(--gray);font-size:11px">Aucun poste en cours</div>';
+  }
 }
 
 // ── HISTORY ──
