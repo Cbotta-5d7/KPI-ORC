@@ -134,9 +134,10 @@ def fmt(seconds):
 
 def _hms_to_sec(s):
     try:
-        parts = str(s).split(":")
+        if hasattr(s,'hour'): return s.hour*3600+s.minute*60+getattr(s,'second',0)
+        parts = str(s).strip().split(":")
         if len(parts)==3: return int(parts[0])*3600+int(parts[1])*60+float(parts[2])
-        if len(parts)==2: return int(parts[0])*60+float(parts[1])
+        if len(parts)==2: return int(parts[0])*3600+float(parts[1])*60  # HH:MM
     except: pass
     return 0.0
 
@@ -995,6 +996,23 @@ def api_events_cfg_post():
     save_events_list(ev_list)
     return jsonify({"ok":True})
 
+@flask_app.route('/api/interposte_cfg', methods=['GET'])
+def api_interposte_cfg_get():
+    default = [c[0] for c in INTERPOSTE_CATS]
+    labels = cfg.get("interposte_labels", default)
+    return jsonify({"ok":True,"labels":labels})
+
+@flask_app.route('/api/interposte_cfg', methods=['POST'])
+def api_interposte_cfg_post():
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    labels = data.get("labels",[])
+    cfg["interposte_labels"] = [str(l) for l in labels if str(l).strip()]
+    save_cfg_data()
+    return jsonify({"ok":True})
+
 @flask_app.route('/api/end_prod', methods=['POST'])
 def api_end_prod():
     if not _S["prod_active"] or not _S["of_start"]:
@@ -1498,14 +1516,12 @@ def api_fin_poste_data():
             if rd != shift_date_str and rd != today: continue
             if str(r[4] or "")!=pilot: continue
             eq=float(str(r[21] or 0).replace(",","."))
-            s=_hms_to_sec(str(r[18] or "00:00:00"))
+            debut_s=_hms_to_sec(str(r[16] or "00:00:00"))
+            fin_s=_hms_to_sec(str(r[17] or "00:00:00"))
+            s = fin_s - debut_s if fin_s > debut_s else _hms_to_sec(str(r[18] or "00:00:00"))
             tot_eq+=eq; tot_s+=s
             trs=-1
-            trs_col = str(r[24] or "")
-            if trs_col:
-                try: trs=round(float(trs_col.replace(",",".")),1)
-                except: pass
-            elif prod_ref>0 and s>0 and eq>0:
+            if prod_ref>0 and s>0 and eq>0:
                 trs=round(eq/(prod_ref*s/28800)*100,1)
             of_list.append({
                 "of":str(r[1] or ""),"taille":str(r[7] or ""),
@@ -1635,9 +1651,10 @@ def generate_dashboard_html():
 
     def hms2s(s):
         try:
-            p = str(s).split(":")
+            if hasattr(s,'hour'): return s.hour*3600+s.minute*60+getattr(s,'second',0)
+            p = str(s).strip().split(":")
             if len(p)==3: return int(p[0])*3600+int(p[1])*60+float(p[2])
-            if len(p)==2: return int(p[0])*60+float(p[1])
+            if len(p)==2: return int(p[0])*3600+float(p[1])*60  # HH:MM
         except: pass
         return 0.0
 
@@ -1813,7 +1830,12 @@ def generate_dashboard_html():
         Y=18; BH=38
         def to_x(dt_str):
             try:
-                dt = datetime.datetime.strptime(f"{today_str} {str(dt_str)[:8]}", "%d/%m/%Y %H:%M:%S")
+                if hasattr(dt_str,'strftime'):
+                    t = dt_str.strftime("%H:%M:%S")
+                else:
+                    t = str(dt_str).strip()[:8]
+                    if len(t)==5: t += ":00"
+                dt = datetime.datetime.strptime(f"{today_str} {t}", "%d/%m/%Y %H:%M:%S")
                 return max(0, min(W, int((dt-win_start).total_seconds()/span*W)))
             except: return 0
         catcol = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7"}
@@ -3048,6 +3070,16 @@ select{cursor:default}
         </div>
         <button class="btn btn-prim" style="margin-top:8px;font-size:12px" onclick="saveEvtList()">💾 Enregistrer la liste</button>
       </div>
+      <div class="ss">
+        <h3>🔄 Labels "Entre 2 OFs" (interposte)</h3>
+        <div style="font-size:11px;color:var(--gray);margin-bottom:8px">Boutons de choix affichés dans la fenêtre "Temps entre 2 OFs". Configurez ici vos motifs d'interposte.</div>
+        <div id="interposte-list-ui" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:6px;align-items:center;background:#f8fafc;padding:8px;border-radius:7px;border:1px solid var(--border)">
+          <input id="ip-new-label" placeholder="Nouveau label interposte" style="flex:1;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
+          <button class="btn btn-green" style="font-size:11px;padding:5px 12px" onclick="addInterposteLbl()">+ Ajouter</button>
+        </div>
+        <button class="btn btn-prim" style="margin-top:8px;font-size:12px" onclick="saveInterposteCfg()">💾 Enregistrer</button>
+      </div>
     </div>
   </div>
 
@@ -3285,6 +3317,7 @@ window._evMap = {};
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', async () => {
   await loadEvtsList(); // charge la liste dynamique des arrêts avant de construire les grilles
+  await loadInterposteCfg();
   buildEditStopOpts();
   await loadLists();
   const s = await apiFetch('/api/state');
@@ -4014,10 +4047,33 @@ async function loadMainKPI() {
 
 // ── START PROD ──
 let _pendingGapS=0;
-const INTERPOSTE_LABELS=[
-  "Changement de série","Réglage / Setup machine","Attente matière première",
-  "Réunion / Formation","Nettoyage interposte","Pause"
-];
+let _interposteLbls=["Changement de série","Réglage / Setup machine","Attente matière première","Réunion / Formation","Nettoyage interposte","Pause"];
+let _interposteLblsEditing=[];
+
+async function loadInterposteCfg(){
+  const d=await apiFetch('/api/interposte_cfg');
+  if(d&&d.labels&&d.labels.length) _interposteLbls=d.labels;
+  _interposteLblsEditing=[..._interposteLbls];
+  _renderInterposteLblsHTML();
+}
+function _renderInterposteLblsHTML(){
+  const c=document.getElementById('interposte-list-ui');if(!c) return;
+  c.innerHTML=_interposteLblsEditing.map((lbl,i)=>`
+    <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="flex:1;font-weight:600">${esc(lbl)}</span>
+      <button class="btn btn-ghost" style="font-size:10px;padding:2px 6px" onclick="editInterposteLbl(${i})">✏</button>
+      <button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="rmInterposteLbl(${i})">✕</button>
+    </div>`).join('')||'<div style="color:var(--gray);font-size:11px;padding:4px">Aucun label</div>';
+}
+function addInterposteLbl(){const lbl=document.getElementById('ip-new-label').value.trim();if(!lbl){toast('Nom requis','err');return;}_interposteLblsEditing.push(lbl);document.getElementById('ip-new-label').value='';_renderInterposteLblsHTML();}
+function rmInterposteLbl(i){_interposteLblsEditing.splice(i,1);_renderInterposteLblsHTML();}
+function editInterposteLbl(i){const lbl=prompt('Label :',_interposteLblsEditing[i]);if(lbl&&lbl.trim()){_interposteLblsEditing[i]=lbl.trim();_renderInterposteLblsHTML();}}
+async function saveInterposteCfg(){
+  const r=await fetch('/api/interposte_cfg',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,labels:_interposteLblsEditing})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){_interposteLbls=[..._interposteLblsEditing];toast('Labels interposte enregistrés','ok');}
+  else toast(d?.error||'Erreur','err');
+}
 
 function _fmtMin(s){const m=Math.round(s/60),h=Math.floor(m/60),mi=m%60;return h?`${h}h ${mi}min`:`${mi} min`;}
 
@@ -4052,7 +4108,7 @@ async function doStartProd() {
     document.getElementById('ip-duration').textContent=`Durée : ${_fmtMin(_pendingGapS)}`;
     document.getElementById('ip-custom').value='';
     document.getElementById('ip-comment').value='';
-    INTERPOSTE_LABELS.forEach(lbl=>{
+    _interposteLbls.forEach(lbl=>{
       const b=document.createElement('button');
       b.className='btn btn-ghost';b.style.fontSize='12px';b.textContent=lbl;
       b.onclick=()=>{document.getElementById('ip-custom').value=lbl;};
@@ -5387,6 +5443,7 @@ async function loadCfg(){
   renderPwdList();
   renderModelList();
   await loadEvtsList();
+  await loadInterposteCfg();
   // Refresh login model dropdown
   const sel=document.getElementById('ln-model');
   if(sel){
