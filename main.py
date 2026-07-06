@@ -1672,12 +1672,17 @@ def generate_dashboard_html():
         if elapsed_for_trs > 0:
             trs_poste = round(tot_equiv / (prod_ref * elapsed_for_trs / 28800) * 100, 1)
 
-    prod_s_total = sum(hms2s(str(r[18] or "0")) for r in today_prod)
-    stop_s_total = sum(hms2s(str(r[18] or "0")) for r in today_evts
+    prod_s_total = sum(hms2s(str(r[18] or "0")) for r in in_shift_prod)
+    # Filter stop events to model horaire window (same logic as in_shift_prod)
+    if model_debut_dt:
+        in_shift_evts = [r for r in today_evts if _ts_s(r[17]) >= _mdeb_s or _ts_s(r[16]) >= _mdeb_s]
+    else:
+        in_shift_evts = today_evts
+    stop_s_total = sum(hms2s(str(r[18] or "0")) for r in in_shift_evts
                        if str(r[0] or "").lower() not in ("pause pilote","changement d'of","interposte","changement de serie"))
 
     evt_dur = defaultdict(float)
-    for r in today_evts:
+    for r in in_shift_evts:
         t = str(r[0] or "")
         if not t or t.lower() in ("pause pilote","changement d'of","interposte"): continue
         evt_dur[t] += hms2s(str(r[18] or "0"))
@@ -1815,7 +1820,7 @@ def generate_dashboard_html():
 
     # ── Productions table ──
     prod_rows_html = ""
-    for r in list(reversed(today_prod))[:8]:
+    for r in list(reversed(in_shift_prod))[:8]:
         trs_val = ""
         try:
             tv = float(str(r[24] or "").replace(",","."))
@@ -3764,7 +3769,9 @@ async function loadMainDecl() {
   const _mDebS=_jLD&&_jLD.debut?_hms2s(_jLD.debut):0;
   const inShiftDecls=_mDebS>0?pilotDecls.filter(r=>_hms2s(r.fin||'')>=_mDebS||_hms2s(r.debut||'')>=_mDebS):pilotDecls;
   _todayEquivAccum=inShiftDecls.reduce((a,r)=>a+parseFloat(r.equiv||0),0);
-  _todayStopAccum=evts.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD).reduce((a,r)=>a+_hms2s(r.duree||''),0);
+  const _pilotEvts=evts.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD);
+  const inShiftEvts=_mDebS>0?_pilotEvts.filter(r=>_hms2s(r.fin||'')>=_mDebS||_hms2s(r.debut||'')>=_mDebS):_pilotEvts;
+  _todayStopAccum=inShiftEvts.reduce((a,r)=>a+_hms2s(r.duree||''),0);
   // Heure de la dernière déclaration prod enregistrée (dans la fenêtre du poste)
   if(inShiftDecls.length){
     const lastFin=inShiftDecls.map(r=>r.fin||'').filter(Boolean).sort().pop();
