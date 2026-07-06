@@ -1290,9 +1290,18 @@ def api_events_list():
     for rn, r in evt_rows[-100:]:
         try:
             hors = str(r[36] if len(r)>36 else "").strip().upper()
+            type_str = str(r[0] or "").strip()
+            tl = type_str.lower()
+            if "nettoyage" in tl: cat = "nettoyage"
+            elif tl == "pause": cat = "_pause"
+            elif "rattrapage" in tl: cat = "ratt"
+            elif tl.startswith("pb") or "panne" in tl: cat = "pb"
+            elif tl: cat = "organisation"
+            else: cat = "autre"
             rows.append({
                 "row_num": rn,
-                "type": str(r[0] or ""),
+                "type": type_str,
+                "cat": cat,
                 "of": str(r[1] or ""),
                 "date": _row_date(r[2]),
                 "poste": str(r[3] or ""),
@@ -1919,13 +1928,12 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     {f'''<!-- TRS Block -->
       <div class="panel" style="flex:1">
         <div class="panel-hdr" style="background:#1a1f5e;color:#fff">TRS Poste en cours</div>
-        <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
+        <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:10px 14px">
           <div class="trs-lbl">Taux de Rendement Synthétique</div>
-          <div class="trs-num">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
+          <div style="font-size:64px;font-weight:900;line-height:1;color:{trs_col};text-align:center">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
           {gauge_svg(trs_poste, 200)}
-          <div class="trs-sub">Réf : {prod_ref:.0f} éq / 8h</div>
-          <div class="trs-sub">Durée mesurée : {elapsed_str}</div>
-          <div class="trs-sub" style="font-size:18px;font-weight:800;color:#38bdf8;margin-top:6px">Éq. total : {tot_equiv:.1f}</div>
+          <div class="trs-sub">Réf : {prod_ref:.0f} éq / 8h &nbsp;|&nbsp; {elapsed_str}</div>
+          <div class="trs-sub" style="font-size:20px;font-weight:800;color:#38bdf8;margin-top:4px">Éq. total : {tot_equiv:.1f}</div>
         </div>
       </div>
 
@@ -2373,11 +2381,21 @@ select{cursor:default}
     <div style="background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
       <!-- Ligne 1: TRS postes + modèle horaire -->
       <div class="shift-kpis" style="padding:6px 10px;gap:6px">
-        <div class="skpi current" style="flex:2">
-          <div class="sk-lbl" id="kpi0-trs-lbl">Poste actuel — TRS à <span id="kpi0-heure">--h--</span></div>
-          <div class="sk-val" id="kpi0-trs">--%</div>
-          <div class="sk-sub" id="kpi0-date" style="font-size:10px;opacity:.85"></div>
-          <div class="sk-sub" id="kpi0-sub">0 OF</div>
+        <div class="skpi current" style="flex:2;display:flex;flex-direction:row;align-items:center;gap:10px">
+          <div style="text-align:center;flex-shrink:0">
+            <svg viewBox="0 0 100 58" style="width:90px;display:block;margin:0 auto">
+              <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="rgba(0,0,0,.12)" stroke-width="11" stroke-linecap="round"/>
+              <path id="gauge-poste-acc-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="11" stroke-linecap="round" stroke-dasharray="0,132"/>
+              <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#15803d" id="gauge-poste-acc-pct">—</text>
+            </svg>
+            <div style="font-size:10px;font-weight:700;color:#0369a1;margin-top:2px" id="gauge-poste-acc-lbl">TRS Poste</div>
+          </div>
+          <div style="flex:1">
+            <div class="sk-lbl" id="kpi0-trs-lbl">Poste actuel — TRS à <span id="kpi0-heure">--h--</span></div>
+            <div class="sk-val" id="kpi0-trs">--%</div>
+            <div class="sk-sub" id="kpi0-date" style="font-size:10px;opacity:.85"></div>
+            <div class="sk-sub" id="kpi0-sub">0 OF</div>
+          </div>
         </div>
         <div class="skpi">
           <div class="sk-lbl" id="kpi1-lbl">Poste précédent</div>
@@ -2606,19 +2624,20 @@ select{cursor:default}
       <div id="fp-date" style="font-size:12px;font-weight:700;opacity:.9"></div>
     </div>
     <!-- Graphiques + KPI (en haut, compact) -->
-    <div style="display:flex;gap:8px;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;flex-wrap:wrap">
+    <div style="display:flex;gap:12px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;flex-wrap:wrap">
       <div style="text-align:center;flex-shrink:0">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">TRS Poste</div>
-        <svg id="fp-gauge" viewBox="0 0 100 58" style="width:80px;display:block;margin:0 auto">
+        <svg id="fp-gauge" viewBox="0 0 100 58" style="width:140px;display:block;margin:0 auto">
           <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
           <path id="fp-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
           <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="fp-gauge-pct">--%</text>
         </svg>
-        <div style="font-size:10px;font-weight:700;margin-top:2px" id="fp-trs-lbl2">—</div>
+        <div style="font-size:13px;font-weight:800;color:var(--navy);margin-top:2px" id="fp-trs-lbl2">—</div>
+        <div style="font-size:11px;color:var(--gray);margin-top:1px" id="fp-shift-hours">—</div>
       </div>
       <div style="text-align:center;flex-shrink:0">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">Répartition</div>
-        <svg id="fp-pie" viewBox="0 0 130 115" style="width:80px;height:71px;display:block;margin:0 auto"></svg>
+        <svg id="fp-pie" viewBox="0 0 130 115" style="width:140px;height:124px;display:block;margin:0 auto"></svg>
       </div>
       <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:5px">
         <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-trs">--%</div><div class="fp-lbl">TRS Shift</div></div>
@@ -2756,20 +2775,20 @@ select{cursor:default}
   </div>
 
   <!-- ════ KPI VIEW ════ -->
-  <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden;background:#0f172a">
+  <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden;background:#1a2540">
     <!-- Barre titre -->
-    <div style="background:#0f172a;color:#fff;padding:6px 16px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1e293b">
+    <div style="background:#1a2540;color:#fff;padding:6px 16px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #2d3f5e">
       <div style="font-size:16px;font-weight:800;letter-spacing:.5px">📊 KPI — Vue d'ensemble</div>
-      <button style="font-size:12px;padding:4px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#94a3b8;cursor:pointer" onclick="loadKPI()">↺ Actualiser</button>
+      <button style="font-size:12px;padding:4px 12px;background:#2d3f5e;border:1px solid #3d5475;border-radius:6px;color:#94a3b8;cursor:pointer" onclick="loadKPI()">↺ Actualiser</button>
     </div>
     <!-- Corps principal : 2 colonnes -->
     <div style="display:grid;grid-template-columns:1fr 380px;flex:1;overflow:hidden;min-height:0;gap:0">
       <!-- Colonne gauche : Jauges TRS + 4 Timelines -->
-      <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #1e293b">
+      <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #2d3f5e">
         <!-- Jauges TRS : poste actuel + 3 précédents -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;flex-shrink:0;border-bottom:1px solid #1e293b">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;flex-shrink:0;border-bottom:1px solid #2d3f5e">
           <!-- Jauge poste actuel (plus grande) -->
-          <div style="background:linear-gradient(135deg,#1a1f5e,#2d3480);padding:14px 10px;text-align:center;border-right:1px solid #1e293b">
+          <div style="background:linear-gradient(135deg,#1e3a7a,#2d4d9e);padding:14px 10px;text-align:center;border-right:1px solid #2d3f5e">
             <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:rgba(255,255,255,.6);letter-spacing:1px;margin-bottom:6px">Poste actuel</div>
             <svg viewBox="0 0 120 70" style="width:110px;display:block;margin:0 auto">
               <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="14" stroke-linecap="round"/>
@@ -2780,70 +2799,71 @@ select{cursor:default}
             <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px" id="kpi-cur-sub">0 OF</div>
           </div>
           <!-- 3 jauges précédentes -->
-          <div id="kpi-p1-card" style="background:#0f172a;padding:12px 8px;text-align:center;border-right:1px solid #1e293b">
-            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:4px" id="kpi-p1-lbl">Poste précédent</div>
+          <div id="kpi-p1-card" style="background:#1e2d48;padding:12px 8px;text-align:center;border-right:1px solid #2d3f5e">
+            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#7ea8d8;letter-spacing:.8px;margin-bottom:4px" id="kpi-p1-lbl">Poste précédent</div>
             <svg viewBox="0 0 120 70" style="width:90px;display:block;margin:0 auto">
-              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#1e293b" stroke-width="14" stroke-linecap="round"/>
+              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#2d3f5e" stroke-width="14" stroke-linecap="round"/>
               <path id="kpi-g1-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#16a34a" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
               <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#e2e8f0" id="kpi-g1-pct">--%</text>
             </svg>
-            <div style="font-size:10px;color:#475569;margin-top:3px" id="kpi-p1-date"></div>
-            <div style="font-size:11px;color:#64748b;margin-top:1px" id="kpi-p1-sub">—</div>
+            <div style="font-size:10px;color:#7ea8d8;margin-top:3px" id="kpi-p1-date"></div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:1px" id="kpi-p1-sub">—</div>
           </div>
-          <div id="kpi-p2-card" style="background:#0f172a;padding:12px 8px;text-align:center;border-right:1px solid #1e293b">
-            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:4px" id="kpi-p2-lbl">Avant-dernier</div>
+          <div id="kpi-p2-card" style="background:#1e2d48;padding:12px 8px;text-align:center;border-right:1px solid #2d3f5e">
+            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#7ea8d8;letter-spacing:.8px;margin-bottom:4px" id="kpi-p2-lbl">Avant-dernier</div>
             <svg viewBox="0 0 120 70" style="width:90px;display:block;margin:0 auto">
-              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#1e293b" stroke-width="14" stroke-linecap="round"/>
+              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#2d3f5e" stroke-width="14" stroke-linecap="round"/>
               <path id="kpi-g2-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#16a34a" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
               <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#e2e8f0" id="kpi-g2-pct">--%</text>
             </svg>
-            <div style="font-size:10px;color:#475569;margin-top:3px" id="kpi-p2-date"></div>
-            <div style="font-size:11px;color:#64748b;margin-top:1px" id="kpi-p2-sub">—</div>
+            <div style="font-size:10px;color:#7ea8d8;margin-top:3px" id="kpi-p2-date"></div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:1px" id="kpi-p2-sub">—</div>
           </div>
-          <div id="kpi-p3-card" style="background:#0f172a;padding:12px 8px;text-align:center">
-            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:4px" id="kpi-p3-lbl">Il y a 3 postes</div>
+          <div id="kpi-p3-card" style="background:#1e2d48;padding:12px 8px;text-align:center">
+            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#7ea8d8;letter-spacing:.8px;margin-bottom:4px" id="kpi-p3-lbl">Il y a 3 postes</div>
             <svg viewBox="0 0 120 70" style="width:90px;display:block;margin:0 auto">
-              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#1e293b" stroke-width="14" stroke-linecap="round"/>
+              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#2d3f5e" stroke-width="14" stroke-linecap="round"/>
               <path id="kpi-g3-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#16a34a" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
               <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#e2e8f0" id="kpi-g3-pct">--%</text>
             </svg>
-            <div style="font-size:10px;color:#475569;margin-top:3px" id="kpi-p3-date"></div>
-            <div style="font-size:11px;color:#64748b;margin-top:1px" id="kpi-p3-sub">—</div>
+            <div style="font-size:10px;color:#7ea8d8;margin-top:3px" id="kpi-p3-date"></div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:1px" id="kpi-p3-sub">—</div>
           </div>
         </div>
         <!-- 4 Timelines -->
-        <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:8px;gap:8px;min-height:0">
-          <!-- Timeline poste actuel (plus haute) -->
-          <div style="flex:2;min-height:0;display:flex;flex-direction:column">
-            <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px;flex-shrink:0" id="kpi-tl0-lbl">Poste actuel</div>
-            <svg id="kpi-tl0" viewBox="0 0 800 50" preserveAspectRatio="none" style="width:100%;flex:1;display:block;border-radius:6px">
-              <rect x="0" y="0" width="800" height="50" fill="#1e293b" rx="4"/>
+        <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;padding:10px 12px;gap:10px;min-height:0">
+          <!-- Timeline poste actuel -->
+          <div style="flex-shrink:0">
+            <div style="font-size:11px;font-weight:700;color:#93c5fd;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px" id="kpi-tl0-lbl">Poste actuel</div>
+            <svg id="kpi-tl0" viewBox="0 0 800 50" preserveAspectRatio="none" style="width:100%;height:72px;display:block;border-radius:6px">
+              <rect x="0" y="0" width="800" height="50" fill="#1e2d48" rx="4"/>
             </svg>
           </div>
           <!-- Timeline poste N-1 -->
-          <div style="flex:1;min-height:0;display:flex;flex-direction:column">
-            <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px;flex-shrink:0" id="kpi-tl1-lbl">—</div>
-            <svg id="kpi-tl1" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;flex:1;display:block;border-radius:4px">
-              <rect x="0" y="0" width="800" height="36" fill="#1e293b" rx="4"/>
+          <div style="flex-shrink:0">
+            <div style="font-size:10px;font-weight:700;color:#7ea8d8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px" id="kpi-tl1-lbl">—</div>
+            <svg id="kpi-tl1" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;height:48px;display:block;border-radius:4px">
+              <rect x="0" y="0" width="800" height="36" fill="#1e2d48" rx="4"/>
             </svg>
           </div>
           <!-- Timeline poste N-2 -->
-          <div style="flex:1;min-height:0;display:flex;flex-direction:column">
-            <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px;flex-shrink:0" id="kpi-tl2-lbl">—</div>
-            <svg id="kpi-tl2" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;flex:1;display:block;border-radius:4px">
-              <rect x="0" y="0" width="800" height="36" fill="#1e293b" rx="4"/>
+          <div style="flex-shrink:0">
+            <div style="font-size:10px;font-weight:700;color:#7ea8d8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px" id="kpi-tl2-lbl">—</div>
+            <svg id="kpi-tl2" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;height:48px;display:block;border-radius:4px">
+              <rect x="0" y="0" width="800" height="36" fill="#1e2d48" rx="4"/>
             </svg>
           </div>
           <!-- Timeline poste N-3 -->
-          <div style="flex:1;min-height:0;display:flex;flex-direction:column">
-            <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px;flex-shrink:0" id="kpi-tl3-lbl">—</div>
-            <svg id="kpi-tl3" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;flex:1;display:block;border-radius:4px">
-              <rect x="0" y="0" width="800" height="36" fill="#1e293b" rx="4"/>
+          <div style="flex-shrink:0">
+            <div style="font-size:10px;font-weight:700;color:#7ea8d8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px" id="kpi-tl3-lbl">—</div>
+            <svg id="kpi-tl3" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;height:48px;display:block;border-radius:4px">
+              <rect x="0" y="0" width="800" height="36" fill="#1e2d48" rx="4"/>
             </svg>
           </div>
           <!-- Légende -->
-          <div style="display:flex;gap:14px;flex-shrink:0;font-size:11px;color:#64748b">
-            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#dc2626"></i>Arrêt</span>
+          <div style="display:flex;gap:14px;flex-shrink:0;font-size:11px;color:#7ea8d8">
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#dc2626"></i>PB/Panne</span>
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#3b82f6"></i>Organisation</span>
             <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#f59e0b"></i>Nettoyage</span>
             <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#94a3b8"></i>Pause</span>
             <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#16a34a"></i>Prod</span>
@@ -2853,15 +2873,15 @@ select{cursor:default}
       <!-- Colonne droite : Camembert + Pareto + Stats -->
       <div style="display:flex;flex-direction:column;overflow:hidden;gap:0">
         <!-- Camembert -->
-        <div style="background:#0f172a;padding:12px 16px;flex-shrink:0;border-bottom:1px solid #1e293b;text-align:center">
-          <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:6px">Prod / Arrêts — poste actuel</div>
+        <div style="background:#1e2d48;padding:12px 16px;flex-shrink:0;border-bottom:1px solid #2d3f5e;text-align:center">
+          <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#7ea8d8;letter-spacing:.8px;margin-bottom:6px">Prod / Arrêts — poste actuel</div>
           <svg id="kpi-pie" viewBox="0 0 130 115" style="width:150px;height:130px;display:block;margin:0 auto"></svg>
         </div>
         <!-- Stats chiffres clés -->
-        <div id="kpi-stats" style="background:#0f172a;padding:12px 16px;flex-shrink:0;border-bottom:1px solid #1e293b;display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+        <div id="kpi-stats" style="background:#1a2540;padding:12px 16px;flex-shrink:0;border-bottom:1px solid #2d3f5e;display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
         <!-- Pareto -->
-        <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:12px 16px;background:#0f172a">
-          <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:8px;flex-shrink:0">Pareto arrêts</div>
+        <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:12px 16px;background:#1a2540">
+          <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#7ea8d8;letter-spacing:.8px;margin-bottom:8px;flex-shrink:0">Pareto arrêts</div>
           <div id="kpi-pareto" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>
         </div>
       </div>
@@ -3694,9 +3714,15 @@ async function loadMainDecl() {
   if(!bd) return;
   // Accumuler équivalences et arrêts du poste pour les jauges
   const curPilotD=ST.pilot||'';
-  _todayEquivAccum=decls.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD).reduce((a,r)=>a+parseFloat(r.equiv||0),0);
+  const pilotDecls=decls.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD);
+  _todayEquivAccum=pilotDecls.reduce((a,r)=>a+parseFloat(r.equiv||0),0);
   const _hms2s=s=>{if(!s)return 0;const p=String(s).split(':');return p.length>=3?+p[0]*3600+ +p[1]*60+ +p[2]:p.length===2?+p[0]*60+ +p[1]:0;};
   _todayStopAccum=evts.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD).reduce((a,r)=>a+_hms2s(r.duree||''),0);
+  // Heure de la dernière déclaration prod enregistrée
+  if(pilotDecls.length){
+    const lastFin=pilotDecls.map(r=>r.fin||'').filter(Boolean).sort().pop();
+    if(lastFin){const[h,m,s]=(lastFin+'::').split(':').map(Number);const d=new Date();d.setHours(h,m,s||0,0);_lastProdDeclTime=d;}
+  }
   if(!allRows.length){bd.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();return;}
   window._rowMap={};
   bd.innerHTML=allRows.map(r=>{
@@ -4360,24 +4386,26 @@ function updateGauge(s){
   arc.setAttribute('stroke-dasharray',`${dash},${pArc}`);
   arc.setAttribute('stroke',col);
 
-  // TRS du poste (shift_start → now)
+  // TRS du poste (shift_start → dernière déclaration enregistrée)
   const arcPoste=document.getElementById('gauge-poste-arc');
   const pctPoste=document.getElementById('gauge-poste-pct');
   const lblPoste=document.getElementById('gauge-poste-lbl');
-  if(arcPoste&&pctPoste&&s.shift_start_iso&&s.prod_ref>0){
-    const shiftElap=(Date.now()-new Date(s.shift_start_iso).getTime())/1000;
-    // Accumulate equiv from today's history (use ST cache)
+  // Même calcul pour l'accueil
+  const arcPosteAcc=document.getElementById('gauge-poste-acc-arc');
+  const pctPosteAcc=document.getElementById('gauge-poste-acc-pct');
+  const lblPosteAcc=document.getElementById('gauge-poste-acc-lbl');
+  if(s.shift_start_iso&&s.prod_ref>0){
+    const refTime=_lastProdDeclTime||new Date();
+    const shiftElap=(refTime.getTime()-new Date(s.shift_start_iso).getTime())/1000;
     const todayEquiv=_todayEquivAccum||0;
-    const trsPoste=shiftElap>0?Math.round(todayEquiv/(s.prod_ref*shiftElap/28800)*100*10)/10:-1;
-    const now=new Date();
-    const hh=String(now.getHours()).padStart(2,'0'),mm2=String(now.getMinutes()).padStart(2,'0');
-    if(lblPoste) lblPoste.textContent='TRS Poste à '+hh+'h'+mm2;
+    const trsPoste=shiftElap>0&&todayEquiv>0?Math.round(todayEquiv/(s.prod_ref*shiftElap/28800)*100*10)/10:-1;
+    const hh=String(refTime.getHours()).padStart(2,'0'),mm2=String(refTime.getMinutes()).padStart(2,'0');
+    const lbl='TRS Poste à '+hh+'h'+mm2;
     const dashP=trsPoste>=0?Math.min(1,trsPoste/100)*pArc:0;
     const colP=trsPoste>=90?'#16a34a':trsPoste>=75?'#d97706':'#dc2626';
-    arcPoste.setAttribute('stroke-dasharray',`${dashP},${pArc}`);
-    arcPoste.setAttribute('stroke',colP);
-    pctPoste.textContent=trsPoste>=0?fmtTRS(trsPoste):'—';
-    pctPoste.setAttribute('fill',colP);
+    [arcPoste,arcPosteAcc].forEach(el=>{if(el){el.setAttribute('stroke-dasharray',`${dashP},${pArc}`);el.setAttribute('stroke',colP);}});
+    [pctPoste,pctPosteAcc].forEach(el=>{if(el){el.textContent=trsPoste>=0?fmtTRS(trsPoste):'—';el.setAttribute('fill',colP);}});
+    [lblPoste,lblPosteAcc].forEach(el=>{if(el) el.textContent=lbl;});
   }
 
   // Pie charts
@@ -4392,7 +4420,7 @@ function updateGauge(s){
   drawPie('pie-poste',[{label:'Prod',value:shiftProd,color:'#16a34a'},{label:'Arrêts',value:shiftStop,color:'#dc2626'}]);
 }
 // Accumulateurs poste (mis à jour à chaque loadMainDecl)
-let _todayEquivAccum=0, _todayStopAccum=0;
+let _todayEquivAccum=0, _todayStopAccum=0, _lastProdDeclTime=null;
 
 // ── EDIT ROW (accueil) ──
 function openEditRow(key) {
@@ -4787,7 +4815,10 @@ function recalcFPTRS(){
   const jours=model.jours||{};
   const jour=jours[dk]||{};
   const shiftInfo=document.getElementById('fp-shift-info');
-  if(shiftInfo) shiftInfo.textContent=jour.debut&&jour.fin?`${jour.debut}→${jour.fin}`:'—';
+  const shiftHours=document.getElementById('fp-shift-hours');
+  const hStr=jour.debut&&jour.fin?`${jour.debut} → ${jour.fin}`:'—';
+  if(shiftInfo) shiftInfo.textContent=hStr;
+  if(shiftHours) shiftHours.textContent=hStr;
   // Recalculate TRS using this model's shift duration
   if(jour.debut&&jour.fin){
     const p=s=>{const[h,m]=s.split(':').map(Number);return h*3600+m*60;};
@@ -4875,9 +4906,9 @@ function _drawKpiTL(svgId,evts,startISO,endISO,isCurrent){
   const span=tE-tS;
   if(span<=0){svg.innerHTML=`<rect x="0" y="0" width="${W}" height="${H}" fill="#1e293b" rx="4"/>`;return;}
   const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
-  let html=`<rect x="0" y="0" width="${W}" height="${H}" fill="#1e293b" rx="4"/>`;
+  let html=`<rect x="0" y="0" width="${W}" height="${H}" fill="#1e2d48" rx="4"/>`;
   // Prod background (green)
-  html+=`<rect x="0" y="0" width="${W}" height="${H}" fill="#14532d" rx="4" opacity=".4"/>`;
+  html+=`<rect x="0" y="0" width="${W}" height="${H}" fill="#166534" rx="4" opacity=".65"/>`;
   // Events (stops)
   (evts||[]).forEach(ev=>{
     const t1=parseHMStoT(ev.debut,ev.date),t2=parseHMStoT(ev.fin,ev.date);
