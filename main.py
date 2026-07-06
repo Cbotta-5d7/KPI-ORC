@@ -1610,419 +1610,508 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <title>KPI-ORC</title>
 <style>
 :root{
-  --c-bg:#f4f6fb;--c-card:#fff;--c-border:#e2e8f0;--c-text:#1e293b;--c-muted:#64748b;
-  --c-primary:#1a1f5e;--c-primary-light:#e8eaf6;--c-accent:#3b82f6;
-  --c-green:#16a34a;--c-red:#dc2626;--c-yellow:#d97706;--c-orange:#ea580c;
-  --radius:10px;--shadow:0 2px 12px rgba(0,0,0,.08);--header-h:54px;
+  --navy:#1a1f5e;--navy2:#2d3480;--green:#16a34a;--red:#dc2626;
+  --amber:#d97706;--purple:#7c3aed;--blue:#0891b2;
+  --bg:#f0f2f8;--card:#fff;--border:#dde4ef;--text:#1e293b;--gray:#64748b;
+  --lgray:#e2e8f0;--radius:10px;--shadow:0 2px 10px rgba(0,0,0,.07);
+  --hdr-h:52px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--c-bg);color:var(--c-text);font-size:13px;line-height:1.4}
-body.stop-active{--c-bg:#1a0808;--c-card:#2d1010;--c-border:#5a2020;--c-text:#f8d7d7;--c-muted:#c98888;--c-primary-light:#3d1010}
-body.stop-active #app-header{background:#7f0000!important}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px;height:100vh;overflow:hidden;display:flex;flex-direction:column}
 
-#app-header{position:fixed;top:0;left:0;right:0;height:var(--header-h);background:var(--c-primary);display:flex;align-items:center;padding:0 12px;gap:6px;z-index:100;border-bottom:2px solid #2d3480}
-#app-header .logo{color:#fff;font-weight:800;font-size:16px;letter-spacing:1px;margin-right:10px;white-space:nowrap}
-#app-header nav{display:flex;gap:2px;flex:1}
-.nav-tab{background:none;border:none;color:rgba(255,255,255,.7);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s;white-space:nowrap}
-.nav-tab:hover{background:rgba(255,255,255,.12);color:#fff}
-.nav-tab.active{background:rgba(255,255,255,.2);color:#fff;font-weight:700}
-.tab-prod{background:#16a34a!important;color:#fff!important;animation:pt 2s infinite}
+/* ── STOP ACTIVE THEME ── */
+body.stop-on{--bg:#180808;--card:#2d1212;--border:#5a2020;--text:#fde8e8;--gray:#c99090;--lgray:#3d1a1a}
+body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
+
+/* ── HEADER ── */
+#app-hdr{height:var(--hdr-h);background:var(--navy);display:flex;align-items:center;padding:0 14px;gap:8px;flex-shrink:0;border-bottom:2px solid var(--navy2)}
+.hdr-logo{color:#fff;font-weight:800;font-size:15px;letter-spacing:1px;margin-right:10px;white-space:nowrap}
+.hdr-tabs{display:flex;gap:2px;flex:1}
+.htab{background:none;border:none;color:rgba(255,255,255,.65);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap;transition:all .15s}
+.htab:hover{background:rgba(255,255,255,.12);color:#fff}
+.htab.on{background:rgba(255,255,255,.2);color:#fff;font-weight:700}
+.htab.prod-on{background:var(--green)!important;color:#fff!important;font-weight:700;animation:pt 2s infinite}
 @keyframes pt{0%,100%{opacity:1}50%{opacity:.75}}
-#hdr-info{color:rgba(255,255,255,.8);font-size:11px;text-align:right;line-height:1.3;margin-left:auto}
-.alert-strip{background:#b91c1c;color:#fff;text-align:center;padding:5px;font-weight:700;font-size:12px;position:fixed;top:var(--header-h);left:0;right:0;z-index:99;display:none;animation:blink .9s step-start infinite}
-.alert-strip.on{display:block}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+#hdr-right{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:11px;color:rgba(255,255,255,.75)}
+#hdr-pilot-lbl{font-weight:700;color:#fff;font-size:12px}
 
-.view{display:none;padding-top:calc(var(--header-h) + 10px);min-height:100vh}
-.view.on{display:block}
-.ctr{max-width:1400px;margin:0 auto;padding:10px 14px}
+/* ── ALERT STRIP ── */
+#alert-strip{background:#b91c1c;color:#fff;text-align:center;padding:4px;font-weight:700;font-size:12px;flex-shrink:0;display:none;animation:blink .85s step-start infinite}
+#alert-strip.on{display:block}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
 
-/* LOGIN */
-#v-login{display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#1a1f5e,#2d3480,#1e3a8a);padding:20px}
-.login-card{background:#fff;border-radius:16px;padding:36px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-.login-card h1{color:var(--c-primary);font-size:26px;font-weight:800;margin-bottom:2px;text-align:center}
-.login-card .sub{color:#64748b;text-align:center;margin-bottom:24px;font-size:12px}
-.lf{margin-bottom:14px}
-.lf label{display:block;font-weight:600;margin-bottom:4px;color:#374151;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-.lf select,.lf input{width:100%;padding:10px 12px;border:2px solid #e5e7eb;border-radius:7px;font-size:14px;outline:none;transition:border .2s;background:#fff;color:#1e293b}
-.lf select:focus,.lf input:focus{border-color:var(--c-primary)}
-.btn-login{width:100%;padding:12px;background:var(--c-primary);color:#fff;border:none;border-radius:7px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;transition:opacity .2s}
+/* ── VIEWS ── */
+.view{display:none;flex:1;flex-direction:column;overflow:hidden}
+.view.on{display:flex}
+
+/* ── LOGIN ── */
+#v-login{background:linear-gradient(135deg,#1a1f5e,#2d3480,#1e3a8a);align-items:center;justify-content:center}
+.login-card{background:#fff;border-radius:14px;padding:32px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.lc-h1{color:var(--navy);font-size:24px;font-weight:800;margin-bottom:2px;text-align:center}
+.lc-sub{color:#64748b;text-align:center;margin-bottom:20px;font-size:12px}
+.lf{margin-bottom:12px}
+.lf label{display:block;font-weight:600;margin-bottom:3px;color:#374151;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.lf select,.lf input{width:100%;padding:9px 11px;border:2px solid #e5e7eb;border-radius:7px;font-size:14px;outline:none;transition:border .2s}
+.lf select:focus,.lf input:focus{border-color:var(--navy)}
+.btn-login{width:100%;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px}
 .btn-login:hover{opacity:.88}
-.login-err{color:#dc2626;text-align:center;margin-top:8px;font-size:12px;min-height:18px}
+.ln-err{color:#dc2626;text-align:center;margin-top:6px;font-size:12px;min-height:16px}
 
-/* MAIN */
-.main-row{display:grid;grid-template-columns:3fr 1fr;gap:14px;margin-bottom:16px;height:170px}
-.btn-start{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:var(--radius);font-size:26px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .15s;box-shadow:0 8px 28px rgba(22,163,74,.3)}
-.btn-start:hover{transform:translateY(-2px);box-shadow:0 12px 36px rgba(22,163,74,.4)}
-.btn-start:disabled{opacity:.4;cursor:not-allowed;transform:none}
-.btn-fp{background:linear-gradient(135deg,#1a1f5e,#2d3480);color:#fff;border:none;border-radius:var(--radius);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;transition:all .15s;box-shadow:0 4px 14px rgba(26,31,94,.25)}
-.btn-fp:hover{opacity:.88;transform:translateY(-1px)}
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:14px}
-.card{background:var(--c-card);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);border:1px solid var(--c-border)}
-.card h3{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--c-muted);margin-bottom:8px;font-weight:700}
-.prod-active-card{background:var(--c-card);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);border:2px solid var(--c-green);margin-bottom:12px}
+/* ── MAIN VIEW (Déclarations / Évts) ── */
+#v-main{overflow:hidden}
+.main-hdr{background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap}
+.main-hdr .mtabs{display:flex;gap:3px}
+.mtab{background:none;border:none;border-bottom:2px solid transparent;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600;color:var(--gray);transition:all .15s}
+.mtab.on{border-color:var(--navy);color:var(--navy)}
+.main-hdr .mbtns{display:flex;gap:6px;margin-left:auto}
+.btn-sm{padding:6px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-green{background:var(--green);color:#fff}
+.btn-green:hover{filter:brightness(.9)}
+.btn-ghost{background:var(--lgray);color:var(--text)}
+.btn-ghost:hover{filter:brightness(.93)}
+.table-wrap{flex:1;overflow-y:auto}
+.ktbl{width:100%;border-collapse:collapse;font-size:12px}
+.ktbl th{text-align:left;padding:7px 10px;background:var(--navy);color:#fff;font-size:10px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0}
+.ktbl td{padding:6px 10px;border-bottom:1px solid var(--border)}
+.ktbl tr:hover td{background:var(--lgray)}
+.tg{color:var(--green);font-weight:700}
+.tm{color:var(--amber);font-weight:700}
+.tb{color:var(--red);font-weight:700}
+.btn-tbl{padding:3px 8px;border:none;border-radius:4px;font-size:10px;cursor:pointer;font-weight:600}
 
-/* PROD VIEW */
-.ph-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
-.of-badge{background:var(--c-primary);color:#fff;padding:5px 14px;border-radius:18px;font-size:17px;font-weight:800;letter-spacing:1px}
-.of-timer{font-size:36px;font-weight:800;color:var(--c-green);font-variant-numeric:tabular-nums}
-.stop-timer-big{font-size:24px;font-weight:800;color:#dc2626;font-variant-numeric:tabular-nums}
-.stop-lbl{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;padding:3px 10px;border-radius:14px;font-weight:700;font-size:11px;animation:blink .8s step-start infinite}
-
-/* 3-col form */
-.form-3col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
-.fzone{border-radius:8px;padding:10px 10px}
-.fzone h4{font-size:9px;text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-bottom:7px;padding-bottom:3px;border-bottom:1px solid rgba(0,0,0,.1)}
-.zi{background:#eef2ff;border:1px solid #c7d2fe}
-.zi h4{color:#3730a3}
-.zp{background:#f0fdf4;border:1px solid #bbf7d0}
-.zp h4{color:#166534}
-.zq{background:#fff7ed;border:1px solid #fed7aa}
-.zq h4{color:#9a3412}
-body.stop-active .zi{background:#1e1b3a;border-color:#4c4a8a}
-body.stop-active .zp{background:#0a1f0a;border-color:#1a4d1a}
-body.stop-active .zq{background:#1f1208;border-color:#4d2a00}
-.fr{display:flex;flex-direction:column;margin-bottom:5px}
-.fr label{font-size:9px;font-weight:700;color:var(--c-muted);margin-bottom:2px;text-transform:uppercase;letter-spacing:.3px}
-.fr input,.fr select,.fr textarea{padding:5px 7px;border:1px solid var(--c-border);border-radius:5px;font-size:12px;background:var(--c-card);color:var(--c-text);width:100%;outline:none;transition:border .15s}
-.fr input:focus,.fr select:focus,.fr textarea:focus{border-color:var(--c-accent)}
-.fr textarea{resize:none;height:46px}
-.fr.big input{font-size:17px;font-weight:700;padding:6px 7px;color:var(--c-green)}
-.fr.ro input{background:#f8fafc;color:var(--c-muted)}
-
-/* Controls */
-.ctrls{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
-.btn{padding:8px 16px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
-.btn:hover{filter:brightness(.92)}
-.btn-pause{background:#7c3aed;color:#fff}
-.btn-arret{background:#dc2626;color:#fff}
-.btn-endstop{background:#16a34a;color:#fff}
-.btn-endprod{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:14px;font-weight:800;padding:9px 20px;box-shadow:0 4px 14px rgba(217,119,6,.3)}
-.btn-sec{background:var(--c-border);color:var(--c-text)}
-.btn-danger{background:#dc2626;color:#fff}
-.btn-prim{background:var(--c-primary);color:#fff}
-.btn-ok{background:#16a34a;color:#fff}
-
-/* Stop bar */
-.stop-bar{background:#7f0000;color:#fff;border-radius:8px;padding:9px 14px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px}
-.stop-bar .stype{font-weight:700;font-size:13px}
-.stop-bar .selap{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
-
+/* ── PRODUCTION VIEW ── */
+#v-prod{overflow:hidden}
+/* pilot/OF banner */
+.pob{background:var(--navy);color:#fff;padding:6px 14px;display:flex;align-items:center;gap:24px;flex-shrink:0}
+.pob-item{display:flex;flex-direction:column;gap:1px}
+.pob-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.7px;opacity:.7;font-weight:600}
+.pob-val{font-size:22px;font-weight:800;line-height:1}
+.pob-item.of .pob-val{font-size:20px;color:#93c5fd}
+.pob-item.trs .pob-val{color:#86efac}
+/* status bar */
+.sbar{display:flex;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0}
+.sc{flex:1;padding:6px 14px;border-right:1px solid var(--border);text-align:center}
+.sc:last-child{border:none}
+.sc-lbl{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;letter-spacing:.6px}
+.sc-val{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--navy);margin-top:1px}
+.sc-val.green{color:var(--green)}
+.sc-val.red{color:var(--red)}
+.sc-val.amber{color:var(--amber)}
+/* main 3-col layout */
+.prod-body{display:flex;flex:1;overflow:hidden}
+/* LEFT actions col */
+.act-col{width:140px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:8px;gap:6px}
+.big-stop-btn{width:100%;background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;border:none;border-radius:10px;padding:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;flex:0 0 90px;font-size:13px;font-weight:800;box-shadow:0 4px 12px rgba(185,28,28,.35);transition:all .15s;letter-spacing:.3px}
+.big-stop-btn:hover{filter:brightness(.9);transform:translateY(-1px)}
+.big-stop-btn .ico{font-size:22px}
+.act-btn{width:100%;border:none;border-radius:8px;padding:8px 4px;cursor:pointer;font-size:11px;font-weight:700;text-align:center;transition:all .15s}
+.act-btn:hover{filter:brightness(.9)}
+.act-nett{background:#e0f2fe;color:var(--blue)}
+.act-pause{background:#f3e8ff;color:var(--purple)}
+body.stop-on .act-pause{background:#4c1d95;color:#fff}
+.act-spacer{flex:1}
+.act-endprod{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-size:12px;font-weight:800;padding:10px 4px;border-radius:8px;box-shadow:0 3px 8px rgba(217,119,6,.3)}
+/* CENTER form col */
+.form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
+/* 3-col form zones */
+.form-3col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.fzone{border-radius:7px;padding:8px}
+.fzone h4{font-size:9px;text-transform:uppercase;letter-spacing:.7px;font-weight:700;margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid rgba(0,0,0,.08)}
+.zi{background:#eef2ff;border:1px solid #c7d2fe}.zi h4{color:#3730a3}
+.zp{background:#f0fdf4;border:1px solid #bbf7d0}.zp h4{color:#166534}
+.zq{background:#fff7ed;border:1px solid #fed7aa}.zq h4{color:#9a3412}
+body.stop-on .zi{background:#1e1b3a;border-color:#4c4a8a}
+body.stop-on .zp{background:#0a1f0a;border-color:#1a4d1a}
+body.stop-on .zq{background:#1f1208;border-color:#4d2a00}
+.fr{display:flex;flex-direction:column;margin-bottom:4px}
+.fr label{font-size:9px;font-weight:700;color:var(--gray);margin-bottom:2px;text-transform:uppercase;letter-spacing:.2px}
+.fr input,.fr select,.fr textarea{padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--card);color:var(--text);width:100%;outline:none;transition:border .15s}
+.fr input:focus,.fr select:focus{border-color:#6366f1}
+.fr textarea{resize:none;height:42px}
+.fr.big input{font-size:16px;font-weight:700;padding:5px 6px;color:var(--green)}
+.fr.ro input{background:#f8fafc;color:var(--gray)}
 /* Timeline */
-.tl-wrap{background:var(--c-card);border-radius:var(--radius);padding:9px 10px;margin-bottom:8px;box-shadow:var(--shadow);border:1px solid var(--c-border)}
-.tl-wrap h4{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--c-muted);margin-bottom:5px;font-weight:700}
-
-/* Recap stops */
-.recap{background:var(--c-card);border-radius:var(--radius);padding:9px 10px;box-shadow:var(--shadow);border:1px solid var(--c-border);margin-bottom:8px}
-.recap h4{font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--c-muted);margin-bottom:5px;font-weight:700}
-.si{display:flex;align-items:center;gap:7px;padding:4px 0;border-bottom:1px solid var(--c-border);font-size:12px}
+.tl-wrap{background:var(--card);border-radius:7px;padding:7px 8px;border:1px solid var(--border)}
+.tl-wrap h5{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;letter-spacing:.7px;margin-bottom:4px}
+/* RIGHT recap col */
+.recap-col{width:160px;flex-shrink:0;border-left:1px solid var(--border);background:var(--card);display:flex;flex-direction:column;overflow:hidden}
+.recap-hdr{font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);letter-spacing:.6px;padding:8px 8px 4px}
+.recap-body{flex:1;overflow-y:auto;padding:0 6px 6px}
+.si{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid var(--border);font-size:11px}
 .si:last-child{border:none}
-.sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.si .sname{flex:1;font-weight:600}
-.si .sdur{color:var(--c-muted);min-width:50px;text-align:right;font-size:11px}
-.btn-edit{background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:3px;color:var(--c-accent);font-size:13px}
-.btn-edit:hover{background:var(--c-primary-light)}
+.sdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.si-nm{flex:1;font-weight:600;font-size:10px;line-height:1.2}
+.si-dur{font-size:9px;color:var(--gray);white-space:nowrap}
+.btn-edit{background:none;border:none;cursor:pointer;font-size:11px;color:#6366f1;padding:1px 3px;border-radius:2px}
+/* TRS gauge */
+.gauge-box{padding:6px;border-top:1px solid var(--border);text-align:center}
+.gauge-lbl{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;margin-top:2px}
+/* Active stop bottom bar */
+#stop-bottom{display:none;background:#7f0000;color:#fff;padding:8px 14px;align-items:center;gap:12px;flex-shrink:0;border-top:2px solid #b91c1c}
+#stop-bottom.on{display:flex}
+.sb-type{font-weight:800;font-size:14px;flex:1}
+.sb-timer{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.btn-endstop{background:#16a34a;color:#fff;border:none;border-radius:7px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer}
+.btn-endstop:hover{filter:brightness(.9)}
 
-/* Modals */
-.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center}
-.overlay.on{display:flex}
-.mbox{background:var(--c-card);border-radius:12px;padding:22px;width:90%;max-width:480px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:90vh;overflow-y:auto}
-.mbox.wide{max-width:880px}
-.mbox h2{font-size:16px;font-weight:700;margin-bottom:14px;color:var(--c-primary)}
-.m-acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
-.stop-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:14px}
-.stop-btn{padding:11px;border:2px solid var(--c-border);border-radius:7px;background:var(--c-card);cursor:pointer;font-size:12px;font-weight:600;text-align:center;transition:all .15s;color:var(--c-text)}
-.stop-btn:hover{border-color:var(--c-red);background:#fee2e2;color:#b91c1c}
+/* ── FIN DE POSTE ── */
+#v-finposte{padding:0}
+.fp-scroll{flex:1;overflow-y:auto;padding:14px}
+.fp-top{text-align:center;padding-bottom:10px}
+.fp-top h2{font-size:22px;font-weight:800;color:var(--navy)}
+.fp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.fp-card{background:var(--card);border-radius:var(--radius);padding:12px;text-align:center;box-shadow:var(--shadow);border:1px solid var(--border)}
+.fp-big{font-size:28px;font-weight:800;color:var(--navy)}
+.fp-lbl{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;margin-top:3px}
+.fp-acts{display:flex;justify-content:center;gap:10px;padding:14px 0}
+.fp-tbl{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px}
+.fp-tbl th{background:var(--navy);color:#fff;padding:5px 8px;font-size:9px;text-align:left;text-transform:uppercase}
+.fp-tbl td{padding:5px 8px;border-bottom:1px solid var(--border)}
 
-/* End-prod modal */
-.ep-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
-.ep-stat{text-align:center;padding:10px;background:var(--c-bg);border-radius:7px}
-.ep-stat .val{font-size:26px;font-weight:800;color:var(--c-primary)}
-.ep-stat .lbl{font-size:9px;text-transform:uppercase;color:var(--c-muted);font-weight:700}
-.ep-tbl{width:100%;border-collapse:collapse;font-size:11px}
-.ep-tbl th{text-align:left;padding:4px 7px;background:var(--c-bg);font-size:9px;text-transform:uppercase;color:var(--c-muted)}
-.ep-tbl td{padding:4px 7px;border-bottom:1px solid var(--c-border)}
+/* ── HISTORY ── */
+#v-history{padding:0}
 
-/* Settings */
-.ss{background:var(--c-card);border-radius:var(--radius);padding:14px;margin-bottom:14px;box-shadow:var(--shadow);border:1px solid var(--c-border)}
-.ss h3{font-size:12px;font-weight:700;margin-bottom:10px;color:var(--c-primary)}
-.pr{display:flex;align-items:center;gap:7px;margin-bottom:7px;padding:5px;border-radius:5px;background:var(--c-bg)}
+/* ── SETTINGS ── */
+#v-settings{padding:0;overflow:hidden}
+#settings-lock{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+.lock-card{background:var(--card);border-radius:12px;padding:28px;width:100%;max-width:340px;text-align:center;box-shadow:var(--shadow)}
+.lock-card h3{color:var(--navy);font-size:18px;font-weight:800;margin-bottom:8px}
+.lock-card p{color:var(--gray);font-size:12px;margin-bottom:16px}
+#v-settings-content{flex:1;overflow-y:auto;padding:14px;display:none}
+.ss{background:var(--card);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:var(--shadow);border:1px solid var(--border)}
+.ss h3{font-size:12px;font-weight:700;margin-bottom:10px;color:var(--navy)}
+.pr{display:flex;align-items:center;gap:6px;margin-bottom:6px;padding:5px;border-radius:5px;background:var(--bg)}
 .pr .pn{font-weight:600;min-width:110px;font-size:11px}
-.pr input{flex:1;padding:5px 7px;border:1px solid var(--c-border);border-radius:4px;font-size:12px}
-.btn-eye{background:none;border:none;cursor:pointer;padding:3px;color:var(--c-muted);font-size:13px}
-.day-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:8px}
-.day-box{background:var(--c-bg);border-radius:5px;padding:5px;text-align:center}
-.day-box .dl{font-size:8px;font-weight:700;text-transform:uppercase;color:var(--c-muted);margin-bottom:3px}
-.day-box input{width:100%;padding:3px;border:1px solid var(--c-border);border-radius:3px;font-size:10px;text-align:center}
-.model-card{border:1px solid var(--c-border);border-radius:7px;padding:10px;margin-bottom:8px}
-.mch{display:flex;align-items:center;gap:7px;margin-bottom:7px}
-.mch input{flex:1;font-size:12px;font-weight:600;padding:4px 7px;border:1px solid var(--c-border);border-radius:4px}
+.pr input{flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px}
+.btn-eye{background:none;border:none;cursor:pointer;color:var(--gray);font-size:12px;padding:2px}
+.day-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px}
+.day-box{background:var(--bg);border-radius:4px;padding:4px;text-align:center}
+.day-lbl{font-size:8px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px}
+.day-box input{width:100%;padding:2px;border:1px solid var(--border);border-radius:3px;font-size:10px;text-align:center}
+.model-card{border:1px solid var(--border);border-radius:7px;padding:10px;margin-bottom:8px}
+.mch{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.mch input{flex:1;font-size:12px;font-weight:600;padding:4px 6px;border:1px solid var(--border);border-radius:4px}
 
-/* Fin de poste */
-.fp-top{text-align:center;padding:16px 0 8px}
-.fp-top h2{font-size:22px;font-weight:800;color:var(--c-primary)}
-.fp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
-.fp-sc{background:var(--c-card);border-radius:var(--radius);padding:14px;text-align:center;box-shadow:var(--shadow);border:1px solid var(--c-border)}
-.fp-sc .big{font-size:30px;font-weight:800;color:var(--c-primary)}
-.fp-sc .lbl{font-size:9px;text-transform:uppercase;color:var(--c-muted);font-weight:700;margin-top:3px}
-.fp-acts{display:flex;justify-content:center;gap:10px;padding:16px 0}
+/* ── MODALS ── */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;align-items:center;justify-content:center}
+.overlay.on{display:flex}
+.mbox{background:var(--card);border-radius:12px;width:90%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:92vh;display:flex;flex-direction:column}
+.mbox.wide{max-width:860px}
+.mhdr{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.mhdr.red{background:#b91c1c;border-radius:12px 12px 0 0}
+.mhdr h2{font-size:15px;font-weight:700;color:var(--navy)}
+.mhdr.red h2,.mhdr.red button{color:#fff}
+.mbody{flex:1;overflow-y:auto;padding:14px}
+.mftr{display:flex;gap:8px;justify-content:flex-end;padding:12px 14px;border-top:1px solid var(--border);flex-shrink:0}
+.btn{padding:7px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:4px}
+.btn:hover{filter:brightness(.9)}
+.btn-prim{background:var(--navy);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
+.btn-ok{background:var(--green);color:#fff}
+.btn-sec{background:var(--lgray);color:var(--text)}
+.btn-amber{background:var(--amber);color:#fff}
+.btn-lg{font-size:14px;padding:10px 20px}
 
-/* History */
-.htbl{width:100%;border-collapse:collapse;font-size:12px}
-.htbl th{text-align:left;padding:7px 9px;background:var(--c-primary);color:#fff;font-size:9px;text-transform:uppercase;letter-spacing:.5px}
-.htbl td{padding:6px 9px;border-bottom:1px solid var(--c-border)}
-.htbl tr:hover td{background:var(--c-primary-light)}
-.tg{color:#16a34a;font-weight:700}
-.tm{color:#d97706;font-weight:700}
-.tb{color:#dc2626;font-weight:700}
+/* Stop modal */
+.stop-section-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin:10px 0 5px;color:var(--navy)}
+.stop-section-lbl:first-child{margin-top:0}
+.stops-grid{display:grid;gap:5px;margin-bottom:6px}
+.stops-grid.ratt{grid-template-columns:repeat(3,1fr)}
+.stops-grid.pb{grid-template-columns:repeat(4,1fr)}
+.stop-btn{border:none;border-radius:8px;padding:8px 5px;cursor:pointer;font-size:11px;font-weight:700;color:#fff;text-align:center;transition:all .12s;box-shadow:0 2px 0 rgba(0,0,0,.2)}
+.stop-btn:active{transform:translateY(2px);box-shadow:none}
+.stop-btn.ratt{background:#7c3aed}
+.stop-btn.pb{background:#b91c1c}
+.custom-row{display:flex;gap:6px;margin-top:4px}
+.custom-row input{flex:1;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;outline:none}
+.custom-row input:focus{border-color:var(--navy)}
+
+/* End prod modal */
+.ep-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px}
+.ep-stat{text-align:center;padding:10px;background:var(--bg);border-radius:6px}
+.ep-stat .val{font-size:24px;font-weight:800;color:var(--navy)}
+.ep-stat .lbl{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700}
+.ep-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.ep-tbl th{text-align:left;padding:4px 6px;background:var(--bg);font-size:9px;text-transform:uppercase;color:var(--gray)}
+.ep-tbl td{padding:4px 6px;border-bottom:1px solid var(--border)}
 
 /* Utils */
 .hidden{display:none!important}
 .flex{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .mt8{margin-top:8px}
-.sl{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--c-muted);font-weight:700;margin-bottom:7px}
+.card{background:var(--card);border-radius:var(--radius);padding:12px;box-shadow:var(--shadow);border:1px solid var(--border)}
 
-@media(max-width:880px){.form-3col{grid-template-columns:1fr 1fr}}
-@media(max-width:580px){.form-3col{grid-template-columns:1fr};.main-row{grid-template-columns:1fr;height:auto}}
+@media(max-width:900px){.form-3col{grid-template-columns:1fr 1fr}.recap-col{width:130px}.act-col{width:110px}}
+@media(max-width:650px){.form-3col{grid-template-columns:1fr}.prod-body{flex-direction:column}.act-col,.recap-col{width:100%;flex-direction:row;flex-wrap:wrap}.act-col{height:auto}}
 </style>
 </head>
 <body>
 
-<!-- LOGIN -->
-<div id="v-login" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#1a1f5e,#2d3480)">
+<!-- ════ LOGIN ════ -->
+<div id="v-login" class="view on">
   <div class="login-card">
-    <h1>⚙ KPI-ORC</h1>
-    <p class="sub">Système de suivi de production</p>
+    <div class="lc-h1">⚙ KPI-ORC</div>
+    <div class="lc-sub">Système de suivi de production</div>
     <div class="lf">
       <label>Pilote</label>
       <select id="ln-pilot"><option value="">-- Choisir --</option></select>
     </div>
     <div class="lf">
-      <label>Poste</label>
-      <select id="ln-poste">
-        <option value="Matin">Matin (05h–13h)</option>
-        <option value="Après-midi">Après-midi (13h–21h)</option>
-        <option value="Nuit">Nuit (21h–05h)</option>
-      </select>
+      <label>Modèle horaire (Poste)</label>
+      <select id="ln-model"><option value="">-- Choisir --</option></select>
     </div>
     <div class="lf">
       <label>Mot de passe</label>
       <input type="password" id="ln-pw" placeholder="••••" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <button class="btn-login" onclick="doLogin()">Valider</button>
-    <div class="login-err" id="ln-err"></div>
+    <div class="ln-err" id="ln-err"></div>
   </div>
 </div>
 
-<!-- APP -->
-<div id="app" class="hidden">
-  <div id="app-header">
-    <div class="logo">⚙ KPI-ORC</div>
-    <nav>
-      <button class="nav-tab" id="nt-main" onclick="goTab('main')">Accueil</button>
-      <button class="nav-tab" id="nt-prod" style="display:none" onclick="goTab('prod')">▶ Prod en cours</button>
-      <button class="nav-tab" id="nt-hist" onclick="goTab('history')">Historique</button>
-      <button class="nav-tab" id="nt-cfg" onclick="goTab('settings')">Paramètres</button>
-    </nav>
-    <div id="hdr-info"></div>
+<!-- ════ APP ════ -->
+<div id="app" class="hidden" style="display:none;flex:1;flex-direction:column;overflow:hidden">
+  <div id="app-hdr">
+    <div class="hdr-logo">⚙ KPI-ORC</div>
+    <div class="hdr-tabs">
+      <button class="htab on" id="ht-main" onclick="goTab('main')">Accueil</button>
+      <button class="htab prod-on" id="ht-prod" style="display:none" onclick="goTab('prod')">▶ Prod en cours</button>
+      <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
+      <button class="htab" id="ht-cfg" onclick="goTab('settings')">Paramètres</button>
+    </div>
+    <div id="hdr-right">
+      <span id="hdr-pilot-lbl"></span>
+      <button class="btn-sm btn-ghost" onclick="doLogout()" style="font-size:11px">Déconnexion</button>
+    </div>
   </div>
-  <div id="alert-strip" class="alert-strip"></div>
+  <div id="alert-strip"></div>
 
-  <!-- MAIN -->
-  <div id="v-main" class="view">
-    <div class="ctr">
-      <div id="mc-active" class="prod-active-card hidden">
-        <div class="flex">
-          <span class="of-badge" id="mc-of">OF ---</span>
-          <span id="mc-inf" style="font-weight:600;color:var(--c-muted)"></span>
-          <span style="margin-left:auto">
-            <button class="btn btn-prim" onclick="goTab('prod')">▶ Reprendre la production</button>
-          </span>
-        </div>
+  <!-- ════ MAIN VIEW ════ -->
+  <div id="v-main" class="view" style="flex-direction:column">
+    <div class="main-hdr">
+      <div class="mtabs">
+        <button class="mtab on" id="mt-decl" onclick="switchMTab('decl')">Déclarations</button>
+        <button class="mtab" id="mt-evt" onclick="switchMTab('evt')">Événements</button>
       </div>
-      <div class="main-row">
-        <button class="btn-start" id="btn-start" onclick="doStartProd()">▶ Démarrer production</button>
-        <button class="btn-fp" onclick="doFinPoste()">
-          <span style="font-size:20px">⏹</span>
-          <span>Fin de poste</span>
+      <div class="mbtns">
+        <button class="btn-sm btn-green" id="btn-start" onclick="doStartProd()">▶ Démarrer production</button>
+        <button class="btn-sm btn-ghost" onclick="doFinPoste()">🏁 Fin de poste</button>
+      </div>
+    </div>
+    <div id="mp-decl" class="table-wrap">
+      <table class="ktbl"><thead><tr>
+        <th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th>
+        <th>Début</th><th>Fin</th><th>Taille</th><th>Qté Fab</th>
+        <th>Éq</th><th>TRS%</th>
+      </tr></thead><tbody id="decl-body"></tbody></table>
+    </div>
+    <div id="mp-evt" class="table-wrap" style="display:none">
+      <table class="ktbl"><thead><tr>
+        <th>Type</th><th>OF</th><th>Date</th><th>Pilote</th>
+        <th>Début</th><th>Fin</th><th>Durée</th><th>Commentaire</th><th>Actions</th>
+      </tr></thead><tbody id="evt-body"></tbody></table>
+    </div>
+  </div>
+
+  <!-- ════ PRODUCTION VIEW ════ -->
+  <div id="v-prod" class="view" style="flex-direction:column">
+    <!-- Pilot/OF banner -->
+    <div class="pob">
+      <div class="pob-item">
+        <div class="pob-lbl">Pilote</div>
+        <div class="pob-val" id="pob-pilot">—</div>
+      </div>
+      <div class="pob-item of">
+        <div class="pob-lbl">N° OF</div>
+        <div class="pob-val" id="pob-of">—</div>
+      </div>
+      <div class="pob-item">
+        <div class="pob-lbl">Poste</div>
+        <div class="pob-val" style="font-size:16px" id="pob-poste">—</div>
+      </div>
+      <div class="pob-item trs">
+        <div class="pob-lbl">TRS estimé</div>
+        <div class="pob-val" id="pob-trs">—</div>
+      </div>
+    </div>
+    <!-- Status bar -->
+    <div class="sbar">
+      <div class="sc"><div class="sc-lbl">⏱ Durée OF</div><div class="sc-val green" id="sc-of">00:00:00</div></div>
+      <div class="sc"><div class="sc-lbl">⛔ Arrêts</div><div class="sc-val red" id="sc-stops">00:00:00</div></div>
+      <div class="sc"><div class="sc-lbl">⏸ Pauses</div><div class="sc-val amber" id="sc-pause">00:00:00</div></div>
+    </div>
+    <!-- Body -->
+    <div class="prod-body">
+      <!-- LEFT: action buttons -->
+      <div class="act-col">
+        <button class="big-stop-btn" onclick="openStopModal()">
+          <span class="ico">⛔</span>
+          <span>Déclarer<br>un arrêt</span>
         </button>
+        <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
+        <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause pilote</button>
+        <div class="act-spacer"></div>
+        <button class="act-btn act-endprod" onclick="doEndProdPreview()">🏁 Fin de<br>production</button>
       </div>
-      <div class="kpi-grid">
-        <div class="card"><h3>Poste en cours — TRS</h3><div id="mkpi-cur" style="min-height:70px"></div></div>
-        <div class="card"><h3>Dernier poste</h3><div id="mkpi-prev" style="min-height:70px"></div></div>
-        <div class="card"><h3>Derniers OF</h3><div id="mkpi-of" style="min-height:70px"></div></div>
+      <!-- CENTER: form -->
+      <div class="form-col">
+        <div class="form-3col">
+          <!-- Zone Identification -->
+          <div class="fzone zi">
+            <h4>📋 Identification</h4>
+            <div class="fr"><label>N° OF *</label><input id="f-of_num" placeholder="OF123456" oninput="scheduleAutoSave()"></div>
+            <div class="fr ro"><label>Date</label><input id="f-date" readonly></div>
+            <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
+            <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
+            <div class="fr"><label>Co-Pilote</label><input id="f-copilote" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="2" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
+            <div class="fr"><label>Code Produit</label><input id="f-code_prod" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Type Produit</label><select id="f-type_prod" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
+            <div class="fr"><label>Kit</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
+          </div>
+          <!-- Zone Production -->
+          <div class="fzone zp">
+            <h4>🏭 Production</h4>
+            <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
+            <div class="fr"><label>OF Taie</label><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Traca Fibre</label><select id="f-traca" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
+            <div class="fr"><label>Réf Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Mq MP (min)</label><input id="f-duree_mq_mp" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Mq Personnel (min)</label><input id="f-manquant_pers" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+          </div>
+          <!-- Zone Qualité -->
+          <div class="fzone zq">
+            <h4>✅ Qualité</h4>
+            <div class="fr"><label>Qté Init Taie</label><input id="f-qte_init_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Nb Taie 2nd Choix</label><input id="f-nb_taie2_choix" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Nb Défaut Couture</label><input id="f-nb_def_cout" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Mq Taie</label><input id="f-mq_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Mq Housse/Encart</label><input id="f-mq_housse_encart" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Nb PP Cousue</label><input id="f-nb_pp_cousue" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Commentaire</label><textarea id="f-comment" oninput="scheduleAutoSave()"></textarea></div>
+          </div>
+        </div>
+        <!-- Timeline 4h -->
+        <div class="tl-wrap">
+          <h5>Timeline — 4 dernières heures</h5>
+          <svg id="tl-svg" viewBox="0 0 800 40" preserveAspectRatio="none" style="width:100%;height:40px;display:block">
+            <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
+          </svg>
+        </div>
       </div>
+      <!-- RIGHT: recap + gauge -->
+      <div class="recap-col">
+        <div class="recap-hdr">Arrêts / pauses</div>
+        <div class="recap-body" id="recap-list"></div>
+        <div class="gauge-box">
+          <svg viewBox="0 0 100 56" style="width:100%;max-width:120px">
+            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
+            <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
+            <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
+          </svg>
+          <div class="gauge-lbl">TRS estimé</div>
+        </div>
+      </div>
+    </div>
+    <!-- Active stop bottom bar -->
+    <div id="stop-bottom">
+      <div>
+        <div class="sb-type" id="sb-type">—</div>
+        <div style="font-size:10px;opacity:.7">Arrêt / Pause en cours</div>
+      </div>
+      <div class="sb-timer" id="sb-timer">0:00</div>
+      <button class="btn-endstop" onclick="doEndStop()">✓ Terminer l'arrêt</button>
     </div>
   </div>
 
-  <!-- PROD -->
-  <div id="v-prod" class="view">
-    <div class="ctr">
-      <div class="ph-row">
-        <span class="of-badge" id="ph-of">OF ---</span>
-        <div>
-          <div style="font-size:9px;text-transform:uppercase;color:var(--c-muted);font-weight:700">Durée OF</div>
-          <div class="of-timer" id="ph-timer">00:00:00</div>
-        </div>
-        <div id="ph-stop-area" class="hidden">
-          <div style="font-size:9px;text-transform:uppercase;color:var(--c-muted);font-weight:700">Arrêt / Pause</div>
-          <div class="stop-timer-big" id="ph-stop-tmr">00:00:00</div>
-        </div>
-        <div id="ph-slbl" class="stop-lbl hidden">ARRÊT</div>
-        <div style="margin-left:auto">
-          <button class="btn btn-endprod" onclick="doEndProdPreview()">⏹ Fin de production</button>
-        </div>
+  <!-- ════ FIN DE POSTE ════ -->
+  <div id="v-finposte" class="view" style="flex-direction:column">
+    <div class="fp-scroll">
+      <div class="fp-top"><h2>Fin de poste</h2><p id="fp-who" style="color:var(--gray);margin-top:2px;font-size:13px"></p></div>
+      <div class="fp-grid">
+        <div class="fp-card"><div class="fp-big" id="fp-trs">--%</div><div class="fp-lbl">TRS Poste (shift)</div></div>
+        <div class="fp-card"><div class="fp-big" id="fp-trs-of">--%</div><div class="fp-lbl">TRS (temps OF)</div></div>
+        <div class="fp-card"><div class="fp-big" id="fp-eq">0</div><div class="fp-lbl">Équivalence totale</div></div>
+        <div class="fp-card"><div class="fp-big" id="fp-nof">0</div><div class="fp-lbl">Nombre d'OF</div></div>
+        <div class="fp-card"><div class="fp-big" id="fp-prod-t">0 min</div><div class="fp-lbl">Durée prod totale</div></div>
+        <div class="fp-card"><div class="fp-big" id="fp-stop-t">0 min</div><div class="fp-lbl">Total arrêts (hors pause)</div></div>
       </div>
-
-      <div id="stop-bar" class="stop-bar hidden">
-        <div><div class="stype" id="sb-type">—</div><div style="font-size:10px;opacity:.8">en cours</div></div>
-        <div class="selap" id="sb-elap">0:00</div>
-        <button class="btn btn-endstop" onclick="doEndStop()">✓ Terminer</button>
-      </div>
-
-      <div class="ctrls" id="prod-ctrls">
-        <button class="btn btn-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
-        <button class="btn btn-arret" onclick="openStopModal()">⚠ Arrêt</button>
-        <button class="btn btn-sec" onclick="saveFormNow()" style="margin-left:auto">💾 Sauvegarder</button>
-      </div>
-
-      <div class="form-3col">
-        <!-- Zone Identification -->
-        <div class="fzone zi">
-          <h4>📋 Identification</h4>
-          <div class="fr"><label>N° OF *</label><input id="f-of_num" placeholder="OF123456"></div>
-          <div class="fr ro"><label>Date</label><input id="f-date" readonly></div>
-          <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
-          <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
-          <div class="fr"><label>Co-Pilote</label><input id="f-copilote" placeholder="Nom"></div>
-          <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="2"></div>
-          <div class="fr"><label>Taille</label><select id="f-taille"><option value="">--</option></select></div>
-          <div class="fr"><label>Code Produit</label><input id="f-code_prod" placeholder="CODE01"></div>
-          <div class="fr"><label>Type Produit</label><select id="f-type_prod"><option value="">--</option></select></div>
-          <div class="fr"><label>Kit</label><select id="f-kit"><option value="">Non</option><option value="oui">Oui</option></select></div>
-        </div>
-
-        <!-- Zone Production -->
-        <div class="fzone zp">
-          <h4>🏭 Production</h4>
-          <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0"></div>
-          <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0"></div>
-          <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" placeholder="350"></div>
-          <div class="fr"><label>Fibre</label><select id="f-fibre"><option value="">--</option></select></div>
-          <div class="fr"><label>OF Taie</label><input id="f-of_taie" placeholder="OF-T001"></div>
-          <div class="fr"><label>Traca Fibre</label><select id="f-traca"><option value="">--</option></select></div>
-          <div class="fr"><label>Réf Taie</label><input id="f-ref_taie" placeholder="REF-T01"></div>
-          <div class="fr"><label>Manquant MP (min)</label><input id="f-duree_mq_mp" type="number" min="0" placeholder="0"></div>
-          <div class="fr"><label>Manquant Personnel (min)</label><input id="f-manquant_pers" type="number" min="0" placeholder="0"></div>
-        </div>
-
-        <!-- Zone Qualité -->
-        <div class="fzone zq">
-          <h4>✅ Qualité</h4>
-          <div class="fr"><label>Qté Init Taie</label><input id="f-qte_init_taie" type="number" min="0" value="0"></div>
-          <div class="fr"><label>Nb Taie 2nd Choix</label><input id="f-nb_taie2_choix" type="number" min="0" value="0"></div>
-          <div class="fr"><label>Nb Défaut Couture</label><input id="f-nb_def_cout" type="number" min="0" value="0"></div>
-          <div class="fr"><label>Mq Taie</label><input id="f-mq_taie" type="number" min="0" value="0"></div>
-          <div class="fr"><label>Mq Housse/Encart</label><input id="f-mq_housse_encart" type="number" min="0" value="0"></div>
-          <div class="fr"><label>Nb PP Cousue</label><input id="f-nb_pp_cousue" type="number" min="0" value="0"></div>
-          <div class="fr"><label>Commentaire</label><textarea id="f-comment" placeholder="Observations..."></textarea></div>
-        </div>
-      </div>
-
-      <!-- Timeline 4h -->
-      <div class="tl-wrap">
-        <h4>Timeline — 4 dernières heures</h4>
-        <svg id="tl-svg" viewBox="0 0 800 48" preserveAspectRatio="none" style="width:100%;height:48px;display:block">
-          <rect x="0" y="8" width="800" height="32" fill="#e2e8f0" rx="4"/>
-          <text x="2" y="46" font-size="9" fill="#94a3b8">-4h</text>
-          <text x="770" y="46" font-size="9" fill="#94a3b8">Maintenant</text>
+      <div class="card" style="margin-bottom:12px">
+        <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:8px">Timeline du poste</div>
+        <svg id="fp-tl" viewBox="0 0 800 40" preserveAspectRatio="none" style="width:100%;height:40px;display:block">
+          <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
         </svg>
       </div>
-
-      <!-- Recap stops -->
-      <div class="recap">
-        <h4>Arrêts &amp; pauses du poste</h4>
-        <div id="recap-list"><span style="color:var(--c-muted);font-size:11px">Aucun arrêt enregistré</span></div>
+      <div class="card" style="margin-bottom:12px">
+        <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:8px">Productions du poste</div>
+        <table class="fp-tbl">
+          <thead><tr><th>OF</th><th>Taille</th><th>Qté Fab</th><th>Éq</th><th>Durée</th><th>TRS%</th></tr></thead>
+          <tbody id="fp-prods"></tbody>
+        </table>
       </div>
-    </div>
-  </div>
-
-  <!-- FIN DE POSTE -->
-  <div id="v-finposte" class="view">
-    <div class="ctr">
-      <div class="fp-top"><h2>Fin de poste</h2><p id="fp-who" style="color:var(--c-muted);margin-top:3px"></p></div>
-      <div class="fp-stats" id="fp-stats">
-        <div class="fp-sc"><div class="big" id="fp-trs">--%</div><div class="lbl">TRS Poste (shift)</div></div>
-        <div class="fp-sc"><div class="big" id="fp-eq">0</div><div class="lbl">Équivalence totale</div></div>
-        <div class="fp-sc"><div class="big" id="fp-nof">0</div><div class="lbl">Nb OF</div></div>
-        <div class="fp-sc"><div class="big" id="fp-st">0 min</div><div class="lbl">Durée prod totale</div></div>
-      </div>
-      <div class="tl-wrap"><h4>Timeline du poste</h4>
-        <svg id="fp-tl" viewBox="0 0 800 48" preserveAspectRatio="none" style="width:100%;height:48px;display:block">
-          <rect x="0" y="8" width="800" height="32" fill="#e2e8f0" rx="4"/>
-        </svg>
-      </div>
-      <div class="card" style="margin-bottom:14px">
-        <h3>Productions du poste</h3>
-        <div id="fp-prods"></div>
+      <div class="card" style="margin-bottom:12px">
+        <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:8px">Arrêts du poste</div>
+        <div id="fp-stops-list"></div>
       </div>
       <div class="fp-acts">
         <button class="btn btn-sec" onclick="goTab('main')">← Retour</button>
-        <button class="btn btn-danger" onclick="confirmFinPoste()" style="font-size:14px;padding:11px 22px">⏹ Confirmer fin de poste &amp; Déconnexion</button>
+        <button class="btn btn-danger btn-lg" onclick="confirmFinPoste()">⏹ Confirmer fin de poste &amp; Déconnexion</button>
       </div>
     </div>
   </div>
 
-  <!-- HISTORY -->
-  <div id="v-history" class="view">
-    <div class="ctr">
-      <div class="flex" style="margin-bottom:10px">
-        <div class="sl" style="margin:0;font-size:13px">Historique</div>
-        <input type="date" id="hist-dt" style="padding:5px 9px;border:1px solid var(--c-border);border-radius:5px;font-size:12px" onchange="loadHist()">
-      </div>
-      <div style="overflow-x:auto">
-        <table class="htbl"><thead><tr id="hist-hd"></tr></thead><tbody id="hist-bd"></tbody></table>
-      </div>
+  <!-- ════ HISTORY ════ -->
+  <div id="v-history" class="view" style="flex-direction:column;overflow:hidden">
+    <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <span style="font-size:12px;font-weight:700;color:var(--navy)">Historique</span>
+      <input type="date" id="hist-dt" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px" onchange="loadHist()">
+    </div>
+    <div style="flex:1;overflow-y:auto">
+      <table class="ktbl"><thead><tr id="hist-hd"></tr></thead><tbody id="hist-bd"></tbody></table>
     </div>
   </div>
 
-  <!-- SETTINGS -->
-  <div id="v-settings" class="view">
-    <div class="ctr">
-      <div class="sl" style="font-size:13px;margin-bottom:12px">Paramètres</div>
-
+  <!-- ════ SETTINGS ════ -->
+  <div id="v-settings" class="view" style="flex-direction:column">
+    <div id="settings-lock">
+      <div class="lock-card">
+        <h3>🔒 Paramètres</h3>
+        <p>Entrez le mot de passe administrateur pour accéder aux paramètres.</p>
+        <input type="password" id="lock-pw" placeholder="MDP admin" style="width:100%;padding:9px 11px;border:2px solid #e5e7eb;border-radius:7px;font-size:14px;outline:none;margin-bottom:10px" onkeydown="if(event.key==='Enter')unlockSettings()">
+        <button onclick="unlockSettings()" style="width:100%;padding:10px;background:var(--navy);color:#fff;border:none;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer">Déverrouiller</button>
+        <div id="lock-err" style="color:#dc2626;margin-top:6px;font-size:12px;text-align:center;min-height:14px"></div>
+      </div>
+    </div>
+    <div id="v-settings-content">
       <div class="ss">
         <h3>🔐 Mots de passe pilotes</h3>
         <div id="pwd-list"></div>
         <div class="flex mt8">
-          <input id="np-name" placeholder="Nom pilote" style="flex:1;padding:6px 9px;border:1px solid var(--c-border);border-radius:5px;font-size:12px">
-          <input id="np-pw" type="password" placeholder="Mot de passe" style="flex:1;padding:6px 9px;border:1px solid var(--c-border);border-radius:5px;font-size:12px">
+          <input id="np-name" placeholder="Nom pilote" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px">
+          <input id="np-pw" type="password" placeholder="MDP" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px">
           <button class="btn btn-prim" onclick="addPilot()">+ Ajouter</button>
         </div>
         <div class="flex mt8">
-          <label style="font-size:11px;font-weight:600">MDP admin requis :</label>
-          <input id="adm-pw" type="password" value="1234" style="width:80px;padding:5px 7px;border:1px solid var(--c-border);border-radius:5px;font-size:12px">
           <button class="btn btn-ok" onclick="savePwds()">💾 Enregistrer MDP</button>
         </div>
       </div>
-
       <div class="ss">
         <h3>🕐 Modèles horaires (par poste &amp; par jour)</h3>
         <div id="models-list"></div>
         <button class="btn btn-sec mt8" onclick="addModel()">+ Nouveau modèle</button>
         <div class="flex mt8">
-          <label style="font-size:11px;font-weight:600">MDP admin :</label>
-          <input id="adm-pw2" type="password" value="1234" style="width:80px;padding:5px 7px;border:1px solid var(--c-border);border-radius:5px;font-size:12px">
           <button class="btn btn-ok" onclick="saveModels()">💾 Enregistrer modèles</button>
         </div>
       </div>
-
       <div class="ss">
         <h3>⚙ Référence production 8h</h3>
         <div class="flex">
-          <label style="font-weight:600;font-size:12px">Prod ref (unités/8h) :</label>
-          <input id="cfg-pr" type="number" style="width:90px;padding:5px 7px;border:1px solid var(--c-border);border-radius:5px">
-          <input id="adm-pw3" type="password" value="1234" placeholder="MDP admin" style="width:80px;padding:5px 7px;border:1px solid var(--c-border);border-radius:5px;font-size:12px">
+          <label style="font-weight:600;font-size:12px">Prod ref (unités/8h):</label>
+          <input id="cfg-pr" type="number" style="width:90px;padding:5px;border:1px solid var(--border);border-radius:5px">
           <button class="btn btn-ok" onclick="saveProdRef()">Enregistrer</button>
         </div>
       </div>
@@ -2031,46 +2120,64 @@ body.stop-active .zq{background:#1f1208;border-color:#4d2a00}
 
 </div><!-- /app -->
 
-<!-- MODAL: type d'arrêt -->
+<!-- ════ MODAL: Déclarer un arrêt ════ -->
 <div class="overlay" id="m-stop">
   <div class="mbox">
-    <h2>⚠ Type d'arrêt</h2>
-    <div class="stop-grid" id="stop-grid"></div>
-    <div class="m-acts"><button class="btn btn-sec" onclick="closeM('m-stop')">Annuler</button></div>
+    <div class="mhdr red">
+      <h2>⛔ Déclarer un arrêt</h2>
+      <button style="background:none;border:none;cursor:pointer;color:#fff;font-size:16px" onclick="closeM('m-stop')">✕</button>
+    </div>
+    <div class="mbody">
+      <div class="stop-section-lbl">🔄 Rattrapage</div>
+      <div class="stops-grid ratt" id="sgrid-ratt"></div>
+      <div class="stop-section-lbl">🔧 PB Technique</div>
+      <div class="stops-grid pb" id="sgrid-pb"></div>
+      <div class="stop-section-lbl">✏ Arrêt libre / autre</div>
+      <div class="custom-row">
+        <input id="custom-stop-input" placeholder="Nom de l'arrêt…" maxlength="60">
+        <button class="btn btn-amber" onclick="declareCustomStop()">Déclarer</button>
+      </div>
+    </div>
+    <div class="mftr"><button class="btn btn-sec" onclick="closeM('m-stop')">Annuler</button></div>
   </div>
 </div>
 
-<!-- MODAL: fin de production -->
+<!-- ════ MODAL: Fin de production ════ -->
 <div class="overlay" id="m-endprod">
   <div class="mbox wide">
-    <h2>⏹ Fin de production — Récapitulatif</h2>
-    <div class="ep-grid" id="ep-stats"></div>
-    <div style="margin-bottom:10px">
-      <div class="sl">Arrêts &amp; pauses</div>
-      <table class="ep-tbl"><thead><tr><th>Type</th><th>Durée</th><th>%</th></tr></thead><tbody id="ep-stops"></tbody></table>
+    <div class="mhdr"><h2 id="ep-title">⏹ Fin de production</h2></div>
+    <div class="mbody">
+      <div class="ep-grid" id="ep-stats"></div>
+      <div style="margin-bottom:10px">
+        <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:5px">Arrêts &amp; pauses</div>
+        <table class="ep-tbl"><thead><tr><th>Type</th><th>Durée</th><th>%</th></tr></thead><tbody id="ep-stops"></tbody></table>
+      </div>
+      <div class="card" style="padding:8px;margin-bottom:0">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Timeline</div>
+        <svg id="ep-tl" viewBox="0 0 800 40" preserveAspectRatio="none" style="width:100%;height:40px;display:block">
+          <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
+        </svg>
+      </div>
     </div>
-    <div class="tl-wrap"><h4>Timeline</h4>
-      <svg id="ep-tl" viewBox="0 0 800 48" preserveAspectRatio="none" style="width:100%;height:48px;display:block">
-        <rect x="0" y="8" width="800" height="32" fill="#e2e8f0" rx="4"/>
-      </svg>
-    </div>
-    <div class="m-acts">
+    <div class="mftr">
       <button class="btn btn-sec" onclick="closeM('m-endprod')">Annuler</button>
-      <button class="btn btn-danger" onclick="confirmEndProd()" style="font-size:14px;padding:10px 20px">✓ Confirmer fin de production</button>
+      <button class="btn btn-danger btn-lg" onclick="confirmEndProd()">✓ Confirmer fin de production</button>
     </div>
   </div>
 </div>
 
-<!-- MODAL: éditer arrêt -->
+<!-- ════ MODAL: Éditer arrêt ════ -->
 <div class="overlay" id="m-editstop">
   <div class="mbox">
-    <h2>✏ Modifier l'arrêt</h2>
-    <input type="hidden" id="es-key">
-    <div class="fr" style="margin-bottom:9px"><label>Type</label><select id="es-type"></select></div>
-    <div class="fr" style="margin-bottom:9px"><label>Heure début</label><input type="time" id="es-deb" step="60"></div>
-    <div class="fr" style="margin-bottom:9px"><label>Heure fin</label><input type="time" id="es-fin" step="60"></div>
-    <div class="fr" style="margin-bottom:9px"><label>Commentaire</label><input type="text" id="es-cmt"></div>
-    <div class="m-acts">
+    <div class="mhdr"><h2>✏ Modifier l'arrêt</h2></div>
+    <div class="mbody">
+      <input type="hidden" id="es-key">
+      <div class="fr" style="margin-bottom:8px"><label>Type</label><select id="es-type"></select></div>
+      <div class="fr" style="margin-bottom:8px"><label>Heure début</label><input type="time" id="es-deb" step="60"></div>
+      <div class="fr" style="margin-bottom:8px"><label>Heure fin</label><input type="time" id="es-fin" step="60"></div>
+      <div class="fr"><label>Commentaire</label><input type="text" id="es-cmt"></div>
+    </div>
+    <div class="mftr">
       <button class="btn btn-sec" onclick="closeM('m-editstop')">Annuler</button>
       <button class="btn btn-danger" onclick="deleteStop()">🗑 Supprimer</button>
       <button class="btn btn-ok" onclick="saveEditStop()">💾 Enregistrer</button>
@@ -2079,19 +2186,47 @@ body.stop-active .zq{background:#1f1208;border-color:#4d2a00}
 </div>
 
 <script>
-// ── Constants ──
-const STOP_TYPES = [
-  "PB Technique: Carde","PB Technique: Gainonnage","PB Technique: Finition",
-  "PB Technique: Encartage","PB Qualité","Manque MP",
-  "Formation / Réunion","Nettoyage","Divers"
+// ── EVENTS definition (matches Python EVENTS list) ──
+const EVENTS = [
+  ["Pochon / Fibre","ratt_pochon","ratt"],
+  ["Couture","ratt_couture","ratt"],
+  ["Emballage","ratt_emb","ratt"],
+  ["Presse Souder","ratt_presse_soud","ratt"],
+  ["Presse ZIP","ratt_presse_zip","ratt"],
+  ["Réunion","arret_reunion","ratt"],
+  ["Chargeuse","pb_chargeuse","pb"],
+  ["Carde","pb_carde","pb"],
+  ["Étaleur / Tour","pb_etaleur","pb"],
+  ["Coupe / Circ.","pb_coupe","pb"],
+  ["Tapis Bascule","pb_tapis1","pb"],
+  ["Enrouleur Pochon","pb_enrouleur","pb"],
+  ["Pesée / Tapis 2","pb_pesee","pb"],
+  ["Déviation / Table","pb_deviation","pb"],
+  ["Enfileur Pochon","pb_enfileur","pb"],
+  ["Kinna / Stroebel","pb_kinna","pb"],
+  ["Tapeuse","pb_tapeuse","pb"],
+  ["Table Rot. / Twin","pb_table_rot","pb"],
+  ["Enfileuse H100","pb_h100","pb"],
+  ["Enfileuse Traversin","pb_traversin","pb"],
+  ["Presse ORC","pb_presse_orc","pb"],
+  ["Presse Housse ZIP","pb_presse_zip2","pb"],
+  ["Cercleuse","pb_cercleuse","pb"],
+  ["Enrouleuse Traversin","pb_enrouleuse","pb"],
+  ["Matière première","arret_mp","pb"],
 ];
+
 const STOP_COL = {
-  "PB Technique: Carde":"#b91c1c","PB Technique: Gainonnage":"#dc2626",
-  "PB Technique: Finition":"#ef4444","PB Technique: Encartage":"#f87171",
-  "PB Qualité":"#ea580c","Manque MP":"#d97706",
-  "Formation / Réunion":"#7c3aed","Nettoyage":"#0891b2",
-  "Divers":"#64748b","Pause Pilote":"#7c3aed","nettoyage":"#0891b2"
+  ratt:"#7c3aed",pb:"#b91c1c",nettoyage:"#0891b2",
+  "Pause pilote":"#7c3aed","_pause":"#7c3aed"
 };
+
+function getStopColor(key, cat) {
+  if (cat) return STOP_COL[cat]||'#64748b';
+  if (key==='nettoyage') return STOP_COL.nettoyage;
+  if (key==='_pause'||key==='Pause pilote') return STOP_COL['Pause pilote'];
+  return '#94a3b8';
+}
+
 const FORM_FIELDS = ["of_num","copilote","nb_pers","taille","code_prod","type_prod","poids","fibre","of_taie","traca","ref_taie","kit","qte_fab","qte_emb","qte_init_taie","nb_taie2_choix","nb_def_cout","mq_taie","mq_housse_encart","nb_pp_cousue","duree_mq_mp","manquant_pers","comment"];
 
 // ── State ──
@@ -2100,23 +2235,31 @@ let gEvts = [];
 let _curStopKey = null;
 let _curStopElap = 0;
 let _ofElapAtPoll = 0;
+let _stopWallAtPoll = 0;
+let _pauseTotalAtPoll = 0;
 let _lastPoll = Date.now();
 let _ticker = null;
+let _autoSaveTimer = null;
 let _curTab = 'main';
 let _cfgPwds = {};
 let _cfgModels = [];
+let _settingsUnlocked = false;
+let _adminPw = '';
 window._evMap = {};
 
-// ── Init ──
+// ── INIT ──
 document.addEventListener('DOMContentLoaded', async () => {
-  buildStopGrid();
-  buildStopTypeOpts();
+  buildStopGrids();
+  buildEditStopOpts();
   await loadLists();
   const s = await apiFetch('/api/state');
-  if (s && s.pilot) showApp(s);
-  else { document.getElementById('v-login').style.display=''; }
+  if (s && s.pilot) {
+    document.getElementById('v-login').classList.remove('on');
+    showApp(s);
+  }
   setInterval(pollState, 5000);
   setInterval(pollEvts, 8000);
+  startTicker();
 });
 
 async function loadLists() {
@@ -2129,6 +2272,26 @@ async function loadLists() {
   const pil = d.pilotes||[];
   const sel = document.getElementById('ln-pilot');
   pil.forEach(p => { const o=document.createElement('option'); o.value=p; o.textContent=p; sel.appendChild(o); });
+  // Load models for login select
+  await loadModelsForLogin();
+}
+
+async function loadModelsForLogin() {
+  const d = await apiFetch('/api/config');
+  if (!d) return;
+  _cfgModels = d.modeles_horaires||[];
+  _cfgPwds = d.pilot_passwords||{};
+  const sel = document.getElementById('ln-model');
+  while (sel.options.length>1) sel.remove(1);
+  _cfgModels.forEach(m => {
+    const o=document.createElement('option'); o.value=m.nom||''; o.textContent=m.nom||''; sel.appendChild(o);
+  });
+  // Fallback: if no models, show POSTES
+  if (!_cfgModels.length) {
+    ["Matin","Après-midi","Nuit","Jour"].forEach(p => {
+      const o=document.createElement('option'); o.value=p; o.textContent=p; sel.appendChild(o);
+    });
+  }
 }
 
 function popSel(id, vals) {
@@ -2140,18 +2303,20 @@ function popSel(id, vals) {
   if (cur) s.value = cur;
 }
 
-// ── Login ──
+// ── LOGIN ──
 async function doLogin() {
   const pilot = document.getElementById('ln-pilot').value;
-  const poste = document.getElementById('ln-poste').value;
+  const poste = document.getElementById('ln-model').value;
   const pw = document.getElementById('ln-pw').value;
   document.getElementById('ln-err').textContent = '';
   if (!pilot) { document.getElementById('ln-err').textContent='Choisir un pilote'; return; }
-  const r = await fetch('/api/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pilot,poste,pw})});
+  if (!poste) { document.getElementById('ln-err').textContent='Choisir un modèle horaire'; return; }
+  const r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pilot,poste,pw})});
   if (!r) return;
   const d = await r.json();
   if (d.ok) {
     const s = await apiFetch('/api/state');
+    document.getElementById('v-login').classList.remove('on');
     showApp(s||{pilot,poste});
   } else {
     document.getElementById('ln-err').textContent = d.error||'Erreur connexion';
@@ -2159,311 +2324,478 @@ async function doLogin() {
 }
 
 function showApp(s) {
-  document.getElementById('v-login').style.display='none';
-  document.getElementById('app').classList.remove('hidden');
-  if (s.poste) { document.getElementById('f-poste').value=s.poste; }
-  if (s.pilot) { document.getElementById('f-pilote').value=s.pilot; }
+  const app = document.getElementById('app');
+  app.style.display = 'flex';
+  app.classList.remove('hidden');
+  if (s.pilot) { document.getElementById('f-pilote').value=s.pilot; document.getElementById('pob-pilot').textContent=s.pilot; }
+  if (s.poste) { document.getElementById('f-poste').value=s.poste; document.getElementById('pob-poste').textContent=s.poste; }
   setToday();
+  restoreFormFromStorage();
   pollState();
   pollEvts();
-  startTicker();
   loadCfg();
   goTab(s.prod_active ? 'prod' : 'main');
   document.getElementById('hist-dt').value = new Date().toISOString().slice(0,10);
 }
 
-function setToday() {
-  const d = document.getElementById('f-date');
-  if (d) d.value = new Date().toLocaleDateString('fr-CA');
+async function doLogout() {
+  if (ST.prod_active) { toast('Terminer la production avant de déconnecter','err'); return; }
+  if (!confirm('Déconnecter ?')) return;
+  await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  resetToLogin();
 }
 
-// ── Navigation ──
+function resetToLogin() {
+  ST={}; _curStopKey=null;
+  document.getElementById('app').style.display='none';
+  document.getElementById('ln-pw').value='';
+  document.getElementById('ln-err').textContent='';
+  document.getElementById('v-login').classList.add('on');
+  _settingsUnlocked = false;
+}
+
+function setToday() {
+  const d=document.getElementById('f-date');
+  if(d) d.value=new Date().toLocaleDateString('fr-CA');
+}
+
+// ── NAVIGATION ──
 function goTab(tab) {
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
-  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active','tab-prod'));
-  const vm = {main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte'};
-  const el = document.getElementById(vm[tab]);
-  if (el) el.classList.add('on');
-  const ntm = {main:'nt-main',prod:'nt-prod',history:'nt-hist',settings:'nt-cfg'};
-  const nt = document.getElementById(ntm[tab]);
-  if (nt) nt.classList.add('active');
-  if (tab==='history') loadHist();
-  if (tab==='finposte') loadFPData();
+  document.querySelectorAll('.htab').forEach(t=>t.classList.remove('on'));
+  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte'};
+  const el=document.getElementById(vm[tab]);
+  if(el) el.classList.add('on');
+  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg'};
+  const ntEl=document.getElementById(nt[tab]);
+  if(ntEl) ntEl.classList.add('on');
+  if(tab==='history') loadHist();
+  if(tab==='finposte') loadFPData();
+  if(tab==='main') { loadMainDecl(); }
+  if(tab==='settings') {
+    // Show lock screen if not unlocked
+    document.getElementById('settings-lock').style.display = _settingsUnlocked?'none':'flex';
+    document.getElementById('v-settings-content').style.display = _settingsUnlocked?'block':'none';
+    document.getElementById('lock-pw').value='';
+    document.getElementById('lock-err').textContent='';
+  }
 }
 
-// ── State polling ──
+function switchMTab(t) {
+  document.getElementById('mp-decl').style.display=t==='decl'?'':'none';
+  document.getElementById('mp-evt').style.display=t==='evt'?'':'none';
+  document.getElementById('mt-decl').classList.toggle('on',t==='decl');
+  document.getElementById('mt-evt').classList.toggle('on',t==='evt');
+  if(t==='evt') loadMainEvts();
+}
+
+// ── SETTINGS LOCK ──
+async function unlockSettings() {
+  const pw = document.getElementById('lock-pw').value;
+  // Try with entered password against /api/settings
+  const r = await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,_check_only:true})});
+  const d = r?await r.json():{};
+  if(d.ok) {
+    _settingsUnlocked = true;
+    _adminPw = pw;
+    document.getElementById('settings-lock').style.display='none';
+    document.getElementById('v-settings-content').style.display='block';
+    loadCfg();
+  } else {
+    document.getElementById('lock-err').textContent = d.error||'Mot de passe incorrect';
+  }
+}
+
+// ── POLLING ──
 async function pollState() {
   const s = await apiFetch('/api/state');
-  if (!s) return;
-  ST = s;
+  if(!s) return;
+  ST=s;
   _ofElapAtPoll = s.of_elapsed_s||0;
+  _stopWallAtPoll = s.stop_wall_s||0;
+  _pauseTotalAtPoll = s.pause_total_s||0;
   _lastPoll = Date.now();
 
-  // Determine current stop
-  if (s.is_paused) {
-    _curStopKey = '_pause';
+  if(s.is_paused) {
+    _curStopKey='_pause';
     _curStopElap = s.pause_total_s||0;
-    if (s.pause_start_iso) {
-      _curStopElap += (Date.now() - new Date(s.pause_start_iso).getTime())/1000;
-    }
-  } else if (s.active_stops && s.active_stops.length>0) {
-    const k = s.active_stops[0];
-    _curStopKey = k;
-    _curStopElap = s.timers&&s.timers[k] ? s.timers[k].elapsed : 0;
+    if(s.pause_start_iso) _curStopElap += (Date.now()-new Date(s.pause_start_iso).getTime())/1000;
+  } else if(s.active_stops&&s.active_stops.length>0) {
+    const k=s.active_stops[0];
+    _curStopKey=k;
+    _curStopElap=s.timers&&s.timers[k]?s.timers[k].elapsed:0;
   } else {
-    _curStopKey = null;
-    _curStopElap = 0;
+    _curStopKey=null; _curStopElap=0;
   }
 
   applyState(s);
-  renderMainKpi();
+  if(_curTab==='main') loadMainDecl();
 }
 
 async function pollEvts() {
   const e = await apiFetch('/api/events_list');
-  if (!Array.isArray(e)) return;
-  gEvts = e;
-  renderTL('tl-svg', gEvts);
+  if(!Array.isArray(e)) return;
+  gEvts=e;
+  renderTL('tl-svg',gEvts);
   renderRecap(gEvts);
 }
 
 function applyState(s) {
-  // Header info
-  const hi = document.getElementById('hdr-info');
-  if (hi && s.pilot) hi.innerHTML = `${s.pilot}<br><span style="opacity:.7">${s.poste||''}</span>`;
+  // Header
+  const hp=document.getElementById('hdr-pilot-lbl');
+  if(hp&&s.pilot) hp.textContent=`${s.pilot} — ${s.poste||''}`;
 
-  // Stop alert
-  const al = document.getElementById('alert-strip');
-  const stopOn = _curStopKey !== null;
-  if (stopOn) {
-    const lbl = _curStopKey==='_pause' ? 'PAUSE' : _curStopKey;
-    al.textContent = `⚠ ${lbl} EN COURS`;
+  // Alert strip
+  const al=document.getElementById('alert-strip');
+  const stopOn=_curStopKey!==null;
+  if(stopOn) {
+    const lbl=_curStopKey==='_pause'?'PAUSE':getEvtLabel(_curStopKey);
+    al.textContent=`⚠ ${lbl} EN COURS — cliquer pour terminer`;
     al.classList.add('on');
-    document.body.classList.add('stop-active');
+    al.onclick=()=>doEndStop();
+    document.body.classList.add('stop-on');
   } else {
     al.classList.remove('on');
-    document.body.classList.remove('stop-active');
+    al.onclick=null;
+    document.body.classList.remove('stop-on');
   }
 
-  // Prod tab
-  const tp = document.getElementById('nt-prod');
-  if (tp) tp.style.display = s.prod_active ? '' : 'none';
+  // Prod tab visibility
+  const tp=document.getElementById('ht-prod');
+  if(tp) tp.style.display=s.prod_active?'':'none';
 
-  // Main: active card
-  const mac = document.getElementById('mc-active');
-  const mof = document.getElementById('mc-of');
-  const minf = document.getElementById('mc-inf');
-  const bstart = document.getElementById('btn-start');
-  if (s.prod_active) {
-    mac&&mac.classList.remove('hidden');
-    mof&&(mof.textContent=s.form&&s.form.of_num?s.form.of_num:'OF ---');
-    minf&&(minf.textContent=`${(s.form&&s.form.taille)||''} ${(s.form&&s.form.type_prod)||''} • ${s.pilot||''}`);
-    bstart&&(bstart.disabled=true);
-  } else {
-    mac&&mac.classList.add('hidden');
-    bstart&&(bstart.disabled=false);
-  }
+  // Main btn-start
+  const bs=document.getElementById('btn-start');
+  if(bs) bs.disabled=s.prod_active;
 
-  // Prod header
-  if (s.prod_active && s.form) {
-    const el = document.getElementById('ph-of');
-    if (el) el.textContent = s.form.of_num||'OF ---';
+  // POB (pilot/OF banner)
+  if(s.prod_active&&s.form) {
+    document.getElementById('pob-of').textContent=s.form.of_num||'—';
     fillFormFromState(s.form);
   }
 
-  // Stop/pause bar
-  const sb = document.getElementById('stop-bar');
-  const pc = document.getElementById('prod-ctrls');
-  const psa = document.getElementById('ph-stop-area');
-  const psl = document.getElementById('ph-slbl');
-  const pbtn = document.getElementById('btn-pause');
-  if (_curStopKey) {
-    sb&&sb.classList.remove('hidden');
-    pc&&pc.classList.add('hidden');
-    psa&&psa.classList.remove('hidden');
-    psl&&psl.classList.remove('hidden');
-    const sbt = document.getElementById('sb-type');
-    if (sbt) sbt.textContent = _curStopKey==='_pause'?'Pause Pilote':_curStopKey;
+  // Stop bar
+  const sb=document.getElementById('stop-bottom');
+  if(_curStopKey) {
+    sb.classList.add('on');
+    document.getElementById('sb-type').textContent=_curStopKey==='_pause'?'Pause pilote':getEvtLabel(_curStopKey);
   } else {
-    sb&&sb.classList.add('hidden');
-    psa&&psa.classList.add('hidden');
-    psl&&psl.classList.add('hidden');
-    if (s.prod_active) {
-      pc&&pc.classList.remove('hidden');
-    }
+    sb.classList.remove('on');
   }
-  // Pause button label
-  if (pbtn) pbtn.textContent = s.is_paused ? '▶ Reprendre' : '⏸ Pause';
+
+  // Pause button text
+  const pbtn=document.getElementById('btn-pause');
+  if(pbtn) pbtn.textContent=s.is_paused?'▶ Reprendre':'⏸ Pause pilote';
+
+  // TRS gauge
+  updateGauge(s);
 }
 
-// ── Local ticker ──
+function getEvtLabel(key) {
+  const ev=EVENTS.find(e=>e[1]===key);
+  if(ev) return (ev[2]==='ratt'?'Rattrapage: ':ev[2]==='pb'?'PB Technique: ':'')+ev[0];
+  if(key==='nettoyage') return 'Nettoyage';
+  return key||'Arrêt';
+}
+
+// ── TICKER ──
 function startTicker() {
-  if (_ticker) clearInterval(_ticker);
-  _ticker = setInterval(() => {
-    if (!ST.prod_active) return;
-    const dt = (Date.now()-_lastPoll)/1000;
-
-    // OF timer ticks unless paused
-    const ofEl = _ofElapAtPoll + (!ST.is_paused ? dt : 0);
-    const phT = document.getElementById('ph-timer');
-    if (phT) phT.textContent = fmtDur(ofEl);
-
-    // Stop/pause elapsed
-    if (_curStopKey) {
-      const stopEl = _curStopElap + dt;
-      const phS = document.getElementById('ph-stop-tmr');
-      if (phS) phS.textContent = fmtDur(stopEl);
-      const sbE = document.getElementById('sb-elap');
-      if (sbE) sbE.textContent = fmtDur2(stopEl);
+  if(_ticker) clearInterval(_ticker);
+  _ticker=setInterval(()=>{
+    if(!ST.prod_active) return;
+    const dt=(Date.now()-_lastPoll)/1000;
+    // OF timer
+    const ofEl=_ofElapAtPoll+(!ST.is_paused?dt:0);
+    const t=document.getElementById('sc-of');
+    if(t) t.textContent=fmtDur(ofEl);
+    // Stops total
+    const sw=_stopWallAtPoll+((_curStopKey&&_curStopKey!=='_pause')?dt:0);
+    const ts=document.getElementById('sc-stops');
+    if(ts) ts.textContent=fmtDur(sw);
+    // Pause total
+    const pt=_pauseTotalAtPoll+(_curStopKey==='_pause'?dt:0);
+    const tp=document.getElementById('sc-pause');
+    if(tp) tp.textContent=fmtDur(pt);
+    // Stop bottom timer
+    if(_curStopKey) {
+      const se=_curStopElap+dt;
+      const sbt=document.getElementById('sb-timer');
+      if(sbt) sbt.textContent=fmtDur2(se);
     }
-  }, 1000);
+  },1000);
 }
 
-// ── Start prod ──
+// ── MAIN VIEW ──
+async function loadMainDecl() {
+  const dt=new Date().toISOString().slice(0,10);
+  const d=await apiFetch('/api/history?date='+dt);
+  const rows=Array.isArray(d)?d:(d&&d.rows?d.rows:[]);
+  const bd=document.getElementById('decl-body');
+  if(!bd) return;
+  if(!rows.length){bd.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';return;}
+  bd.innerHTML=rows.map(r=>{
+    const t=parseFloat(r.trs||0);
+    return `<tr>
+      <td style="font-weight:600">${esc(r.of||'')}</td>
+      <td>${esc(r.date||'')}</td>
+      <td>${esc(r.poste||'')}</td>
+      <td>${esc(r.pilote||'')}</td>
+      <td>${esc(r.debut||'')}</td>
+      <td>${esc(r.fin||'')}</td>
+      <td>${esc(r.taille||'')}</td>
+      <td>${esc(String(r.qte_fab||''))}</td>
+      <td>${esc(String(r.equiv||''))}</td>
+      <td class="${t>=90?'tg':t>=75?'tm':t>0?'tb':''}">${t>0?fmtTRS(t):''}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadMainEvts() {
+  const e=await apiFetch('/api/events_list');
+  const evts=Array.isArray(e)?e:[];
+  const bd=document.getElementById('evt-body');
+  if(!bd) return;
+  if(!evts.length){bd.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--gray);padding:16px">Aucun événement</td></tr>';return;}
+  window._evMap={};
+  bd.innerHTML=evts.map((ev,i)=>{
+    const key=ev.debut||i;
+    window._evMap[String(key)]=ev;
+    return `<tr>
+      <td style="font-weight:600">${esc(ev.type||'')}</td>
+      <td>${esc(ev.of||'')}</td>
+      <td>${esc(ev.date||'')}</td>
+      <td>${esc(ev.pilote||'')}</td>
+      <td>${esc(ev.debut||'')}</td>
+      <td>${esc(ev.fin||'')}</td>
+      <td>${esc(ev.duree||'')}</td>
+      <td>${esc(ev.comment||'')}</td>
+      <td><button class="btn-tbl btn-prim" onclick="openEditStop('${esc(String(key))}')">✏</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── START PROD ──
 async function doStartProd() {
-  const d = await fetch('/api/start_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
-  if (!d) return;
-  const r = await d.json();
-  if (r.ok) {
+  saveFormToStorage(); // save current form before clearing
+  const r=await fetch('/api/start_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  if(!r) return;
+  const d=await r.json();
+  if(d.ok){
+    // DON'T clear form - restore from storage or keep current
     setToday();
+    restoreFormFromStorage();
     await pollState();
     await pollEvts();
     goTab('prod');
-  } else { toast(r.error||'Erreur','err'); }
+  } else toast(d.error||'Erreur','err');
 }
 
-// ── Stop/Pause ──
-function buildStopGrid() {
-  const g = document.getElementById('stop-grid');
-  if (!g) return;
-  STOP_TYPES.forEach(t => {
-    const b = document.createElement('button');
-    b.className='stop-btn';
-    b.textContent=t;
-    b.onclick=()=>{ closeM('m-stop'); doStartStop(t); };
-    g.appendChild(b);
+// ── STOP/PAUSE ──
+function buildStopGrids() {
+  const rattGrid=document.getElementById('sgrid-ratt');
+  const pbGrid=document.getElementById('sgrid-pb');
+  if(!rattGrid||!pbGrid) return;
+  EVENTS.filter(e=>e[2]==='ratt').forEach(e=>{
+    const b=document.createElement('button');
+    b.className='stop-btn ratt'; b.textContent=e[0];
+    b.onclick=()=>{closeM('m-stop');doStartStop(e[1],'ratt');};
+    rattGrid.appendChild(b);
+  });
+  EVENTS.filter(e=>e[2]==='pb').forEach(e=>{
+    const b=document.createElement('button');
+    b.className='stop-btn pb'; b.textContent=e[0];
+    b.onclick=()=>{closeM('m-stop');doStartStop(e[1],'pb');};
+    pbGrid.appendChild(b);
   });
 }
 
-function openStopModal() { openM('m-stop'); }
+function openStopModal(){openM('m-stop');}
 
-async function doPause() {
+async function doPause(){
   await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   await pollState();
 }
 
-async function doStartStop(key) {
-  const cat = key.toLowerCase().startsWith('pb') ? 'pb' : key==='Pause Pilote'?'pause':key.toLowerCase().replace(/\s+/g,'_').slice(0,12);
+async function doNettoyage(){
+  await fetch('/api/start_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ntype:'court'})});
+  await pollState();
+}
+
+async function doStartStop(key,cat){
   await fetch('/api/start_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,cat})});
   await pollState();
   await pollEvts();
 }
 
-async function doEndStop() {
-  const key = _curStopKey==='_pause' ? null : _curStopKey;
-  const body = key ? JSON.stringify({key}) : '{}';
-  if (_curStopKey==='_pause') {
+async function doEndStop(){
+  if(_curStopKey==='_pause'){
     await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  } else {
-    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body});
+  } else if(_curStopKey==='nettoyage') {
+    await fetch('/api/end_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  } else if(_curStopKey){
+    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:_curStopKey})});
   }
   await pollState();
   await pollEvts();
 }
 
-// ── Form ──
-function collectForm() {
-  const f = {};
-  FORM_FIELDS.forEach(k => {
-    const el = document.getElementById('f-'+k);
-    if (!el) return;
-    f[k] = el.type==='number' ? (parseFloat(el.value)||0) : el.value;
+async function declareCustomStop(){
+  const v=document.getElementById('custom-stop-input').value.trim();
+  if(!v) return;
+  document.getElementById('custom-stop-input').value='';
+  closeM('m-stop');
+  await doStartStop(v,'autre');
+}
+
+// ── FORM ──
+function collectForm(){
+  const f={};
+  FORM_FIELDS.forEach(k=>{
+    const el=document.getElementById('f-'+k);
+    if(!el) return;
+    f[k]=el.type==='number'?(parseFloat(el.value)||0):el.value;
   });
-  f.pilote = document.getElementById('f-pilote')?.value||ST.pilot||'';
-  f.poste = document.getElementById('f-poste')?.value||ST.poste||'';
+  f.pilote=document.getElementById('f-pilote')?.value||ST.pilot||'';
+  f.poste=document.getElementById('f-poste')?.value||ST.poste||'';
   return f;
 }
 
-function fillFormFromState(form) {
-  if (!form) return;
-  FORM_FIELDS.forEach(k => {
-    const el = document.getElementById('f-'+k);
-    if (!el) return;
-    const v = form[k];
-    if (v!==undefined && v!==null) el.value = v;
+function fillFormFromState(form){
+  if(!form) return;
+  FORM_FIELDS.forEach(k=>{
+    const el=document.getElementById('f-'+k);
+    if(!el) return;
+    const v=form[k];
+    if(v!==undefined&&v!==null&&v!=='') el.value=v;
   });
+  const ofEl=document.getElementById('pob-of');
+  if(ofEl) ofEl.textContent=form.of_num||'—';
 }
 
-async function saveFormNow() {
-  const f = collectForm();
-  await fetch('/api/save_form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});
-  toast('Formulaire sauvegardé','ok');
+// Form persistence in localStorage (persist across restarts until new prod)
+function saveFormToStorage(){
+  const f=collectForm();
+  try{localStorage.setItem('kpiorc_form',JSON.stringify(f));}catch(e){}
+}
+function restoreFormFromStorage(){
+  try{
+    const raw=localStorage.getItem('kpiorc_form');
+    if(!raw) return;
+    const f=JSON.parse(raw);
+    // Only restore if prod_active and form has of_num, or if not active (post-prod)
+    FORM_FIELDS.forEach(k=>{
+      const el=document.getElementById('f-'+k);
+      if(!el||!(k in f)) return;
+      const v=f[k];
+      if(v!==undefined&&v!==null&&v!=='') el.value=v;
+    });
+  }catch(e){}
 }
 
-// Auto-save form every 30s when prod active
-setInterval(()=>{ if(ST.prod_active&&_curTab==='prod') { const f=collectForm(); fetch('/api/save_form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)}); }}, 30000);
+function scheduleAutoSave(){
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer=setTimeout(()=>{
+    const f=collectForm();
+    fetch('/api/save_form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});
+    saveFormToStorage();
+  },1500);
+}
 
-// ── End production ──
-async function doEndProdPreview() {
-  const f = collectForm();
-  const r = await fetch('/api/preview_end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
-  if (!r||!r.ok) { if(confirm('Confirmer fin de production ?')) confirmEndProd(); return; }
-  const d = await r.json();
-  renderEPModal(d, f);
+// ── END PROD ──
+async function doEndProdPreview(){
+  const f=collectForm();
+  const r=await fetch('/api/preview_end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
+  if(!r||!r.ok){if(confirm('Confirmer fin de production?'))confirmEndProd();return;}
+  const d=await r.json();
+  renderEPModal(d,f);
   openM('m-endprod');
 }
 
-function renderEPModal(d, f) {
-  document.getElementById('ep-stats').innerHTML = `
+function renderEPModal(d,f){
+  const ofNum=f.of_num||d.of_num||'';
+  document.getElementById('ep-title').textContent=`⏹ Fin de production${ofNum?' — '+ofNum:''}`;
+  document.getElementById('ep-stats').innerHTML=`
     <div class="ep-stat"><div class="val">${fmtTRS(d.trs)}</div><div class="lbl">TRS OF</div></div>
     <div class="ep-stat"><div class="val">${(d.equiv||0).toFixed(1)}</div><div class="lbl">Équivalence</div></div>
     <div class="ep-stat"><div class="val">${fmtD2(d.prod_s||0)}</div><div class="lbl">Durée prod</div></div>
     <div class="ep-stat"><div class="val">${fmtD2(d.stop_s||0)}</div><div class="lbl">Total arrêts</div></div>
-    <div class="ep-stat"><div class="val">${d.c1||0}</div><div class="lbl">Cadence/h</div></div>
+    <div class="ep-stat"><div class="val">${d.c1||0}</div><div class="lbl">Cad/h</div></div>
     <div class="ep-stat"><div class="val">${d.c2||0}</div><div class="lbl">Cad/h/pers</div></div>
   `;
-  // Build stop summary from tl_events
-  const evts = d.tl_events||[];
-  const stopMap = {};
-  const totalS = d.stop_s||1;
-  evts.forEach(e=>{
-    if (!e.key||e.key==='prod') return;
-    const dur = (e.dur_s||0);
-    stopMap[e.key] = (stopMap[e.key]||0)+dur;
-  });
-  const tbody = document.getElementById('ep-stops');
-  tbody.innerHTML = Object.entries(stopMap).map(([k,s])=>`
-    <tr><td>${k}</td><td>${fmtD2(s)}</td><td>${totalS>0?Math.round(s/totalS*100):0}%</td></tr>
-  `).join('')||'<tr><td colspan="3" style="color:var(--c-muted)">Aucun arrêt</td></tr>';
-  // Timeline in modal
-  drawTL('ep-tl', evts, d.debut, d.now_str);
+  const evts=d.tl_events||[];
+  const stopMap={};
+  const totalS=d.stop_s||1;
+  evts.forEach(e=>{if(!e.key||e.key==='prod')return;stopMap[e.key]=(stopMap[e.key]||0)+(e.dur_s||0);});
+  const tbody=document.getElementById('ep-stops');
+  tbody.innerHTML=Object.entries(stopMap).map(([k,s])=>`
+    <tr><td>${getEvtLabel(k)}</td><td>${fmtD2(s)}</td><td>${Math.round(s/totalS*100)}%</td></tr>
+  `).join('')||'<tr><td colspan="3" style="color:var(--gray)">Aucun arrêt</td></tr>';
+  drawTL('ep-tl',evts,d.debut,d.now_str);
 }
 
-async function confirmEndProd() {
-  const f = collectForm();
+async function confirmEndProd(){
+  const f=collectForm();
   closeM('m-endprod');
-  const r = await fetch('/api/end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
-  if (!r) return;
-  const d = await r.json();
-  if (d.ok) { await pollState(); await pollEvts(); goTab('main'); toast('Production enregistrée','ok'); }
-  else toast(d.error||'Erreur','err');
+  const r=await fetch('/api/end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
+  if(!r) return;
+  const d=await r.json();
+  if(d.ok){
+    // Keep form in localStorage for next prod
+    saveFormToStorage();
+    // Only clear of_num for next prod
+    const fEl=document.getElementById('f-of_num');
+    if(fEl){fEl.value='';saveFormToStorage();}
+    await pollState();
+    await pollEvts();
+    goTab('main');
+    toast('Production enregistrée','ok');
+  } else toast(d.error||'Erreur','err');
 }
 
-// ── Edit stop ──
-function buildStopTypeOpts() {
-  const s = document.getElementById('es-type');
-  if (!s) return;
-  ['Pause Pilote',...STOP_TYPES,'nettoyage'].forEach(t=>{
-    const o=document.createElement('option'); o.value=t; o.textContent=t; s.appendChild(o);
-  });
+// ── GAUGE ──
+function updateGauge(s){
+  const arc=document.getElementById('gauge-arc');
+  const pct=document.getElementById('gauge-pct');
+  const pobTrs=document.getElementById('pob-trs');
+  if(!arc||!pct) return;
+  // Estimate live TRS
+  const prodRef=s.prod_ref||200;
+  const ofS=s.of_elapsed_s||0;
+  const qFab=s.form?parseFloat(s.form.qte_fab||0):0;
+  const taille=s.form?s.form.taille:'';
+  let trs=-1;
+  // Can't compute equiv client-side, show from state if available
+  if(ofS>0&&prodRef>0&&qFab>0){
+    trs=Math.round(qFab/(prodRef*ofS/28800)*100*10)/10;
+  }
+  const trsStr=trs>=0?fmtTRS(trs):'—';
+  pct.textContent=trsStr;
+  if(pobTrs) pobTrs.textContent=trsStr;
+  // Arc: 0-100% maps to 0-132 (half circle perimeter ≈ π*42 ≈ 132)
+  const pArc=132;
+  const dash=trs>=0?Math.min(1,trs/100)*pArc:0;
+  const col=trs>=90?'#16a34a':trs>=75?'#d97706':'#dc2626';
+  arc.setAttribute('stroke-dasharray',`${dash},${pArc}`);
+  arc.setAttribute('stroke',col);
 }
 
-function openEditStop(key) {
-  const ev = window._evMap[key];
-  if (!ev) return;
+// ── EDIT STOP ──
+function buildEditStopOpts(){
+  const s=document.getElementById('es-type');
+  if(!s) return;
+  [['Pause pilote','_pause',''],
+   ['Nettoyage','nettoyage','nettoyage'],
+   ...EVENTS,
+   ['Arrêt libre','autre','autre']
+  ].forEach(([lbl,key])=>{const o=document.createElement('option');o.value=key;o.textContent=lbl;s.appendChild(o);});
+}
+
+function openEditStop(key){
+  const ev=window._evMap[key];
+  if(!ev) return;
   document.getElementById('es-key').value=key;
-  document.getElementById('es-type').value=ev.type||'';
+  document.getElementById('es-type').value=ev.type||key||'';
   const d=ev.debut||'',f2=ev.fin||'';
   document.getElementById('es-deb').value=d.length>=5?d.slice(0,5):d;
   document.getElementById('es-fin').value=f2.length>=5?f2.slice(0,5):f2;
@@ -2471,145 +2803,129 @@ function openEditStop(key) {
   openM('m-editstop');
 }
 
-async function saveEditStop() {
-  const key = document.getElementById('es-key').value;
-  const ev = window._evMap[key];
-  if (!ev) return;
-  const data = {
-    row_num: ev.row_num,
-    type: document.getElementById('es-type').value,
-    heure_debut: document.getElementById('es-deb').value,
-    heure_fin: document.getElementById('es-fin').value,
-    comment: document.getElementById('es-cmt').value,
-  };
-  const r = await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-  if (r&&r.ok) { closeM('m-editstop'); await pollEvts(); toast('Modifié','ok'); }
+async function saveEditStop(){
+  const key=document.getElementById('es-key').value;
+  const ev=window._evMap[key];
+  if(!ev) return;
+  const data={row_num:ev.row_num,type:document.getElementById('es-type').value,heure_debut:document.getElementById('es-deb').value,heure_fin:document.getElementById('es-fin').value,comment:document.getElementById('es-cmt').value};
+  const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainEvts();toast('Modifié','ok');}
   else toast('Erreur','err');
 }
 
-async function deleteStop() {
+async function deleteStop(){
   const key=document.getElementById('es-key').value;
   const ev=window._evMap[key];
-  if (!ev||!confirm('Supprimer ?')) return;
+  if(!ev||!confirm('Supprimer ?')) return;
   const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:ev.row_num})});
-  if (r&&r.ok) { closeM('m-editstop'); await pollEvts(); toast('Supprimé','ok'); }
+  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainEvts();toast('Supprimé','ok');}
 }
 
-// ── Timeline ──
-function renderTL(svgId, evts) {
-  const now = new Date();
-  const s4h = new Date(now-4*3600*1000);
-  drawTLFromISO(svgId, evts, s4h.toISOString(), now.toISOString());
+// ── TIMELINE ──
+function renderTL(svgId,evts){
+  const now=new Date(), s4h=new Date(now-4*3600*1000);
+  drawTLFromISO(svgId,evts,s4h.toISOString(),now.toISOString());
 }
 
-function drawTL(svgId, tlEvts, debutHMS, finHMS) {
-  // tlEvts are {key, dur_s, ...} from preview
-  const svg = document.getElementById(svgId);
-  if (!svg) return;
-  const W=800,Y=8,H2=32,H=48;
-  let html = `<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
-  // If debut/fin provided as HH:MM:SS, reconstruct
-  if (!debutHMS||!finHMS) { svg.innerHTML=html; return; }
-  const base = new Date(); base.setHours(0,0,0,0);
-  const parseHMS = s => { const [h,m,sec]=(s||'').split(':'); return base.getTime()+(parseInt(h)||0)*3600000+(parseInt(m)||0)*60000+(parseInt(sec)||0)*1000; };
-  const tS=parseHMS(debutHMS), tE=parseHMS(finHMS);
-  const span=tE-tS; if(span<=0){svg.innerHTML=html;return;}
+function drawTL(svgId,tlEvts,debutHMS,finHMS){
+  const svg=document.getElementById(svgId);
+  if(!svg) return;
+  const W=800,Y=4,H2=28,H=40;
+  let html=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
+  if(!debutHMS||!finHMS){svg.innerHTML=html;return;}
+  const base=new Date();base.setHours(0,0,0,0);
+  const pHMS=s=>{const[h,m,sec]=(s||'').split(':');return base.getTime()+(+h||0)*3600000+(+m||0)*60000+(+sec||0)*1000;};
+  const tS=pHMS(debutHMS),tE=pHMS(finHMS);
+  const span=tE-tS;if(span<=0){svg.innerHTML=html;return;}
   const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
-  // Prod background
   html+=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#bbf7d0" rx="4"/>`;
-  // Events
   let cur=tS;
   (tlEvts||[]).forEach(e=>{
-    if (!e.key||e.key==='prod') return;
-    const x1=toX(cur), x2=toX(cur+e.dur_s*1000);
-    const col=STOP_COL[e.key]||'#94a3b8';
-    html+=`<rect x="${x1}" y="${Y}" width="${Math.max(1,x2-x1)}" height="${H2}" fill="${col}" rx="2" opacity="0.9"/>`;
-    cur+=e.dur_s*1000;
+    if(!e.key||e.key==='prod') return;
+    const cat=e.cat||'autre';
+    const x1=toX(cur),x2=toX(cur+(e.dur_s||0)*1000);
+    html+=`<rect x="${x1}" y="${Y}" width="${Math.max(1,x2-x1)}" height="${H2}" fill="${STOP_COL[cat]||'#94a3b8'}" rx="2" opacity=".9"/>`;
+    cur+=(e.dur_s||0)*1000;
   });
-  const fmtHM=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
-  html+=`<text x="2" y="${H-2}" font-size="9" fill="#64748b">${debutHMS.slice(0,5)}</text>`;
-  html+=`<text x="${W-35}" y="${H-2}" font-size="9" fill="#64748b">${finHMS.slice(0,5)}</text>`;
+  html+=`<text x="2" y="${H-1}" font-size="8" fill="#64748b">${debutHMS.slice(0,5)}</text>`;
+  html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#64748b">${finHMS.slice(0,5)}</text>`;
   svg.innerHTML=html;
 }
 
-function drawTLFromISO(svgId, evts, startIso, endIso) {
-  const svg = document.getElementById(svgId);
-  if (!svg) return;
-  const W=800,Y=8,H2=32,H=48;
-  let html = `<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
-  const tS=new Date(startIso).getTime(), tE=new Date(endIso).getTime();
-  const span=tE-tS; if(span<=0){svg.innerHTML=html;return;}
+function drawTLFromISO(svgId,evts,startIso,endIso){
+  const svg=document.getElementById(svgId);
+  if(!svg) return;
+  const W=800,Y=4,H2=28,H=40;
+  let html=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
+  const tS=new Date(startIso).getTime(),tE=new Date(endIso).getTime();
+  const span=tE-tS;if(span<=0){svg.innerHTML=html;return;}
   const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
-
   // Prod background
-  if (ST.prod_active) {
-    const ps = ST.of_start_iso ? new Date(ST.of_start_iso).getTime() : tS;
+  if(ST.prod_active&&ST.of_start_iso){
+    const ps=new Date(ST.of_start_iso).getTime();
     const x1=toX(ps),x2=toX(tE);
     if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="#bbf7d0" rx="4"/>`;
   }
-
-  // Events (stops/pauses)
+  // Events
   (evts||[]).forEach((ev,i)=>{
     const key=ev.debut||i;
-    window._evMap[key]=ev;
-    const t1=parseHMStoT(ev.debut, ev.date), t2=parseHMStoT(ev.fin, ev.date);
-    if (!t1) return;
+    window._evMap[String(key)]=ev;
+    const t1=parseHMStoT(ev.debut,ev.date),t2=parseHMStoT(ev.fin,ev.date);
+    if(!t1) return;
     const x1=toX(t1),x2=toX(t2||tE);
     if(x2<=x1) return;
-    const col=STOP_COL[ev.type||'']||'#94a3b8';
-    html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${col}" rx="2" opacity="0.85"/>`;
+    const cat=ev.cat||'autre';
+    html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${STOP_COL[cat]||'#94a3b8'}" rx="2" opacity=".85"/>`;
   });
-
-  // Current stop
-  if (_curStopKey&&_curStopKey!=='_pause'&&ST.prod_active) {
-    const stopStart=tE-((_curStopElap+(Date.now()-_lastPoll)/1000)*1000);
-    const x1=toX(stopStart),x2=toX(tE);
-    if(x2>x1){const col=STOP_COL[_curStopKey]||'#dc2626';html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${col}" rx="2" opacity="0.9"/>`;}
+  // Current live stop
+  if(_curStopKey&&_curStopKey!=='_pause'&&ST.prod_active){
+    const se=_curStopElap+(Date.now()-_lastPoll)/1000;
+    const sT=tE-se*1000;
+    const x1=toX(sT),x2=toX(tE);
+    if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${STOP_COL.pb||'#b91c1c'}" rx="2" opacity=".9"/>`;
   }
-
-  const fmtT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
-  html+=`<text x="2" y="${H-2}" font-size="9" fill="#64748b">${fmtT(tS)}</text>`;
-  html+=`<text x="${W-35}" y="${H-2}" font-size="9" fill="#64748b">${fmtT(tE)}</text>`;
-  html+=`<line x1="${W/2}" y1="${Y}" x2="${W/2}" y2="${Y+H2}" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="2,2"/>`;
-  html+=`<text x="${W/2-12}" y="${H-2}" font-size="9" fill="#94a3b8">${fmtT((tS+tE)/2)}</text>`;
+  const fT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
+  html+=`<text x="2" y="${H-1}" font-size="8" fill="#64748b">${fT(tS)}</text>`;
+  html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#64748b">${fT(tE)}</text>`;
+  html+=`<line x1="${W/2}" y1="${Y}" x2="${W/2}" y2="${Y+H2}" stroke="#94a3b8" stroke-width=".5" stroke-dasharray="2,2"/>`;
+  html+=`<text x="${W/2-10}" y="${H-1}" font-size="8" fill="#94a3b8">${fT((tS+tE)/2)}</text>`;
   svg.innerHTML=html;
 }
 
-function parseHMStoT(hms, dateStr) {
-  if (!hms) return null;
-  try {
-    const base = dateStr ? new Date(dateStr.slice(0,10)).getTime() : new Date().setHours(0,0,0,0);
-    const [h,m,s]=(hms||'00:00:00').split(':').map(Number);
-    return base+h*3600000+m*60000+(s||0)*1000;
-  } catch(e){return null;}
+function parseHMStoT(hms,dateStr){
+  if(!hms) return null;
+  try{const base=dateStr?new Date(dateStr.slice(0,10)).getTime():new Date().setHours(0,0,0,0);
+  const[h,m,s]=(hms||'').split(':').map(Number);return base+h*3600000+m*60000+(s||0)*1000;}
+  catch(e){return null;}
 }
 
-// ── Recap stops list ──
-function renderRecap(evts) {
+// ── RECAP ──
+function renderRecap(evts){
   const c=document.getElementById('recap-list');
-  if (!c) return;
+  if(!c) return;
   window._evMap={};
-  const stops=(evts||[]).filter(e=>e.type&&!['Production','prod',''].includes((e.type||'').toLowerCase()));
-  if (!stops.length) { c.innerHTML='<span style="color:var(--c-muted);font-size:11px">Aucun arrêt enregistré</span>'; return; }
+  const stops=(evts||[]).filter(e=>e.type);
+  if(!stops.length){c.innerHTML='<div style="color:var(--gray);font-size:10px;padding:4px">Aucun arrêt</div>';return;}
   let html='';
   stops.forEach((ev,i)=>{
     const key=ev.debut||i;
     window._evMap[String(key)]=ev;
-    const col=STOP_COL[ev.type||'']||'#94a3b8';
+    const cat=ev.cat||'autre';
+    const col=STOP_COL[cat]||'#94a3b8';
     html+=`<div class="si">
       <div class="sdot" style="background:${col}"></div>
-      <div class="sname">${ev.type||'?'}</div>
-      <div class="sdur">${ev.duree||calcDur(ev.debut,ev.fin)||'?'}</div>
+      <div class="si-nm">${ev.type||'?'}</div>
+      <div class="si-dur">${ev.duree||calcDur(ev.debut,ev.fin)||'—'}</div>
       <button class="btn-edit" onclick="openEditStop('${esc(String(key))}')">✏</button>
     </div>`;
   });
-  // Current live stop
-  if (_curStopKey) {
-    const lbl=_curStopKey==='_pause'?'Pause Pilote':_curStopKey;
-    html+=`<div class="si" style="animation:blink .9s step-start infinite">
-      <div class="sdot" style="background:${STOP_COL[lbl]||'#dc2626'}"></div>
-      <div class="sname">${lbl} <span style="font-size:9px;color:var(--c-muted)">(en cours)</span></div>
-      <div class="sdur" id="recap-live">--:--</div>
+  if(_curStopKey){
+    const lbl=_curStopKey==='_pause'?'Pause pilote':getEvtLabel(_curStopKey);
+    const col=_curStopKey==='_pause'?STOP_COL['_pause']:STOP_COL.pb;
+    html+=`<div class="si" style="animation:blink .85s step-start infinite">
+      <div class="sdot" style="background:${col}"></div>
+      <div class="si-nm" style="font-size:9px">${lbl}</div>
+      <div class="si-dur" style="font-size:9px">…</div>
     </div>`;
   }
   c.innerHTML=html;
@@ -2618,117 +2934,120 @@ function renderRecap(evts) {
 function calcDur(d,f){
   if(!d||!f) return '';
   try{const p=s=>s.split(':').reduce((a,v,i)=>a+(i===0?+v*3600:i===1?+v*60:+v),0);
-  const diff=p(f)-p(d); return diff>0?fmtDur(diff):'';}catch(e){return '';}
+  const diff=p(f)-p(d);return diff>0?fmtDur(diff):'';}catch(e){return '';}
 }
 
-// ── Main KPI ──
-async function renderMainKpi() {
-  const d = await apiFetch('/api/history_today');
-  if (!d) return;
-  const cur=document.getElementById('mkpi-cur');
-  const prev=document.getElementById('mkpi-prev');
-  const ofL=document.getElementById('mkpi-of');
-  if (!cur||!prev||!ofL) return;
-  const trs=d.trs_shift||0;
-  const rows=d.rows||[];
-  if (rows.length) {
-    cur.innerHTML=`<div style="font-size:30px;font-weight:800;color:${trs>=90?'var(--c-green)':trs>=75?'var(--c-yellow)':'var(--c-red)'}">${fmtTRS(trs)}</div>
-    <div style="font-size:10px;color:var(--c-muted);margin-top:3px">${rows.length} OF • Éq: ${(d.tot_eq||0).toFixed(1)}</div>`;
-  } else cur.innerHTML='<span style="color:var(--c-muted);font-size:11px">Aucune production ce poste</span>';
-  prev.innerHTML='<span style="color:var(--c-muted);font-size:11px">—</span>';
-  ofL.innerHTML=rows.slice(-5).reverse().map(r=>`
-    <div class="flex" style="padding:3px 0;border-bottom:1px solid var(--c-border);font-size:11px">
-      <span style="font-weight:600;flex:1">${r.of||'?'}</span>
-      <span class="${(r.trs||0)>=90?'tg':(r.trs||0)>=75?'tm':'tb'}">${fmtTRS(r.trs)}</span>
-    </div>`).join('')||'<span style="color:var(--c-muted)">--</span>';
-}
-
-// ── Fin de poste ──
-async function doFinPoste() {
-  if (ST.prod_active) { toast('Terminer la production en cours avant de finir le poste','err'); return; }
+// ── FIN DE POSTE ──
+async function doFinPoste(){
+  if(ST.prod_active){toast('Terminer la production en cours avant de finir le poste','err');return;}
   goTab('finposte');
 }
 
-async function loadFPData() {
-  const d = await apiFetch('/api/fin_poste_data');
-  if (!d) return;
-  const trs = d.trs_shift!==undefined?d.trs_shift:d.trs;
-  document.getElementById('fp-trs').textContent = fmtTRS(trs);
-  document.getElementById('fp-eq').textContent = (d.tot_equiv||0).toFixed(1);
-  document.getElementById('fp-nof').textContent = d.nb_of||0;
-  document.getElementById('fp-st').textContent = Math.round((d.tot_s||0)/60)+' min';
-  document.getElementById('fp-who').textContent = `${d.pilot||ST.pilot||''} — ${ST.poste||''}`;
+async function loadFPData(){
+  const d=await apiFetch('/api/fin_poste_data');
+  if(!d) return;
+  document.getElementById('fp-trs').textContent=fmtTRS(d.trs_shift!==undefined?d.trs_shift:d.trs);
+  document.getElementById('fp-trs-of').textContent=fmtTRS(d.trs);
+  document.getElementById('fp-eq').textContent=(d.tot_equiv||0).toFixed(1);
+  document.getElementById('fp-nof').textContent=d.nb_of||0;
+  document.getElementById('fp-prod-t').textContent=Math.round((d.tot_s||0)/60)+' min';
+  document.getElementById('fp-who').textContent=`${d.pilot||ST.pilot||''} — ${ST.poste||''}`;
+
+  // Count stops
+  const stops=gEvts.filter(e=>e.type);
+  const stopTotal=stops.reduce((a,e)=>{
+    try{const p=s=>s.split(':').reduce((acc,v,i)=>acc+(i===0?+v*3600:i===1?+v*60:+v),0);
+    return a+Math.max(0,p(e.fin||'00:00:00')-p(e.debut||'00:00:00'));}catch(ex){return a;}
+  },0);
+  document.getElementById('fp-stop-t').textContent=Math.round(stopTotal/60)+' min';
 
   // Timeline
-  const shiftStart = d.shift_start_iso || new Date(Date.now()-8*3600*1000).toISOString();
-  drawTLFromISO('fp-tl', gEvts, shiftStart, new Date().toISOString());
+  const shiftStart=d.shift_start_iso||new Date(Date.now()-8*3600*1000).toISOString();
+  drawTLFromISO('fp-tl',gEvts,shiftStart,new Date().toISOString());
 
-  // Productions list
-  const fp = document.getElementById('fp-prods');
-  if (fp && d.of_list) {
-    fp.innerHTML=d.of_list.map(p=>`
-      <div class="flex" style="padding:4px 0;border-bottom:1px solid var(--c-border);font-size:11px">
-        <span style="font-weight:600;min-width:80px">${p.of||'?'}</span>
-        <span style="color:var(--c-muted)">${p.taille||''} ${p.type_prod||''}</span>
-        <span style="margin-left:auto">${p.qte_fab||0} pcs</span>
-        <span class="${(p.trs||0)>=90?'tg':(p.trs||0)>=75?'tm':'tb'}">${fmtTRS(p.trs||0)}</span>
-      </div>`).join('')||'<span style="color:var(--c-muted)">Aucune production</span>';
+  // Productions
+  const fpb=document.getElementById('fp-prods');
+  if(fpb&&d.of_list){
+    fpb.innerHTML=d.of_list.map(p=>`
+      <tr>
+        <td style="font-weight:600">${esc(p.of||'')}</td>
+        <td>${esc(p.taille||'')}</td>
+        <td>${esc(String(p.qte_fab||0))}</td>
+        <td>${esc(String(p.equiv||''))}</td>
+        <td>${esc(p.duree||'')}</td>
+        <td class="${(p.trs||0)>=90?'tg':(p.trs||0)>=75?'tm':'tb'}">${fmtTRS(p.trs||0)}</td>
+      </tr>`).join('')||'<tr><td colspan="6" style="color:var(--gray)">Aucune production</td></tr>';
+  }
+
+  // Stops list
+  const fsl=document.getElementById('fp-stops-list');
+  if(fsl){
+    const stopsByType={};
+    gEvts.forEach(e=>{if(!e.type)return;if(!stopsByType[e.type])stopsByType[e.type]=0;
+    try{const p=s=>s.split(':').reduce((a,v,i)=>a+(i===0?+v*3600:i===1?+v*60:+v),0);
+    stopsByType[e.type]+=Math.max(0,p(e.fin||'00:00:00')-p(e.debut||'00:00:00'));}catch(ex){}});
+    fsl.innerHTML=Object.entries(stopsByType).map(([t,s])=>`
+      <div class="flex" style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <span style="flex:1;font-weight:600">${esc(t)}</span>
+        <span style="color:var(--gray)">${Math.round(s/60)} min</span>
+      </div>`).join('')||'<span style="color:var(--gray);font-size:11px">Aucun arrêt</span>';
   }
 }
 
-async function confirmFinPoste() {
-  if (!confirm('Confirmer fin de poste et se déconnecter ?')) return;
+async function confirmFinPoste(){
+  if(!confirm('Confirmer fin de poste et se déconnecter ?')) return;
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  ST={}; _curStopKey=null;
-  document.getElementById('app').classList.add('hidden');
-  document.getElementById('ln-pw').value='';
-  document.getElementById('ln-err').textContent='';
-  document.getElementById('v-login').style.display='';
+  resetToLogin();
   toast('Bonne fin de poste !','ok');
 }
 
-// ── History ──
-async function loadHist() {
+// ── HISTORY ──
+async function loadHist(){
   const dt=document.getElementById('hist-dt').value||new Date().toISOString().slice(0,10);
   const d=await apiFetch('/api/history?date='+dt);
-  const rows=Array.isArray(d)?(d):(d&&d.rows?d.rows:[]);
-  const hd=document.getElementById('hist-hd'), bd=document.getElementById('hist-bd');
-  if (!hd||!bd) return;
-  if (!rows.length) { bd.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--c-muted);padding:18px">Aucune donnée</td></tr>'; return; }
+  const rows=Array.isArray(d)?d:(d&&d.rows?d.rows:[]);
+  const hd=document.getElementById('hist-hd'),bd=document.getElementById('hist-bd');
+  if(!hd||!bd) return;
+  if(!rows.length){bd.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée</td></tr>';return;}
   const ks=['type','of','poste','pilote','debut','fin','qte_fab','equiv','trs'];
   const lb={type:'Type',of:'OF',poste:'Poste',pilote:'Pilote',debut:'Début',fin:'Fin',qte_fab:'Qté',equiv:'Éq',trs:'TRS'};
   hd.innerHTML=ks.map(k=>`<th>${lb[k]||k}</th>`).join('');
   bd.innerHTML=rows.map(row=>{
-    const t=parseFloat(row.trs||row['trs%']||0);
-    return '<tr>'+ks.map(k=>{
-      const v=row[k]||'';
-      if(k==='trs') return `<td class="${t>=90?'tg':t>=75?'tm':t>0?'tb':''}">${t>0?fmtTRS(t):''}</td>`;
-      return `<td>${esc(String(v))}</td>`;
-    }).join('')+'</tr>';
+    const t=parseFloat(row.trs||0);
+    return '<tr>'+ks.map(k=>{const v=row[k]||'';
+    if(k==='trs') return `<td class="${t>=90?'tg':t>=75?'tm':t>0?'tb':''}">${t>0?fmtTRS(t):''}</td>`;
+    return `<td>${esc(String(v))}</td>`;}).join('')+'</tr>';
   }).join('');
 }
 
-// ── Settings ──
-async function loadCfg() {
+// ── SETTINGS ──
+async function loadCfg(){
   const d=await apiFetch('/api/config');
-  if (!d) return;
+  if(!d) return;
   _cfgPwds=d.pilot_passwords||{};
   _cfgModels=d.modeles_horaires||[];
-  document.getElementById('cfg-pr').value=d.prod_ref||200;
+  const prEl=document.getElementById('cfg-pr');
+  if(prEl) prEl.value=d.prod_ref||200;
   renderPwdList();
   renderModelList();
+  // Refresh login model dropdown
+  const sel=document.getElementById('ln-model');
+  if(sel){
+    while(sel.options.length>1) sel.remove(1);
+    _cfgModels.forEach(m=>{const o=document.createElement('option');o.value=m.nom||'';o.textContent=m.nom||'';sel.appendChild(o);});
+  }
 }
 
-function renderPwdList() {
+function renderPwdList(){
   const c=document.getElementById('pwd-list');
-  if (!c) return;
+  if(!c) return;
   c.innerHTML=Object.entries(_cfgPwds).map(([nm,pw])=>`
     <div class="pr">
       <div class="pn">${esc(nm)}</div>
-      <input type="password" id="pwi-${esc(nm)}" value="${esc(pw)}" data-n="${esc(nm)}">
+      <input type="password" id="pwi-${esc(nm)}" value="${esc(String(pw))}" data-n="${esc(nm)}">
       <button class="btn-eye" onclick="toggleEye('pwi-${esc(nm)}')">👁</button>
-      <button class="btn btn-sec" style="font-size:10px;padding:3px 7px" onclick="rmPilot('${esc(nm)}')">✕</button>
-    </div>`).join('')||'<div style="color:var(--c-muted);font-size:11px;padding:3px">Aucun pilote</div>';
+      <button class="btn btn-sec" style="font-size:10px;padding:2px 6px" onclick="rmPilot('${esc(nm)}')">✕</button>
+    </div>`).join('')||'<div style="color:var(--gray);font-size:11px;padding:3px">Aucun pilote configuré</div>';
 }
 
 function toggleEye(id){const i=document.getElementById(id);if(i)i.type=i.type==='password'?'text':'password';}
@@ -2742,14 +3061,12 @@ function addPilot(){
 function rmPilot(n){delete _cfgPwds[n];renderPwdList();}
 async function savePwds(){
   document.querySelectorAll('#pwd-list input[data-n]').forEach(i=>_cfgPwds[i.dataset.n]=i.value);
-  const pw=document.getElementById('adm-pw').value||'1234';
-  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,pilot_passwords:_cfgPwds})});
+  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,pilot_passwords:_cfgPwds})});
   const d=r?await r.json():{};
-  d&&d.ok?toast('MDP enregistrés','ok'):toast(d&&d.error||'Erreur (vérifier MDP admin)','err');
+  if(d&&d.ok){toast('MDP enregistrés','ok');loadCfg();}else toast(d&&d.error||'Erreur','err');
 }
 
 const DAYS=[{k:'lun',l:'Lun'},{k:'mar',l:'Mar'},{k:'mer',l:'Mer'},{k:'jeu',l:'Jeu'},{k:'ven',l:'Ven'},{k:'sam',l:'Sam'},{k:'dim',l:'Dim'}];
-
 function renderModelList(){
   const c=document.getElementById('models-list');
   if(!c) return;
@@ -2758,65 +3075,46 @@ function renderModelList(){
     return `<div class="model-card">
       <div class="mch">
         <input value="${esc(m.nom||'Poste '+(mi+1))}" onchange="_cfgModels[${mi}].nom=this.value" placeholder="Nom du poste">
-        <button class="btn btn-danger" style="font-size:10px;padding:3px 7px" onclick="_cfgModels.splice(${mi},1);renderModelList()">✕</button>
+        <button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="_cfgModels.splice(${mi},1);renderModelList()">✕</button>
       </div>
-      <div class="day-grid">${DAYS.map(d=>{
-        const dc=j[d.k]||{};
-        return `<div class="day-box"><div class="dl">${d.l}</div>
+      <div class="day-grid">${DAYS.map(d=>{const dc=j[d.k]||{};
+        return `<div class="day-box"><div class="day-lbl">${d.l}</div>
           <input type="time" onchange="setDay(${mi},'${d.k}','debut',this.value)" value="${dc.debut||'05:00'}" style="margin-bottom:2px">
           <input type="time" onchange="setDay(${mi},'${d.k}','fin',this.value)" value="${dc.fin||'13:00'}">
-        </div>`;
-      }).join('')}</div>
+        </div>`;}).join('')}
+      </div>
     </div>`;
-  }).join('')||'<div style="color:var(--c-muted);font-size:11px">Aucun modèle</div>';
+  }).join('')||'<div style="color:var(--gray);font-size:11px">Aucun modèle horaire</div>';
 }
 
-function setDay(mi,day,field,val){
-  if(!_cfgModels[mi]) return;
-  if(!_cfgModels[mi].jours) _cfgModels[mi].jours={};
-  if(!_cfgModels[mi].jours[day]) _cfgModels[mi].jours[day]={};
-  _cfgModels[mi].jours[day][field]=val;
-}
+function setDay(mi,day,field,val){if(!_cfgModels[mi])return;if(!_cfgModels[mi].jours)_cfgModels[mi].jours={};if(!_cfgModels[mi].jours[day])_cfgModels[mi].jours[day]={};_cfgModels[mi].jours[day][field]=val;}
 function addModel(){_cfgModels.push({nom:'Nouveau poste',jours:{lun:{debut:'05:00',fin:'13:00'},mar:{debut:'05:00',fin:'13:00'},mer:{debut:'05:00',fin:'13:00'},jeu:{debut:'05:00',fin:'13:00'},ven:{debut:'05:00',fin:'13:00'},sam:{debut:'',fin:''},dim:{debut:'',fin:''}}});renderModelList();}
 async function saveModels(){
-  const pw=document.getElementById('adm-pw2').value||'1234';
-  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,modeles_horaires:_cfgModels})});
+  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,modeles_horaires:_cfgModels})});
   const d=r?await r.json():{};
-  d&&d.ok?toast('Modèles enregistrés','ok'):toast(d&&d.error||'Erreur (vérifier MDP admin)','err');
+  if(d&&d.ok){toast('Modèles enregistrés','ok');loadCfg();}else toast(d&&d.error||'Erreur','err');
 }
 async function saveProdRef(){
   const v=parseFloat(document.getElementById('cfg-pr').value)||200;
-  const pw=document.getElementById('adm-pw3').value||'1234';
-  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,prod_ref:v})});
+  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,prod_ref:v})});
   const d=r?await r.json():{};
-  d&&d.ok?toast('Référence enregistrée','ok'):toast(d&&d.error||'Erreur','err');
+  d&&d.ok?toast('Enregistré','ok'):toast(d&&d.error||'Erreur','err');
 }
 
-// ── Modals ──
+// ── MODALS ──
 function openM(id){const m=document.getElementById(id);if(m){m.classList.add('on');m.style.display='flex';}}
 function closeM(id){const m=document.getElementById(id);if(m){m.classList.remove('on');m.style.display='';}}
 document.addEventListener('click',e=>{if(e.target.classList.contains('overlay'))closeM(e.target.id);});
 
-// ── Utils ──
-async function apiFetch(url){
-  try{const r=await fetch(url);return r.ok?await r.json():null;}catch(e){return null;}
-}
-function fmtDur(s){
-  if(!s||s<0) return '00:00:00';
-  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);
-  return [h,m,sec].map(x=>String(x).padStart(2,'0')).join(':');
-}
-function fmtD2(s){
-  if(!s||s<0) return '0 min';
-  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);
-  return h?h+'h'+String(m).padStart(2,'0'):m+' min';
-}
+// ── UTILS ──
+async function apiFetch(url){try{const r=await fetch(url);return r.ok?await r.json():null;}catch(e){return null;}}
+function fmtDur(s){if(!s||s<0)return'00:00:00';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);return[h,m,sec].map(x=>String(x).padStart(2,'0')).join(':');}
+function fmtD2(s){if(!s||s<0)return'0 min';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?h+'h'+String(m).padStart(2,'0'):m+' min';}
 function fmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-
 function toast(msg,type){
   let t=document.getElementById('_toast');
-  if(!t){t=document.createElement('div');t.id='_toast';t.style.cssText='position:fixed;bottom:18px;right:18px;padding:9px 16px;border-radius:7px;font-size:13px;font-weight:600;z-index:999;transition:opacity .3s;box-shadow:0 4px 14px rgba(0,0,0,.18)';document.body.appendChild(t);}
+  if(!t){t=document.createElement('div');t.id='_toast';t.style.cssText='position:fixed;bottom:16px;right:16px;padding:8px 14px;border-radius:7px;font-size:13px;font-weight:600;z-index:999;transition:opacity .3s;box-shadow:0 4px 12px rgba(0,0,0,.18)';document.body.appendChild(t);}
   t.textContent=msg;t.style.background=type==='ok'?'#16a34a':'#dc2626';t.style.color='#fff';t.style.opacity='1';
   clearTimeout(t._to);t._to=setTimeout(()=>t.style.opacity='0',3000);
 }
