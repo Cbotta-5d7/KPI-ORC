@@ -97,6 +97,7 @@ _excel_lock = threading.Lock()
 _lists = {}
 _decl_cache = []   # liste de (row_num, row_data) - toutes déclarations (prod + events)
 _prod_ref_cached = 0.0
+_excel_busy = False  # True quand le fichier Excel est verrouillé (ouvert par Excel)
 cfg = {}
 
 flask_app = Flask(__name__)
@@ -406,11 +407,12 @@ def get_list(h):
     return _lists.get(h,[])
 
 def load_history():
-    global _decl_cache
+    global _decl_cache, _excel_busy
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return
     try:
         wb = load_workbook(path, read_only=True, data_only=True)
+        _excel_busy = False
         _decl_cache = []
         # Nouveau schéma unifié
         if "Declarations" in wb.sheetnames:
@@ -453,6 +455,12 @@ def load_history():
                     unified[35] = row[57] if len(row)>57 else None  # Commentaire
                     _decl_cache.append((i, unified))
         wb.close()
+    except PermissionError:
+        _excel_busy = True
+        def _retry():
+            import time as _t; _t.sleep(5)
+            load_history()
+        threading.Thread(target=_retry, daemon=True).start()
     except: pass
 
 # ── Calcul équivalence ────────────────────────────────────────────────────────
@@ -616,6 +624,7 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
                 ws.append(row)
                 _format_row(ws,ws.max_row)
                 _safe_excel_save(wb,path)
+            threading.Thread(target=load_history,daemon=True).start()
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
 
@@ -747,6 +756,7 @@ def _state_json():
         "tl_events": [serialize_event(e) for e in _S["tl_events"]],
         "shift_duration_s": get_shift_duration_s(_S["poste"]),
         "shift_start_iso": _dt_str(_S.get("shift_start")),
+        "excel_busy": _excel_busy,
     }
 
 @flask_app.route('/')
@@ -2010,7 +2020,7 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
 /* Action buttons row below timeline */
 .prod-act-row{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px}
-.act-btn{flex:1;min-width:90px;border:none;border-radius:8px;padding:9px 6px;cursor:pointer;font-size:12px;font-weight:700;text-align:center;transition:all .15s;white-space:nowrap}
+.act-btn{flex:1;min-width:100px;border:none;border-radius:8px;padding:14px 6px;cursor:pointer;font-size:13px;font-weight:700;text-align:center;transition:all .15s;white-space:nowrap}
 .act-btn:hover{filter:brightness(.9)}
 .act-stop{background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;font-size:13px;font-weight:800;box-shadow:0 3px 8px rgba(185,28,28,.3)}
 .act-nett{background:#e0f2fe;color:var(--blue)}
@@ -2117,6 +2127,7 @@ select{cursor:default}
 .mch input{flex:1;font-size:12px;font-weight:600;padding:4px 6px;border:1px solid var(--border);border-radius:4px}
 
 /* ── MODALS ── */
+.modal{display:none}
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;align-items:center;justify-content:center}
 .overlay.on{display:flex}
 .mbox{background:var(--card);border-radius:12px;width:90%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:92vh;display:flex;flex-direction:column}
@@ -2228,9 +2239,16 @@ select{cursor:default}
   <!-- ════ MAIN VIEW ════ -->
   <div id="v-main" class="view" style="flex-direction:column">
     <!-- Bannière prod en cours (visible si prod_active mais sur vue accueil) -->
-    <div id="main-prod-banner" style="display:none;background:#16a34a;color:#fff;padding:8px 14px;font-weight:700;font-size:13px;align-items:center;justify-content:space-between">
-      <span style="cursor:pointer" onclick="goTab('prod')">▶ Production en cours — Cliquer ici pour y accéder</span>
-      <button onclick="forceResetProd()" style="background:rgba(0,0,0,.25);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:5px;font-size:11px;padding:3px 10px;cursor:pointer;white-space:nowrap">⚠ Annuler cette prod</button>
+    <div id="main-prod-banner" style="display:none;background:#1e293b;color:#fff;padding:8px 14px;font-size:12px;align-items:center;gap:16px;cursor:pointer" onclick="goTab('prod')">
+      <span style="font-weight:800;color:#86efac">▶ Prod en cours</span>
+      <span>OF : <span id="mpb-of" style="font-weight:700">—</span></span>
+      <span>Durée : <span id="mpb-dur" style="color:#67e8f9;font-weight:700">—</span></span>
+      <span>Arrêts : <span id="mpb-stops" style="color:#fca5a5;font-weight:700">—</span></span>
+      <span style="margin-left:auto;font-size:11px;opacity:.7">Cliquer → vue prod</span>
+    </div>
+    <!-- Barre Excel occupé -->
+    <div id="excel-busy-bar" style="display:none;background:#92400e;color:#fef3c7;padding:5px 14px;font-size:11px;font-weight:700;text-align:center">
+      ⚠ Fichier Excel ouvert par un autre programme — impossible de lire/écrire les données
     </div>
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0">
@@ -2300,17 +2318,17 @@ select{cursor:default}
       </div>
     </div>
     <!-- Modal edit horaires depuis bandeau prod -->
-    <div id="m-pobmodel" class="modal" style="display:none">
-      <div class="modal-box" style="max-width:340px">
-        <h3>Modifier horaires du poste</h3>
+    <div id="m-pobmodel" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;align-items:center;justify-content:center">
+      <div class="mbox" style="max-width:340px;padding:20px">
+        <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0"><h2>✏ Modifier horaires du poste</h2></div>
         <p id="pobm-info" style="font-size:12px;color:#64748b;margin-bottom:8px"></p>
         <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
           <label style="font-size:12px;font-weight:600">Début <input type="time" id="pobm-debut" style="padding:3px 6px;border:1.5px solid #cbd5e1;border-radius:5px;font-size:13px"></label>
           <label style="font-size:12px;font-weight:600">Fin <input type="time" id="pobm-fin" style="padding:3px 6px;border:1.5px solid #cbd5e1;border-radius:5px;font-size:13px"></label>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-primary" onclick="savePobModelHours()">Enregistrer</button>
-          <button class="btn btn-ghost" onclick="closeM('m-pobmodel')">Annuler</button>
+          <button class="btn btn-prim" onclick="savePobModelHours()">Enregistrer</button>
+          <button class="btn btn-sec" onclick="closeM('m-pobmodel')">Annuler</button>
         </div>
       </div>
     </div>
@@ -3228,7 +3246,15 @@ function applyState(s) {
 
   // Main prod banner (shown when prod active but user is on main view)
   const mpb=document.getElementById('main-prod-banner');
-  if(mpb) mpb.style.display=(s.prod_active&&_curTab==='main')?'block':'none';
+  if(mpb) mpb.style.display=(s.prod_active&&_curTab==='main')?'flex':'none';
+  if(s.prod_active&&s.form){
+    const mpbOf=document.getElementById('mpb-of');
+    if(mpbOf) mpbOf.textContent=s.form.of_num||'—';
+  }
+
+  // Excel busy bar
+  const ebb=document.getElementById('excel-busy-bar');
+  if(ebb) ebb.style.display=s.excel_busy?'block':'none';
 
   // Main btn-start
   const bs=document.getElementById('btn-start');
@@ -3329,13 +3355,22 @@ function startTicker() {
     const pt=_pauseTotalAtPoll+(_curStopKey==='_pause'?dt:0);
     const tp=document.getElementById('sc-pause');
     if(tp) tp.textContent=fmtDur(pt);
-    // Équivalence théorique (basée sur type produit)
+    // Équivalence théorique (basée sur type produit — lire depuis DOM pour réactivité)
     const thEl=document.getElementById('sc-theo');
     if(thEl&&ST.prod_ref){
-      const typeProd=ST.form&&ST.form.type_prod||'';
+      const typeProd=document.getElementById('f-type_prod')?.value||ST.form?.type_prod||'';
       const coef=(window._equivCoefs&&window._equivCoefs[typeProd])||1;
       const theo=Math.round(ST.prod_ref*(_ofElapAtPoll+dt)/28800/coef);
       thEl.textContent=theo>0?theo+' éq.':'—';
+    }
+    // Mise à jour bannière accueil (durée OF et arrêts)
+    if(ST.prod_active&&_curTab==='main'){
+      const mpbDur=document.getElementById('mpb-dur');
+      const mpbStops=document.getElementById('mpb-stops');
+      const ofElBanner=_ofElapAtPoll+(!ST.is_paused?dt:0);
+      const swBanner=_stopWallAtPoll+((_curStopKey&&_curStopKey!=='_pause')?dt:0);
+      if(mpbDur) mpbDur.textContent=fmtDur(ofElBanner);
+      if(mpbStops) mpbStops.textContent=fmtDur(swBanner);
     }
     // Update stop chips timers
     if(ST.active_stops){
@@ -3602,6 +3637,7 @@ async function confirmInterposte(){
   }
   await pollState();
   await pollEvts();
+  loadMainDecl(); // interposte row must appear in accueil without waiting
   goTab('prod');
 }
 
@@ -4036,7 +4072,7 @@ async function saveEditRow() {
   }
   const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rowNum,updates})});
   const d=r?await r.json():{};
-  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();toast('Ligne modifiée','ok');}
+  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();toast('Ligne modifiée','ok');}
   else toast(d?.error||'Erreur modification','err');
 }
 
@@ -4045,7 +4081,7 @@ async function deleteRow(key,rowNumId) {
   if(!rn||!confirm('Supprimer cette ligne ?')) return;
   const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rn})});
   const d=r?await r.json():{};
-  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();toast('Supprimé','ok');}
+  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();toast('Supprimé','ok');}
   else toast(d?.error||'Erreur suppression','err');
 }
 
@@ -4407,19 +4443,55 @@ async function loadHist(){
   const today=new Date().toISOString().slice(0,10);
   const from=document.getElementById('hist-from').value||today;
   const to=document.getElementById('hist-to').value||today;
-  const d=await apiFetch(`/api/history?from=${from}&to=${to}`);
-  const rows=Array.isArray(d)?d:(d&&d.rows?d.rows:[]);
+  const [declData,evtData]=await Promise.all([
+    apiFetch(`/api/history?from=${from}&to=${to}`),
+    apiFetch('/api/events_list')
+  ]);
+  const decls=Array.isArray(declData)?declData:(declData&&declData.rows?declData.rows:[]);
+  const evts=Array.isArray(evtData)?evtData:[];
+  // Filter events to the selected date range
+  const fromD=new Date(from+'T00:00:00'),toD=new Date(to+'T23:59:59');
+  const fmtFR=d=>{const[y,m,dy]=d.split('-');return `${dy}/${m}/${y}`;};
+  const fmtFRfrom=fmtFR(from),fmtFRto=fmtFR(to);
+  const evtsFiltered=evts.filter(e=>{
+    if(!e.date) return false;
+    // Support both dd/mm/yyyy and yyyy-mm-dd
+    let dt;
+    const parts=e.date.split('/');
+    if(parts.length===3&&parts[2].length===4) dt=new Date(parts[2]+'-'+parts[1]+'-'+parts[0]);
+    else dt=new Date(e.date);
+    return dt>=fromD&&dt<=toD;
+  });
   const hd=document.getElementById('hist-hd'),bd=document.getElementById('hist-bd');
   if(!hd||!bd) return;
-  if(!rows.length){bd.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée</td></tr>';return;}
-  const ks=['type','of','poste','pilote','debut','fin','qte_fab','equiv','trs'];
-  const lb={type:'Type',of:'OF',poste:'Poste',pilote:'Pilote',debut:'Début',fin:'Fin',qte_fab:'Qté',equiv:'Éq',trs:'TRS'};
-  hd.innerHTML=ks.map(k=>`<th>${lb[k]||k}</th>`).join('');
-  bd.innerHTML=rows.map(row=>{
-    const t=parseFloat(row.trs||0);
-    return '<tr>'+ks.map(k=>{const v=row[k]||'';
-    if(k==='trs') return `<td class="${t>=90?'tg':t>=75?'tm':t>0?'tb':''}">${t>0?fmtTRS(t):''}</td>`;
-    return `<td>${esc(String(v))}</td>`;}).join('')+'</tr>';
+  // Build unified row list same as loadMainDecl
+  const allRows=[];
+  decls.forEach(r=>allRows.push({...r,_rowType:'prod'}));
+  evtsFiltered.forEach(r=>allRows.push({...r,_rowType:'evt'}));
+  allRows.sort((a,b)=>{
+    const da=a.date||'',db=b.date||'';
+    if(da!==db) return db.localeCompare(da);
+    return (b.debut||'').localeCompare(a.debut||'');
+  });
+  hd.innerHTML='<th>Type</th><th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Actions</th>';
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
+  window._rowMap=window._rowMap||{};
+  bd.innerHTML=allRows.map(r=>{
+    const key=r.row_num||r.debut;
+    window._rowMap[String(key)]=r;
+    const isProd=r._rowType==='prod';
+    const t=parseFloat(r.trs||0);
+    const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.type&&r.type.toLowerCase().includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>');
+    const details=isProd?esc(r.taille||''):esc(r.type||'');
+    const qty=isProd?esc(String(r.qte_fab||'')):esc(r.duree||'');
+    const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:`<span style="color:var(--gray);font-size:10px">${esc(r.comment||'')}</span>`;
+    return `<tr class="${isProd?'row-prod':'row-evt'}">
+      <td>${tag}</td><td style="font-weight:600">${esc(r.of||'')}</td>
+      <td style="font-size:10px">${esc(r.date||'')}</td><td style="font-size:10px">${esc(r.poste||'')}</td>
+      <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
+      <td style="font-size:11px">${details}</td><td style="font-size:11px">${qty}</td><td>${info}</td>
+      <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:15px;cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
+    </tr>`;
   }).join('');
 }
 
