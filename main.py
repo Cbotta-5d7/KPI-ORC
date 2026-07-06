@@ -416,8 +416,8 @@ def load_lists():
                     pil_map[str(pil_v).strip()] = str(pw_v or "").strip()
             if pil_map:
                 cfg["pilot_passwords"] = pil_map
-            # Also read fixed-position columns: C=copilotes, D=tailles, E=types_prod, J=fibres
-            for col_idx, list_key in [(3,"copilotes"),(4,"tailles_col"),(5,"types_prod_col"),(10,"fibres_col")]:
+            # Also read fixed-position columns: C=copilotes, D=tailles, E=types_prod, F=equiv_coef, J=fibres
+            for col_idx, list_key in [(3,"copilotes"),(4,"tailles_col"),(5,"types_prod_col"),(6,"equivalences_col"),(10,"fibres_col")]:
                 vals = []
                 for ri in range(2, ws.max_row+1):
                     v = ws.cell(ri, col_idx).value
@@ -505,8 +505,8 @@ def load_history():
 
 # ── Calcul équivalence ────────────────────────────────────────────────────────
 def calc_equiv(qte, taille, type_prod):
-    types  = get_list("Type produit")
-    equivs = get_list("Equivalence coef") or get_list("Equivalence")
+    types  = get_list("types_prod_col") or get_list("Type produit") or get_list("types_prod")
+    equivs = get_list("equivalences_col") or get_list("Equivalence coef") or get_list("Equivalence")
     if type_prod and types and equivs:
         for i,t in enumerate(types):
             if str(t).strip().lower()==str(type_prod).strip().lower():
@@ -606,7 +606,7 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
         rows.append(_base_row(label, start, end, ev.get("comment",""), "OUI" if ev.get("hors_trs") else ""))
     for ps, pe in pause_periods:
         if of_start and ps < of_start: continue
-        rows.append(_base_row("Pause pilote", ps, pe))
+        rows.append(_base_row("Pause", ps, pe))
     return rows
 
 def write_excel_bg(prod_row, evt_rows):
@@ -744,6 +744,16 @@ def write_poste_row(data):
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
 
+def _start_periodic_excel_sync():
+    """Recharge les listes Excel toutes les 5 minutes pour éviter la perte de données."""
+    def _loop():
+        while True:
+            time.sleep(300)  # 5 minutes
+            try: load_lists()
+            except: pass
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+
 def toggle_hors_trs_excel(row_num, new_val):
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return
@@ -840,7 +850,7 @@ def api_lists():
         "types_prod": get_list("types_prod_col") or get_list("Type produit") or get_list("types_prod"),
         "fibres": get_list("fibres_col") or get_list("Fibres") or get_list("fibre"),
         "tracas": get_list("Traca") or get_list("tracas"),
-        "equivalences": get_list("Equivalence coef") or get_list("Equivalence") or [],
+        "equivalences": get_list("equivalences_col") or get_list("Equivalence coef") or get_list("Equivalence") or [],
     })
 
 @flask_app.route('/api/login', methods=['POST'])
@@ -1575,15 +1585,9 @@ def generate_dashboard_html():
 
     def trs_color(t):
         if t < 0: return "#94a3b8"
-        if t >= 70: return "#16a34a"
-        if t >= 50: return "#d97706"
-        return "#dc2626"
-
-    def trs_bg(t):
-        if t < 0: return "#f1f5f9"
-        if t >= 70: return "#d1fae5"
-        if t >= 50: return "#fef3c7"
-        return "#fee2e2"
+        if t >= 70: return "#22c55e"
+        if t >= 50: return "#f59e0b"
+        return "#ef4444"
 
     def hms2s(s):
         try:
@@ -1603,15 +1607,14 @@ def generate_dashboard_html():
     prod_active = bool(_S.get("prod_active"))
     active_stops = [k for k,t in _S.get("timers",{}).items() if t.get("running") and not k.startswith("_")]
     of_num_now = (_S.get("form") or {}).get("of_num","") or "—"
+    taille_now = (_S.get("form") or {}).get("taille","") or ""
+    type_prod_now = (_S.get("form") or {}).get("type_prod","") or ""
     is_paused = _S.get("is_paused", False)
 
-    # Productions + events du poste en cours
     today_prod = [r for r in prod_rows_all if _row_date(r[2])==today_str and str(r[4] or "")==pilot_now]
     today_evts = [r for r in evt_rows_all if _row_date(r[2])==today_str and str(r[4] or "")==pilot_now]
 
-    # TRS basé sur shift_start → fin de la dernière déclaration déclarée
     shift_start_dt = _S.get("shift_start")
-    # Trouver la fin de la dernière déclaration
     last_fin_dt = None
     for r in today_prod:
         fin_str = str(r[17] or "")
@@ -1621,7 +1624,6 @@ def generate_dashboard_html():
                 if last_fin_dt is None or t > last_fin_dt:
                     last_fin_dt = t
             except: pass
-    # Si prod active, la fin est maintenant
     if prod_active:
         last_fin_dt = datetime.datetime.now()
 
@@ -1635,12 +1637,10 @@ def generate_dashboard_html():
         if elapsed_for_trs > 0:
             trs_poste = round(tot_equiv / (prod_ref * elapsed_for_trs / 28800) * 100, 1)
 
-    # Prod/arrêt temps
     prod_s_total = sum(hms2s(str(r[18] or "0")) for r in today_prod)
     stop_s_total = sum(hms2s(str(r[18] or "0")) for r in today_evts
                        if str(r[0] or "").lower() not in ("pause pilote","changement d'of","interposte","changement de serie"))
 
-    # Pareto arrêts du poste en cours
     evt_dur = defaultdict(float)
     for r in today_evts:
         t = str(r[0] or "")
@@ -1648,7 +1648,6 @@ def generate_dashboard_html():
         evt_dur[t] += hms2s(str(r[18] or "0"))
     pareto = sorted(evt_dur.items(), key=lambda x: -x[1])[:8]
 
-    # Nom de l'arrêt actif (pour popup)
     active_stop_name = ""
     active_stop_elapsed = 0.0
     if active_stops:
@@ -1658,24 +1657,33 @@ def generate_dashboard_html():
         active_stop_name = ev["label"] if ev else k
         t_data = _S.get("timers",{}).get(k, {})
         active_stop_elapsed = t_data.get("elapsed", 0)
+        if t_data.get("running") and t_data.get("start"):
+            try: active_stop_elapsed += (datetime.datetime.now() - t_data["start"]).total_seconds()
+            except: pass
     elif is_paused:
-        active_stop_name = "Pause pilote"
+        active_stop_name = "Pause"
         active_stop_elapsed = _S.get("pause_total_s", 0)
+        if _S.get("pause_start"):
+            try: active_stop_elapsed += (datetime.datetime.now() - _S["pause_start"]).total_seconds()
+            except: pass
 
     has_alert = bool(active_stops or is_paused)
     gen_time = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    elapsed_str = fmt_s(elapsed_for_trs) if elapsed_for_trs > 0 else "—"
+    prod_pct = int(prod_s_total / (prod_s_total + stop_s_total) * 100) if (prod_s_total + stop_s_total) > 0 else 0
+    trs_col = trs_color(trs_poste)
 
-    # ── Gauge SVG helper ──
-    def gauge_svg(trs, size=140, label=""):
+    # ── Gauge arc SVG ──
+    def gauge_svg(trs, size=220):
         pct = max(0, min(100, trs)) if trs >= 0 else 0
         col = trs_color(trs)
-        r_out=50; r_in=34; cx=60; cy=62
+        r_out=90; r_in=62; cx=100; cy=104
         def arc_pt(r, deg):
             rad = math.radians(deg)
             return cx+r*math.cos(rad), cy+r*math.sin(rad)
         x1,y1=arc_pt(r_out,180); x2,y2=arc_pt(r_out,0)
         xi1,yi1=arc_pt(r_in,180); xi2,yi2=arc_pt(r_in,0)
-        bg=f'<path d="M{x1:.1f},{y1:.1f} A{r_out},{r_out} 0 0,1 {x2:.1f},{y2:.1f} L{xi2:.1f},{yi2:.1f} A{r_in},{r_in} 0 0,0 {xi1:.1f},{yi1:.1f} Z" fill="#e2e8f0"/>'
+        bg=f'<path d="M{x1:.1f},{y1:.1f} A{r_out},{r_out} 0 0,1 {x2:.1f},{y2:.1f} L{xi2:.1f},{yi2:.1f} A{r_in},{r_in} 0 0,0 {xi1:.1f},{yi1:.1f} Z" fill="#1e293b"/>'
         fg=""
         if pct > 0:
             end_deg = 180 - pct * 1.8
@@ -1684,89 +1692,74 @@ def generate_dashboard_html():
             lg=1 if pct>50 else 0
             fg=f'<path d="M{fx1:.1f},{fy1:.1f} A{r_out},{r_out} 0 {lg},1 {fx2:.1f},{fy2:.1f} L{fxi2:.1f},{fyi2:.1f} A{r_in},{r_in} 0 {lg},0 {fxi1:.1f},{fyi1:.1f} Z" fill="{col}"/>'
         lbl_txt = f"{trs:.1f}%" if trs >= 0 else "—"
-        h = int(size * 68 // 140)
-        return (f'<svg width="{size}" height="{h}" viewBox="0 0 120 68">'
+        h = int(size * 110 // 200)
+        return (f'<svg width="{size}" height="{h}" viewBox="0 0 200 110">'
                 f'{bg}{fg}'
-                f'<text x="{cx}" y="{cy+8}" text-anchor="middle" font-size="17" font-weight="900" fill="{col}">{lbl_txt}</text>'
+                f'<text x="{cx}" y="{cy+6}" text-anchor="middle" font-size="28" font-weight="900" fill="{col}">{lbl_txt}</text>'
                 f'</svg>')
 
-    # ── Pie chart SVG helper ──
-    def pie_svg(prod_s, stop_s, size=120):
+    # ── Pie chart SVG ──
+    def pie_svg(prod_s, stop_s, size=180):
         total = prod_s + stop_s
         if total <= 0:
-            return f'<svg width="{size}" height="{size}"><text x="{size//2}" y="{size//2}" text-anchor="middle" font-size="10" fill="#94a3b8">Pas de données</text></svg>'
+            return f'<svg width="{size}" height="{size}"><text x="{size//2}" y="{size//2+6}" text-anchor="middle" font-size="16" fill="#475569">Pas de données</text></svg>'
         cx = cy = size // 2
-        r = size // 2 - 4
+        r = size // 2 - 8
         def seg(start_a, end_a, color):
             s = math.radians(start_a); e = math.radians(end_a)
             lg = 1 if (end_a - start_a) > 180 else 0
             x1,y1 = cx+r*math.cos(s), cy+r*math.sin(s)
             x2,y2 = cx+r*math.cos(e), cy+r*math.sin(e)
             return f'<path d="M{cx},{cy} L{x1:.1f},{y1:.1f} A{r},{r} 0 {lg},1 {x2:.1f},{y2:.1f} Z" fill="{color}"/>'
-        prod_pct = prod_s / total
-        prod_end = prod_pct * 360 - 90
-        parts = seg(-90, prod_end, "#16a34a") + seg(prod_end, 270, "#dc2626")
-        pp = int(prod_pct * 100); sp = 100 - pp
-        lbl = f'<text x="{cx}" y="{cy-6}" text-anchor="middle" font-size="11" font-weight="800" fill="#1e293b">{pp}%</text>'
-        lbl += f'<text x="{cx}" y="{cy+8}" text-anchor="middle" font-size="9" fill="#64748b">Prod</text>'
+        prod_end = (prod_s / total) * 360 - 90
+        parts = seg(-90, prod_end, "#22c55e") + seg(prod_end, 270, "#ef4444")
+        pp = int(prod_s / total * 100)
+        lbl = f'<text x="{cx}" y="{cy-6}" text-anchor="middle" font-size="20" font-weight="900" fill="#fff">{pp}%</text>'
+        lbl += f'<text x="{cx}" y="{cy+16}" text-anchor="middle" font-size="13" fill="#cbd5e1">Prod</text>'
         return f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">{parts}{lbl}</svg>'
 
     # ── Timeline SVG ──
-    def timeline_svg(width=900):
+    def timeline_svg(W=1200, H=64):
         now_ts = datetime.datetime.now()
-        if shift_start_dt:
-            win_start = shift_start_dt
-        else:
-            win_start = now_ts - datetime.timedelta(hours=8)
+        win_start = shift_start_dt if shift_start_dt else now_ts - datetime.timedelta(hours=8)
         win_end = now_ts
         span = (win_end - win_start).total_seconds()
         if span <= 0: span = 28800
-        H = 36; Y = 8; H2 = 22
-        def to_x(dt_str, date_str=today_str):
+        Y=18; BH=38
+        def to_x(dt_str):
             try:
-                dt = datetime.datetime.strptime(f"{date_str} {str(dt_str)[:8]}", "%d/%m/%Y %H:%M:%S")
-                frac = (dt - win_start).total_seconds() / span
-                return max(0, min(width, int(frac * width)))
+                dt = datetime.datetime.strptime(f"{today_str} {str(dt_str)[:8]}", "%d/%m/%Y %H:%M:%S")
+                return max(0, min(W, int((dt-win_start).total_seconds()/span*W)))
             except: return 0
-        catcol = {"pb":"#dc2626","ratt":"#f59e0b","nettoyage":"#0891b2","pause":"#94a3b8","organisation":"#7c3aed"}
-        svg = f'<svg width="{width}" height="{H}" viewBox="0 0 {width} {H}" style="display:block">'
-        svg += f'<rect x="0" y="{Y}" width="{width}" height="{H2}" fill="#e2e8f0" rx="3"/>'
-        # Prod zones
+        catcol = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7"}
+        svg = f'<svg width="100%" viewBox="0 0 {W} {H}" style="display:block" preserveAspectRatio="none">'
+        svg += f'<rect x="0" y="{Y}" width="{W}" height="{BH}" fill="#1e293b" rx="4"/>'
         for r in today_prod:
             x1 = to_x(str(r[16] or ""))
-            x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*width)
-            x2 = max(x2, x1+2)
-            svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{H2}" fill="#86efac" rx="2" opacity="0.7"/>'
-        # Evt zones
+            x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*W)
+            x2 = max(x2, x1+3)
+            svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="#22c55e" rx="2" opacity="0.85"/>'
         for r in today_evts:
             t = str(r[0] or "").lower()
             x1 = to_x(str(r[16] or ""))
-            x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*width)
-            x2 = max(x2, x1+2)
-            col = "#94a3b8"
-            if "pb" in t or "panne" in t or "technique" in t: col = catcol["pb"]
-            elif "ratt" in t: col = catcol["ratt"]
-            elif "nett" in t: col = catcol["nettoyage"]
-            elif "pause" in t: col = catcol["pause"]
-            svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{H2}" fill="{col}" rx="2" opacity="0.9"/>'
-        # Heure marks
+            x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*W)
+            x2 = max(x2, x1+3)
+            col = catcol["pb"] if ("pb" in t or "panne" in t or "technique" in t) else catcol["ratt"] if "ratt" in t else catcol["nettoyage"] if "nett" in t else catcol["pause"] if "pause" in t else "#94a3b8"
+            svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="{col}" rx="2" opacity="0.95"/>'
         h_span = span / 3600
         step = 1 if h_span <= 10 else 2
         cur = win_start.replace(minute=0, second=0, microsecond=0)
         if cur < win_start: cur += datetime.timedelta(hours=1)
         while cur <= win_end:
             frac = (cur-win_start).total_seconds()/span
-            x = int(frac*width)
-            svg += f'<line x1="{x}" y1="{Y}" x2="{x}" y2="{Y+H2}" stroke="#94a3b8" stroke-width="0.5"/>'
-            svg += f'<text x="{x}" y="{Y-1}" font-size="8" fill="#64748b" text-anchor="middle">{cur.strftime("%H:%M")}</text>'
+            x = int(frac*W)
+            svg += f'<line x1="{x}" y1="{Y}" x2="{x}" y2="{Y+BH}" stroke="#475569" stroke-width="1"/>'
+            svg += f'<text x="{x}" y="{Y-3}" font-size="12" fill="#94a3b8" text-anchor="middle">{cur.strftime("%H:%M")}</text>'
             cur += datetime.timedelta(hours=step)
-        # Maintenant
-        now_x = int((now_ts-win_start).total_seconds()/span*width)
-        svg += f'<line x1="{now_x}" y1="{Y-3}" x2="{now_x}" y2="{Y+H2+3}" stroke="#1e293b" stroke-width="2"/>'
+        now_x = int((now_ts-win_start).total_seconds()/span*W)
+        svg += f'<line x1="{now_x}" y1="{Y-4}" x2="{now_x}" y2="{Y+BH+4}" stroke="#fff" stroke-width="2.5"/>'
         svg += '</svg>'
         return svg
-
-    tl_svg = timeline_svg()
 
     # ── Pareto bars HTML ──
     pareto_html = ""
@@ -1774,50 +1767,75 @@ def generate_dashboard_html():
         max_dur = pareto[0][1]
         for lbl, dur in pareto:
             pct = dur / max_dur * 100 if max_dur > 0 else 0
-            col = "#dc2626" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#0891b2" if "nett" in lbl.lower() else "#7c3aed"
-            pareto_html += f'''<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-              <div style="width:130px;font-size:10px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0">{lbl[:20]}</div>
-              <div style="flex:1;background:#f0f4fb;border-radius:3px;height:14px">
-                <div style="width:{pct:.0f}%;height:14px;background:{col};border-radius:3px"></div>
+            col = "#ef4444" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#38bdf8" if "nett" in lbl.lower() else "#a855f7"
+            pareto_html += f'''<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+              <div style="width:160px;font-size:14px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;color:#cbd5e1">{lbl[:22]}</div>
+              <div style="flex:1;background:#1e293b;border-radius:4px;height:22px">
+                <div style="width:{pct:.0f}%;height:22px;background:{col};border-radius:4px"></div>
               </div>
-              <div style="width:38px;font-size:10px;font-weight:700;text-align:right;flex-shrink:0">{dur/60:.0f}min</div>
+              <div style="width:56px;font-size:16px;font-weight:800;text-align:right;flex-shrink:0;color:#f1f5f9">{dur/60:.0f}m</div>
             </div>'''
+    else:
+        pareto_html = '<div style="color:#475569;font-size:18px;padding:20px;text-align:center">Aucun arrêt enregistré</div>'
 
     # ── Productions table ──
     prod_rows_html = ""
-    for r in list(reversed(today_prod))[:10]:
+    for r in list(reversed(today_prod))[:8]:
         trs_val = ""
         try:
             tv = float(str(r[24] or "").replace(",","."))
             tc = trs_color(tv)
-            trs_val = f'<span style="color:{tc};font-weight:800">{tv:.1f}%</span>'
+            trs_val = f'<span style="color:{tc};font-weight:900">{tv:.1f}%</span>'
         except: pass
         prod_rows_html += f'''<tr>
-          <td style="font-weight:700">{r[1] or ""}</td>
+          <td style="font-weight:800;font-size:16px">{r[1] or ""}</td>
           <td>{str(r[16] or "")[:5]}</td><td>{str(r[17] or "")[:5]}</td>
           <td>{r[18] or ""}</td>
-          <td>{r[19] or "0"}</td><td>{r[21] or ""}</td>
+          <td>{r[19] or "0"}</td><td style="font-weight:800">{r[21] or ""}</td>
           <td>{trs_val}</td>
         </tr>'''
     if not prod_rows_html:
-        prod_rows_html = '<tr><td colspan="7" style="color:#94a3b8;padding:10px;text-align:center">Aucune production</td></tr>'
+        prod_rows_html = '<tr><td colspan="7" style="color:#475569;padding:20px;text-align:center;font-size:16px">Aucune production déclarée</td></tr>'
 
-    # ── Layout adaptatif selon présence d'arrêt ──
-    alert_section = ""
+    # ── ALERT BANNER HTML ──
+    alert_html = ""
     if has_alert:
         dur_fmt = fmt_s(active_stop_elapsed)
-        alert_section = f'''
-<div class="alert-banner">
-  <div class="siren">🚨</div>
-  <div class="alert-title">ARRÊT EN COURS</div>
-  <div class="alert-name">{active_stop_name}</div>
-  <div class="alert-dur">{dur_fmt}</div>
-  <div class="siren">🚨</div>
+        alert_html = f'''
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#7f0000 0%,#b91c1c 50%,#ef4444 100%);
+  animation:pulse 1.2s ease-in-out infinite;border-bottom:6px solid #fca5a5">
+  <div style="font-size:80px;line-height:1;animation:wag .8s ease-in-out infinite">🚨</div>
+  <div style="font-size:80px;font-weight:900;letter-spacing:4px;margin:12px 0;text-shadow:0 4px 16px rgba(0,0,0,.4);color:#fff">ARRÊT EN COURS</div>
+  <div style="font-size:56px;font-weight:800;color:#fef2f2;margin:8px 0;max-width:80%;text-align:center">{active_stop_name}</div>
+  <div style="font-size:72px;font-weight:900;color:#fecaca;font-variant-numeric:tabular-nums;margin-top:16px">{dur_fmt}</div>
+  <div style="font-size:80px;line-height:1;animation:wag .8s ease-in-out infinite reverse;margin-top:12px">🚨</div>
+</div>'''
+    else:
+        # ── PROD EN COURS BIG CARD ──
+        prod_card_bg = "#14532d" if prod_active else "#1e293b"
+        prod_card_border = "2px solid #22c55e" if prod_active else "2px solid #334155"
+        prod_status_label = "▶ PRODUCTION EN COURS" if prod_active else "○ EN ATTENTE"
+        prod_status_col = "#4ade80" if prod_active else "#64748b"
+        alert_html = f'''
+<div style="background:{prod_card_bg};border:{prod_card_border};border-radius:16px;padding:20px 32px;display:flex;align-items:center;gap:32px;flex-shrink:0">
+  <div style="flex:1">
+    <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:{prod_status_col};margin-bottom:8px">{prod_status_label}</div>
+    <div style="font-size:48px;font-weight:900;color:#f1f5f9;line-height:1">OF {of_num_now}</div>
+    <div style="font-size:20px;color:#94a3b8;margin-top:8px">{'👤 ' + pilot_now + '  |  ' + poste_now if pilot_now else poste_now}</div>
+  </div>
+  {f'<div style="text-align:center"><div style="font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">Taille / Type</div><div style="font-size:24px;font-weight:800;color:#e2e8f0">{taille_now} — {type_prod_now}</div></div>' if taille_now or type_prod_now else ''}
+  <div style="text-align:center">
+    <div style="font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">Éq. aujourd'hui</div>
+    <div style="font-size:48px;font-weight:900;color:#38bdf8;line-height:1">{tot_equiv:.1f}</div>
+  </div>
+  <div style="text-align:center">
+    <div style="font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">OF déclarés</div>
+    <div style="font-size:48px;font-weight:900;color:#a78bfa;line-height:1">{nb_of_today}</div>
+  </div>
 </div>'''
 
-    shift_dur_h = get_shift_duration_s(poste_now, datetime.date.today()) / 3600
-    elapsed_str = fmt_s(elapsed_for_trs) if elapsed_for_trs > 0 else "—"
-    prod_pct = int(prod_s_total / (prod_s_total + stop_s_total) * 100) if (prod_s_total + stop_s_total) > 0 else 0
+    tl_svg = timeline_svg()
 
     html = f"""<!DOCTYPE html>
 <html lang="fr">
@@ -1828,137 +1846,171 @@ def generate_dashboard_html():
 <title>Dashboard Encadrant — ORC</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#f0f4fb;color:#0f172a;font-size:12px}}
-/* HEADER */
-.hdr{{height:38px;background:#1a1f5e;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0}}
-.hdr-left{{font-size:13px;font-weight:800;display:flex;align-items:center;gap:10px}}
-.hdr-right{{font-size:10px;opacity:.8}}
-.hdr-pilot{{background:rgba(255,255,255,.15);border-radius:4px;padding:2px 8px;font-size:12px}}
-{'/* ALERT mode */' if has_alert else ''}
-/* ALERT BANNER */
-.alert-banner{{height:{'73vh' if has_alert else '0'};{'display:flex' if has_alert else 'display:none'};flex-direction:column;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,#7f0000,#b91c1c);color:#fff;flex-shrink:0;
-  animation:pulse 1.2s ease-in-out infinite;border-bottom:4px solid #dc2626}}
-@keyframes pulse{{0%,100%{{background:linear-gradient(135deg,#7f0000,#b91c1c)}}50%{{background:linear-gradient(135deg,#b91c1c,#ef4444)}}}}
-.siren{{font-size:52px;line-height:1;animation:spin 0.8s linear infinite}}
-@keyframes spin{{0%{{transform:rotate(-5deg)}}50%{{transform:rotate(5deg)}}100%{{transform:rotate(-5deg)}}}}
-.alert-title{{font-size:42px;font-weight:900;letter-spacing:2px;margin:6px 0;text-shadow:0 2px 8px rgba(0,0,0,.3)}}
-.alert-name{{font-size:28px;font-weight:700;opacity:.95;margin:4px 0}}
-.alert-dur{{font-size:22px;font-weight:700;opacity:.85;font-variant-numeric:tabular-nums}}
-/* DASHBOARD BODY */
-.dash{{height:{'calc(27vh - 38px)' if has_alert else 'calc(100vh - 38px)'};display:grid;
-  grid-template-columns:{'200px 1fr' if has_alert else '190px 1fr 1fr'};
-  grid-template-rows:{'1fr' if has_alert else 'auto auto 1fr'};
-  gap:6px;padding:6px;overflow:hidden}}
-/* TRS block */
-.trs-block{{background:#fff;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:8px}}
-.trs-lbl{{font-size:9px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.5px;margin-bottom:2px}}
-.trs-num{{font-size:{'36px' if not has_alert else '24px'};font-weight:900;color:{trs_color(trs_poste)};line-height:1}}
-.trs-sub{{font-size:9px;color:#94a3b8;margin-top:4px;text-align:center}}
-/* Stats block */
-.stats-block{{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:8px 12px;display:flex;flex-direction:{'row' if has_alert else 'column'};gap:{'8px' if has_alert else '6px'};align-items:center}}
-.stat-item{{text-align:center;{'flex:1' if has_alert else ''}}}
-.stat-val{{font-size:{'18px' if has_alert else '20px'};font-weight:800;color:#1a1f5e;line-height:1}}
-.stat-lbl{{font-size:8px;text-transform:uppercase;color:#94a3b8;font-weight:700;margin-top:1px}}
-/* Grid cells */
-.cell{{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;display:flex;flex-direction:column}}
-.cell-hdr{{background:#1a1f5e;color:#fff;padding:5px 10px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;flex-shrink:0}}
-.cell-hdr.green{{background:#15803d}}
-.cell-hdr.red{{background:#b91c1c}}
-.cell-hdr.amber{{background:#b45309}}
-.cell-body{{flex:1;overflow-y:auto;padding:6px 10px}}
-/* Table */
-.ktbl{{width:100%;border-collapse:collapse;font-size:10px}}
-.ktbl th{{background:#dde4ef;padding:4px 6px;font-weight:700;text-align:center;position:sticky;top:0}}
-.ktbl td{{padding:4px 6px;border-bottom:1px solid #f0f4fb;text-align:center}}
-.ktbl tr:hover td{{background:#f8fafc}}
+html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#0f172a;color:#e2e8f0;font-size:16px}}
+.hdr{{height:56px;background:#1e3a8a;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 24px;flex-shrink:0;border-bottom:2px solid #3b82f6}}
+.hdr-title{{font-size:20px;font-weight:900;display:flex;align-items:center;gap:14px}}
+.hdr-badge{{background:rgba(255,255,255,.15);border-radius:6px;padding:4px 14px;font-size:16px;font-weight:700}}
+.hdr-badge.green{{background:#15803d}}
+.hdr-badge.gray{{background:#475569}}
+.hdr-time{{font-size:14px;opacity:.75}}
+.outer{{height:calc(100vh - 56px);display:flex;flex-direction:column;gap:10px;padding:10px;overflow:hidden}}
+/* MODE NORMAL */
+.main-grid{{flex:1;display:grid;grid-template-columns:300px 1fr 280px;gap:10px;overflow:hidden;min-height:0}}
+.panel{{background:#1e293b;border-radius:14px;display:flex;flex-direction:column;overflow:hidden}}
+.panel-hdr{{padding:10px 18px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
+.panel-body{{flex:1;overflow-y:auto;padding:12px 18px;min-height:0}}
+/* TRS PANEL */
+.trs-num{{font-size:88px;font-weight:900;line-height:1;color:{trs_col};text-align:center}}
+.trs-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:8px}}
+.trs-sub{{font-size:14px;color:#64748b;text-align:center;margin-top:6px}}
+/* STAT CARDS */
+.stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
+.stat-card{{background:#0f172a;border-radius:10px;padding:14px 16px;text-align:center}}
+.stat-val{{font-size:40px;font-weight:900;line-height:1}}
+.stat-lbl{{font-size:12px;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px}}
+/* TIMELINE CELL */
+.tl-cell{{background:#1e293b;border-radius:14px;padding:12px 16px;flex-shrink:0}}
+.tl-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:8px;display:flex;justify-content:space-between}}
+.tl-legend{{display:flex;gap:16px;font-size:13px;color:#64748b;margin-top:8px;flex-wrap:wrap}}
+/* TABLE */
+.ktbl{{width:100%;border-collapse:collapse;font-size:15px}}
+.ktbl th{{background:#0f172a;padding:8px 10px;font-weight:800;text-align:center;position:sticky;top:0;font-size:12px;text-transform:uppercase;color:#64748b}}
+.ktbl td{{padding:9px 10px;border-bottom:1px solid #0f172a;text-align:center;color:#e2e8f0}}
+.ktbl tr:hover td{{background:#0f172a}}
+/* ANIMATIONS */
+@keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.85}}}}
+@keyframes wag{{0%{{transform:rotate(-8deg)}}50%{{transform:rotate(8deg)}}100%{{transform:rotate(-8deg)}}}}
+/* SCROLLBAR */
+::-webkit-scrollbar{{width:6px}};::-webkit-scrollbar-track{{background:#0f172a}};::-webkit-scrollbar-thumb{{background:#334155;border-radius:3px}}
 </style>
 </head>
 <body>
 
 <div class="hdr">
-  <div class="hdr-left">
+  <div class="hdr-title">
     &#127981; Dashboard Encadrant — ORC
-    {'<span class="hdr-pilot">👤 ' + pilot_now + ' | ' + poste_now + '</span>' if pilot_now else ''}
-    {'<span style="background:#16a34a;border-radius:4px;padding:2px 8px;font-size:11px">▶ PROD EN COURS — OF ' + of_num_now + '</span>' if prod_active else '<span style="background:#64748b;border-radius:4px;padding:2px 8px;font-size:11px">○ En attente</span>'}
+    {'<span class="hdr-badge">' + ('👤 ' + pilot_now + ' | ' + poste_now if pilot_now else poste_now) + '</span>' if (pilot_now or poste_now) else ''}
   </div>
-  <div class="hdr-right">Actualisation auto 15s &nbsp;|&nbsp; {gen_time}</div>
+  <div style="display:flex;align-items:center;gap:14px">
+    {'<span class="hdr-badge green">▶ PROD EN COURS — OF ' + of_num_now + '</span>' if prod_active else '<span class="hdr-badge gray">○ En attente</span>'}
+    <span class="hdr-time">🔄 15s | {gen_time}</span>
+  </div>
 </div>
 
-{alert_section}
+<div class="outer">
 
-<div class="dash">
+  {alert_html}
 
-  <!-- TRS Poste (grand chiffre) -->
-  <div class="trs-block">
-    <div class="trs-lbl">TRS Poste en cours</div>
-    <div class="trs-num">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
-    {gauge_svg(trs_poste, 110) if not has_alert else ""}
-    <div class="trs-sub">{f"Durée mesurée : {elapsed_str}" if elapsed_for_trs>0 else "Aucune déclaration"}</div>
-    <div class="trs-sub">Réf : {prod_ref:.0f} éq/8h &nbsp;|&nbsp; Éq total : {tot_equiv:.1f}</div>
-  </div>
+  {'<!-- MODE ALERTE : mini stats bar -->' if has_alert else ''}
+  {f'''<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px;flex-shrink:0">
+    <div class="stat-card"><div class="stat-val" style="color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="stat-lbl">TRS Poste</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#4ade80">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#38bdf8">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:20px">min</span></div><div class="stat-lbl">Arrêts</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#4ade80">{prod_s_total/60:.0f}<span style="font-size:20px">min</span></div><div class="stat-lbl">Production</div></div>
+  </div>''' if has_alert else ''}
 
-{'  <!-- Bloc stats compact en mode alerte -->' if has_alert else ''}
-  <!-- Stats + Pie -->
-  <div style="display:flex;gap:6px;flex-direction:{'row' if has_alert else 'column'}">
-    <!-- Stats KPI -->
-    <div class="stats-block" style="{'flex:1' if has_alert else ''}">
-      <div class="stat-item">
-        <div class="stat-val">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-val">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-val" style="color:#dc2626">{stop_s_total/60:.0f}min</div><div class="stat-lbl">Arrêts</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-val" style="color:#16a34a">{prod_s_total/60:.0f}min</div><div class="stat-lbl">Production</div>
-      </div>
-    </div>
-    {'<!-- Pie prod/arrêt -->' if not has_alert else ''}
-    {f'<div class="trs-block" style="padding:6px"><div class="trs-lbl">Répartition</div>{pie_svg(prod_s_total, stop_s_total, 90)}<div class="trs-sub" style="margin-top:2px">Prod {prod_pct}% | Arrêts {100-prod_pct}%</div></div>' if not has_alert else ''}
-  </div>
+  {'<!-- MODE NORMAL -->' if not has_alert else ''}
+  {'''<div class="main-grid">
 
-  {'''  <!-- Timeline + Pareto + Productions (mode normal) -->
-  <div style="display:flex;flex-direction:column;gap:6px;overflow:hidden">''' if not has_alert else ''}
-  {f'''
-    <!-- Timeline -->
-    <div class="cell" style="flex-shrink:0">
-      <div class="cell-hdr">Timeline du poste</div>
-      <div class="cell-body" style="overflow:hidden;padding:8px 10px 4px">
-        {tl_svg}
-        <div style="display:flex;gap:12px;font-size:9px;color:#64748b;margin-top:3px">
-          <span>■<span style="color:#86efac"> Prod</span></span>
-          <span>■<span style="color:#dc2626"> PB Technique</span></span>
-          <span>■<span style="color:#f59e0b"> Rattrapage</span></span>
-          <span>■<span style="color:#0891b2"> Nettoyage</span></span>
-          <span>■<span style="color:#94a3b8"> Pause</span></span>
+    <!-- COLONNE GAUCHE : TRS + Pie -->
+    <div style="display:flex;flex-direction:column;gap:10px;overflow:hidden">''' if not has_alert else ''}
+
+    {f'''<!-- TRS Block -->
+      <div class="panel" style="flex:1">
+        <div class="panel-hdr" style="background:#1a1f5e;color:#fff">TRS Poste en cours</div>
+        <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
+          <div class="trs-lbl">Taux de Rendement Synthétique</div>
+          <div class="trs-num">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
+          {gauge_svg(trs_poste, 200)}
+          <div class="trs-sub">Réf : {prod_ref:.0f} éq / 8h</div>
+          <div class="trs-sub">Durée mesurée : {elapsed_str}</div>
+          <div class="trs-sub" style="font-size:18px;font-weight:800;color:#38bdf8;margin-top:6px">Éq. total : {tot_equiv:.1f}</div>
         </div>
       </div>
-    </div>
 
-    <div style="display:flex;gap:6px;flex:1;overflow:hidden">
-      <!-- Pareto -->
-      <div class="cell" style="flex:1">
-        <div class="cell-hdr amber">Pareto arrêts</div>
-        <div class="cell-body">
-          {pareto_html if pareto_html else '<div style="color:#94a3b8;padding:8px">Aucun arrêt</div>'}
+      <!-- Pie + répartition -->
+      <div class="panel" style="flex-shrink:0">
+        <div class="panel-hdr" style="background:#0c4a6e;color:#fff">Répartition temps</div>
+        <div class="panel-body" style="display:flex;align-items:center;justify-content:space-around;padding:16px">
+          {pie_svg(prod_s_total, stop_s_total, 160)}
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div>
+              <div style="font-size:13px;color:#64748b;text-transform:uppercase;font-weight:700">Production</div>
+              <div style="font-size:36px;font-weight:900;color:#22c55e">{prod_pct}%</div>
+              <div style="font-size:14px;color:#64748b">{prod_s_total/60:.0f} min</div>
+            </div>
+            <div>
+              <div style="font-size:13px;color:#64748b;text-transform:uppercase;font-weight:700">Arrêts</div>
+              <div style="font-size:36px;font-weight:900;color:#ef4444">{100-prod_pct}%</div>
+              <div style="font-size:14px;color:#64748b">{stop_s_total/60:.0f} min</div>
+            </div>
+          </div>
         </div>
-      </div>
-      <!-- Productions -->
-      <div class="cell" style="flex:1.2">
-        <div class="cell-hdr green">Productions déclarées</div>
-        <div class="cell-body" style="padding:0">
+      </div>''' if not has_alert else ''}
+
+    {('</div>' if not has_alert else '')}
+
+    {'<!-- COLONNE CENTRE : Timeline + Productions -->' if not has_alert else ''}
+    {'''<div style="display:flex;flex-direction:column;gap:10px;overflow:hidden;min-height:0">''' if not has_alert else ''}
+
+      {f'''<!-- Productions déclarées -->
+      <div class="panel" style="flex:1;min-height:0">
+        <div class="panel-hdr" style="background:#14532d;color:#fff">Productions déclarées — aujourd'hui</div>
+        <div class="panel-body" style="padding:0">
           <table class="ktbl">
             <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Éq.</th><th>TRS</th></tr></thead>
             <tbody>{prod_rows_html}</tbody>
           </table>
         </div>
+      </div>''' if not has_alert else ''}
+
+    {('</div>' if not has_alert else '')}
+
+    {'<!-- COLONNE DROITE : Stats + Pareto -->' if not has_alert else ''}
+    {'''<div style="display:flex;flex-direction:column;gap:10px;overflow:hidden">''' if not has_alert else ''}
+
+      {f'''<!-- Stats KPI -->
+      <div class="panel" style="flex-shrink:0">
+        <div class="panel-hdr" style="background:#1a1f5e;color:#fff">Indicateurs clés</div>
+        <div class="panel-body">
+          <div class="stat-grid">
+            <div class="stat-card"><div class="stat-val" style="color:#4ade80">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div></div>
+            <div class="stat-card"><div class="stat-val" style="color:#38bdf8">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div></div>
+            <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:18px">m</span></div><div class="stat-lbl">Arrêts</div></div>
+            <div class="stat-card"><div class="stat-val" style="color:#4ade80">{prod_s_total/60:.0f}<span style="font-size:18px">m</span></div><div class="stat-lbl">Production</div></div>
+          </div>
+        </div>
       </div>
+
+      <!-- Pareto arrêts -->
+      <div class="panel" style="flex:1;min-height:0">
+        <div class="panel-hdr" style="background:#78350f;color:#fff">Pareto arrêts</div>
+        <div class="panel-body">
+          {pareto_html}
+        </div>
+      </div>''' if not has_alert else ''}
+
+    {('</div>' if not has_alert else '')}
+
+  {('</div>' if not has_alert else '')}
+
+  <!-- TIMELINE (toujours visible) -->
+  <div class="tl-cell" style="flex-shrink:0">
+    <div class="tl-lbl">
+      <span>Timeline du poste — {poste_now or "en cours"}</span>
+      <span style="font-size:12px">{shift_start_dt.strftime("%H:%M") if shift_start_dt else "—"} → maintenant</span>
     </div>
-  ''' if not has_alert else ''}
-  {('  </div>' if not has_alert else '')}
+    {tl_svg}
+    <div class="tl-legend">
+      <span>■ <span style="color:#22c55e">Production</span></span>
+      <span>■ <span style="color:#ef4444">PB Technique</span></span>
+      <span>■ <span style="color:#f59e0b">Rattrapage</span></span>
+      <span>■ <span style="color:#38bdf8">Nettoyage</span></span>
+      <span>■ <span style="color:#64748b">Pause</span></span>
+      <span style="color:#fff">| Maintenant</span>
+    </div>
+  </div>
 
 </div>
 
@@ -2075,7 +2127,7 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
 /* Action buttons row below timeline */
 .prod-act-row{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px}
-.act-btn{flex:1;min-width:100px;border:none;border-radius:8px;padding:14px 6px;cursor:pointer;font-size:13px;font-weight:700;text-align:center;transition:all .15s;white-space:nowrap}
+.act-btn{flex:1;min-width:100px;border:none;border-radius:8px;padding:24px 6px;cursor:pointer;font-size:13px;font-weight:700;text-align:center;transition:all .15s;white-space:nowrap;min-height:72px;display:flex;align-items:center;justify-content:center}
 .act-btn:hover{filter:brightness(.9)}
 .act-stop{background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;font-size:13px;font-weight:800;box-shadow:0 3px 8px rgba(185,28,28,.3)}
 .act-nett{background:#e0f2fe;color:var(--blue)}
@@ -2317,25 +2369,63 @@ select{cursor:default}
         <button class="btn btn-sec" onclick="loadMainDecl()" style="font-size:12px;padding:8px 14px">↺ Actualiser</button>
       </div>
     </div>
-    <!-- KPI 3 derniers postes -->
-    <div class="shift-kpis">
-      <div class="skpi current">
-        <div class="sk-lbl">Poste actuel — TRS</div>
-        <div class="sk-val" id="kpi0-trs">--%</div>
-        <div class="sk-sub" id="kpi0-date" style="font-size:10px;opacity:.85"></div>
-        <div class="sk-sub" id="kpi0-sub">0 OF</div>
+    <!-- KPI accueil — 2 lignes -->
+    <div style="background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
+      <!-- Ligne 1: TRS postes + modèle horaire -->
+      <div class="shift-kpis" style="padding:6px 10px;gap:6px">
+        <div class="skpi current" style="flex:2">
+          <div class="sk-lbl" id="kpi0-trs-lbl">Poste actuel — TRS à <span id="kpi0-heure">--h--</span></div>
+          <div class="sk-val" id="kpi0-trs">--%</div>
+          <div class="sk-sub" id="kpi0-date" style="font-size:10px;opacity:.85"></div>
+          <div class="sk-sub" id="kpi0-sub">0 OF</div>
+        </div>
+        <div class="skpi">
+          <div class="sk-lbl" id="kpi1-lbl">Poste précédent</div>
+          <div class="sk-val" id="kpi1-trs">--%</div>
+          <div class="sk-sub" id="kpi1-date" style="font-size:10px;opacity:.85"></div>
+          <div class="sk-sub" id="kpi1-sub">0 OF</div>
+        </div>
+        <div class="skpi">
+          <div class="sk-lbl" id="kpi2-lbl">Avant-dernier</div>
+          <div class="sk-val" id="kpi2-trs">--%</div>
+          <div class="sk-sub" id="kpi2-date" style="font-size:10px;opacity:.85"></div>
+          <div class="sk-sub" id="kpi2-sub">0 OF</div>
+        </div>
+        <!-- Modèle horaire modifiable -->
+        <div class="skpi" style="flex:2;background:#f0f9ff;border:1px solid #bae6fd">
+          <div class="sk-lbl" style="color:#0369a1">Modèle horaire du poste</div>
+          <div style="font-size:15px;font-weight:800;color:#0c4a6e" id="main-model-times">—</div>
+          <div style="margin-top:4px;display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+            <input type="time" id="main-model-debut" style="padding:2px 5px;border:1px solid #bae6fd;border-radius:4px;font-size:11px;color:#0c4a6e">
+            <span style="font-size:11px;color:#0369a1">→</span>
+            <input type="time" id="main-model-fin" style="padding:2px 5px;border:1px solid #bae6fd;border-radius:4px;font-size:11px;color:#0c4a6e">
+            <button onclick="saveMainModelHours()" style="font-size:10px;padding:2px 7px;background:#0369a1;color:#fff;border:none;border-radius:4px;cursor:pointer">✓</button>
+          </div>
+          <div style="font-size:10px;color:#64748b;margin-top:3px" id="main-ref-calc"></div>
+        </div>
       </div>
-      <div class="skpi">
-        <div class="sk-lbl" id="kpi1-lbl">Poste précédent</div>
-        <div class="sk-val" id="kpi1-trs">--%</div>
-        <div class="sk-sub" id="kpi1-date" style="font-size:10px;opacity:.85"></div>
-        <div class="sk-sub" id="kpi1-sub">0 OF</div>
-      </div>
-      <div class="skpi">
-        <div class="sk-lbl" id="kpi2-lbl">Avant-dernier</div>
-        <div class="sk-val" id="kpi2-trs">--%</div>
-        <div class="sk-sub" id="kpi2-date" style="font-size:10px;opacity:.85"></div>
-        <div class="sk-sub" id="kpi2-sub">0 OF</div>
+      <!-- Ligne 2: Temps pause/nettoyage/réunion du poste -->
+      <div style="display:flex;gap:6px;padding:5px 10px;border-top:1px solid var(--border)">
+        <div style="flex:1;text-align:center;background:#f3e8ff;border-radius:7px;padding:5px">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#7c3aed;letter-spacing:.5px">Pauses</div>
+          <div style="font-size:16px;font-weight:800;color:#6d28d9" id="main-stat-pause">0 min</div>
+        </div>
+        <div style="flex:1;text-align:center;background:#e0f2fe;border-radius:7px;padding:5px">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#0891b2;letter-spacing:.5px">Nettoyage</div>
+          <div style="font-size:16px;font-weight:800;color:#0369a1" id="main-stat-nett">0 min</div>
+        </div>
+        <div style="flex:1;text-align:center;background:#fef3c7;border-radius:7px;padding:5px">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#d97706;letter-spacing:.5px">Réunion</div>
+          <div style="font-size:16px;font-weight:800;color:#b45309" id="main-stat-reunion">0 min</div>
+        </div>
+        <div style="flex:1;text-align:center;background:#f0fdf4;border-radius:7px;padding:5px">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px">Prod active</div>
+          <div style="font-size:16px;font-weight:800;color:#15803d" id="main-stat-prod">0 min</div>
+        </div>
+        <div style="flex:1;text-align:center;background:#fee2e2;border-radius:7px;padding:5px">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#dc2626;letter-spacing:.5px">Arrêts totaux</div>
+          <div style="font-size:16px;font-weight:800;color:#b91c1c" id="main-stat-arrets">0 min</div>
+        </div>
       </div>
     </div>
     <div class="table-wrap">
@@ -2455,22 +2545,46 @@ select{cursor:default}
         <div class="prod-act-row">
           <button class="act-btn act-stop" onclick="openStopModal()">⛔ Déclarer un arrêt</button>
           <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
-          <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause pilote</button>
+          <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
           <button class="act-btn act-cancel" onclick="doCancelProd()">✖ Annuler prod</button>
           <button class="act-btn act-endprod" onclick="doEndProdPreview()">🏁 Fin de production</button>
         </div>
       </div>
-      <!-- RIGHT: recap + gauge -->
-      <div class="recap-col">
+      <!-- RIGHT: recap + gauges + pie charts -->
+      <div class="recap-col" style="width:310px">
         <div class="recap-hdr">Arrêts / pauses</div>
         <div class="recap-body" id="recap-list"></div>
-        <div class="gauge-box">
-          <svg viewBox="0 0 100 56" style="width:100%;max-width:120px">
-            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
-            <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
-            <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
-          </svg>
-          <div class="gauge-lbl">TRS estimé</div>
+        <!-- TRS OF gauge -->
+        <div class="gauge-box" style="padding:8px 4px 4px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;align-items:center">
+            <div style="text-align:center">
+              <svg viewBox="0 0 100 56" style="width:100%;max-width:110px">
+                <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
+                <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
+                <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
+              </svg>
+              <div class="gauge-lbl">TRS OF</div>
+            </div>
+            <div style="text-align:center">
+              <svg viewBox="0 0 100 56" style="width:100%;max-width:110px">
+                <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
+                <path id="gauge-poste-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#0891b2" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
+                <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#0c4a6e" id="gauge-poste-pct">—</text>
+              </svg>
+              <div class="gauge-lbl" id="gauge-poste-lbl">TRS Poste</div>
+            </div>
+          </div>
+        </div>
+        <!-- Pie charts -->
+        <div style="padding:4px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          <div style="text-align:center">
+            <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">Poste — Prod/Arrêts</div>
+            <svg id="pie-poste" viewBox="0 0 130 115" style="width:100%;height:auto;display:block"></svg>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">OF en cours</div>
+            <svg id="pie-of" viewBox="0 0 130 115" style="width:100%;height:auto;display:block"></svg>
+          </div>
         </div>
       </div>
     </div>
@@ -2642,81 +2756,114 @@ select{cursor:default}
   </div>
 
   <!-- ════ KPI VIEW ════ -->
-  <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden">
-    <!-- Titre -->
-    <div style="background:var(--navy);color:#fff;padding:7px 14px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:14px;font-weight:800">📊 KPI — Vue d'ensemble</div>
-      <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="loadKPI()">↺ Actualiser</button>
+  <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden;background:#0f172a">
+    <!-- Barre titre -->
+    <div style="background:#0f172a;color:#fff;padding:6px 16px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1e293b">
+      <div style="font-size:16px;font-weight:800;letter-spacing:.5px">📊 KPI — Vue d'ensemble</div>
+      <button style="font-size:12px;padding:4px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#94a3b8;cursor:pointer" onclick="loadKPI()">↺ Actualiser</button>
     </div>
-    <!-- Ligne TRS : big current + 3 postes précédents -->
-    <div style="display:flex;gap:8px;padding:8px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center">
-      <!-- Big TRS actuel -->
-      <div style="background:var(--navy);border-radius:var(--radius);padding:8px 12px;text-align:center;color:#fff;flex-shrink:0;min-width:150px">
-        <div style="font-size:9px;text-transform:uppercase;font-weight:700;opacity:.7;letter-spacing:.7px;margin-bottom:2px">TRS Poste actuel</div>
-        <svg viewBox="0 0 100 58" style="width:80px;display:block;margin:2px auto">
-          <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="12" stroke-linecap="round"/>
-          <path id="kpi-g0-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#86efac" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,132"/>
-          <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#86efac" id="kpi-g0-pct">--%</text>
-        </svg>
-        <div style="font-size:10px;color:#93c5fd;font-weight:600;margin-top:1px" id="kpi-cur-date">—</div>
-        <div style="font-size:10px;color:rgba(255,255,255,.75);margin-top:1px" id="kpi-cur-sub">0 OF</div>
+    <!-- Corps principal : 2 colonnes -->
+    <div style="display:grid;grid-template-columns:1fr 380px;flex:1;overflow:hidden;min-height:0;gap:0">
+      <!-- Colonne gauche : Jauges TRS + 4 Timelines -->
+      <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #1e293b">
+        <!-- Jauges TRS : poste actuel + 3 précédents -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;flex-shrink:0;border-bottom:1px solid #1e293b">
+          <!-- Jauge poste actuel (plus grande) -->
+          <div style="background:linear-gradient(135deg,#1a1f5e,#2d3480);padding:14px 10px;text-align:center;border-right:1px solid #1e293b">
+            <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:rgba(255,255,255,.6);letter-spacing:1px;margin-bottom:6px">Poste actuel</div>
+            <svg viewBox="0 0 120 70" style="width:110px;display:block;margin:0 auto">
+              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="14" stroke-linecap="round"/>
+              <path id="kpi-g0-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#86efac" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
+              <text x="60" y="58" text-anchor="middle" font-size="20" font-weight="800" fill="#86efac" id="kpi-g0-pct">--%</text>
+            </svg>
+            <div style="font-size:12px;color:#93c5fd;font-weight:600;margin-top:4px" id="kpi-cur-date">—</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px" id="kpi-cur-sub">0 OF</div>
+          </div>
+          <!-- 3 jauges précédentes -->
+          <div id="kpi-p1-card" style="background:#0f172a;padding:12px 8px;text-align:center;border-right:1px solid #1e293b">
+            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:4px" id="kpi-p1-lbl">Poste précédent</div>
+            <svg viewBox="0 0 120 70" style="width:90px;display:block;margin:0 auto">
+              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#1e293b" stroke-width="14" stroke-linecap="round"/>
+              <path id="kpi-g1-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#16a34a" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
+              <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#e2e8f0" id="kpi-g1-pct">--%</text>
+            </svg>
+            <div style="font-size:10px;color:#475569;margin-top:3px" id="kpi-p1-date"></div>
+            <div style="font-size:11px;color:#64748b;margin-top:1px" id="kpi-p1-sub">—</div>
+          </div>
+          <div id="kpi-p2-card" style="background:#0f172a;padding:12px 8px;text-align:center;border-right:1px solid #1e293b">
+            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:4px" id="kpi-p2-lbl">Avant-dernier</div>
+            <svg viewBox="0 0 120 70" style="width:90px;display:block;margin:0 auto">
+              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#1e293b" stroke-width="14" stroke-linecap="round"/>
+              <path id="kpi-g2-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#16a34a" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
+              <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#e2e8f0" id="kpi-g2-pct">--%</text>
+            </svg>
+            <div style="font-size:10px;color:#475569;margin-top:3px" id="kpi-p2-date"></div>
+            <div style="font-size:11px;color:#64748b;margin-top:1px" id="kpi-p2-sub">—</div>
+          </div>
+          <div id="kpi-p3-card" style="background:#0f172a;padding:12px 8px;text-align:center">
+            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:4px" id="kpi-p3-lbl">Il y a 3 postes</div>
+            <svg viewBox="0 0 120 70" style="width:90px;display:block;margin:0 auto">
+              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#1e293b" stroke-width="14" stroke-linecap="round"/>
+              <path id="kpi-g3-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#16a34a" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
+              <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#e2e8f0" id="kpi-g3-pct">--%</text>
+            </svg>
+            <div style="font-size:10px;color:#475569;margin-top:3px" id="kpi-p3-date"></div>
+            <div style="font-size:11px;color:#64748b;margin-top:1px" id="kpi-p3-sub">—</div>
+          </div>
+        </div>
+        <!-- 4 Timelines -->
+        <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:8px;gap:8px;min-height:0">
+          <!-- Timeline poste actuel (plus haute) -->
+          <div style="flex:2;min-height:0;display:flex;flex-direction:column">
+            <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px;flex-shrink:0" id="kpi-tl0-lbl">Poste actuel</div>
+            <svg id="kpi-tl0" viewBox="0 0 800 50" preserveAspectRatio="none" style="width:100%;flex:1;display:block;border-radius:6px">
+              <rect x="0" y="0" width="800" height="50" fill="#1e293b" rx="4"/>
+            </svg>
+          </div>
+          <!-- Timeline poste N-1 -->
+          <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+            <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px;flex-shrink:0" id="kpi-tl1-lbl">—</div>
+            <svg id="kpi-tl1" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;flex:1;display:block;border-radius:4px">
+              <rect x="0" y="0" width="800" height="36" fill="#1e293b" rx="4"/>
+            </svg>
+          </div>
+          <!-- Timeline poste N-2 -->
+          <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+            <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px;flex-shrink:0" id="kpi-tl2-lbl">—</div>
+            <svg id="kpi-tl2" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;flex:1;display:block;border-radius:4px">
+              <rect x="0" y="0" width="800" height="36" fill="#1e293b" rx="4"/>
+            </svg>
+          </div>
+          <!-- Timeline poste N-3 -->
+          <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+            <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px;flex-shrink:0" id="kpi-tl3-lbl">—</div>
+            <svg id="kpi-tl3" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;flex:1;display:block;border-radius:4px">
+              <rect x="0" y="0" width="800" height="36" fill="#1e293b" rx="4"/>
+            </svg>
+          </div>
+          <!-- Légende -->
+          <div style="display:flex;gap:14px;flex-shrink:0;font-size:11px;color:#64748b">
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#dc2626"></i>Arrêt</span>
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#f59e0b"></i>Nettoyage</span>
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#94a3b8"></i>Pause</span>
+            <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#16a34a"></i>Prod</span>
+          </div>
+        </div>
       </div>
-      <!-- 3 postes précédents -->
-      <div style="display:flex;gap:6px;flex:1;min-width:0;overflow:hidden">
-        <div class="kpi-prev-card">
-          <div class="sk-lbl" id="kpi-p1-lbl">Poste précédent</div>
-          <svg viewBox="0 0 100 58" style="width:58px;display:block;margin:2px auto">
-            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
-            <path id="kpi-g1-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,132"/>
-            <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="kpi-g1-pct">--%</text>
-          </svg>
-          <div class="sk-sub" id="kpi-p1-date" style="font-size:9px"></div>
-          <div class="sk-sub" id="kpi-p1-sub">—</div>
+      <!-- Colonne droite : Camembert + Pareto + Stats -->
+      <div style="display:flex;flex-direction:column;overflow:hidden;gap:0">
+        <!-- Camembert -->
+        <div style="background:#0f172a;padding:12px 16px;flex-shrink:0;border-bottom:1px solid #1e293b;text-align:center">
+          <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:6px">Prod / Arrêts — poste actuel</div>
+          <svg id="kpi-pie" viewBox="0 0 130 115" style="width:150px;height:130px;display:block;margin:0 auto"></svg>
         </div>
-        <div class="kpi-prev-card">
-          <div class="sk-lbl" id="kpi-p2-lbl">Avant-dernier</div>
-          <svg viewBox="0 0 100 58" style="width:58px;display:block;margin:2px auto">
-            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
-            <path id="kpi-g2-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,132"/>
-            <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="kpi-g2-pct">--%</text>
-          </svg>
-          <div class="sk-sub" id="kpi-p2-date" style="font-size:9px"></div>
-          <div class="sk-sub" id="kpi-p2-sub">—</div>
+        <!-- Stats chiffres clés -->
+        <div id="kpi-stats" style="background:#0f172a;padding:12px 16px;flex-shrink:0;border-bottom:1px solid #1e293b;display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+        <!-- Pareto -->
+        <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:12px 16px;background:#0f172a">
+          <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:8px;flex-shrink:0">Pareto arrêts</div>
+          <div id="kpi-pareto" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>
         </div>
-        <div class="kpi-prev-card">
-          <div class="sk-lbl" id="kpi-p3-lbl">Il y a 3 postes</div>
-          <svg viewBox="0 0 100 58" style="width:58px;display:block;margin:2px auto">
-            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
-            <path id="kpi-g3-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,132"/>
-            <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="kpi-g3-pct">--%</text>
-          </svg>
-          <div class="sk-sub" id="kpi-p3-date" style="font-size:9px"></div>
-          <div class="sk-sub" id="kpi-p3-sub">—</div>
-        </div>
-      </div>
-    </div>
-    <!-- Timeline poste -->
-    <div style="background:var(--card);padding:5px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline du poste en cours</div>
-      <svg id="kpi-tl" viewBox="0 0 800 32" preserveAspectRatio="none" style="width:100%;height:32px;display:block">
-        <rect x="0" y="2" width="800" height="24" fill="#e2e8f0" rx="4"/>
-      </svg>
-      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
-    </div>
-    <!-- Pareto + Camembert + Stats -->
-    <div style="display:grid;grid-template-columns:1fr 190px;gap:8px;padding:8px;flex:1;overflow:hidden;min-height:0">
-      <!-- Pareto arrêts -->
-      <div style="background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:8px;display:flex;flex-direction:column;overflow:hidden">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:6px;flex-shrink:0">Pareto des arrêts — poste actuel</div>
-        <div id="kpi-pareto" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:5px"></div>
-      </div>
-      <!-- Camembert + stats -->
-      <div style="display:flex;flex-direction:column;gap:8px;overflow:hidden">
-        <div style="background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:8px;text-align:center;flex-shrink:0">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">Répartition Prod / Arrêts</div>
-          <svg id="kpi-pie" viewBox="0 0 130 115" style="width:130px;max-height:95px;display:block;margin:0 auto"></svg>
-        </div>
-        <div id="kpi-stats" style="background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:8px;flex:1;overflow:hidden;font-size:11px"></div>
       </div>
     </div>
   </div>
@@ -2997,13 +3144,13 @@ const STOP_COL = {
   ratt:"#dc2626",pb:"#dc2626",autre:"#64748b",
   nettoyage:"#f59e0b",
   organisation:"#3b82f6",
-  "_pause":"#94a3b8","Pause pilote":"#94a3b8"
+  "_pause":"#94a3b8","Pause":"#94a3b8"
 };
 
 function getStopColor(key, cat) {
   if (cat) return STOP_COL[cat]||'#64748b';
   if (key==='nettoyage') return STOP_COL.nettoyage;
-  if (key==='_pause'||key==='Pause pilote') return STOP_COL['Pause pilote'];
+  if (key==='_pause'||key==='Pause') return STOP_COL['Pause'];
   return '#94a3b8';
 }
 
@@ -3042,6 +3189,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   setInterval(pollState, 5000);
   setInterval(pollEvts, 8000);
+  setInterval(loadLists, 300000); // sync Excel lists every 5 min
   startTicker();
 });
 
@@ -3421,7 +3569,7 @@ function applyState(s) {
 
   // Pause button text
   const pbtn=document.getElementById('btn-pause');
-  if(pbtn) pbtn.textContent=s.is_paused?'▶ Reprendre':'⏸ Pause pilote';
+  if(pbtn) pbtn.textContent=s.is_paused?'▶ Reprendre':'⏸ Pause';
 
   // TRS gauge
   updateGauge(s);
@@ -3473,7 +3621,7 @@ function renderStopChips(s) {
   });
   if(s.is_paused){
     const pe=(s.pause_total_s||0)+(s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0);
-    html+=`<div class="stop-chip"><span class="chip-lbl">⏸ Pause pilote</span><span class="chip-tim" id="chip-t-_pause">${fmtDur2(pe)}</span><button class="btn-endstop" onclick="doPause()">▶ Reprendre</button></div>`;
+    html+=`<div class="stop-chip"><span class="chip-lbl">⏸ Pause</span><span class="chip-tim" id="chip-t-_pause">${fmtDur2(pe)}</span><button class="btn-endstop" onclick="doPause()">▶ Reprendre</button></div>`;
   }
   cont.innerHTML=html;
 }
@@ -3496,13 +3644,13 @@ function startTicker() {
     const pt=_pauseTotalAtPoll+(_curStopKey==='_pause'?dt:0);
     const tp=document.getElementById('sc-pause');
     if(tp) tp.textContent=fmtDur(pt);
-    // Équivalence théorique (basée sur type produit — lire depuis DOM pour réactivité)
+    // Pièces théoriques : prod_ref / coef * (elapsed/28800)
     const thEl=document.getElementById('sc-theo');
     if(thEl&&ST.prod_ref){
       const typeProd=document.getElementById('f-type_prod')?.value||ST.form?.type_prod||'';
       const coef=(window._equivCoefs&&window._equivCoefs[typeProd])||1;
       const theo=Math.round(ST.prod_ref*(_ofElapAtPoll+dt)/28800/coef);
-      thEl.textContent=theo>0?theo+' éq.':'—';
+      thEl.textContent=theo>0?theo+' pièces':'—';
     }
     // Mise à jour bannière accueil (durée OF et arrêts)
     if(ST.prod_active&&_curTab==='main'){
@@ -3533,7 +3681,10 @@ async function loadMainDecl() {
   const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0'),yyyy=now.getFullYear();
   const todayPfx=dd+'/'+mm;
   const [declData,evtData]=await Promise.all([apiFetch('/api/history'),apiFetch('/api/events_list')]);
-  const decls=(Array.isArray(declData)?declData:(declData&&declData.rows?declData.rows:[])).filter(r=>!r.date||r.date.startsWith(todayPfx));
+  const _isProdRow=r=>['production','prod',''].includes((r.type||'').trim().toLowerCase());
+  const decls=(Array.isArray(declData)?declData:(declData&&declData.rows?declData.rows:[])).filter(r=>
+    (!r.date||r.date.startsWith(todayPfx))&&_isProdRow(r)
+  );
   const evts=(Array.isArray(evtData)?evtData:[]).filter(r=>!r.date||r.date.startsWith(todayPfx));
   const allRows=[];
   decls.forEach(r=>allRows.push({...r,_rowType:'prod'}));
@@ -3541,6 +3692,11 @@ async function loadMainDecl() {
   allRows.sort((a,b)=>(b.debut||'').localeCompare(a.debut||''));
   const bd=document.getElementById('main-body');
   if(!bd) return;
+  // Accumuler équivalences et arrêts du poste pour les jauges
+  const curPilotD=ST.pilot||'';
+  _todayEquivAccum=decls.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD).reduce((a,r)=>a+parseFloat(r.equiv||0),0);
+  const _hms2s=s=>{if(!s)return 0;const p=String(s).split(':');return p.length>=3?+p[0]*3600+ +p[1]*60+ +p[2]:p.length===2?+p[0]*60+ +p[1]:0;};
+  _todayStopAccum=evts.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD).reduce((a,r)=>a+_hms2s(r.duree||''),0);
   if(!allRows.length){bd.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();return;}
   window._rowMap={};
   bd.innerHTML=allRows.map(r=>{
@@ -3563,7 +3719,52 @@ async function loadMainDecl() {
   loadMainKPI();
 }
 
+function saveMainModelHours(){
+  const poste=ST.poste||'';if(!poste) return;
+  const debut=document.getElementById('main-model-debut').value;
+  const fin=document.getElementById('main-model-fin').value;
+  if(!debut||!fin){toast('Horaires incomplets','err');return;}
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=DAY_KEYS[new Date().getDay()];
+  const mi=_cfgModels.findIndex(m=>m.nom===poste);
+  if(mi>=0){
+    if(!_cfgModels[mi].jours)_cfgModels[mi].jours={};
+    if(!_cfgModels[mi].jours[dk])_cfgModels[mi].jours[dk]={};
+    _cfgModels[mi].jours[dk].debut=debut;
+    _cfgModels[mi].jours[dk].fin=fin;
+  }
+  fetch('/api/update_model_today',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:poste,day_key:dk,debut,fin})});
+  const el=document.getElementById('main-model-times');
+  if(el) el.textContent=debut+' → '+fin;
+  toast('Horaires mis à jour','ok');
+}
+
+function updateMainModelDisplay(){
+  const poste=ST.poste||'';
+  const debutEl=document.getElementById('main-model-debut');
+  const finEl=document.getElementById('main-model-fin');
+  const timesEl=document.getElementById('main-model-times');
+  const refCalcEl=document.getElementById('main-ref-calc');
+  if(!poste) return;
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=DAY_KEYS[new Date().getDay()];
+  const m=_cfgModels.find(x=>x.nom===poste);
+  const j=m&&m.jours&&m.jours[dk];
+  const debut=(j&&j.debut)||'';const fin=(j&&j.fin)||'';
+  if(timesEl) timesEl.textContent=debut&&fin?debut+' → '+fin:'Non défini';
+  if(debutEl&&debut) debutEl.value=debut;
+  if(finEl&&fin) finEl.value=fin;
+  // Show prod ref calculation
+  if(refCalcEl&&ST.prod_ref>0){
+    const ppm=(ST.prod_ref/480).toFixed(1);
+    refCalcEl.textContent=`Réf: ${ST.prod_ref} pièces/8h = ${ppm} pcs/min`;
+  }
+}
+
 async function loadMainKPI() {
+  // Update model display
+  updateMainModelDisplay();
+
   // Current shift
   const d=await apiFetch('/api/history_today');
   const evAll=await apiFetch('/api/events_list');
@@ -3576,6 +3777,10 @@ async function loadMainKPI() {
   // Current shift stop time (today + current pilot)
   const curEvts=evArr.filter(e=>e.date&&e.date.startsWith(todayPfx)&&(!curPilot||!e.pilote||e.pilote===curPilot));
   const curStopS=curEvts.reduce((a,e)=>{try{const p=s=>s.split(':').reduce((acc,v,i)=>acc+(i===0?+v*3600:i===1?+v*60:+v),0);return a+Math.max(0,p(e.fin||'0:0:0')-p(e.debut||'0:0:0'));}catch(x){return a;}},0);
+  // TRS à heure actuelle
+  const heure=String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0');
+  const elHeure=document.getElementById('kpi0-heure');
+  if(elHeure) elHeure.textContent=heure;
   if(d){
     const trs=d.trs_shift!==undefined?d.trs_shift:d.trs;
     const el0t=document.getElementById('kpi0-trs'),el0s=document.getElementById('kpi0-sub'),el0d=document.getElementById('kpi0-date');
@@ -3588,6 +3793,28 @@ async function loadMainKPI() {
       el0d.textContent=today+(shiftTime?' — depuis '+shiftTime:'');
     }
   }
+
+  // Stats pause/nettoyage/réunion/prod du poste actuel
+  const _hms2sFn=s=>{if(!s)return 0;const p=String(s).split(':');return p.length>=3?+p[0]*3600+ +p[1]*60+ +p[2]:p.length===2?+p[0]*60+ +p[1]:0;};
+  let pauseS=0,nettS=0,reunionS=0,arretS=0,prodS=0;
+  curEvts.forEach(e=>{
+    const dur=_hms2sFn(e.duree||'');
+    const t=(e.type||'').toLowerCase();
+    if(t.includes('pause')) pauseS+=dur;
+    else if(t.includes('nett')) nettS+=dur;
+    else if(t.includes('réunion')||t.includes('reunion')) reunionS+=dur;
+    arretS+=dur;
+  });
+  // Prod = sum of durations from decls (today+pilot)
+  if(d&&d.rows) d.rows.forEach(r=>{ prodS+=_hms2sFn(r.duree||''); });
+  const _fm=s=>Math.round(s/60)+' min';
+  const spEl=document.getElementById('main-stat-pause'),snEl=document.getElementById('main-stat-nett');
+  const srEl=document.getElementById('main-stat-reunion'),saEl=document.getElementById('main-stat-arrets'),sprodEl=document.getElementById('main-stat-prod');
+  if(spEl) spEl.textContent=_fm(pauseS);
+  if(snEl) snEl.textContent=_fm(nettS);
+  if(srEl) srEl.textContent=_fm(reunionS);
+  if(saEl) saEl.textContent=_fm(arretS);
+  if(sprodEl) sprodEl.textContent=_fm(prodS);
 
   // Previous sessions from history (group by pilot+date, exclude current session)
   const allRows=await apiFetch('/api/history');
@@ -3637,7 +3864,7 @@ async function loadMainKPI() {
 let _pendingGapS=0;
 const INTERPOSTE_LABELS=[
   "Changement de série","Réglage / Setup machine","Attente matière première",
-  "Réunion / Formation","Nettoyage interposte","Pause pilote"
+  "Réunion / Formation","Nettoyage interposte","Pause"
 ];
 
 function _fmtMin(s){const m=Math.round(s/60),h=Math.floor(m/60),mi=m%60;return h?`${h}h ${mi}min`:`${mi} min`;}
@@ -4113,26 +4340,59 @@ function updateGauge(s){
   const pct=document.getElementById('gauge-pct');
   const pobTrs=document.getElementById('pob-trs');
   if(!arc||!pct) return;
-  // Estimate live TRS
+  // Estimate live TRS using coefficient
   const prodRef=s.prod_ref||200;
   const ofS=s.of_elapsed_s||0;
   const qFab=s.form?parseFloat(s.form.qte_fab||0):0;
-  const taille=s.form?s.form.taille:'';
+  const typeProd=s.form?s.form.type_prod||'':'';
+  const coef=(window._equivCoefs&&typeProd&&window._equivCoefs[typeProd])||1;
+  const equiv=qFab*coef;
   let trs=-1;
-  // Can't compute equiv client-side, show from state if available
-  if(ofS>0&&prodRef>0&&qFab>0){
-    trs=Math.round(qFab/(prodRef*ofS/28800)*100*10)/10;
+  if(ofS>0&&prodRef>0&&equiv>0){
+    trs=Math.round(equiv/(prodRef*ofS/28800)*100*10)/10;
   }
   const trsStr=trs>=0?fmtTRS(trs):'—';
   pct.textContent=trsStr;
   if(pobTrs) pobTrs.textContent=trsStr;
-  // Arc: 0-100% maps to 0-132 (half circle perimeter ≈ π*42 ≈ 132)
   const pArc=132;
   const dash=trs>=0?Math.min(1,trs/100)*pArc:0;
   const col=trs>=90?'#16a34a':trs>=75?'#d97706':'#dc2626';
   arc.setAttribute('stroke-dasharray',`${dash},${pArc}`);
   arc.setAttribute('stroke',col);
+
+  // TRS du poste (shift_start → now)
+  const arcPoste=document.getElementById('gauge-poste-arc');
+  const pctPoste=document.getElementById('gauge-poste-pct');
+  const lblPoste=document.getElementById('gauge-poste-lbl');
+  if(arcPoste&&pctPoste&&s.shift_start_iso&&s.prod_ref>0){
+    const shiftElap=(Date.now()-new Date(s.shift_start_iso).getTime())/1000;
+    // Accumulate equiv from today's history (use ST cache)
+    const todayEquiv=_todayEquivAccum||0;
+    const trsPoste=shiftElap>0?Math.round(todayEquiv/(s.prod_ref*shiftElap/28800)*100*10)/10:-1;
+    const now=new Date();
+    const hh=String(now.getHours()).padStart(2,'0'),mm2=String(now.getMinutes()).padStart(2,'0');
+    if(lblPoste) lblPoste.textContent='TRS Poste à '+hh+'h'+mm2;
+    const dashP=trsPoste>=0?Math.min(1,trsPoste/100)*pArc:0;
+    const colP=trsPoste>=90?'#16a34a':trsPoste>=75?'#d97706':'#dc2626';
+    arcPoste.setAttribute('stroke-dasharray',`${dashP},${pArc}`);
+    arcPoste.setAttribute('stroke',colP);
+    pctPoste.textContent=trsPoste>=0?fmtTRS(trsPoste):'—';
+    pctPoste.setAttribute('fill',colP);
+  }
+
+  // Pie charts
+  const stopS=s.stop_wall_s||0;
+  const ofDur=s.of_elapsed_s||0;
+  const prodSof=Math.max(0,ofDur-stopS);
+  drawPie('pie-of',[{label:'Prod',value:prodSof,color:'#16a34a'},{label:'Arrêts',value:stopS,color:'#dc2626'}]);
+  // For poste pie — compute from shift start
+  const shiftTotal=s.shift_start_iso?(Date.now()-new Date(s.shift_start_iso).getTime())/1000:0;
+  const shiftStop=_todayStopAccum||0;
+  const shiftProd=Math.max(0,shiftTotal-shiftStop);
+  drawPie('pie-poste',[{label:'Prod',value:shiftProd,color:'#16a34a'},{label:'Arrêts',value:shiftStop,color:'#dc2626'}]);
 }
+// Accumulateurs poste (mis à jour à chaque loadMainDecl)
+let _todayEquivAccum=0, _todayStopAccum=0;
 
 // ── EDIT ROW (accueil) ──
 function openEditRow(key) {
@@ -4230,13 +4490,13 @@ async function deleteRow(key,rowNumId) {
 function buildEditStopOpts(){
   const s=document.getElementById('es-type');
   const s2=document.getElementById('er-evttype');
-  const allOpts=[['Pause pilote','_pause'],['Nettoyage','nettoyage'],...EVENTS.map(e=>[e[0],e[0]]),['Arrêt libre','Arrêt libre']];
+  const allOpts=[['Pause','_pause'],['Nettoyage','nettoyage'],...EVENTS.map(e=>[e[0],e[0]]),['Arrêt libre','Arrêt libre']];
   [s,s2].forEach(sel=>{
     if(!sel) return;
     allOpts.forEach(([lbl,val])=>{const o=document.createElement('option');o.value=val;o.textContent=lbl;sel.appendChild(o);});
   });
   // es-type uses key values (not display)
-  if(s){s.innerHTML='';[['Pause pilote','_pause'],['Nettoyage','nettoyage'],...EVENTS,['Arrêt libre','autre']].forEach(([lbl,key])=>{const o=document.createElement('option');o.value=key;o.textContent=lbl;s.appendChild(o);});}
+  if(s){s.innerHTML='';[['Pause','_pause'],['Nettoyage','nettoyage'],...EVENTS,['Arrêt libre','autre']].forEach(([lbl,key])=>{const o=document.createElement('option');o.value=key;o.textContent=lbl;s.appendChild(o);});}
 }
 
 function openEditStop(key){
@@ -4381,7 +4641,7 @@ function renderRecap(evts){
     </div>`;
   });
   if(_curStopKey){
-    const lbl=_curStopKey==='_pause'?'Pause pilote':getEvtLabel(_curStopKey);
+    const lbl=_curStopKey==='_pause'?'Pause':getEvtLabel(_curStopKey);
     const col=_curStopKey==='_pause'?STOP_COL['_pause']:STOP_COL.pb;
     html+=`<div class="si" style="animation:blink .85s step-start infinite">
       <div class="sdot" style="background:${col}"></div>
@@ -4594,6 +4854,53 @@ async function confirmFinPoste(){
 }
 
 // ── KPI TAB ──
+function _kpiGauge(arcId,pctId,trs,pArc){
+  // pArc=157 for bigger viewBox (radius 50), 132 for radius 42
+  const P=pArc||157;
+  const arc=document.getElementById(arcId),pct=document.getElementById(pctId);if(!arc||!pct)return;
+  const v=Math.max(0,Math.min(100,trs||0)),dash=(v/100)*P;
+  const col=v>=90?'#16a34a':v>=75?'#d97706':'#dc2626';
+  arc.setAttribute('stroke-dasharray',`${dash.toFixed(1)},${P}`);arc.setAttribute('stroke',col);
+  pct.textContent=trs>=0?fmtTRS(trs):'--%';pct.setAttribute('fill',col);
+}
+function _kpiNoData(arcId,pctId,pArc){
+  const arc=document.getElementById(arcId),pct=document.getElementById(pctId);if(!arc||!pct)return;
+  arc.setAttribute('stroke-dasharray',`0,${pArc||157}`);arc.setAttribute('stroke','#334155');
+  pct.textContent='--%';pct.setAttribute('fill','#475569');
+}
+function _drawKpiTL(svgId,evts,startISO,endISO,isCurrent){
+  const svg=document.getElementById(svgId);if(!svg)return;
+  const H=isCurrent?50:36,W=800;
+  const tS=new Date(startISO).getTime(),tE=new Date(endISO).getTime();
+  const span=tE-tS;
+  if(span<=0){svg.innerHTML=`<rect x="0" y="0" width="${W}" height="${H}" fill="#1e293b" rx="4"/>`;return;}
+  const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
+  let html=`<rect x="0" y="0" width="${W}" height="${H}" fill="#1e293b" rx="4"/>`;
+  // Prod background (green)
+  html+=`<rect x="0" y="0" width="${W}" height="${H}" fill="#14532d" rx="4" opacity=".4"/>`;
+  // Events (stops)
+  (evts||[]).forEach(ev=>{
+    const t1=parseHMStoT(ev.debut,ev.date),t2=parseHMStoT(ev.fin,ev.date);
+    if(!t1) return;
+    const x1=toX(t1),x2=toX(t2||(t1+300000));if(x2<=x1)return;
+    const cat=ev.cat||'autre';const col=STOP_COL[cat]||'#94a3b8';
+    html+=`<rect x="${x1}" y="0" width="${Math.max(2,x2-x1)}" height="${H}" fill="${col}" rx="2" opacity=".9"/>`;
+  });
+  // Current live stop for active session
+  if(isCurrent&&_curStopKey&&_curStopKey!=='_pause'&&ST.prod_active){
+    const se=_curStopElap+(Date.now()-_lastPoll)/1000;
+    const sT=tE-se*1000;
+    const x1=toX(sT),x2=toX(tE);
+    if(x2>x1) html+=`<rect x="${x1}" y="0" width="${x2-x1}" height="${H}" fill="#dc2626" rx="2" opacity=".9"/>`;
+  }
+  const fT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
+  const fs=isCurrent?11:9;
+  html+=`<text x="4" y="${H-4}" font-size="${fs}" fill="#64748b">${fT(tS)}</text>`;
+  html+=`<text x="${W-40}" y="${H-4}" font-size="${fs}" fill="#64748b">${fT(tE)}</text>`;
+  if(span>3600000){const mid=(tS+tE)/2;html+=`<line x1="${W/2}" y1="0" x2="${W/2}" y2="${H}" stroke="#334155" stroke-width="1" stroke-dasharray="3,3"/><text x="${W/2-18}" y="${H-4}" font-size="${fs}" fill="#334155">${fT(mid)}</text>`;}
+  svg.innerHTML=html;
+}
+
 async function loadKPI(){
   const [histData,evtData,todayData]=await Promise.all([
     apiFetch('/api/history'),
@@ -4614,22 +4921,23 @@ async function loadKPI(){
   const curStopS=curEvts.reduce((a,e)=>a+Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0')),0);
   if(todayData){
     const trs=todayData.trs_shift!==undefined?todayData.trs_shift:todayData.trs;
-    drawGauge('kpi-g0-arc','kpi-g0-pct',trs>=0?trs:0);
+    _kpiGauge('kpi-g0-arc','kpi-g0-pct',trs>=0?trs:0,157);
     const cde=document.getElementById('kpi-cur-date');
-    if(cde){const si=ST.shift_start_iso;const st=si?new Date(si).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):null;cde.textContent=todayFR+(st?' — depuis '+st:'');}
+    if(cde){const si=ST.shift_start_iso;const st=si?new Date(si).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):null;cde.textContent=todayFR+(st?' depuis '+st:'');}
     const csu=document.getElementById('kpi-cur-sub');
-    if(csu) csu.textContent=(todayData.nb_of||0)+' OF | Arrêts '+Math.round(curStopS/60)+' min';
+    if(csu) csu.textContent=(todayData.nb_of||0)+' OF  ·  '+Math.round(curStopS/60)+' min arrêts';
+  } else {
+    _kpiNoData('kpi-g0-arc','kpi-g0-pct',157);
   }
 
-  // ── Postes précédents (3 derniers) ──
+  // ── 3 postes précédents ──
   const sessions={};
   rows.forEach(r=>{
     if(r.date&&r.date.startsWith(todayPfx)&&r.pilote===curPilot) return;
     const key=(r.pilote||'?')+'|'+(r.date||'?')+'|'+(r.poste||'?');
     if(!sessions[key]) sessions[key]={pilot:r.pilote||'?',poste:r.poste||'?',date:r.date||'?',rows:[],trs_sum:0,trs_cnt:0};
     sessions[key].rows.push(r);
-    const t=parseFloat(r.trs||0);
-    if(t>0){sessions[key].trs_sum+=t;sessions[key].trs_cnt++;}
+    const t=parseFloat(r.trs||0);if(t>0){sessions[key].trs_sum+=t;sessions[key].trs_cnt++;}
   });
   const sessArr=Object.values(sessions).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3);
   for(let i=0;i<3;i++){
@@ -4640,68 +4948,124 @@ async function loadKPI(){
     if(sessArr[i]){
       const s=sessArr[i];
       const avgT=s.trs_cnt>0?s.trs_sum/s.trs_cnt:-1;
-      const sEvts=evts.filter(e=>e.date===s.date&&e.pilote===s.pilot);
+      const sEvts=evts.filter(e=>e.date===s.date&&(!s.pilot||!e.pilote||e.pilote===s.pilot));
       const sStopS=sEvts.reduce((a,e)=>a+Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0')),0);
       if(lbl) lbl.textContent=s.pilot+' — '+s.poste;
       if(dat){const debs=s.rows.map(r=>r.debut||'').filter(Boolean).sort();const fins=s.rows.map(r=>r.fin||'').filter(Boolean).sort().reverse();dat.textContent=s.date+(debs.length&&fins.length?' '+debs[0].slice(0,5)+'→'+fins[0].slice(0,5):'');}
-      if(sub) sub.textContent=s.rows.length+' OF | '+Math.round(sStopS/60)+' min arrêts';
-      if(avgT>=0) drawGauge(arcId,pctId,avgT);
-      else{const p=document.getElementById(pctId);const a=document.getElementById(arcId);if(p){p.textContent='--%';p.setAttribute('fill','#94a3b8');}if(a){a.setAttribute('stroke-dasharray','0,132');a.setAttribute('stroke','#94a3b8');}}
+      if(sub) sub.textContent=s.rows.length+' OF  ·  '+Math.round(sStopS/60)+' min arrêts';
+      if(avgT>=0) _kpiGauge(arcId,pctId,avgT,157);
+      else _kpiNoData(arcId,pctId,157);
     } else {
       if(lbl) lbl.textContent=['Poste précédent','Avant-dernier','Il y a 3 postes'][i];
       if(dat) dat.textContent=''; if(sub) sub.textContent='—';
-      const p=document.getElementById(pctId);const a=document.getElementById(arcId);
-      if(p){p.textContent='--%';p.setAttribute('fill','#94a3b8');}
-      if(a){a.setAttribute('stroke-dasharray','0,132');a.setAttribute('stroke','#94a3b8');}
+      _kpiNoData(arcId,pctId,157);
     }
   }
 
-  // ── Timeline ──
+  // ── 4 Timelines ──
+  // TL0 : poste actuel
   const shiftStart=ST.shift_start_iso||new Date(now.getTime()-8*3600*1000).toISOString();
-  const allEvtsForTL=[...gEvts,...tlEventsToDisplayFmt(ST.tl_events||[])];
-  drawTLFromISO('kpi-tl',allEvtsForTL,shiftStart,now.toISOString());
+  const tl0Lbl=document.getElementById('kpi-tl0-lbl');
+  if(tl0Lbl) tl0Lbl.textContent='Poste actuel'+(ST.pilot?' — '+ST.pilot:'')+(ST.poste?' ('+ST.poste+')':'');
+  _drawKpiTL('kpi-tl0',[...curEvts,...tlEventsToDisplayFmt(ST.tl_events||[])],shiftStart,now.toISOString(),true);
+  // TL1-3 : sessions précédentes
+  for(let i=0;i<3;i++){
+    const svgId='kpi-tl'+(i+1);
+    const lblId='kpi-tl'+(i+1)+'-lbl';
+    const lbl=document.getElementById(lblId);
+    if(sessArr[i]){
+      const s=sessArr[i];
+      if(lbl) lbl.textContent=s.pilot+' — '+s.poste+' ('+s.date+')';
+      const sEvts=evts.filter(e=>e.date===s.date&&(!s.pilot||!e.pilote||e.pilote===s.pilot));
+      // Compute start/end from session rows
+      const debs=s.rows.map(r=>r.debut||'').filter(Boolean).sort();
+      const fins=s.rows.map(r=>r.fin||'').filter(Boolean).sort().reverse();
+      if(debs.length&&fins.length){
+        const dateStr=s.date;
+        const baseMs=parseHMStoT(debs[0],dateStr)||new Date().setHours(5,0,0,0);
+        const endMs=parseHMStoT(fins[0],dateStr)||(baseMs+8*3600000);
+        const startMs=Math.max(baseMs-600000,baseMs-3600000); // 10min before first OF
+        _drawKpiTL(svgId,sEvts,new Date(startMs).toISOString(),new Date(endMs).toISOString(),false);
+      } else {
+        _drawKpiTL(svgId,[],new Date().toISOString(),new Date(Date.now()+3600000).toISOString(),false);
+      }
+    } else {
+      if(lbl) lbl.textContent='—';
+      const svg=document.getElementById(svgId);
+      if(svg) svg.innerHTML='<rect x="0" y="0" width="800" height="36" fill="#1e293b" rx="4"/><text x="400" y="22" text-anchor="middle" font-size="10" fill="#334155">Aucune donnée</text>';
+    }
+  }
 
-  // ── Pareto des arrêts (poste actuel) ──
+  // ── Camembert Prod/Arrêts ──
+  const prodS=(todayData&&todayData.tot_s)||0;
+  // Use dark pie colors
+  const kpiPieSvg=document.getElementById('kpi-pie');
+  if(kpiPieSvg){
+    const total=prodS+curStopS;
+    if(total<=0){kpiPieSvg.innerHTML='<text x="65" y="60" text-anchor="middle" font-size="11" fill="#475569">Pas de données</text>';}
+    else{
+      const segs=[{label:'Prod',value:prodS,color:'#16a34a'},{label:'Arrêts',value:curStopS,color:'#dc2626'}];
+      const cx=65,cy=57,r=44,ir=24;let html='',startAngle=-Math.PI/2;
+      segs.forEach(seg=>{
+        if(seg.value<=0)return;
+        const angle=(seg.value/total)*2*Math.PI;if(angle<0.001)return;
+        const endAngle=startAngle+angle,large=angle>Math.PI?1:0;
+        const x1=(cx+r*Math.cos(startAngle)).toFixed(2),y1=(cy+r*Math.sin(startAngle)).toFixed(2);
+        const x2=(cx+r*Math.cos(endAngle)).toFixed(2),y2=(cy+r*Math.sin(endAngle)).toFixed(2);
+        const ix1=(cx+ir*Math.cos(startAngle)).toFixed(2),iy1=(cy+ir*Math.sin(startAngle)).toFixed(2);
+        const ix2=(cx+ir*Math.cos(endAngle)).toFixed(2),iy2=(cy+ir*Math.sin(endAngle)).toFixed(2);
+        html+=`<path d="M${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} L${ix2},${iy2} A${ir},${ir} 0 ${large},0 ${ix1},${iy1} Z" fill="${seg.color}"/>`;
+        startAngle=endAngle;
+      });
+      const pp=total>0?Math.round(prodS/total*100):0;
+      html+=`<text x="${cx}" y="${cy+6}" text-anchor="middle" font-size="16" font-weight="800" fill="#fff">${pp}%</text>`;
+      html+=`<text x="${cx}" y="${cy+18}" text-anchor="middle" font-size="8" fill="#94a3b8">Prod</text>`;
+      let lx=0;segs.forEach(s=>{const p=Math.round(s.value/total*100);html+=`<rect x="${lx}" y="108" width="9" height="9" fill="${s.color}" rx="1"/>`;html+=`<text x="${lx+12}" y="116" font-size="8" fill="#94a3b8">${esc(s.label)} ${p}%</text>`;lx+=65;});
+      kpiPieSvg.innerHTML=html;
+    }
+  }
+
+  // ── Stats ──
+  const statsEl=document.getElementById('kpi-stats');
+  if(statsEl){
+    const mkStat=(lbl,val,col)=>`<div style="background:#1e293b;border-radius:8px;padding:10px;text-align:center">
+      <div style="font-size:20px;font-weight:800;color:${col||'#e2e8f0'}">${val}</div>
+      <div style="font-size:10px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.6px;margin-top:2px">${lbl}</div>
+    </div>`;
+    if(todayData){
+      const trs=todayData.trs_shift!==undefined?todayData.trs_shift:todayData.trs;
+      const col=trs>=90?'#86efac':trs>=75?'#fcd34d':'#fca5a5';
+      statsEl.innerHTML=
+        mkStat('TRS',fmtTRS(trs),col)+
+        mkStat('Équivalence',(todayData.tot_equiv||0).toFixed(1),'#93c5fd')+
+        mkStat('Nb OF',todayData.nb_of||0,'#e2e8f0')+
+        mkStat('Arrêts',Math.round(curStopS/60)+' min','#fca5a5');
+    } else {
+      statsEl.innerHTML='<div style="grid-column:1/-1;color:#475569;font-size:13px;text-align:center;padding:12px">Aucun poste actif</div>';
+    }
+  }
+
+  // ── Pareto ──
   const stopMap={};const stopCat={};
   curEvts.forEach(e=>{if(!e.type)return;const dur=Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0'));stopMap[e.type]=(stopMap[e.type]||0)+dur;if(!stopCat[e.type])stopCat[e.type]=e.cat||'autre';});
   const sorted=Object.entries(stopMap).sort((a,b)=>b[1]-a[1]);
   const maxS=sorted.length?sorted[0][1]:1;
   const par=document.getElementById('kpi-pareto');
   if(par){
-    if(!sorted.length){par.innerHTML='<div style="color:var(--gray);font-size:11px;padding:4px">Aucun arrêt ce poste</div>';}
+    if(!sorted.length){par.innerHTML='<div style="color:#475569;font-size:13px;padding:8px">Aucun arrêt ce poste</div>';}
     else{par.innerHTML=sorted.map(([type,s])=>{
       const pct=Math.round(s/maxS*100),min=Math.round(s/60);
       const col=STOP_COL[stopCat[type]]||'#94a3b8';
       const pctTotal=curStopS>0?Math.round(s/curStopS*100):0;
-      return `<div style="display:flex;align-items:center;gap:6px;font-size:11px">
-        <div style="min-width:110px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(type)}">${esc(type)}</div>
-        <div style="flex:1;background:#e2e8f0;border-radius:3px;height:14px;position:relative;overflow:hidden">
-          <div style="width:${pct}%;background:${col};height:100%;border-radius:3px"></div>
+      return `<div style="display:flex;flex-direction:column;gap:3px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;color:#cbd5e1">
+          <span>${esc(type)}</span><span style="color:#94a3b8">${min} min (${pctTotal}%)</span>
         </div>
-        <div style="min-width:60px;text-align:right;color:var(--gray);font-size:10px;white-space:nowrap">${min} min (${pctTotal}%)</div>
+        <div style="background:#1e293b;border-radius:4px;height:16px;overflow:hidden">
+          <div style="width:${pct}%;background:${col};height:100%;border-radius:4px;transition:width .4s"></div>
+        </div>
       </div>`;
     }).join('');}
-  }
-
-  // ── Camembert Prod/Arrêts ──
-  const prodS=(todayData&&todayData.tot_s)||0;
-  drawPie('kpi-pie',[{label:'Prod',value:prodS,color:'#16a34a'},{label:'Arrêts',value:curStopS,color:'#dc2626'}]);
-
-  // ── Stats poste actuel ──
-  const statsEl=document.getElementById('kpi-stats');
-  if(statsEl&&todayData){
-    const totMin=Math.round((todayData.tot_s||0)/60);
-    const arrMin=Math.round(curStopS/60);
-    statsEl.innerHTML=`<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Poste en cours</div>
-      <div style="display:flex;flex-direction:column;gap:4px">
-        <div style="display:flex;justify-content:space-between"><span>TRS</span><span style="font-weight:800;color:var(--navy)">${fmtTRS(todayData.trs_shift!==undefined?todayData.trs_shift:todayData.trs)}</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Équivalence</span><span style="font-weight:700">${(todayData.tot_equiv||0).toFixed(1)}</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Prod nette</span><span style="font-weight:700">${totMin} min</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Arrêts</span><span style="font-weight:700;color:var(--red)">${arrMin} min</span></div>
-        <div style="display:flex;justify-content:space-between"><span>Nb OF</span><span style="font-weight:700">${todayData.nb_of||0}</span></div>
-      </div>`;
-  } else if(statsEl){
-    statsEl.innerHTML='<div style="color:var(--gray);font-size:11px">Aucun poste en cours</div>';
   }
 }
 
@@ -4890,7 +5254,16 @@ function closeM(id){const m=document.getElementById(id);if(m){m.classList.remove
 document.addEventListener('click',e=>{if(e.target.classList.contains('overlay'))closeM(e.target.id);});
 
 // ── UTILS ──
-async function apiFetch(url){try{const r=await fetch(url);return r.ok?await r.json():null;}catch(e){return null;}}
+async function apiFetch(url,retries=2){
+  try{
+    const r=await fetch(url);
+    if(r.status===429){
+      if(retries>0){await new Promise(res=>setTimeout(res,1200));return apiFetch(url,retries-1);}
+      return null;
+    }
+    return r.ok?await r.json():null;
+  }catch(e){return null;}
+}
 function fmtDur2(s){if(!s||s<0)return'0:00';const m=Math.floor(s/60),sec=Math.floor(s%60);return m+':'+String(sec).padStart(2,'0');}
 function fmtTRSv(v){return(v===null||v===undefined||isNaN(v)||v<0)?'--%':parseFloat(v).toFixed(1)+'%';}
 function fmtDur(s){if(!s||s<0)return'00:00:00';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);return[h,m,sec].map(x=>String(x).padStart(2,'0')).join(':');}
@@ -4929,6 +5302,7 @@ def main():
     threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_session_autosave, daemon=True).start()
     threading.Thread(target=_dashboard_autogen, daemon=True).start()
+    _start_periodic_excel_sync()
 
     # Recover pending Excel write after crash
     try:
