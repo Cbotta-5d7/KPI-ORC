@@ -229,6 +229,45 @@ def get_shift_duration_s(poste, date_obj=None):
     if f<=d: f+=1440
     return (f-d)*60
 
+def _get_arret_budget_key(label):
+    """Associe un libellé d'arrêt à une clé de budget plannifié."""
+    l = str(label or "").lower()
+    if "nettoyage" in l or "nett" in l:
+        if "très long" in l or "tres long" in l or "grand" in l: return "clean_grand_min"
+        if "long" in l: return "clean_long_min"
+        if "court" in l: return "clean_short_min"
+    if "réunion" in l or "reunion" in l or "meeting" in l: return "meeting_tol_min"
+    return None
+
+def _compute_planned_deduction_s(evt_rows):
+    """Calcule les secondes à déduire de l'elapsed TRS pour les arrêts planifiés.
+    evt_rows : liste de tuples (rn, r) issus de _decl_cache OU liste de dicts {"type","duree"}.
+    """
+    budgets = {
+        "clean_short_min": float(cfg.get("clean_short_min", 0)) * 60,
+        "clean_long_min":  float(cfg.get("clean_long_min",  0)) * 60,
+        "clean_grand_min": float(cfg.get("clean_grand_min", 0)) * 60,
+        "meeting_tol_min": float(cfg.get("meeting_tol_min", 0)) * 60,
+    }
+    if all(v == 0 for v in budgets.values()):
+        return 0.0
+    actual = {}
+    for row in evt_rows:
+        if isinstance(row, dict):
+            lbl  = str(row.get("type","") or "")
+            dur_s = _hms_to_sec(str(row.get("duree","00:00:00") or "00:00:00"))
+        elif isinstance(row, (list, tuple)):
+            # format: (rn, r) or just r
+            r = row[1] if len(row) == 2 and isinstance(row[0], int) else row
+            lbl  = str(r[0] or "")
+            dur_s = _hms_to_sec(str(r[18] or "00:00:00"))
+        else:
+            continue
+        key = _get_arret_budget_key(lbl)
+        if key:
+            actual[key] = actual.get(key, 0.0) + dur_s
+    return sum(min(actual.get(k, 0.0), b) for k, b in budgets.items())
+
 # ── Timers ────────────────────────────────────────────────────────────────────
 def t_start(key):
     t = _S["timers"].setdefault(key,{"elapsed":0.0,"running":False,"start":None})
@@ -1373,13 +1412,20 @@ def api_events_list():
 
 @flask_app.route('/api/config')
 def api_config():
+    arrets_prevus = {
+        "clean_short_min": cfg.get("clean_short_min", 0),
+        "clean_long_min":  cfg.get("clean_long_min",  0),
+        "clean_grand_min": cfg.get("clean_grand_min", 0),
+        "meeting_tol_min": cfg.get("meeting_tol_min", 0),
+    }
     return jsonify({
         "prod_ref": cfg.get("prod_ref",0),
         "pause_max_min": cfg.get("pause_max_min",20),
-        "clean_short_min": cfg.get("clean_short_min",10),
-        "clean_long_min": cfg.get("clean_long_min",30),
-        "clean_grand_min": cfg.get("clean_grand_min",60),
-        "meeting_tol_min": cfg.get("meeting_tol_min",5),
+        "clean_short_min": cfg.get("clean_short_min",0),
+        "clean_long_min": cfg.get("clean_long_min",0),
+        "clean_grand_min": cfg.get("clean_grand_min",0),
+        "meeting_tol_min": cfg.get("meeting_tol_min",0),
+        "arrets_prevus": arrets_prevus,
         "db_path": cfg.get("db_path",""),
         "db_name": os.path.basename(cfg.get("db_path","")) if cfg.get("db_path") else "",
         "modeles_horaires": cfg.get("modeles_horaires",[]),
@@ -1578,9 +1624,26 @@ def api_fin_poste_data():
             fs = _hms_to_sec(str(r[17] or "00:00:00"))
             if fs > max_fin_s: max_fin_s = fs
         except: pass
+    # Gather stop events for this shift (for planned deduction + écart)
+    shift_evt_rows = []
+    declared_stop_s = 0.0
+    for rn, r in _decl_cache:
+        rd = _row_date(r[2])
+        if rd != shift_date_str and rd != today: continue
+        if str(r[4] or "") != pilot: continue
+        row_type = str(r[0] or "").strip().lower()
+        if row_type not in ("production","prod",""):
+            try:
+                dur_s = _hms_to_sec(str(r[18] or "00:00:00"))
+                declared_stop_s += dur_s
+                shift_evt_rows.append((rn, r))
+            except: pass
+    planned_ded = _compute_planned_deduction_s(shift_evt_rows)
+    model_dur_s = get_shift_duration_s(pilot_poste, datetime.date.today())
+    ecart_s = max(0.0, model_dur_s - (tot_s + declared_stop_s))
     trs_poste_shift = -1.0
     if model_debut_s is not None and max_fin_s > model_debut_s and prod_ref > 0:
-        elapsed_s = max_fin_s - model_debut_s
+        elapsed_s = max(1.0, (max_fin_s - model_debut_s) - planned_ded)
         trs_poste_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
     elif prod_ref > 0 and tot_s > 0:
         trs_poste_shift = round(tot_eq/(prod_ref*tot_s/28800)*100,1)
@@ -1590,6 +1653,9 @@ def api_fin_poste_data():
         "tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
         "of_list":of_list,"of_count_shift":_S["of_count_shift"],
         "shift_start_iso": _dt_str(_S.get("shift_start")),
+        "ecart_s": round(ecart_s, 0),
+        "model_dur_s": round(model_dur_s, 0),
+        "planned_ded_s": round(planned_ded, 0),
     })
 
 @flask_app.route('/api/history_today')
@@ -1647,14 +1713,26 @@ def api_past_sessions():
                 sessions[key]["tot_equiv"] += eq
                 if fin_s > sessions[key]["max_fin_s"]: sessions[key]["max_fin_s"] = fin_s
             except: pass
+    # Also gather stop events per session for planned deduction
+    session_evts = {}
+    for rn, r in _decl_cache:
+        date_str2 = _row_date(r[2])
+        if not date_str2: continue
+        pilot2 = str(r[4] or ""); poste2 = str(r[3] or "")
+        row_type2 = str(r[0] or "").strip().lower()
+        key2 = f"{date_str2}||{pilot2}||{poste2}"
+        if key2 not in session_evts: session_evts[key2] = []
+        if row_type2 not in ("production","prod",""):
+            session_evts[key2].append((rn, r))
     result = []
     for key, s in sessions.items():
         trs = -1.0
         if prod_ref > 0 and s["tot_equiv"] > 0:
             debut_str, _ = _get_model_day_cfg(s["poste"])
             model_debut_s = _hms_to_sec(debut_str) if debut_str else None
+            planned_ded = _compute_planned_deduction_s(session_evts.get(key, []))
             if model_debut_s and s["max_fin_s"] > model_debut_s:
-                elapsed_s = s["max_fin_s"] - model_debut_s
+                elapsed_s = max(1.0, (s["max_fin_s"] - model_debut_s) - planned_ded)
                 trs = round(s["tot_equiv"] / (prod_ref * elapsed_s / 28800) * 100, 1)
         result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs})
     result.sort(key=lambda x: x["date"], reverse=True)
@@ -1690,15 +1768,20 @@ def api_session_report():
             except: pass
     debut_str, fin_str = _get_model_day_cfg(poste)
     model_debut_s = _hms_to_sec(debut_str) if debut_str else None
+    planned_ded = _compute_planned_deduction_s(evt_rows)
+    model_dur_s = get_shift_duration_s(poste)
+    ecart_s = max(0.0, model_dur_s - (tot_s + stop_s))
     trs_shift = -1.0
     if model_debut_s and max_fin_s > model_debut_s and prod_ref > 0 and tot_eq > 0:
-        elapsed_s = max_fin_s - model_debut_s
+        elapsed_s = max(1.0, (max_fin_s - model_debut_s) - planned_ded)
         trs_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
     trs_of = round(tot_eq/(prod_ref*tot_s/28800)*100,1) if prod_ref>0 and tot_s>0 and tot_eq>0 else -1
     return jsonify({"date":date_str,"pilot":pilot,"poste":poste,"prod_rows":prod_rows,"evt_rows":evt_rows,
                     "trs_shift":trs_shift,"trs":trs_of,"tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
                     "stop_s":round(stop_s,0),"nb_of":len(prod_rows),
-                    "model_debut":debut_str or "","model_fin":fin_str or ""})
+                    "model_debut":debut_str or "","model_fin":fin_str or "",
+                    "ecart_s":round(ecart_s,0),"model_dur_s":round(model_dur_s,0),
+                    "planned_ded_s":round(planned_ded,0)})
 
 @flask_app.route('/api/reload', methods=['POST'])
 def api_reload():
@@ -1853,12 +1936,6 @@ def generate_dashboard_html():
     # (accueil uses _lastProdDeclTime which is fin of last declared OF)
     if prod_active and last_fin_dt is None:
         last_fin_dt = datetime.datetime.now()
-    ref_start_dt = model_debut_dt or shift_start_dt
-    if ref_start_dt and last_fin_dt and prod_ref > 0:
-        elapsed_for_trs = (last_fin_dt - ref_start_dt).total_seconds()
-        if elapsed_for_trs > 0:
-            trs_poste = round(tot_equiv / (prod_ref * elapsed_for_trs / 28800) * 100, 1)
-
     prod_s_total = sum(hms2s(str(r[18] or "0")) for r in in_shift_prod)
     # Filter stop events to model horaire window (same logic as in_shift_prod)
     if model_debut_dt:
@@ -1867,6 +1944,13 @@ def generate_dashboard_html():
         in_shift_evts = today_evts
     stop_s_total = sum(hms2s(str(r[18] or "0")) for r in in_shift_evts
                        if str(r[0] or "").lower() not in ("pause pilote","changement d'of","interposte","changement de serie"))
+    ref_start_dt = model_debut_dt or shift_start_dt
+    if ref_start_dt and last_fin_dt and prod_ref > 0:
+        elapsed_for_trs = (last_fin_dt - ref_start_dt).total_seconds()
+        if elapsed_for_trs > 0:
+            planned_ded = _compute_planned_deduction_s(in_shift_evts) if in_shift_evts else 0.0
+            adj_elapsed = max(1.0, elapsed_for_trs - planned_ded)
+            trs_poste = round(tot_equiv / (prod_ref * adj_elapsed / 28800) * 100, 1)
 
     evt_dur = defaultdict(float)
     for r in in_shift_evts:
@@ -2011,12 +2095,14 @@ def generate_dashboard_html():
         for lbl, dur in pareto:
             pct = dur / max_dur * 100 if max_dur > 0 else 0
             col = "#ef4444" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#38bdf8" if "nett" in lbl.lower() else "#a855f7"
-            pareto_html += f'''<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-              <div style="width:120px;font-size:11px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;color:#475569">{lbl[:22]}</div>
-              <div style="flex:1;background:#e2e8f0;border-radius:3px;height:16px">
+            pareto_html += f'''<div style="margin-bottom:5px">
+              <div style="display:flex;justify-content:space-between;font-size:10px;color:#475569;margin-bottom:2px">
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%">{lbl[:30]}</span>
+                <span style="font-weight:800;color:#1e293b;flex-shrink:0">{dur/60:.0f}m</span>
+              </div>
+              <div style="background:#e2e8f0;border-radius:3px;height:16px;width:100%">
                 <div style="width:{pct:.0f}%;height:16px;background:{col};border-radius:3px"></div>
               </div>
-              <div style="width:40px;font-size:12px;font-weight:800;text-align:right;flex-shrink:0;color:#1e293b">{dur/60:.0f}m</div>
             </div>'''
     else:
         pareto_html = '<div style="color:#475569;font-size:12px;padding:10px;text-align:center">Aucun arrêt enregistré</div>'
@@ -2080,6 +2166,16 @@ def generate_dashboard_html():
   <div style="text-align:center">
     <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px">OF déclarés</div>
     <div style="font-size:28px;font-weight:900;color:#7c3aed;line-height:1">{nb_of_today}</div>
+  </div>
+  <div style="text-align:center">
+    <div style="font-size:10px;font-weight:700;color:#ef4444;text-transform:uppercase;margin-bottom:3px">Arrêts</div>
+    <div style="font-size:24px;font-weight:900;color:#ef4444;line-height:1">{stop_s_total/3600:.1f}<span style="font-size:12px">h</span></div>
+    <div style="font-size:10px;color:#64748b">{stop_s_total/60:.0f} min</div>
+  </div>
+  <div style="text-align:center">
+    <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px">Déclaré</div>
+    <div style="font-size:24px;font-weight:900;color:#475569;line-height:1">{(prod_s_total+stop_s_total)/3600:.1f}<span style="font-size:12px">h</span></div>
+    <div style="font-size:10px;color:#64748b">{(prod_s_total+stop_s_total)/60:.0f} min</div>
   </div>
 </div>'''
 
@@ -2217,20 +2313,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     {'<!-- COLONNE DROITE : Stats + Pareto -->' if not has_alert else ''}
     {'''<div style="display:flex;flex-direction:column;gap:10px;overflow:hidden">''' if not has_alert else ''}
 
-      {f'''<!-- Stats KPI -->
-      <div class="panel" style="flex-shrink:0">
-        <div class="panel-hdr" style="background:#1a1f5e;color:#fff">Indicateurs clés</div>
-        <div class="panel-body">
-          <div class="stat-grid">
-            <div class="stat-card"><div class="stat-val" style="color:#8b5cf6">{nb_pieces}</div><div class="stat-lbl">Pièces</div></div>
-            <div class="stat-card"><div class="stat-val" style="color:#38bdf8">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div></div>
-            <div class="stat-card"><div class="stat-val" style="color:#4ade80">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div></div>
-            <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:13px">m</span></div><div class="stat-lbl">Arrêts</div></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Pareto arrêts -->
+      {f'''<!-- Pareto arrêts (colonne entière) -->
       <div class="panel" style="flex:1;min-height:0">
         <div class="panel-hdr" style="background:#78350f;color:#fff">Pareto arrêts</div>
         <div class="panel-body">
@@ -3161,7 +3244,7 @@ select{cursor:default}
           <svg id="kpi-pie" viewBox="0 0 130 115" style="width:150px;height:130px;display:block;margin:0 auto"></svg>
         </div>
         <!-- Stats chiffres clés -->
-        <div id="kpi-stats" style="background:#fff;padding:10px 12px;flex-shrink:0;border-bottom:1px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"></div>
+        <div id="kpi-stats" style="background:#fff;padding:10px 12px;flex-shrink:0;border-bottom:1px solid #e2e8f0;display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:6px"></div>
         <!-- Pareto -->
         <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:12px 16px;background:#fff">
           <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#475569;letter-spacing:.8px;margin-bottom:8px;flex-shrink:0">Pareto arrêts</div>
@@ -3253,6 +3336,30 @@ select{cursor:default}
           <button class="btn btn-green" style="font-size:11px;padding:5px 12px" onclick="addInterposteLbl()">+ Ajouter</button>
         </div>
         <button class="btn btn-prim" style="margin-top:8px;font-size:12px" onclick="saveInterposteCfg()">💾 Enregistrer</button>
+      </div>
+      <div class="ss">
+        <h3>⏱ Arrêts prévus (budget planifié)</h3>
+        <div style="font-size:11px;color:var(--gray);margin-bottom:10px">Les durées planifiées sont <b>déduites du temps de référence TRS</b> si le pilote les a réellement déclarées. Tout dépassement reste impactant. Mettre 0 pour désactiver.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="lf" style="margin:0">
+            <label>🧹 Nettoyage court (min)</label>
+            <input type="number" id="ap-clean-short" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+          </div>
+          <div class="lf" style="margin:0">
+            <label>🧹 Nettoyage long (min)</label>
+            <input type="number" id="ap-clean-long" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+          </div>
+          <div class="lf" style="margin:0">
+            <label>🧹 Nettoyage très long (min)</label>
+            <input type="number" id="ap-clean-grand" min="0" max="240" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+          </div>
+          <div class="lf" style="margin:0">
+            <label>📋 Réunion quotidienne (min)</label>
+            <input type="number" id="ap-meeting" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--gray);margin-top:6px">Pour l'affectation automatique : le libellé de l'arrêt doit contenir les mots "nettoyage court/long/très long" ou "réunion".</div>
+        <button class="btn btn-prim" style="margin-top:10px;font-size:12px" onclick="saveArretsPrevus()">💾 Enregistrer arrêts prévus</button>
       </div>
     </div>
   </div>
@@ -5555,13 +5662,19 @@ async function loadKPI(){
       const prodMin=Math.round(rows.reduce((a,r)=>{const d=pSec(r.debut||'0:0:0'),f=pSec(r.fin||'0:0:0');return a+Math.max(0,f-d)/60;},0));
       const cad=prodMin>0?Math.round(qteProd/prodMin*60):0;
       const elapsedMin=_shiftRefDt?Math.round((now.getTime()-_shiftRefDt.getTime())/60000):0;
+      // Écart modèle / déclaré
+      const stopMinKpi=Math.round(curStopS/60);
+      const totalDeclMin=prodMin+stopMinKpi;
+      const modelDurMin=_shiftRefDt?(()=>{const _m=_cfgModels&&_cfgModels.find(m=>m.nom===(ST.poste||''));const _DK=['dim','lun','mar','mer','jeu','ven','sam'];const _dk=_DK[now.getDay()];const _j=_m&&_m.jours&&_m.jours[_dk];if(_j&&_j.debut&&_j.fin){const[dh,dm]=_j.debut.split(':').map(Number);const[fh,fm]=_j.fin.split(':').map(Number);let dur=(fh*60+fm)-(dh*60+dm);if(dur<0)dur+=1440;return dur;}return 480;})():480;
+      const ecartMin=Math.max(0,modelDurMin-totalDeclMin);
       statsEl.innerHTML=
         mkStat('Qté produite',qteProd,'#a78bfa')+
         mkStat('Qté équiv.',(todayData.tot_equiv||0).toFixed(1),'#93c5fd')+
         mkStat('Cadence pcs/h',cad,'#6ee7b7')+
-        mkStat('Arrêts min',Math.round(curStopS/60),'#fca5a5')+
+        mkStat('Arrêts min',stopMinKpi,'#fca5a5')+
         mkStat('Prod min',prodMin,'#86efac')+
-        mkStat('Écoulé min',elapsedMin+'','#fde68a');
+        mkStat('Écoulé min',elapsedMin+'','#fde68a')+
+        mkStat('Non déclaré',ecartMin>0?ecartMin+' min':'✓','#f59e0b');
     } else {
       statsEl.innerHTML='<div style="grid-column:1/-1;color:#475569;font-size:13px;text-align:center;padding:12px">Aucun poste actif</div>';
     }
@@ -5779,6 +5892,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
         <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#7c3aed">${d.nb_of||0}</div><div class="fp-lbl">Nb OF</div></div>
         <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#16a34a">${prodMin} min</div><div class="fp-lbl">Prod</div></div>
         <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#dc2626">${stopMin} min</div><div class="fp-lbl">Arrêts</div></div>
+        ${(d.ecart_s||0)>0?`<div class="fp-card" style="padding:7px;border:1.5px solid #f59e0b"><div class="fp-big" style="font-size:16px;color:#d97706">${Math.round((d.ecart_s||0)/60)} min</div><div class="fp-lbl">Non déclaré</div></div>`:''}
+        ${(d.planned_ded_s||0)>0?`<div class="fp-card" style="padding:7px;border:1.5px solid #16a34a"><div class="fp-big" style="font-size:16px;color:#16a34a">${Math.round((d.planned_ded_s||0)/60)} min</div><div class="fp-lbl">Arrêts déduits</div></div>`:''}
       </div>
     </div>
     <!-- Timeline -->
@@ -5841,11 +5956,14 @@ async function setDbPath(){
   }
 }
 
+let _cfgArretsPrevus = {};
+
 async function loadCfg(){
   const d=await apiFetch('/api/config');
   if(!d) return;
   _cfgPwds=d.pilot_passwords||{};
   _cfgModels=d.modeles_horaires||[];
+  _cfgArretsPrevus=d.arrets_prevus||{};
   const prEl=document.getElementById('cfg-pr');
   if(prEl) prEl.value=d.prod_ref||200;
   // Show current db path
@@ -5853,6 +5971,9 @@ async function loadCfg(){
   const dbSt=document.getElementById('cfg-db-status');
   if(dbEl&&d.db_path) dbEl.value=d.db_path;
   if(dbSt&&d.db_name){dbSt.textContent='Fichier actuel : '+d.db_name;dbSt.style.color='var(--green)';}
+  // Arrêts prévus
+  const apMap={'ap-clean-short':'clean_short_min','ap-clean-long':'clean_long_min','ap-clean-grand':'clean_grand_min','ap-meeting':'meeting_tol_min'};
+  Object.entries(apMap).forEach(([elId,key])=>{const el=document.getElementById(elId);if(el)el.value=(_cfgArretsPrevus[key]||0);});
   renderPwdList();
   renderModelList();
   await loadEvtsList();
@@ -5863,6 +5984,17 @@ async function loadCfg(){
     while(sel.options.length>1) sel.remove(1);
     _cfgModels.forEach(m=>{const o=document.createElement('option');o.value=m.nom||'';o.textContent=m.nom||'';sel.appendChild(o);});
   }
+}
+
+async function saveArretsPrevus(){
+  const clean_short=parseFloat(document.getElementById('ap-clean-short')?.value||0)||0;
+  const clean_long=parseFloat(document.getElementById('ap-clean-long')?.value||0)||0;
+  const clean_grand=parseFloat(document.getElementById('ap-clean-grand')?.value||0)||0;
+  const meeting=parseFloat(document.getElementById('ap-meeting')?.value||0)||0;
+  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,clean_short_min:clean_short,clean_long_min:clean_long,clean_grand_min:clean_grand,meeting_tol_min:meeting})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){toast('Arrêts prévus enregistrés','ok');await loadCfg();}
+  else toast(d?.error||'Erreur','err');
 }
 
 function renderPwdList(){
