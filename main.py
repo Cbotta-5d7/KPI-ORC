@@ -1244,12 +1244,14 @@ def api_history():
                 equiv_v = float(str(r[21] or 0).replace(",","."))
                 of_s_v = _hms_to_sec(str(r[18] or "00:00:00"))
                 pr = get_prod_ref()
-                trs_col = str(r[24] or "")
-                if trs_col:
-                    try: trs = round(float(trs_col.replace(",",".")),1)
-                    except: pass
-                elif pr>0 and of_s_v>0 and equiv_v>0:
+                row_type = str(r[0] or "").strip().lower()
+                if row_type in ("production","prod","") and pr>0 and of_s_v>0 and equiv_v>0:
                     trs = round(equiv_v/(pr*of_s_v/28800)*100,1)
+                else:
+                    trs_col = str(r[24] or "")
+                    if trs_col:
+                        try: trs = round(float(trs_col.replace(",",".")),1)
+                        except: pass
             except: pass
             rows.append({
                 "row_num": rn,
@@ -1439,6 +1441,17 @@ def api_edit_row():
                 for col_str, val in updates.items():
                     try: ws.cell(row_num, int(col_str)).value = val
                     except: pass
+                try:
+                    row_type = str(ws.cell(row_num, 1).value or "").strip().lower()
+                    if row_type in ("production","prod",""):
+                        equiv_v = 0.0
+                        try: equiv_v = float(str(ws.cell(row_num, 22).value or 0).replace(",","."))
+                        except: pass
+                        of_s_v = _hms_to_sec(str(ws.cell(row_num, 19).value or "00:00:00"))
+                        pr = get_prod_ref()
+                        if pr>0 and of_s_v>0 and equiv_v>0:
+                            ws.cell(row_num, 25).value = str(round(equiv_v/(pr*of_s_v/28800)*100,1))
+                except: pass
                 _safe_excel_save(wb,path)
             threading.Thread(target=load_history,daemon=True).start()
         except: pass
