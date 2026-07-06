@@ -202,12 +202,11 @@ def get_prod_ref():
     except: pass
     return _prod_ref_cached
 
-def get_shift_duration_s(poste, date_obj=None):
-    """Durée nominale du poste en secondes selon le modèle horaire."""
+def _get_model_day_cfg(poste, date_obj=None):
+    """Retourne (debut_str, fin_str) du modèle horaire pour le poste/jour donné."""
     models = cfg.get("modeles_horaires", [])
-    if not models: return 28800
     model = next((m for m in models if str(m.get("nom","")).strip().lower()==str(poste or "").strip().lower()), None)
-    if not model: return 28800
+    if not model: return None, None
     jours = model.get("jours", {})
     if date_obj and jours:
         day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
@@ -215,9 +214,13 @@ def get_shift_duration_s(poste, date_obj=None):
     else:
         day_cfg = next((v for k,v in jours.items() if v and v.get("debut") and v.get("fin")), None) if jours else None
     if not day_cfg:
-        debut_str = model.get("debut","05:00"); fin_str = model.get("fin","13:00")
-    else:
-        debut_str = day_cfg.get("debut","05:00"); fin_str = day_cfg.get("fin","13:00")
+        return model.get("debut","05:00"), model.get("fin","13:00")
+    return day_cfg.get("debut","05:00"), day_cfg.get("fin","13:00")
+
+def get_shift_duration_s(poste, date_obj=None):
+    """Durée nominale du poste en secondes selon le modèle horaire."""
+    debut_str, fin_str = _get_model_day_cfg(poste, date_obj)
+    if debut_str is None: return 28800
     def to_min(t):
         try:
             p=str(t).split(":"); return int(p[0])*60+int(p[1])
@@ -1533,10 +1536,24 @@ def api_fin_poste_data():
         except: pass
     trs_poste=-1.0
     if prod_ref>0 and tot_s>0: trs_poste=round(tot_eq/(prod_ref*tot_s/28800)*100,1)
-    shift_s = get_shift_duration_s(pilot_poste, datetime.date.today())
+    # TRS shift : même formule que l'accueil — elapsed = lastProdFin − modelDebut
+    debut_str, _ = _get_model_day_cfg(pilot_poste, datetime.date.today())
+    model_debut_s = _hms_to_sec(debut_str) if debut_str else None
+    max_fin_s = 0.0
+    for rn, r in prod_rows:
+        try:
+            rd = _row_date(r[2])
+            if rd != shift_date_str and rd != today: continue
+            if str(r[4] or "") != pilot: continue
+            fs = _hms_to_sec(str(r[17] or "00:00:00"))
+            if fs > max_fin_s: max_fin_s = fs
+        except: pass
     trs_poste_shift = -1.0
-    if prod_ref > 0 and shift_s > 0:
-        trs_poste_shift = round(tot_eq/(prod_ref*shift_s/28800)*100,1)
+    if model_debut_s is not None and max_fin_s > model_debut_s and prod_ref > 0:
+        elapsed_s = max_fin_s - model_debut_s
+        trs_poste_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
+    elif prod_ref > 0 and tot_s > 0:
+        trs_poste_shift = round(tot_eq/(prod_ref*tot_s/28800)*100,1)
     return jsonify({
         "pilot":pilot,"date":today,
         "nb_of":len(of_list),"trs":trs_poste,"trs_shift":trs_poste_shift,
