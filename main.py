@@ -1595,6 +1595,78 @@ def api_history_today():
     if prod_ref>0 and tot_s>0: trs_of_time=round(tot_eq/(prod_ref*tot_s/28800)*100,1)
     return jsonify({"rows":rows,"trs_shift":trs_shift,"trs_of":trs_of_time,"tot_eq":round(tot_eq,1),"shift_s":shift_s})
 
+@flask_app.route('/api/past_sessions')
+def api_past_sessions():
+    prod_ref = get_prod_ref()
+    today_str = datetime.date.today().strftime("%d/%m/%Y")
+    sessions = {}
+    for rn, r in _decl_cache:
+        date_str = _row_date(r[2])
+        if not date_str or date_str == today_str: continue
+        pilot = str(r[4] or "")
+        poste = str(r[3] or "")
+        row_type = str(r[0] or "").strip().lower()
+        key = f"{date_str}||{pilot}||{poste}"
+        if key not in sessions:
+            sessions[key] = {"date":date_str,"pilot":pilot,"poste":poste,"nb_of":0,"tot_equiv":0.0,"max_fin_s":0.0}
+        if row_type in ("production","prod",""):
+            try:
+                eq = float(str(r[21] or 0).replace(",","."))
+                fin_s = _hms_to_sec(str(r[17] or "00:00:00"))
+                sessions[key]["nb_of"] += 1
+                sessions[key]["tot_equiv"] += eq
+                if fin_s > sessions[key]["max_fin_s"]: sessions[key]["max_fin_s"] = fin_s
+            except: pass
+    result = []
+    for key, s in sessions.items():
+        trs = -1.0
+        if prod_ref > 0 and s["tot_equiv"] > 0:
+            debut_str, _ = _get_model_day_cfg(s["poste"])
+            model_debut_s = _hms_to_sec(debut_str) if debut_str else None
+            if model_debut_s and s["max_fin_s"] > model_debut_s:
+                elapsed_s = s["max_fin_s"] - model_debut_s
+                trs = round(s["tot_equiv"] / (prod_ref * elapsed_s / 28800) * 100, 1)
+        result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs})
+    result.sort(key=lambda x: x["date"], reverse=True)
+    return jsonify(result[:60])
+
+@flask_app.route('/api/session_report')
+def api_session_report():
+    date_str = request.args.get('date','')
+    pilot = request.args.get('pilot','')
+    poste = request.args.get('poste','')
+    prod_ref = get_prod_ref()
+    prod_rows = []; evt_rows = []; tot_eq = 0.0; tot_s = 0.0; max_fin_s = 0.0; stop_s = 0.0
+    for rn, r in _decl_cache:
+        if _row_date(r[2]) != date_str: continue
+        if str(r[4] or "") != pilot: continue
+        row_type = str(r[0] or "").strip().lower()
+        if row_type in ("production","prod",""):
+            try:
+                eq = float(str(r[21] or 0).replace(",","."))
+                deb_s = _hms_to_sec(str(r[16] or "00:00:00"))
+                fin_s = _hms_to_sec(str(r[17] or "00:00:00"))
+                dur_s = fin_s - deb_s if fin_s > deb_s else _hms_to_sec(str(r[18] or "00:00:00"))
+                trs = round(eq/(prod_ref*dur_s/28800)*100,1) if prod_ref>0 and dur_s>0 and eq>0 else -1
+                tot_eq += eq; tot_s += dur_s
+                if fin_s > max_fin_s: max_fin_s = fin_s
+                prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"trs":trs,"comment":str(r[35] or "")})
+            except: pass
+        else:
+            try:
+                dur_s = _hms_to_sec(str(r[18] or "00:00:00"))
+                stop_s += dur_s
+                evt_rows.append({"type":str(r[0] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or "")})
+            except: pass
+    debut_str, _ = _get_model_day_cfg(poste)
+    model_debut_s = _hms_to_sec(debut_str) if debut_str else None
+    trs_shift = -1.0
+    if model_debut_s and max_fin_s > model_debut_s and prod_ref > 0 and tot_eq > 0:
+        elapsed_s = max_fin_s - model_debut_s
+        trs_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
+    trs_of = round(tot_eq/(prod_ref*tot_s/28800)*100,1) if prod_ref>0 and tot_s>0 and tot_eq>0 else -1
+    return jsonify({"date":date_str,"pilot":pilot,"poste":poste,"prod_rows":prod_rows,"evt_rows":evt_rows,"trs_shift":trs_shift,"trs":trs_of,"tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),"stop_s":round(stop_s,0),"nb_of":len(prod_rows)})
+
 @flask_app.route('/api/reload', methods=['POST'])
 def api_reload():
     threading.Thread(target=load_lists,daemon=True).start()
@@ -1732,14 +1804,18 @@ def generate_dashboard_html():
     nb_pieces = sum(int(str(r[19] or 0).split('.')[0] or 0) for r in in_shift_prod)
     # Recompute last_fin_dt from in_shift_prod for TRS elapsed
     last_fin_dt = None
+    _last_fin_s = 0.0
     for r in in_shift_prod:
-        fin_str = str(r[17] or "")
-        if fin_str and ":" in fin_str:
-            try:
-                t = datetime.datetime.strptime(f"{today_str} {fin_str[:8]}", "%d/%m/%Y %H:%M:%S")
-                if last_fin_dt is None or t > last_fin_dt:
-                    last_fin_dt = t
-            except: pass
+        fs = hms2s(r[17])
+        if fs > _last_fin_s:
+            _last_fin_s = fs
+    if _last_fin_s > 0:
+        try:
+            _h = int(_last_fin_s // 3600)
+            _mi = int((_last_fin_s % 3600) // 60)
+            _sc = int(_last_fin_s % 60)
+            last_fin_dt = datetime.datetime.combine(datetime.date.today(), datetime.time(_h, _mi, _sc))
+        except: pass
     # Match accueil formula: use last declared fin, not now()
     # (accueil uses _lastProdDeclTime which is fin of last declared OF)
     if prod_active and last_fin_dt is None:
@@ -2478,6 +2554,7 @@ select{cursor:default}
       <button class="htab prod-on" id="ht-prod" onclick="goTab('prod')">▶ Prod en cours</button>
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📊 KPI</button>
+      <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports</button>
       <button class="htab" id="ht-cfg" onclick="goTab('settings')">Paramètres</button>
     </div>
     <div id="hdr-right">
@@ -2580,7 +2657,7 @@ select{cursor:default}
       <table class="ktbl">
         <thead><tr>
           <th>Type</th><th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th>
-          <th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Actions</th>
+          <th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>
         </tr></thead>
         <tbody id="main-body"></tbody>
       </table>
@@ -2894,6 +2971,29 @@ select{cursor:default}
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn btn-sec" onclick="skipInterposte()">Ignorer</button>
         <button class="btn btn-prim" onclick="confirmInterposte()">✓ Valider</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ RAPPORTS DES POSTES ════ -->
+  <div id="v-rapports" class="view" style="flex-direction:column;overflow:hidden">
+    <div style="display:grid;grid-template-columns:280px 1fr;flex:1;overflow:hidden;min-height:0">
+      <!-- Liste des postes -->
+      <div style="border-right:1px solid var(--border);overflow-y:auto;background:#f8fafc;display:flex;flex-direction:column">
+        <div style="padding:10px 14px;font-size:13px;font-weight:800;color:var(--navy);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
+          <span>📋 Postes précédents</span>
+          <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="loadRapports()">↺</button>
+        </div>
+        <div id="rpt-list" style="flex:1;overflow-y:auto">
+          <div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Chargement…</div>
+        </div>
+      </div>
+      <!-- Détail du rapport -->
+      <div id="rpt-detail" style="overflow-y:auto;flex:1;padding:0">
+        <div style="padding:60px;text-align:center;color:var(--gray)">
+          <div style="font-size:40px;margin-bottom:12px">📋</div>
+          <div style="font-size:14px;font-weight:600">Sélectionner un poste dans la liste</div>
+        </div>
       </div>
     </div>
   </div>
@@ -3605,14 +3705,15 @@ function goTab(tab) {
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   document.querySelectorAll('.htab').forEach(t=>t.classList.remove('on'));
-  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi'};
+  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports'};
   const el=document.getElementById(vm[tab]);
   if(el) el.classList.add('on');
-  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi'};
+  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports'};
   const ntEl=document.getElementById(nt[tab]);
   if(ntEl) ntEl.classList.add('on');
   if(tab==='history') loadHist();
   if(tab==='finposte') loadFPData();
+  if(tab==='rapports') loadRapports();
   if(tab==='main') { loadMainDecl(); }
   if(tab==='kpi') loadKPI();
   if(tab==='settings') {
@@ -3906,7 +4007,7 @@ async function loadMainDecl() {
     const lastFin=inShiftDecls.map(r=>r.fin||'').filter(Boolean).sort().pop();
     if(lastFin){const[h,m,s]=(lastFin+'::').split(':').map(Number);const d=new Date();d.setHours(h,m,s||0,0);_lastProdDeclTime=d;}
   }
-  if(!allRows.length){bd.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();updateGauge(ST);return;}
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();updateGauge(ST);return;}
   window._rowMap={};
   bd.innerHTML=allRows.map(r=>{
     const key=r.row_num||r.debut;
@@ -3916,12 +4017,14 @@ async function loadMainDecl() {
     const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.type&&r.type.toLowerCase().includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>');
     const details=isProd?esc(r.taille||''):esc(r.type||'');
     const qty=isProd?esc(String(r.qte_fab||'')):esc(r.duree||'');
-    const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:`<span style="color:var(--gray);font-size:10px">${esc(r.comment||'')}</span>`;
+    const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
+    const cmt=esc(r.comment||'');
     return `<tr class="${isProd?'row-prod':'row-evt'}">
       <td>${tag}</td><td style="font-weight:600">${esc(r.of||'')}</td>
       <td style="font-size:10px">${esc(r.date||'')}</td><td style="font-size:10px">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
       <td style="font-size:11px">${details}</td><td style="font-size:11px">${qty}</td><td>${info}</td>
+      <td style="font-size:10px;color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
       <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:15px;cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
     </tr>`;
   }).join('');
@@ -4149,8 +4252,15 @@ async function doStartProd() {
     document.getElementById('ip-comment').value='';
     _interposteLbls.forEach(lbl=>{
       const b=document.createElement('button');
-      b.className='btn btn-ghost';b.style.fontSize='12px';b.textContent=lbl;
-      b.onclick=()=>{document.getElementById('ip-custom').value=lbl;};
+      b.className='btn btn-ghost';
+      b.style.cssText='font-size:12px;transition:all .15s;border:2px solid var(--border)';
+      b.textContent=lbl;
+      b.onclick=()=>{
+        document.getElementById('ip-custom').value=lbl;
+        document.querySelectorAll('#ip-btns .btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
+        b.style.background='var(--navy)';b.style.color='#fff';b.style.borderColor='var(--navy)';
+        b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
+      };
       bc.appendChild(b);
     });
     openM('m-interposte');
@@ -4173,8 +4283,15 @@ async function psChooseInterposte(){
   const bc=document.getElementById('ip-btns');bc.innerHTML='';
   ['Mise en route machine','Réunion début de poste','Attente / Préparation','Nettoyage arrivée'].forEach(lbl=>{
     const b=document.createElement('button');
-    b.className='btn btn-ghost';b.style.fontSize='12px';b.textContent=lbl;
-    b.onclick=()=>{document.getElementById('ip-custom').value=lbl;};
+    b.className='btn btn-ghost';
+    b.style.cssText='font-size:12px;transition:all .15s;border:2px solid var(--border)';
+    b.textContent=lbl;
+    b.onclick=()=>{
+      document.getElementById('ip-custom').value=lbl;
+      document.querySelectorAll('#ip-btns .btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
+      b.style.background='var(--navy)';b.style.color='#fff';b.style.borderColor='var(--navy)';
+      b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
+    };
     bc.appendChild(b);
   });
   // Override confirm pour aussi corriger shift_start
@@ -4667,7 +4784,7 @@ function openEditRow(key) {
   document.getElementById('er-rowtype').value=row._rowType||'';
   document.getElementById('er-title').textContent=isProd?'✏ Modifier déclaration':'✏ Modifier événement';
   const pwRow=document.getElementById('er-pw-row'),pwEl=document.getElementById('er-pw');
-  pwEl.value='';pwRow.style.display='none';
+  pwEl.value='';pwRow.style.display=''; // toujours visible — mot de passe requis
   document.getElementById('er-prod-fields').style.display=isProd?'':'none';
   document.getElementById('er-evt-fields').style.display=isProd?'none':'';
   if(isProd){
@@ -4714,9 +4831,9 @@ async function saveEditRow() {
   const rowType=document.getElementById('er-rowtype').value;
   const pwEl=document.getElementById('er-pw');
   const pwRow=document.getElementById('er-pw-row');
-  const pw=pwEl.value||_adminPw;
+  const pw=pwEl.value;
   if(!rowNum){toast('Ligne invalide','err');return;}
-  if(!pw){pwRow.style.display='';pwEl.focus();return;}
+  if(!pw){pwEl.focus();toast('Mot de passe requis','err');return;}
   const v=id=>document.getElementById(id)?.value||'';
   const n=id=>parseFloat(document.getElementById(id)?.value)||0;
   let updates={};
@@ -4750,8 +4867,8 @@ async function deleteRow(key,rowNumId) {
   if(!rn) return;
   const pwEl=document.getElementById('er-pw');
   const pwRow=document.getElementById('er-pw-row');
-  const pw=(pwEl&&pwEl.value)||_adminPw;
-  if(!pw){if(pwRow){pwRow.style.display='';pwEl&&pwEl.focus();}return;}
+  const pw=(pwEl&&pwEl.value)||'';
+  if(!pw){pwEl&&pwEl.focus();toast('Mot de passe requis','err');return;}
   if(!confirm('Supprimer cette ligne ?')) return;
   const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rn})});
   const d=r?await r.json():{};
@@ -5452,8 +5569,8 @@ async function loadHist(){
     if(da!==db) return db.localeCompare(da);
     return (b.debut||'').localeCompare(a.debut||'');
   });
-  hd.innerHTML='<th>Type</th><th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Actions</th>';
-  if(!allRows.length){bd.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
+  hd.innerHTML='<th>Type</th><th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
   window._rowMap=window._rowMap||{};
   bd.innerHTML=allRows.map(r=>{
     const key=r.row_num||r.debut;
@@ -5463,15 +5580,95 @@ async function loadHist(){
     const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.type&&r.type.toLowerCase().includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>');
     const details=isProd?esc(r.taille||''):esc(r.type||'');
     const qty=isProd?esc(String(r.qte_fab||'')):esc(r.duree||'');
-    const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:`<span style="color:var(--gray);font-size:10px">${esc(r.comment||'')}</span>`;
+    const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
+    const cmt=esc(r.comment||'');
     return `<tr class="${isProd?'row-prod':'row-evt'}">
       <td>${tag}</td><td style="font-weight:600">${esc(r.of||'')}</td>
       <td style="font-size:10px">${esc(r.date||'')}</td><td style="font-size:10px">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
       <td style="font-size:11px">${details}</td><td style="font-size:11px">${qty}</td><td>${info}</td>
+      <td style="font-size:10px;color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
       <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:15px;cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
     </tr>`;
   }).join('');
+}
+
+// ── RAPPORTS DES POSTES ──
+async function loadRapports(){
+  const listEl=document.getElementById('rpt-list');
+  if(!listEl) return;
+  listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Chargement…</div>';
+  const sessions=await apiFetch('/api/past_sessions');
+  if(!sessions||!sessions.length){
+    listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Aucun poste précédent disponible</div>';
+    return;
+  }
+  listEl.innerHTML=sessions.map((s,i)=>{
+    const trsStr=s.trs>=0?s.trs.toFixed(1)+'%':'—';
+    const trsCol=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
+    return `<div class="rpt-item" id="rpt-item-${i}" onclick="loadSessionReport('${esc(s.date)}','${esc(s.pilot)}','${esc(s.poste)}','rpt-item-${i}')"
+      style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s">
+      <div style="font-size:12px;font-weight:800;color:var(--navy)">${esc(s.date)} — ${esc(s.poste)}</div>
+      <div style="font-size:11px;color:var(--gray);margin-top:2px">${esc(s.pilot||'?')} | ${s.nb_of} OF | Éq. ${s.tot_equiv}</div>
+      <div style="font-size:16px;font-weight:900;color:${trsCol};margin-top:2px">${trsStr}</div>
+    </div>`;
+  }).join('');
+}
+
+async function loadSessionReport(date,pilot,poste,itemId){
+  document.querySelectorAll('.rpt-item').forEach(el=>el.style.background='');
+  const sel=document.getElementById(itemId);if(sel) sel.style.background='#eff6ff';
+  const detailEl=document.getElementById('rpt-detail');
+  if(!detailEl) return;
+  detailEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--gray)">Chargement…</div>';
+  const d=await apiFetch(`/api/session_report?date=${encodeURIComponent(date)}&pilot=${encodeURIComponent(pilot)}&poste=${encodeURIComponent(poste)}`);
+  if(!d){detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur chargement</div>';return;}
+  const trsS=d.trs_shift>=0?d.trs_shift:d.trs;
+  const trsCol=trsS>=90?'#16a34a':trsS>=70?'#f59e0b':trsS>=0?'#dc2626':'#94a3b8';
+  const prodsHtml=(d.prod_rows||[]).map(r=>{
+    const tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;font-weight:700">${esc(r.of||'')}</td>
+      <td style="padding:5px 8px;font-size:11px">${esc(r.taille||'')} ${esc(r.type_prod||'')}</td>
+      <td style="padding:5px 8px">${esc(r.qte_fab||'')}</td>
+      <td style="padding:5px 8px;color:#0891b2;font-weight:700">${esc(r.equiv||'')}</td>
+      <td style="padding:5px 8px">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
+      <td style="padding:5px 8px;font-weight:800;color:${tc}">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</td>
+      <td style="padding:5px 8px;font-size:10px;color:var(--gray)">${esc(r.comment||'')}</td>
+    </tr>`;
+  }).join('');
+  const stopsHtml=(d.evt_rows||[]).map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
+    <span style="font-weight:600">${esc(r.type||'')}</span>
+    <span style="color:var(--gray)">${esc(r.debut||'')} → ${esc(r.fin||'')} (${esc(r.duree||'')})</span>
+  </div>`).join('');
+  const stopMin=Math.round((d.stop_s||0)/60);
+  const prodMin=Math.round((d.tot_s||0)/60);
+  detailEl.innerHTML=`
+    <div style="background:var(--navy);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div><div style="font-size:15px;font-weight:800">📋 Rapport — ${esc(poste)}</div><div style="font-size:11px;opacity:.8">${esc(pilot)} · ${esc(date)}</div></div>
+      <div style="text-align:right"><div style="font-size:26px;font-weight:900;color:${trsCol}">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div><div style="font-size:11px;opacity:.7">TRS Shift</div></div>
+    </div>
+    <div style="display:flex;gap:10px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-wrap:wrap">
+      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px;color:${trsCol}">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div><div class="fp-lbl">TRS Shift</div></div>
+      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px">${d.trs>=0?d.trs.toFixed(1)+'%':'—'}</div><div class="fp-lbl">TRS Prod</div></div>
+      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px;color:#0891b2">${(d.tot_equiv||0).toFixed(1)}</div><div class="fp-lbl">Équivalence</div></div>
+      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px;color:#7c3aed">${d.nb_of||0}</div><div class="fp-lbl">Nb OF</div></div>
+      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px;color:#16a34a">${prodMin} min</div><div class="fp-lbl">Prod</div></div>
+      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px;color:#dc2626">${stopMin} min</div><div class="fp-lbl">Arrêts</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px 14px;overflow-y:auto">
+      <div class="card" style="padding:10px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Productions</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#f8fafc"><th style="padding:4px 8px;text-align:left">OF</th><th style="padding:4px 8px;text-align:left">Taille</th><th style="padding:4px 8px">Qté</th><th style="padding:4px 8px">Éq.</th><th style="padding:4px 8px">Heures</th><th style="padding:4px 8px">TRS</th><th style="padding:4px 8px">Comm.</th></tr></thead>
+          <tbody>${prodsHtml||'<tr><td colspan="7" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="card" style="padding:10px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Arrêts du poste</div>
+        ${stopsHtml||'<div style="color:var(--gray);font-size:12px;padding:8px">Aucun arrêt enregistré</div>'}
+      </div>
+    </div>`;
 }
 
 // ── SETTINGS ──
