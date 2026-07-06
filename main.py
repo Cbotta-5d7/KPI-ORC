@@ -1278,13 +1278,32 @@ def api_toggle_hors_trs():
     toggle_hors_trs_excel(data.get("row_num",0), data.get("new_val",""))
     return jsonify({"ok":True})
 
+@flask_app.route('/api/update_model_today', methods=['POST'])
+def api_update_model_today():
+    """Met à jour les horaires du jour pour un modèle, sans mot de passe."""
+    data = request.json or {}
+    nom = data.get("nom","")
+    day_key = data.get("day_key","")
+    debut = data.get("debut","")
+    fin = data.get("fin","")
+    if not nom or not day_key or not debut or not fin:
+        return jsonify({"ok":False,"error":"Paramètre manquant"}),400
+    for m in cfg.get("modeles_horaires",[]):
+        if m.get("nom","") == nom:
+            if "jours" not in m:
+                m["jours"] = {}
+            if day_key not in m["jours"]:
+                m["jours"][day_key] = {}
+            m["jours"][day_key]["debut"] = debut
+            m["jours"][day_key]["fin"] = fin
+            break
+    save_cfg_data()
+    return jsonify({"ok":True})
+
 @flask_app.route('/api/delete_row', methods=['POST'])
 def api_delete_row():
     """Supprime n'importe quelle ligne de la feuille Declarations par row_num."""
     data = request.json or {}
-    pw = data.get("pw","")
-    if not _check_pw(pw):
-        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
     row_num = data.get("row_num")
     path = cfg.get("db_path","")
     if not row_num or not path or not os.path.exists(path):
@@ -2248,9 +2267,31 @@ select{cursor:default}
         <div class="pob-lbl">Poste</div>
         <div class="pob-val" style="font-size:16px" id="pob-poste">—</div>
       </div>
+      <div class="pob-item" style="flex-direction:column;align-items:flex-start;gap:2px">
+        <div class="pob-lbl">Modèle / Horaires</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div class="pob-val" style="font-size:14px" id="pob-model">—</div>
+          <button onclick="openPobModelEdit()" style="font-size:10px;padding:2px 6px;background:none;border:1px solid #94a3b8;border-radius:4px;cursor:pointer;color:#64748b">✏</button>
+        </div>
+      </div>
       <div class="pob-item trs">
         <div class="pob-lbl">TRS estimé</div>
         <div class="pob-val" id="pob-trs">—</div>
+      </div>
+    </div>
+    <!-- Modal edit horaires depuis bandeau prod -->
+    <div id="m-pobmodel" class="modal" style="display:none">
+      <div class="modal-box" style="max-width:340px">
+        <h3>Modifier horaires du poste</h3>
+        <p id="pobm-info" style="font-size:12px;color:#64748b;margin-bottom:8px"></p>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+          <label style="font-size:12px;font-weight:600">Début <input type="time" id="pobm-debut" style="padding:3px 6px;border:1.5px solid #cbd5e1;border-radius:5px;font-size:13px"></label>
+          <label style="font-size:12px;font-weight:600">Fin <input type="time" id="pobm-fin" style="padding:3px 6px;border:1.5px solid #cbd5e1;border-radius:5px;font-size:13px"></label>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="savePobModelHours()">Enregistrer</button>
+          <button class="btn btn-ghost" onclick="closeM('m-pobmodel')">Annuler</button>
+        </div>
       </div>
     </div>
     <!-- Status bar -->
@@ -2296,7 +2337,7 @@ select{cursor:default}
             <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
             <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Fibre</label><input type="text" id="f-fibre" oninput="scheduleAutoSave()" placeholder="ex: polyester"></div>
+            <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>OF Taie</label><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Traca Fibre</label><input type="text" id="f-traca" oninput="scheduleAutoSave()" placeholder="n° de traca"></div>
             <div class="fr"><label>Réf Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()"></div>
@@ -2832,6 +2873,7 @@ async function loadLists() {
   if (!d) return;
   popSel('f-taille', d.tailles||[]);
   popSel('f-type_prod', d.types_prod||[]);
+  popSel('f-fibre', d.fibres||[]);
   popSel('f-copilote', d.copilotes||[]);
   popSel('er-taille', d.tailles||[]);
   popSel('er-typeprod', d.types_prod||[]);
@@ -2941,7 +2983,7 @@ async function doLogin() {
           if(!_cfgModels[mi].jours[todayKey])_cfgModels[mi].jours[todayKey]={};
           _cfgModels[mi].jours[todayKey].debut=newDebut;
           _cfgModels[mi].jours[todayKey].fin=newFin;
-          await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw||'',modeles_horaires:_cfgModels})});
+          await fetch('/api/update_model_today',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:poste,day_key:todayKey,debut:newDebut,fin:newFin})});
         }
       }
     }
@@ -2953,12 +2995,69 @@ async function doLogin() {
   }
 }
 
+function _getPobModelText(poste) {
+  if(!poste||!_cfgModels) return poste||'—';
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=DAY_KEYS[new Date().getDay()];
+  const m=_cfgModels.find(x=>x.nom===poste);
+  if(!m) return poste;
+  const j=m.jours&&m.jours[dk];
+  if(j&&j.debut&&j.fin) return `${poste} (${j.debut}→${j.fin})`;
+  return poste;
+}
+
+function updatePobModel(poste){
+  const el=document.getElementById('pob-model');
+  if(el) el.textContent=_getPobModelText(poste||(_S_pilot_poste&&_S_pilot_poste.poste));
+}
+
+let _S_pilot_poste={poste:''};
+
+function openPobModelEdit(){
+  const poste=_S_pilot_poste&&_S_pilot_poste.poste;
+  if(!poste){toast('Aucun modèle actif','err');return;}
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=DAY_KEYS[new Date().getDay()];
+  const m=_cfgModels.find(x=>x.nom===poste);
+  const j=m&&m.jours&&m.jours[dk];
+  document.getElementById('pobm-info').textContent=`Modèle : ${poste}`;
+  document.getElementById('pobm-debut').value=(j&&j.debut)||'';
+  document.getElementById('pobm-fin').value=(j&&j.fin)||'';
+  openM('m-pobmodel');
+}
+
+async function savePobModelHours(){
+  const poste=_S_pilot_poste&&_S_pilot_poste.poste;
+  if(!poste) return;
+  const debut=document.getElementById('pobm-debut').value;
+  const fin=document.getElementById('pobm-fin').value;
+  if(!debut||!fin){toast('Horaires incomplets','err');return;}
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=DAY_KEYS[new Date().getDay()];
+  const mi=_cfgModels.findIndex(x=>x.nom===poste);
+  if(mi>=0){
+    if(!_cfgModels[mi].jours)_cfgModels[mi].jours={};
+    if(!_cfgModels[mi].jours[dk])_cfgModels[mi].jours[dk]={};
+    _cfgModels[mi].jours[dk].debut=debut;
+    _cfgModels[mi].jours[dk].fin=fin;
+  }
+  await fetch('/api/update_model_today',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:poste,day_key:dk,debut,fin})});
+  updatePobModel(poste);
+  closeM('m-pobmodel');
+  toast('Horaires mis à jour','ok');
+}
+
 function showApp(s) {
   const app = document.getElementById('app');
   app.style.display = 'flex';
   app.classList.remove('hidden');
   if (s.pilot) { document.getElementById('f-pilote').value=s.pilot; document.getElementById('pob-pilot').textContent=s.pilot; }
-  if (s.poste) { document.getElementById('f-poste').value=s.poste; document.getElementById('pob-poste').textContent=s.poste; }
+  if (s.poste) {
+    document.getElementById('f-poste').value=s.poste;
+    document.getElementById('pob-poste').textContent=s.poste;
+    _S_pilot_poste={poste:s.poste};
+    updatePobModel(s.poste);
+  }
   // Show prod tab button immediately if prod is active (don't wait for applyState)
   const tp=document.getElementById('ht-prod');
   if(tp) tp.classList.toggle('prod-visible',!!s.prod_active);
@@ -3372,7 +3471,7 @@ async function doStartProd() {
   }
 
   // OF suivant : gap interposte classique
-  if(_pendingGapS>120){
+  if(_pendingGapS>30){
     const bc=document.getElementById('ip-btns');bc.innerHTML='';
     document.getElementById('ip-duration').textContent=`Durée : ${_fmtMin(_pendingGapS)}`;
     document.getElementById('ip-custom').value='';
@@ -3912,8 +4011,7 @@ async function saveEditRow() {
 async function deleteRow(key,rowNumId) {
   const rn=rowNumId?parseInt(document.getElementById(rowNumId)?.value):parseInt(window._rowMap[String(key)]?.row_num);
   if(!rn||!confirm('Supprimer cette ligne ?')) return;
-  const pw=document.getElementById('er-pw')?.value||_adminPw||'';
-  const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rn})});
+  const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rn})});
   const d=r?await r.json():{};
   if(d&&d.ok){closeM('m-editrow');await loadMainDecl();toast('Supprimé','ok');}
   else toast(d?.error||'Erreur suppression','err');
