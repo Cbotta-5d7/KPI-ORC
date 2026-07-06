@@ -2379,6 +2379,19 @@ select{cursor:default}
           ↩ Rétro-dater cet OF au début de poste<br>
           <span id="ps-backdate-lbl" style="font-size:11px;font-weight:400;opacity:.85">L'OF sera considéré comme démarré à l'heure du modèle horaire</span>
         </button>
+        <button class="btn btn-ghost" style="text-align:left;padding:10px 14px;font-size:13px" onclick="psShowModifyModel()">
+          📅 Modifier les horaires de ce poste (aujourd'hui)<br>
+          <span style="font-size:11px;font-weight:400;opacity:.75">Changer début et fin du modèle horaire, puis rétro-dater l'OF</span>
+        </button>
+        <!-- Formulaire inline modification modèle -->
+        <div id="ps-model-form" style="display:none;background:#f8fafc;padding:10px;border-radius:7px;border:1px solid var(--border)">
+          <div style="font-size:11px;font-weight:700;color:var(--navy);margin-bottom:7px">Nouvel horaire du poste :</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <label style="font-size:11px">Début <input type="time" id="ps-new-debut" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:13px"></label>
+            <label style="font-size:11px">Fin <input type="time" id="ps-new-fin" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:13px"></label>
+            <button class="btn btn-prim" style="font-size:12px;padding:5px 14px" onclick="psConfirmModifyModel()">✓ Appliquer et démarrer</button>
+          </div>
+        </div>
         <button class="btn btn-ghost" style="font-size:12px" onclick="psChooseIgnore()">Ignorer (ne rien déclarer)</button>
       </div>
     </div>
@@ -3245,6 +3258,48 @@ async function psChooseBackdate(){
 
 function psChooseIgnore(){
   closeM('m-preshift');
+  goTab('prod');
+}
+
+function psShowModifyModel(){
+  // Récupérer le modèle horaire actuel pour pré-remplir les champs
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const todayKey=DAY_KEYS[new Date().getDay()];
+  const model=_cfgModels.find(m=>m.nom===ST.poste);
+  let debut='',fin='';
+  if(model&&model.jours&&model.jours[todayKey]){
+    debut=model.jours[todayKey].debut||'';
+    fin=model.jours[todayKey].fin||'';
+  }
+  document.getElementById('ps-new-debut').value=debut;
+  document.getElementById('ps-new-fin').value=fin;
+  document.getElementById('ps-model-form').style.display='block';
+}
+
+async function psConfirmModifyModel(){
+  const newDebut=document.getElementById('ps-new-debut').value;
+  const newFin=document.getElementById('ps-new-fin').value;
+  if(!newDebut||!newFin){toast('Remplissez le début et la fin','warn');return;}
+  // Mettre à jour le modèle horaire dans la config pour aujourd'hui
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const todayKey=DAY_KEYS[new Date().getDay()];
+  const modelIdx=_cfgModels.findIndex(m=>m.nom===ST.poste);
+  if(modelIdx>=0){
+    if(!_cfgModels[modelIdx].jours)_cfgModels[modelIdx].jours={};
+    if(!_cfgModels[modelIdx].jours[todayKey])_cfgModels[modelIdx].jours[todayKey]={};
+    _cfgModels[modelIdx].jours[todayKey].debut=newDebut;
+    _cfgModels[modelIdx].jours[todayKey].fin=newFin;
+    await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,modeles_horaires:_cfgModels})});
+  }
+  // Rétrodater l'OF au nouvel horaire de début
+  const today=new Date();
+  const [hh,mm]=newDebut.split(':');
+  const newStart=new Date(today.getFullYear(),today.getMonth(),today.getDate(),parseInt(hh),parseInt(mm),0);
+  const newStartIso=newStart.toISOString();
+  closeM('m-preshift');
+  await fetch('/api/set_of_start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({iso:newStartIso})});
+  await pollState();
+  toast('Horaires mis à jour, OF rétro-daté','ok');
   goTab('prod');
 }
 
