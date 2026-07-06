@@ -2132,6 +2132,10 @@ select{cursor:default}
 
   <!-- ════ MAIN VIEW ════ -->
   <div id="v-main" class="view" style="flex-direction:column">
+    <!-- Bannière prod en cours (visible si prod_active mais sur vue accueil) -->
+    <div id="main-prod-banner" style="display:none;background:#16a34a;color:#fff;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;text-align:center" onclick="goTab('prod')">
+      ▶ Une production est en cours — Cliquer ici pour y accéder
+    </div>
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0">
         <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:14px;padding:10px 18px;font-weight:800">▶ Démarrer production</button>
@@ -2737,9 +2741,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   buildEditStopOpts();
   await loadLists();
   const s = await apiFetch('/api/state');
-  if (s && s.pilot) {
+  if (s && (s.pilot || s.prod_active)) {
     document.getElementById('v-login').classList.remove('on');
     showApp(s);
+    if (s.prod_active && !s.pilot) {
+      toast('Prod en cours restaurée — vérifiez les infos','warn');
+    }
   }
   setInterval(pollState, 5000);
   setInterval(pollEvts, 8000);
@@ -2832,6 +2839,9 @@ function showApp(s) {
   app.classList.remove('hidden');
   if (s.pilot) { document.getElementById('f-pilote').value=s.pilot; document.getElementById('pob-pilot').textContent=s.pilot; }
   if (s.poste) { document.getElementById('f-poste').value=s.poste; document.getElementById('pob-poste').textContent=s.poste; }
+  // Show prod tab button immediately if prod is active (don't wait for applyState)
+  const tp=document.getElementById('ht-prod');
+  if(tp) tp.style.display=s.prod_active?'':'none';
   setToday();
   restoreFormFromStorage();
   pollState();
@@ -2972,6 +2982,10 @@ function applyState(s) {
   // Prod tab visibility
   const tp=document.getElementById('ht-prod');
   if(tp) tp.style.display=s.prod_active?'':'none';
+
+  // Main prod banner (shown when prod active but user is on main view)
+  const mpb=document.getElementById('main-prod-banner');
+  if(mpb) mpb.style.display=(s.prod_active&&_curTab==='main')?'block':'none';
 
   // Main btn-start
   const bs=document.getElementById('btn-start');
