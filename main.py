@@ -1740,7 +1740,9 @@ def generate_dashboard_html():
                 if last_fin_dt is None or t > last_fin_dt:
                     last_fin_dt = t
             except: pass
-    if prod_active:
+    # Match accueil formula: use last declared fin, not now()
+    # (accueil uses _lastProdDeclTime which is fin of last declared OF)
+    if prod_active and last_fin_dt is None:
         last_fin_dt = datetime.datetime.now()
     ref_start_dt = model_debut_dt or shift_start_dt
     if ref_start_dt and last_fin_dt and prod_ref > 0:
@@ -1863,6 +1865,14 @@ def generate_dashboard_html():
             x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*W)
             x2 = max(x2, x1+3)
             svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="#22c55e" rx="2" opacity="0.85"/>'
+        # Current running OF (not yet declared) — show in lighter green
+        if prod_active:
+            _of_bar_start = last_fin_dt or model_debut_dt or shift_start_dt
+            if _of_bar_start:
+                x1 = to_x(_of_bar_start)
+                x2 = int((now_ts - win_start).total_seconds() / span * W)
+                x2 = max(x2, x1 + 3)
+                svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="#4ade80" rx="2" opacity="0.65" stroke="#16a34a" stroke-width="1" stroke-dasharray="4,2"/>'
         for r in today_evts:
             t = str(r[0] or "").lower()
             x1 = to_x(str(r[16] or ""))
@@ -1984,7 +1994,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 .hdr-time{{font-size:11px;opacity:.85}}
 .outer{{height:calc(100vh - 42px);display:flex;flex-direction:column;gap:6px;padding:6px;overflow:hidden}}
 /* MODE NORMAL */
-.main-grid{{flex:1;display:grid;grid-template-columns:200px 1fr 200px;gap:6px;overflow:hidden;min-height:0}}
+.main-grid{{flex:1;display:grid;grid-template-columns:200px 0.7fr 280px;gap:6px;overflow:hidden;min-height:0}}
 .panel{{background:#fff;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
 .panel-hdr{{padding:6px 12px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
 .panel-body{{flex:1;overflow-y:auto;padding:8px 12px;min-height:0}}
@@ -2132,6 +2142,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     {tl_svg}
     <div class="tl-legend">
       <span>■ <span style="color:#22c55e">Production</span></span>
+      <span>⬚ <span style="color:#4ade80">OF en cours</span></span>
       <span>■ <span style="color:#ef4444">PB Technique</span></span>
       <span>■ <span style="color:#f59e0b">Rattrapage</span></span>
       <span>■ <span style="color:#38bdf8">Nettoyage</span></span>
@@ -2971,6 +2982,7 @@ select{cursor:default}
             <svg id="kpi-tl1" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;height:48px;display:block;border-radius:4px">
               <rect x="0" y="0" width="800" height="36" fill="#e2e8f0" rx="4"/>
             </svg>
+            <div id="kpi-p1-pareto" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;min-height:14px"></div>
           </div>
           <!-- Timeline poste N-2 -->
           <div style="flex-shrink:0">
@@ -2978,6 +2990,7 @@ select{cursor:default}
             <svg id="kpi-tl2" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;height:48px;display:block;border-radius:4px">
               <rect x="0" y="0" width="800" height="36" fill="#e2e8f0" rx="4"/>
             </svg>
+            <div id="kpi-p2-pareto" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;min-height:14px"></div>
           </div>
           <!-- Timeline poste N-3 -->
           <div style="flex-shrink:0">
@@ -2985,6 +2998,7 @@ select{cursor:default}
             <svg id="kpi-tl3" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;height:48px;display:block;border-radius:4px">
               <rect x="0" y="0" width="800" height="36" fill="#e2e8f0" rx="4"/>
             </svg>
+            <div id="kpi-p3-pareto" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;min-height:14px"></div>
           </div>
           <!-- Légende -->
           <div style="display:flex;gap:14px;flex-shrink:0;font-size:11px;color:#475569">
@@ -3004,7 +3018,7 @@ select{cursor:default}
           <svg id="kpi-pie" viewBox="0 0 130 115" style="width:150px;height:130px;display:block;margin:0 auto"></svg>
         </div>
         <!-- Stats chiffres clés -->
-        <div id="kpi-stats" style="background:#fff;padding:12px 16px;flex-shrink:0;border-bottom:1px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+        <div id="kpi-stats" style="background:#fff;padding:10px 12px;flex-shrink:0;border-bottom:1px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"></div>
         <!-- Pareto -->
         <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:12px 16px;background:#fff">
           <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#475569;letter-spacing:.8px;margin-bottom:8px;flex-shrink:0">Pareto arrêts</div>
@@ -3571,6 +3585,14 @@ function resetToLogin() {
   document.getElementById('ln-err').textContent='';
   document.getElementById('v-login').classList.add('on');
   _settingsUnlocked = false;
+  // Reset horaires login aux valeurs config
+  const _lnM=document.getElementById('ln-model');
+  if(_lnM) _lnM.value='';
+  const _lnInfo=document.getElementById('ln-model-info');
+  if(_lnInfo) _lnInfo.style.display='none';
+  const _lnMod=document.getElementById('ln-model-modify');
+  if(_lnMod) _lnMod.style.display='none';
+  loadModelsForLogin();
 }
 
 function setToday() {
@@ -4852,10 +4874,10 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
     if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${STOP_COL.pb||'#b91c1c'}" rx="2" opacity=".9"/>`;
   }
   const fT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
-  html+=`<text x="2" y="${H-1}" font-size="8" fill="#64748b">${fT(tS)}</text>`;
-  html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#64748b">${fT(tE)}</text>`;
+  html+=`<text x="2" y="${H-1}" font-size="8" fill="#fff">${fT(tS)}</text>`;
+  html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#fff">${fT(tE)}</text>`;
   html+=`<line x1="${W/2}" y1="${Y}" x2="${W/2}" y2="${Y+H2}" stroke="#94a3b8" stroke-width=".5" stroke-dasharray="2,2"/>`;
-  html+=`<text x="${W/2-10}" y="${H-1}" font-size="8" fill="#94a3b8">${fT((tS+tE)/2)}</text>`;
+  html+=`<text x="${W/2-10}" y="${H-1}" font-size="8" fill="#e2e8f0">${fT((tS+tE)/2)}</text>`;
   svg.innerHTML=html;
 }
 
@@ -5174,9 +5196,9 @@ function _drawKpiTL(svgId,evts,startISO,endISO,isCurrent){
   }
   const fT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
   const fs=isCurrent?11:9;
-  html+=`<text x="4" y="${H-4}" font-size="${fs}" fill="#64748b">${fT(tS)}</text>`;
-  html+=`<text x="${W-40}" y="${H-4}" font-size="${fs}" fill="#64748b">${fT(tE)}</text>`;
-  if(span>3600000){const mid=(tS+tE)/2;html+=`<line x1="${W/2}" y1="0" x2="${W/2}" y2="${H}" stroke="#334155" stroke-width="1" stroke-dasharray="3,3"/><text x="${W/2-18}" y="${H-4}" font-size="${fs}" fill="#334155">${fT(mid)}</text>`;}
+  html+=`<text x="4" y="${H-4}" font-size="${fs}" fill="#fff">${fT(tS)}</text>`;
+  html+=`<text x="${W-40}" y="${H-4}" font-size="${fs}" fill="#fff">${fT(tE)}</text>`;
+  if(span>3600000){const mid=(tS+tE)/2;html+=`<line x1="${W/2}" y1="0" x2="${W/2}" y2="${H}" stroke="#475569" stroke-width="1" stroke-dasharray="3,3"/><text x="${W/2-18}" y="${H-4}" font-size="${fs}" fill="#e2e8f0">${fT(mid)}</text>`;}
   svg.innerHTML=html;
 }
 
@@ -5290,10 +5312,30 @@ async function loadKPI(){
       } else {
         _drawKpiTL(svgId,[],new Date().toISOString(),new Date(Date.now()+3600000).toISOString(),false);
       }
+      // Mini-pareto for this session
+      const _pEl=document.getElementById('kpi-p'+(i+1)+'-pareto');
+      if(_pEl){
+        const _sm={};sEvts.forEach(e=>{if(!e.type)return;const d=Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0'));_sm[e.type]=(_sm[e.type]||0)+d;});
+        const _srt=Object.entries(_sm).sort((a,b)=>b[1]-a[1]).slice(0,4);
+        if(_srt.length){
+          const _mx=_srt[0][1];
+          _pEl.innerHTML=_srt.map(([t,s])=>{
+            const pct=Math.round(s/_mx*100),min=Math.round(s/60);
+            const cat=sEvts.find(e=>e.type===t)?.cat||'autre';
+            const col=STOP_COL[cat]||'#94a3b8';
+            return `<div style="display:flex;align-items:center;gap:3px;font-size:9px;color:#64748b">
+              <div style="width:${Math.round(pct*0.4)}px;min-width:3px;height:8px;background:${col};border-radius:2px"></div>
+              <span style="max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t)}</span>
+              <span style="color:#94a3b8">${min}m</span></div>`;
+          }).join('');
+        } else { _pEl.innerHTML=''; }
+      }
     } else {
       if(lbl) lbl.textContent='—';
       const svg=document.getElementById(svgId);
       if(svg) svg.innerHTML='<rect x="0" y="0" width="800" height="36" fill="#1e293b" rx="4"/><text x="400" y="22" text-anchor="middle" font-size="10" fill="#334155">Aucune donnée</text>';
+      const _pEl2=document.getElementById('kpi-p'+(i+1)+'-pareto');
+      if(_pEl2) _pEl2.innerHTML='';
     }
   }
 
@@ -5329,18 +5371,23 @@ async function loadKPI(){
   // ── Stats ──
   const statsEl=document.getElementById('kpi-stats');
   if(statsEl){
-    const mkStat=(lbl,val,col)=>`<div style="background:#1e293b;border-radius:8px;padding:10px;text-align:center">
-      <div style="font-size:20px;font-weight:800;color:${col||'#e2e8f0'}">${val}</div>
-      <div style="font-size:10px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.6px;margin-top:2px">${lbl}</div>
+    const mkStat=(lbl,val,col)=>`<div style="background:#1e293b;border-radius:8px;padding:8px 4px;text-align:center">
+      <div style="font-size:17px;font-weight:800;color:${col||'#e2e8f0'}">${val}</div>
+      <div style="font-size:9px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-top:2px;line-height:1.2">${lbl}</div>
     </div>`;
     if(todayData){
-      const trs=todayData.trs_shift!==undefined?todayData.trs_shift:todayData.trs;
-      const col=trs>=90?'#86efac':trs>=75?'#fcd34d':'#fca5a5';
+      const rows=todayData.rows||[];
+      const qteProd=Math.round(rows.reduce((a,r)=>a+parseFloat(r.qte_fab||0),0));
+      const prodMin=Math.round(rows.reduce((a,r)=>{const d=pSec(r.debut||'0:0:0'),f=pSec(r.fin||'0:0:0');return a+Math.max(0,f-d)/60;},0));
+      const cad=prodMin>0?Math.round(qteProd/prodMin*60):0;
+      const elapsedMin=_shiftRefDt?Math.round((now.getTime()-_shiftRefDt.getTime())/60000):0;
       statsEl.innerHTML=
-        mkStat('TRS',fmtTRS(trs),col)+
-        mkStat('Équivalence',(todayData.tot_equiv||0).toFixed(1),'#93c5fd')+
-        mkStat('Nb OF',todayData.nb_of||0,'#e2e8f0')+
-        mkStat('Arrêts',Math.round(curStopS/60)+' min','#fca5a5');
+        mkStat('Qté produite',qteProd,'#a78bfa')+
+        mkStat('Qté équiv.',(todayData.tot_equiv||0).toFixed(1),'#93c5fd')+
+        mkStat('Cadence pcs/h',cad,'#6ee7b7')+
+        mkStat('Arrêts min',Math.round(curStopS/60),'#fca5a5')+
+        mkStat('Prod min',prodMin,'#86efac')+
+        mkStat('Écoulé min',elapsedMin+'','#fde68a');
     } else {
       statsEl.innerHTML='<div style="grid-column:1/-1;color:#475569;font-size:13px;text-align:center;padding:12px">Aucun poste actif</div>';
     }
