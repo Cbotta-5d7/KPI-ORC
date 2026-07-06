@@ -1,5 +1,5 @@
 """KPI-ORC v6.3 - Flask + pywebview"""
-import json, os, sys, datetime, threading, math, shutil, time
+import json, os, sys, datetime, threading, math, shutil, time, atexit, signal
 from flask import Flask, request, jsonify, render_template_string
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Border, Side, PatternFill
@@ -347,6 +347,17 @@ def load_session():
         return True
     except: return False
 
+# Save session on any exit (window close, kill, etc.)
+def _on_exit(*args):
+    try: save_session()
+    except: pass
+
+atexit.register(_on_exit)
+try: signal.signal(signal.SIGTERM, _on_exit)
+except: pass
+try: signal.signal(signal.SIGINT, _on_exit)
+except: pass
+
 # ── Listes depuis Excel ────────────────────────────────────────────────────────
 def load_lists():
     global _lists, _prod_ref_cached
@@ -378,8 +389,8 @@ def load_lists():
                     pil_map[str(pil_v).strip()] = str(pw_v or "").strip()
             if pil_map:
                 cfg["pilot_passwords"] = pil_map
-            # Also read fixed-position columns: C=copilotes, D=fibres, E=tailles
-            for col_idx, list_key in [(3,"copilotes"),(4,"fibres_col"),(5,"tailles_col")]:
+            # Also read fixed-position columns: C=copilotes, D=tailles, E=types_prod, J=fibres
+            for col_idx, list_key in [(3,"copilotes"),(4,"tailles_col"),(5,"types_prod_col"),(10,"fibres_col")]:
                 vals = []
                 for ri in range(2, ws.max_row+1):
                     v = ws.cell(ri, col_idx).value
@@ -749,7 +760,7 @@ def api_lists():
         "pilotes": get_list("Pilotes") or get_list("pilotes") or get_list("Pilote") or get_list("pilote") or list(cfg.get("pilot_passwords",{}).keys()),
         "copilotes": get_list("copilotes") or get_list("Co-Pilote") or get_list("Copilote") or get_list("Pilotes") or get_list("pilotes") or list(cfg.get("pilot_passwords",{}).keys()),
         "tailles": get_list("tailles_col") or get_list("Tailles") or get_list("taille"),
-        "types_prod": get_list("Type produit") or get_list("types_prod"),
+        "types_prod": get_list("types_prod_col") or get_list("Type produit") or get_list("types_prod"),
         "fibres": get_list("fibres_col") or get_list("Fibres") or get_list("fibre"),
         "tracas": get_list("Traca") or get_list("tracas"),
         "equivalences": get_list("Equivalence coef") or get_list("Equivalence") or [],
@@ -2133,16 +2144,19 @@ select{cursor:default}
       <div class="skpi current">
         <div class="sk-lbl">Poste actuel — TRS</div>
         <div class="sk-val" id="kpi0-trs">--%</div>
+        <div class="sk-sub" id="kpi0-date" style="font-size:10px;opacity:.85"></div>
         <div class="sk-sub" id="kpi0-sub">0 OF</div>
       </div>
       <div class="skpi">
-        <div class="sk-lbl" id="kpi1-lbl">Hier</div>
+        <div class="sk-lbl" id="kpi1-lbl">Poste précédent</div>
         <div class="sk-val" id="kpi1-trs">--%</div>
+        <div class="sk-sub" id="kpi1-date" style="font-size:10px;opacity:.85"></div>
         <div class="sk-sub" id="kpi1-sub">0 OF</div>
       </div>
       <div class="skpi">
-        <div class="sk-lbl" id="kpi2-lbl">Avant-hier</div>
+        <div class="sk-lbl" id="kpi2-lbl">Avant-dernier</div>
         <div class="sk-val" id="kpi2-trs">--%</div>
+        <div class="sk-sub" id="kpi2-date" style="font-size:10px;opacity:.85"></div>
         <div class="sk-sub" id="kpi2-sub">0 OF</div>
       </div>
     </div>
@@ -2209,7 +2223,7 @@ select{cursor:default}
             <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
             <div class="fr"><label>Co-Pilote</label><select id="f-copilote" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="2" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Code Produit</label><input id="f-code_prod" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Type Produit</label><select id="f-type_prod" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
@@ -2372,12 +2386,12 @@ select{cursor:default}
       <input type="hidden" id="ps-gap-s">
       <div style="display:flex;flex-direction:column;gap:8px">
         <button class="btn btn-prim" style="text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseInterposte()">
-          ⏱ Enregistrer comme temps interposte<br>
-          <span id="ps-interposte-lbl" style="font-size:11px;font-weight:400;opacity:.85"></span>
+          ⏱ Enregistrer comme temps d'arrêt Interposte<br>
+          <span style="font-size:11px;font-weight:400;opacity:.85">Il n'y a pas eu de production pendant ce temps</span>
         </button>
         <button class="btn btn-green" style="text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseBackdate()">
-          ↩ Rétro-dater cet OF au début de poste<br>
-          <span id="ps-backdate-lbl" style="font-size:11px;font-weight:400;opacity:.85">L'OF sera considéré comme démarré à l'heure du modèle horaire</span>
+          ↩ Déclarer que cet OF a démarré à <span id="ps-backdate-time" style="font-weight:800">--h--</span> (début du poste)<br>
+          <span id="ps-backdate-lbl" style="font-size:11px;font-weight:400;opacity:.85">L'OF sera rétro-daté à l'heure du modèle horaire</span>
         </button>
         <button class="btn btn-ghost" style="text-align:left;padding:10px 14px;font-size:13px" onclick="psShowModifyModel()">
           📅 Modifier les horaires de ce poste (aujourd'hui)<br>
@@ -3131,9 +3145,15 @@ async function loadMainKPI() {
   const curStopS=curEvts.reduce((a,e)=>{try{const p=s=>s.split(':').reduce((acc,v,i)=>acc+(i===0?+v*3600:i===1?+v*60:+v),0);return a+Math.max(0,p(e.fin||'0:0:0')-p(e.debut||'0:0:0'));}catch(x){return a;}},0);
   if(d){
     const trs=d.trs_shift!==undefined?d.trs_shift:d.trs;
-    const el0t=document.getElementById('kpi0-trs'),el0s=document.getElementById('kpi0-sub');
+    const el0t=document.getElementById('kpi0-trs'),el0s=document.getElementById('kpi0-sub'),el0d=document.getElementById('kpi0-date');
     if(el0t) el0t.textContent=fmtTRSv(trs);
     if(el0s) el0s.textContent=(d.rows?d.rows.length:0)+' OF | Arrêts '+Math.round(curStopS/60)+' min';
+    if(el0d){
+      const today=now.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'});
+      const shiftIso=ST.shift_start_iso;
+      const shiftTime=shiftIso?new Date(shiftIso).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):null;
+      el0d.textContent=today+(shiftTime?' — depuis '+shiftTime:'');
+    }
   }
 
   // Previous sessions from history (group by pilot+date, exclude current session)
@@ -3160,12 +3180,22 @@ async function loadMainKPI() {
       // Count stops for this session
       const sEvts=evArr.filter(e=>e.date===s.date&&e.pilote===s.pilot);
       const sStopS=sEvts.reduce((a,e)=>{try{const p=t=>t.split(':').reduce((acc,v,ii)=>acc+(ii===0?+v*3600:ii===1?+v*60:+v),0);return a+Math.max(0,p(e.fin||'0:0:0')-p(e.debut||'0:0:0'));}catch(x){return a;}},0);
+      const dt=document.getElementById('kpi'+(i+1)+'-date');
       lbl.textContent=s.pilot+' — '+s.poste;
       tv.textContent=fmtTRSv(avgT);
       sv.textContent=s.rows.length+' OF | Arrêts '+Math.round(sStopS/60)+' min';
+      if(dt){
+        // Get first debut and last fin from this session's rows
+        const debs=s.rows.map(r=>r.debut_of||r.debut||'').filter(Boolean).sort();
+        const fins=s.rows.map(r=>r.fin_of||r.fin||'').filter(Boolean).sort().reverse();
+        const timeRange=(debs.length&&fins.length)?` ${debs[0].slice(0,5)}→${fins[0].slice(0,5)}`:'';
+        dt.textContent=s.date+timeRange;
+      }
     } else {
       lbl.textContent=i===0?'Poste précédent':'Avant-dernier';
       tv.textContent='--%'; sv.textContent='—';
+      const dt=document.getElementById('kpi'+(i+1)+'-date');
+      if(dt) dt.textContent='';
     }
   }
 }
@@ -3196,10 +3226,10 @@ async function doStartProd() {
     const m=_fmtMin(d.pre_shift_gap_s);
     document.getElementById('ps-text').textContent=
       `${m} non déclarées depuis le début de poste (${d.shift_model_start})`;
-    document.getElementById('ps-interposte-lbl').textContent=
-      `Écrira une ligne interposte de ${m} dans Excel`;
     document.getElementById('ps-start-iso').value=d.shift_model_start_iso||'';
     document.getElementById('ps-gap-s').value=d.pre_shift_gap_s||0;
+    const bt=document.getElementById('ps-backdate-time');
+    if(bt) bt.textContent=d.shift_model_start||'--h--';
     openM('m-preshift');
     return;
   }
@@ -3415,17 +3445,22 @@ async function saveEvtList(){
 function openStopModal(){openM('m-stop');}
 
 async function doPause(){
-  await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  try{await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});}
+  catch(e){toast('Erreur connexion serveur','err');return;}
   await pollState();
 }
 
 async function doNettoyage(){
-  await fetch('/api/start_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ntype:'court'})});
+  try{await fetch('/api/start_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ntype:'court'})});}
+  catch(e){toast('Erreur connexion serveur','err');return;}
   await pollState();
 }
 
 async function doStartStop(key,cat){
-  await fetch('/api/start_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,cat})});
+  try{
+    const r=await fetch('/api/start_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,cat})});
+    if(!r||!r.ok) toast('Erreur déclaration arrêt','err');
+  }catch(e){toast('Erreur connexion serveur','err');return;}
   await pollState();
   await pollEvts();
 }
@@ -3520,7 +3555,7 @@ function scheduleAutoSave(){
 async function doEndProdPreview(){
   const f=collectForm();
   const r=await fetch('/api/preview_end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
-  if(!r||!r.ok){if(confirm('Confirmer fin de production?'))confirmEndProd();return;}
+  if(!r||!r.ok){confirmEndProd();return;}
   const d=await r.json();
   renderEPModal(d,f);
   openM('m-endprod');
@@ -4187,11 +4222,20 @@ async function saveProdRef(){
 
 async function generateDashboard(){
   const st=document.getElementById('dash-status');
-  if(st) st.textContent='Génération…';
-  const r=await fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-  const d=r?await r.json():{};
-  if(d&&d.ok){if(st) st.textContent='Dashboard généré : '+esc(d.path||'');}
-  else {if(st) st.textContent='Erreur: '+(d&&d.error||'inconnue');}
+  if(st){st.textContent='Génération en cours…';st.style.color='var(--amber)';}
+  let d={};
+  try{
+    const r=await fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(r&&r.ok) d=await r.json();
+  }catch(e){}
+  if(d&&d.ok){
+    if(st){st.textContent='✓ Dashboard généré : '+esc(d.path||'');st.style.color='var(--green)';}
+    toast('Dashboard généré !','ok');
+  } else {
+    const errMsg=d&&d.error?d.error:'Erreur inconnue — vérifiez que le fichier Excel est configuré dans les paramètres';
+    if(st){st.textContent='✗ '+errMsg;st.style.color='var(--red)';}
+    toast('Erreur dashboard: '+errMsg,'err');
+  }
 }
 
 // ── MODALS ──
@@ -4217,12 +4261,19 @@ function toast(msg,type){
 </body>
 </html>"""
 
+def _session_autosave():
+    while True:
+        time.sleep(30)
+        try: save_session()
+        except: pass
+
 def main():
     global cfg
     cfg = load_cfg()
     load_session()
     threading.Thread(target=load_lists, daemon=True).start()
     threading.Thread(target=load_history, daemon=True).start()
+    threading.Thread(target=_session_autosave, daemon=True).start()
 
     # Recover pending Excel write after crash
     try:
