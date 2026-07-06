@@ -1869,7 +1869,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 .panel-hdr{{padding:10px 18px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
 .panel-body{{flex:1;overflow-y:auto;padding:12px 18px;min-height:0}}
 /* TRS PANEL */
-.trs-num{{font-size:88px;font-weight:900;line-height:1;color:{trs_col};text-align:center}}
+.trs-num{{font-size:72px;font-weight:900;line-height:1;color:{trs_col};text-align:center}}
 .trs-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:8px}}
 .trs-sub{{font-size:14px;color:#64748b;text-align:center;margin-top:6px}}
 /* STAT CARDS */
@@ -1930,8 +1930,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
         <div class="panel-hdr" style="background:#1a1f5e;color:#fff">TRS Poste en cours</div>
         <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:10px 14px">
           <div class="trs-lbl">Taux de Rendement Synthétique</div>
-          <div style="font-size:64px;font-weight:900;line-height:1;color:{trs_col};text-align:center">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
-          {gauge_svg(trs_poste, 200)}
+          <div style="font-size:72px;font-weight:900;line-height:1;color:{trs_col};text-align:center;margin:10px 0">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
           <div class="trs-sub">Réf : {prod_ref:.0f} éq / 8h &nbsp;|&nbsp; {elapsed_str}</div>
           <div class="trs-sub" style="font-size:20px;font-weight:800;color:#38bdf8;margin-top:4px">Éq. total : {tot_equiv:.1f}</div>
         </div>
@@ -2479,6 +2478,10 @@ select{cursor:default}
           <div class="pob-val" style="font-size:14px" id="pob-model">—</div>
           <button onclick="openPobModelEdit()" style="font-size:10px;padding:2px 6px;background:none;border:1px solid #94a3b8;border-radius:4px;cursor:pointer;color:#64748b">✏</button>
         </div>
+      </div>
+      <div class="pob-item">
+        <div class="pob-lbl">Départ OF</div>
+        <div class="pob-val" style="font-size:16px;color:#fbbf24" id="pob-of-start">—</div>
       </div>
       <div class="pob-item trs">
         <div class="pob-lbl">TRS estimé</div>
@@ -3576,6 +3579,16 @@ function applyState(s) {
     const af=document.activeElement;
     if(!af||!af.closest||!af.closest('.form-col')) fillFormFromState(s.form);
   }
+  // OF start time in banner
+  const pobOfStart=document.getElementById('pob-of-start');
+  if(pobOfStart){
+    if(s.of_start_iso){
+      const os=new Date(s.of_start_iso);
+      pobOfStart.textContent=String(os.getHours()).padStart(2,'0')+':'+String(os.getMinutes()).padStart(2,'0');
+    } else {
+      pobOfStart.textContent='—';
+    }
+  }
 
   // Render active stop chips
   renderStopChips(s);
@@ -3762,6 +3775,9 @@ function saveMainModelHours(){
   fetch('/api/update_model_today',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:poste,day_key:dk,debut,fin})});
   const el=document.getElementById('main-model-times');
   if(el) el.textContent=debut+' → '+fin;
+  // Refresh Prod view model display and TRS gauges
+  updatePobModel(poste);
+  updateGauge(ST);
   toast('Horaires mis à jour','ok');
 }
 
@@ -3778,8 +3794,8 @@ function updateMainModelDisplay(){
   const j=m&&m.jours&&m.jours[dk];
   const debut=(j&&j.debut)||'';const fin=(j&&j.fin)||'';
   if(timesEl) timesEl.textContent=debut&&fin?debut+' → '+fin:'Non défini';
-  if(debutEl&&debut) debutEl.value=debut;
-  if(finEl&&fin) finEl.value=fin;
+  if(debutEl&&debut&&document.activeElement!==debutEl) debutEl.value=debut;
+  if(finEl&&fin&&document.activeElement!==finEl) finEl.value=fin;
   // Show prod ref calculation
   if(refCalcEl&&ST.prod_ref>0){
     const ppm=(ST.prod_ref/480).toFixed(1);
@@ -4394,9 +4410,17 @@ function updateGauge(s){
   const arcPosteAcc=document.getElementById('gauge-poste-acc-arc');
   const pctPosteAcc=document.getElementById('gauge-poste-acc-pct');
   const lblPosteAcc=document.getElementById('gauge-poste-acc-lbl');
-  if(s.shift_start_iso&&s.prod_ref>0){
+  // TRS Poste: use model horaire debut as reference (not shift_start_iso which may include pre-shift time)
+  const _dayKeysG=['dim','lun','mar','mer','jeu','ven','sam'];
+  const _dkG=_dayKeysG[new Date().getDay()];
+  const _modelG=_cfgModels&&_cfgModels.find(m=>m.nom===(s.poste||ST.poste||''));
+  const _jourG=_modelG&&_modelG.jours&&_modelG.jours[_dkG];
+  let _shiftRefDt=null;
+  if(_jourG&&_jourG.debut){const[_hG,_mG]=_jourG.debut.split(':').map(Number);_shiftRefDt=new Date();_shiftRefDt.setHours(_hG,_mG,0,0);}
+  else if(s.shift_start_iso){_shiftRefDt=new Date(s.shift_start_iso);}
+  if(_shiftRefDt&&s.prod_ref>0){
     const refTime=_lastProdDeclTime||new Date();
-    const shiftElap=(refTime.getTime()-new Date(s.shift_start_iso).getTime())/1000;
+    const shiftElap=(refTime.getTime()-_shiftRefDt.getTime())/1000;
     const todayEquiv=_todayEquivAccum||0;
     const trsPoste=shiftElap>0&&todayEquiv>0?Math.round(todayEquiv/(s.prod_ref*shiftElap/28800)*100*10)/10:-1;
     const hh=String(refTime.getHours()).padStart(2,'0'),mm2=String(refTime.getMinutes()).padStart(2,'0');
@@ -4588,7 +4612,7 @@ function drawTL(svgId,tlEvts,debutHMS,finHMS){
   svg.innerHTML=html;
 }
 
-function drawTLFromISO(svgId,evts,startIso,endIso){
+function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
   const svg=document.getElementById(svgId);
   if(!svg) return;
   const W=800,Y=4,H2=28,H=40;
@@ -4596,12 +4620,19 @@ function drawTLFromISO(svgId,evts,startIso,endIso){
   const tS=new Date(startIso).getTime(),tE=new Date(endIso).getTime();
   const span=tE-tS;if(span<=0){svg.innerHTML=html;return;}
   const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
-  // Prod background — show for current prod AND keep events from previous prods visible
-  if(ST.of_start_iso){
+  // Draw historical prod blocks from of_list (fin de poste view)
+  (prodOfList||[]).forEach(of=>{
+    const t1=parseHMStoT(of.debut,of.date||null);
+    const t2=of.fin?parseHMStoT(of.fin,of.date||null):null;
+    if(!t1) return;
+    const x1=toX(t1),x2=toX(t2||tE);
+    if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="#bbf7d0" rx="4"/>`;
+  });
+  // Prod background — show for current active OF
+  if(ST.of_start_iso&&ST.prod_active){
     const ps=new Date(ST.of_start_iso).getTime();
-    const pe=ST.prod_active?tE:(ST.last_of_end_iso?new Date(ST.last_of_end_iso).getTime():tE);
-    const x1=toX(ps),x2=toX(pe);
-    if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${ST.prod_active?'#bbf7d0':'#e0f2fe'}" rx="4"/>`;
+    const x1=toX(ps),x2=toX(tE);
+    if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="#bbf7d0" rx="4"/>`;
   }
   // Events
   (evts||[]).forEach((ev,i)=>{
@@ -4726,15 +4757,29 @@ async function loadFPData(){
   // Use gEvts (historical) + convert live tl_events to display format
   const liveEvts=tlEventsToDisplayFmt(ST.tl_events||[]);
   const allEvtsForTL=[...gEvts,...liveEvts];
-  // Pre-fill datetime-local inputs for "Modifier horaires" modal
-  const debDt=new Date(shiftStart);
-  const nowDt=new Date();
+  // Pre-fill datetime-local inputs — use model horaire theoretical times when available
   const toLocalDT=dt=>{const y=dt.getFullYear(),mo=String(dt.getMonth()+1).padStart(2,'0'),dy=String(dt.getDate()).padStart(2,'0'),h=String(dt.getHours()).padStart(2,'0'),mi=String(dt.getMinutes()).padStart(2,'0');return `${y}-${mo}-${dy}T${h}:${mi}`;};
+  const dayKeys2=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk2=dayKeys2[new Date().getDay()];
+  const modelFP=_cfgModels&&_cfgModels.find(m=>m.nom===ST.poste);
+  const jourFP=modelFP&&modelFP.jours&&modelFP.jours[dk2];
+  // Debut: prefer model debut, fallback to shift_start_iso
+  let debDt=new Date(shiftStart);
+  if(jourFP&&jourFP.debut){const[hh,mm]=jourFP.debut.split(':').map(Number);debDt=new Date();debDt.setHours(hh,mm,0,0);}
+  // Fin: prefer model fin, fallback to now
+  let finDt=new Date();
+  if(jourFP&&jourFP.fin){const[hh,mm]=jourFP.fin.split(':').map(Number);finDt=new Date();finDt.setHours(hh,mm,0,0);}
   const fpDeb=document.getElementById('fp-debut-dt');
   const fpFin=document.getElementById('fp-fin-dt');
   if(fpDeb) fpDeb.value=toLocalDT(debDt);
-  if(fpFin) fpFin.value=toLocalDT(nowDt);
-  drawTLFromISO('fp-tl',allEvtsForTL,shiftStart,nowDt.toISOString());
+  if(fpFin) fpFin.value=toLocalDT(finDt);
+  // Show model horaire info
+  const fpShiftInfo=document.getElementById('fp-shift-info');
+  const fpShiftH=document.getElementById('fp-shift-hours');
+  const hStr2=jourFP&&jourFP.debut&&jourFP.fin?`${jourFP.debut} → ${jourFP.fin}`:'—';
+  if(fpShiftInfo) fpShiftInfo.textContent=hStr2;
+  if(fpShiftH) fpShiftH.textContent=hStr2;
+  drawTLFromISO('fp-tl',allEvtsForTL,debDt.toISOString(),finDt.toISOString(),d.of_list||[]);
 
   // Productions
   const fpb=document.getElementById('fp-prods');
@@ -4796,7 +4841,7 @@ function applyFPHoraires(){
     document.getElementById('fp-trs').textContent=fmtTRS(trs);
   }
   // Redraw timeline with custom range
-  drawTLFromISO('fp-tl',gEvts,deb.toISOString(),fin.toISOString());
+  drawTLFromISO('fp-tl',gEvts,deb.toISOString(),fin.toISOString(),(window._fpData&&window._fpData.of_list)||[]);
   closeM('m-fp-horaires');
   toast('Horaires appliqués','ok');
 }
