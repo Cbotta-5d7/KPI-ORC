@@ -1632,14 +1632,21 @@ def generate_dashboard_html():
     model_debut_dt = None
     _day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
     _dk = _day_map.get(datetime.date.today().weekday(), 'lun')
+    model_fin_dt = None
     for _m in cfg.get("modeles_horaires", []):
         if str(_m.get("nom","")).strip() == str(poste_now).strip():
             _j = _m.get("jours",{}).get(_dk,{})
             _deb = _j.get("debut","") or _m.get("debut","")
+            _fin = _j.get("fin","") or _m.get("fin","")
             if _deb:
                 try:
                     _h, _mi = map(int, _deb.split(":"))
                     model_debut_dt = datetime.datetime.combine(datetime.date.today(), datetime.time(_h, _mi))
+                except: pass
+            if _fin:
+                try:
+                    _h2, _mi2 = map(int, _fin.split(":"))
+                    model_fin_dt = datetime.datetime.combine(datetime.date.today(), datetime.time(_h2, _mi2))
                 except: pass
             break
     # Filter to only prods within model horaire window (same logic as JS inShiftDecls)
@@ -1688,24 +1695,27 @@ def generate_dashboard_html():
         evt_dur[t] += hms2s(str(r[18] or "0"))
     pareto = sorted(evt_dur.items(), key=lambda x: -x[1])[:8]
 
-    active_stop_name = ""
-    active_stop_elapsed = 0.0
+    all_stops_info = []  # list of (name, elapsed_s)
     if active_stops:
-        k = active_stops[0]
         evts_cfg_list = get_events_list()
-        ev = next((e for e in evts_cfg_list if e.get("key")==k), None)
-        active_stop_name = ev["label"] if ev else k
-        t_data = _S.get("timers",{}).get(k, {})
-        active_stop_elapsed = t_data.get("elapsed", 0)
-        if t_data.get("running") and t_data.get("start"):
-            try: active_stop_elapsed += (datetime.datetime.now() - t_data["start"]).total_seconds()
-            except: pass
+        for k in active_stops:
+            ev = next((e for e in evts_cfg_list if e.get("key")==k), None)
+            stop_name = ev["label"] if ev else k
+            t_data = _S.get("timers",{}).get(k, {})
+            stop_elapsed = t_data.get("elapsed", 0)
+            if t_data.get("running") and t_data.get("start"):
+                try: stop_elapsed += (datetime.datetime.now() - t_data["start"]).total_seconds()
+                except: pass
+            all_stops_info.append((stop_name, stop_elapsed))
     elif is_paused:
-        active_stop_name = "Pause"
-        active_stop_elapsed = _S.get("pause_total_s", 0)
+        pause_elapsed = _S.get("pause_total_s", 0)
         if _S.get("pause_start"):
-            try: active_stop_elapsed += (datetime.datetime.now() - _S["pause_start"]).total_seconds()
+            try: pause_elapsed += (datetime.datetime.now() - _S["pause_start"]).total_seconds()
             except: pass
+        all_stops_info.append(("Pause", pause_elapsed))
+    # Legacy single-stop for compat
+    active_stop_name = all_stops_info[0][0] if all_stops_info else ""
+    active_stop_elapsed = all_stops_info[0][1] if all_stops_info else 0.0
 
     has_alert = bool(active_stops or is_paused)
     gen_time = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -1840,16 +1850,21 @@ def generate_dashboard_html():
     # ── ALERT BANNER HTML ──
     alert_html = ""
     if has_alert:
-        dur_fmt = fmt_s(active_stop_elapsed)
+        stops_html = "".join(
+            f'<div style="display:flex;align-items:center;justify-content:space-between;gap:24px;background:rgba(255,255,255,.12);border-radius:10px;padding:10px 20px;margin:4px 0;min-width:320px">'
+            f'<span style="font-size:28px;font-weight:800;color:#fef2f2">{nm}</span>'
+            f'<span style="font-size:36px;font-weight:900;color:#fecaca;font-variant-numeric:tabular-nums">{int(el/60)}<span style="font-size:18px">min</span></span>'
+            f'</div>'
+            for nm, el in all_stops_info
+        )
         alert_html = f'''
 <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   background:linear-gradient(135deg,#7f0000 0%,#b91c1c 50%,#ef4444 100%);
   animation:pulse 1.2s ease-in-out infinite;border-bottom:6px solid #fca5a5">
-  <div style="font-size:80px;line-height:1;animation:wag .8s ease-in-out infinite">🚨</div>
-  <div style="font-size:80px;font-weight:900;letter-spacing:4px;margin:12px 0;text-shadow:0 4px 16px rgba(0,0,0,.4);color:#fff">ARRÊT EN COURS</div>
-  <div style="font-size:56px;font-weight:800;color:#fef2f2;margin:8px 0;max-width:80%;text-align:center">{active_stop_name}</div>
-  <div style="font-size:72px;font-weight:900;color:#fecaca;font-variant-numeric:tabular-nums;margin-top:16px">{dur_fmt}</div>
-  <div style="font-size:80px;line-height:1;animation:wag .8s ease-in-out infinite reverse;margin-top:12px">🚨</div>
+  <div style="font-size:64px;line-height:1;animation:wag .8s ease-in-out infinite">🚨</div>
+  <div style="font-size:60px;font-weight:900;letter-spacing:4px;margin:10px 0;text-shadow:0 4px 16px rgba(0,0,0,.4);color:#fff">ARRÊT{"S" if len(all_stops_info)>1 else ""} EN COURS</div>
+  {stops_html}
+  <div style="font-size:64px;line-height:1;animation:wag .8s ease-in-out infinite reverse;margin-top:10px">🚨</div>
 </div>'''
     else:
         # ── PROD EN COURS BIG CARD ──
@@ -1900,9 +1915,9 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 .panel-hdr{{padding:10px 18px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
 .panel-body{{flex:1;overflow-y:auto;padding:12px 18px;min-height:0}}
 /* TRS PANEL */
-.trs-num{{font-size:72px;font-weight:900;line-height:1;color:{trs_col};text-align:center}}
-.trs-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:8px}}
-.trs-sub{{font-size:14px;color:#64748b;text-align:center;margin-top:6px}}
+.trs-num{{font-size:50px;font-weight:900;line-height:1;color:{trs_col};text-align:center}}
+.trs-lbl{{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:6px}}
+.trs-sub{{font-size:12px;color:#64748b;text-align:center;margin-top:4px}}
 /* STAT CARDS */
 .stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
 .stat-card{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;text-align:center}}
@@ -1961,9 +1976,10 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
         <div class="panel-hdr" style="background:#1a1f5e;color:#fff">TRS Poste en cours</div>
         <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:10px 14px">
           <div class="trs-lbl">Taux de Rendement Synthétique</div>
-          <div style="font-size:72px;font-weight:900;line-height:1;color:{trs_col};text-align:center;margin:10px 0">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
+          <div class="trs-num">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
+          {'<div class="trs-sub" style="font-weight:700;color:#0369a1">⏱ Modèle : ' + model_debut_dt.strftime("%H:%M") + ' → ' + (model_fin_dt.strftime("%H:%M") if model_fin_dt else "—") + '</div>' if model_debut_dt else ''}
           <div class="trs-sub">Réf : {prod_ref:.0f} éq / 8h &nbsp;|&nbsp; {elapsed_str}</div>
-          <div class="trs-sub" style="font-size:20px;font-weight:800;color:#38bdf8;margin-top:4px">Éq. total : {tot_equiv:.1f}</div>
+          <div class="trs-sub" style="font-size:16px;font-weight:800;color:#0891b2;margin-top:4px">Éq. total : {tot_equiv:.1f}</div>
         </div>
       </div>
 
@@ -2164,7 +2180,7 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 /* CENTER form col (now left) */
 .form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
 /* Action buttons row below timeline */
-.prod-act-row{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px}
+.prod-act-row{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10}
 .act-btn{flex:1;min-width:100px;border:none;border-radius:8px;padding:24px 6px;cursor:pointer;font-size:13px;font-weight:700;text-align:center;transition:all .15s;white-space:nowrap;min-height:72px;display:flex;align-items:center;justify-content:center}
 .act-btn:hover{filter:brightness(.9)}
 .act-stop{background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;font-size:13px;font-weight:800;box-shadow:0 3px 8px rgba(185,28,28,.3)}
@@ -2427,7 +2443,7 @@ select{cursor:default}
             <!-- Stats en ligne -->
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:2px">
               <div style="text-align:center">
-                <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#64748b">N° OF</div>
+                <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#64748b">Nombre OF</div>
                 <div style="font-size:18px;font-weight:900;color:#1e40af;line-height:1" id="acc-nb-of">0</div>
               </div>
               <div style="text-align:center">
@@ -2598,7 +2614,7 @@ select{cursor:default}
           <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
           <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
           <button class="act-btn act-cancel" onclick="doCancelProd()">✖ Annuler prod</button>
-          <button class="act-btn act-endprod" onclick="doEndProdPreview()">🏁 Fin de production</button>
+          <button class="act-btn act-endprod" onclick="doEndProdPreview()">🏁 Fin d'OF/prod</button>
         </div>
       </div>
       <!-- RIGHT: recap + gauges + pie charts -->
@@ -3028,10 +3044,10 @@ select{cursor:default}
   </div>
 </div>
 
-<!-- ════ MODAL: Fin de production ════ -->
+<!-- ════ MODAL: Fin d'OF/prod ════ -->
 <div class="overlay" id="m-endprod">
   <div class="mbox wide">
-    <div class="mhdr"><h2 id="ep-title">⏹ Fin de production</h2></div>
+    <div class="mhdr"><h2 id="ep-title">⏹ Fin d'OF/prod</h2></div>
     <div class="mbody">
       <div style="display:flex;gap:10px;margin-bottom:8px;align-items:flex-start;flex-wrap:wrap">
         <div style="flex:1;min-width:180px"><div class="ep-grid" id="ep-stats"></div></div>
@@ -4478,12 +4494,19 @@ function updateGauge(s){
   else if(s.shift_start_iso){_shiftRefDt=new Date(s.shift_start_iso);}
   else{_shiftRefDt=null;}
   if(_shiftRefDt&&s.prod_ref>0){
-    const refTime=_lastProdDeclTime||new Date();
-    const shiftElap=(refTime.getTime()-_shiftRefDt.getTime())/1000;
+    const calcRef=_lastProdDeclTime||new Date();  // pour le calc TRS : fallback now si aucune décl
+    const shiftElap=(calcRef.getTime()-_shiftRefDt.getTime())/1000;
     const todayEquiv=_todayEquivAccum||0;
     const trsPoste=shiftElap>0&&todayEquiv>0?Math.round(todayEquiv/(s.prod_ref*shiftElap/28800)*100*10)/10:-1;
-    const hh=String(refTime.getHours()).padStart(2,'0'),mm2=String(refTime.getMinutes()).padStart(2,'0');
-    const lbl='TRS Poste à '+hh+'h'+mm2;
+    // Label : "Entre Xh et Yh" (Y = heure fin de la dernière déclaration, pas l'heure actuelle)
+    let lbl;
+    if(_lastProdDeclTime&&_shiftRefDt){
+      const dh=String(_shiftRefDt.getHours()).padStart(2,'0'),dm=String(_shiftRefDt.getMinutes()).padStart(2,'0');
+      const fh=String(_lastProdDeclTime.getHours()).padStart(2,'0'),fm=String(_lastProdDeclTime.getMinutes()).padStart(2,'0');
+      lbl='Entre '+dh+'h'+dm+' et '+fh+'h'+fm;
+    } else {
+      lbl='TRS Poste';
+    }
     const dashP=trsPoste>=0?Math.min(1,trsPoste/100)*pArc:0;
     const colP=trsPoste>=90?'#16a34a':trsPoste>=75?'#d97706':'#dc2626';
     [arcPoste,arcPosteAcc].forEach(el=>{if(el){el.setAttribute('stroke-dasharray',`${dashP},${pArc}`);el.setAttribute('stroke',colP);}});
@@ -5122,14 +5145,30 @@ async function loadKPI(){
       const s=sessArr[i];
       if(lbl) lbl.textContent=s.pilot+' — '+s.poste+' ('+s.date+')';
       const sEvts=evts.filter(e=>e.date===s.date&&(!s.pilot||!e.pilote||e.pilote===s.pilot));
-      // Compute start/end from session rows
       const debs=s.rows.map(r=>r.debut||'').filter(Boolean).sort();
       const fins=s.rows.map(r=>r.fin||'').filter(Boolean).sort().reverse();
-      if(debs.length&&fins.length){
-        const dateStr=s.date;
+      const dateStr=s.date;
+      // Compute start/end from model horaire for this session's poste+day
+      const _DK=['dim','lun','mar','mer','jeu','ven','sam'];
+      let sessionStartMs=null,sessionEndMs=null;
+      if(dateStr&&s.poste){
+        const _p=dateStr.split('/');
+        if(_p.length===3){
+          const _sd=new Date(parseInt(_p[2]),parseInt(_p[1])-1,parseInt(_p[0]));
+          const _dk=_DK[_sd.getDay()];
+          const _sm=_cfgModels&&_cfgModels.find(m=>m.nom===s.poste);
+          const _sj=_sm&&_sm.jours&&_sm.jours[_dk];
+          const _sdeb=_sj&&_sj.debut;const _sfin=_sj&&_sj.fin;
+          if(_sdeb){const[_sh,_smm]=_sdeb.split(':').map(Number);sessionStartMs=new Date(parseInt(_p[2]),parseInt(_p[1])-1,parseInt(_p[0]),_sh,_smm,0).getTime();}
+          if(_sfin){const[_fh,_fm]=_sfin.split(':').map(Number);sessionEndMs=new Date(parseInt(_p[2]),parseInt(_p[1])-1,parseInt(_p[0]),_fh,_fm,0).getTime();if(sessionEndMs<=sessionStartMs)sessionEndMs+=86400000;}
+        }
+      }
+      if(sessionStartMs&&sessionEndMs){
+        _drawKpiTL(svgId,sEvts,new Date(sessionStartMs).toISOString(),new Date(sessionEndMs).toISOString(),false);
+      } else if(debs.length&&fins.length){
         const baseMs=parseHMStoT(debs[0],dateStr)||new Date().setHours(5,0,0,0);
-        const endMs=parseHMStoT(fins[0],dateStr)||(baseMs+8*3600000);
-        const startMs=Math.max(baseMs-600000,baseMs-3600000); // 10min before first OF
+        const endMs=sessionEndMs||parseHMStoT(fins[0],dateStr)||(baseMs+8*3600000);
+        const startMs=sessionStartMs||(baseMs-600000);
         _drawKpiTL(svgId,sEvts,new Date(startMs).toISOString(),new Date(endMs).toISOString(),false);
       } else {
         _drawKpiTL(svgId,[],new Date().toISOString(),new Date(Date.now()+3600000).toISOString(),false);
@@ -5472,9 +5511,9 @@ def main():
         webview.create_window(
             "KPI-ORC",
             "http://127.0.0.1:5001",
-            width=1200, height=820,
             min_size=(900, 600),
             resizable=True,
+            fullscreen=True,
         )
         webview.start()
     except ImportError:
