@@ -346,6 +346,15 @@ def load_lists():
             if pr_vals:
                 try: _prod_ref_cached = float(str(pr_vals[0]).replace(",","."))
                 except: pass
+            # Load pilot passwords from col A (pilote names) + col B (MDP) — Excel is source of truth
+            pil_map = {}
+            for ri in range(2, ws.max_row+1):
+                pil_v = ws.cell(ri, 1).value
+                pw_v = ws.cell(ri, 2).value
+                if pil_v and str(pil_v).strip():
+                    pil_map[str(pil_v).strip()] = str(pw_v or "").strip()
+            if pil_map:
+                cfg["pilot_passwords"] = pil_map
         wb.close()
     except: pass
 
@@ -488,7 +497,7 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
             hors_trs,                           # 37 Prevu/Hors TRS
         ]
     for ev in tl_events:
-        if ev.get("cat") not in ("ratt","pb","nettoyage"): continue
+        if ev.get("cat") not in ("ratt","pb","nettoyage","autre"): continue
         if not ev.get("key") or ev["key"].startswith("_"): continue
         if of_start and ev["start"] < of_start and ev.get("key")!="arret_interposte": continue
         start = ev["start"]
@@ -496,6 +505,8 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
         if ev["key"]=="nettoyage":
             ntype = ev.get("nettoyage_type","court")
             label = {"court":"Nettoyage court","long":"Nettoyage long","grand":"Grand nettoyage"}.get(ntype,"Nettoyage court")
+        elif ev["cat"]=="autre":
+            label = ev["key"]  # Custom stop name typed by user
         else:
             cat_name = "Rattrapage" if ev["cat"]=="ratt" else "PB Technique"
             lbl = next((e[0] for e in EVENTS if e[1]==ev["key"]),ev["key"])
@@ -549,6 +560,79 @@ def write_changement_of(start_dt, end_dt):
                 wb = _get_wb(path)
                 if wb is None: return
                 ws = _ensure_decl_sheet(wb)
+                ws.append(row)
+                _format_row(ws,ws.max_row)
+                _safe_excel_save(wb,path)
+        except: pass
+    threading.Thread(target=_bg,daemon=True).start()
+
+POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Totale (equiv)","TRS Poste %","TRS Prod %","Total Arrets (min)","Total Pauses (min)","Nettoyage (min)","Commentaire"]
+
+def write_pilots_to_excel(pilot_passwords):
+    """Écrit la liste pilote+MDP dans l'onglet Listes col A+B."""
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path): return False
+    def _bg():
+        try:
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None: return
+                if "Listes" not in wb.sheetnames:
+                    ws = wb.create_sheet("Listes")
+                    ws.cell(1,1).value = "Pilotes"
+                    ws.cell(1,2).value = "MDP"
+                else:
+                    ws = wb["Listes"]
+                    if not ws.cell(1,1).value: ws.cell(1,1).value = "Pilotes"
+                    if not ws.cell(1,2).value: ws.cell(1,2).value = "MDP"
+                # Clear existing pilot rows
+                for ri in range(2, ws.max_row+2):
+                    ws.cell(ri,1).value = None
+                    ws.cell(ri,2).value = None
+                # Write new pilot data
+                for ri,(p,pw) in enumerate(pilot_passwords.items(),start=2):
+                    ws.cell(ri,1).value = p
+                    ws.cell(ri,2).value = pw
+                _safe_excel_save(wb,path)
+        except: pass
+        threading.Thread(target=load_lists,daemon=True).start()
+    threading.Thread(target=_bg,daemon=True).start()
+    return True
+
+def write_poste_row(data):
+    """Écrit une ligne dans l'onglet Postes à la fin de chaque poste."""
+    path = cfg.get("db_path","")
+    if not path: return
+    def _bg():
+        try:
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None: return
+                if "Postes" not in wb.sheetnames:
+                    ws = wb.create_sheet("Postes")
+                    for i,h in enumerate(POSTES_HEADERS,start=1): ws.cell(1,i).value=h
+                    _format_row(ws,1)
+                    from openpyxl.styles import PatternFill, Font
+                    fill=PatternFill("solid",fgColor="1a1f5e")
+                    for cell in ws[1]:
+                        cell.fill=fill
+                        cell.font=Font(color="FFFFFF",bold=True,size=10)
+                else:
+                    ws = wb["Postes"]
+                row = [
+                    data.get("date",""),
+                    data.get("pilot",""),
+                    data.get("copilote",""),
+                    data.get("poste",""),
+                    data.get("nb_of",0),
+                    round(float(data.get("tot_equiv",0) or 0),1),
+                    data.get("trs_shift",""),
+                    data.get("trs_of",""),
+                    round(float(data.get("arret_min",0) or 0),1),
+                    round(float(data.get("pause_min",0) or 0),1),
+                    round(float(data.get("nett_min",0) or 0),1),
+                    data.get("comment",""),
+                ]
                 ws.append(row)
                 _format_row(ws,ws.max_row)
                 _safe_excel_save(wb,path)
@@ -626,6 +710,7 @@ def api_lists():
         "types_prod": get_list("Type produit") or get_list("types_prod"),
         "fibres": get_list("Fibres") or get_list("fibre"),
         "tracas": get_list("Traca") or get_list("tracas"),
+        "equivalences": get_list("Equivalence coef") or get_list("Equivalence") or [],
     })
 
 @flask_app.route('/api/login', methods=['POST'])
@@ -1095,6 +1180,9 @@ def api_edit_row():
 @flask_app.route('/api/fin_poste_data')
 def api_fin_poste_data():
     today = datetime.date.today().strftime("%d/%m/%Y")
+    shift_start_dt = _S.get("shift_start")
+    shift_date = shift_start_dt.date() if shift_start_dt else datetime.date.today()
+    shift_date_str = shift_date.strftime("%d/%m/%Y")
     pilot = _S["pilot"] or ""
     pilot_poste = _S["poste"] or ""
     prod_ref = get_prod_ref()
@@ -1103,7 +1191,8 @@ def api_fin_poste_data():
     prod_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() in ("production","prod","")]
     for rn, r in prod_rows:
         try:
-            if _row_date(r[2])!=today: continue
+            rd = _row_date(r[2])
+            if rd != shift_date_str and rd != today: continue
             if str(r[4] or "")!=pilot: continue
             eq=float(str(r[21] or 0).replace(",","."))
             s=_hms_to_sec(str(r[18] or "00:00:00"))
@@ -1140,15 +1229,19 @@ def api_fin_poste_data():
 @flask_app.route('/api/history_today')
 def api_history_today():
     today = datetime.date.today().strftime("%d/%m/%Y")
+    shift_start_dt = _S.get("shift_start")
+    shift_date = shift_start_dt.date() if shift_start_dt else datetime.date.today()
+    shift_date_str = shift_date.strftime("%d/%m/%Y")
     pilot = _S["pilot"] or ""
     poste = _S["poste"] or ""
     prod_ref = get_prod_ref()
-    shift_s = get_shift_duration_s(poste, datetime.date.today())
+    shift_s = get_shift_duration_s(poste, shift_date)
     rows = []
     tot_eq=0.0; tot_s=0.0
     for rn,r in _decl_cache:
         if str(r[0] or "").strip().lower() not in ("production","prod",""): continue
-        if _row_date(r[2]) != today: continue
+        rd = _row_date(r[2])
+        if rd != shift_date_str and rd != today: continue
         if str(r[4] or "") != pilot: continue
         eq=float(str(r[21] or 0).replace(",",".") or 0)
         s=_hms_to_sec(str(r[18] or "00:00:00"))
@@ -1171,6 +1264,24 @@ def api_reload():
     threading.Thread(target=load_lists,daemon=True).start()
     threading.Thread(target=load_history,daemon=True).start()
     return jsonify({"ok":True})
+
+@flask_app.route('/api/save_poste', methods=['POST'])
+def api_save_poste():
+    data = request.json or {}
+    write_poste_row(data)
+    return jsonify({"ok":True})
+
+@flask_app.route('/api/pilot_passwords_excel', methods=['POST'])
+def api_pilot_passwords_excel():
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    pilot_passwords = data.get("pilot_passwords",{})
+    cfg["pilot_passwords"] = pilot_passwords
+    save_cfg_data()
+    ok = write_pilots_to_excel(pilot_passwords)
+    return jsonify({"ok":ok})
 
 @flask_app.route('/api/generate_dashboard', methods=['POST'])
 def api_generate_dashboard():
@@ -1726,6 +1837,8 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .fr.comment-big textarea{height:80px;font-size:13px;border:2px solid #f59e0b;background:#fffbeb;font-weight:500}
 .fr.comment-big label{color:#d97706;font-size:10px}
 input[type=checkbox]{cursor:pointer}
+input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]),textarea{cursor:text}
+select{cursor:default}
 .fr.big input{font-size:16px;font-weight:700;padding:5px 6px;color:var(--green)}
 .fr.ro input{background:#f8fafc;color:var(--gray)}
 /* Timeline */
@@ -2048,55 +2161,72 @@ input[type=checkbox]{cursor:pointer}
   </div>
 
   <!-- ════ FIN DE POSTE ════ -->
-  <div id="v-finposte" class="view" style="flex-direction:column">
-    <div class="fp-scroll">
-      <div class="fp-top"><h2>Fin de poste</h2><p id="fp-who" style="color:var(--gray);margin-top:2px;font-size:13px"></p></div>
-      <div class="fp-grid">
-        <div class="fp-card"><div class="fp-big" id="fp-trs">--%</div><div class="fp-lbl">TRS Poste (shift)</div></div>
-        <div class="fp-card"><div class="fp-big" id="fp-trs-of">--%</div><div class="fp-lbl">TRS (temps OF)</div></div>
-        <div class="fp-card"><div class="fp-big" id="fp-eq">0</div><div class="fp-lbl">Équivalence totale</div></div>
-        <div class="fp-card"><div class="fp-big" id="fp-nof">0</div><div class="fp-lbl">Nombre d'OF</div></div>
-        <div class="fp-card"><div class="fp-big" id="fp-prod-t">0 min</div><div class="fp-lbl">Durée prod totale</div></div>
-        <div class="fp-card"><div class="fp-big" id="fp-stop-t">0 min</div><div class="fp-lbl">Total arrêts (hors pause)</div></div>
+  <div id="v-finposte" class="view" style="flex-direction:column;overflow:hidden">
+    <!-- Barre titre -->
+    <div style="background:var(--navy);color:#fff;padding:7px 14px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:15px;font-weight:800">🏁 Fin de poste</div>
+        <div id="fp-who" style="font-size:11px;opacity:.8"></div>
       </div>
-      <!-- Graphiques -->
-      <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
-        <div class="card" style="flex:1;min-width:200px">
-          <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:6px">Répartition du temps</div>
-          <svg id="fp-pie" viewBox="0 0 130 115" style="width:130px;height:115px;display:block;margin:0 auto"></svg>
-          <div id="fp-pie-leg" style="margin-top:4px;font-size:10px"></div>
-        </div>
-        <div class="card" style="flex:0 0 148px;text-align:center">
-          <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:4px">TRS Poste</div>
-          <svg id="fp-gauge" viewBox="0 0 100 58" style="width:100%;max-width:148px;display:block;margin:0 auto">
-            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
-            <path id="fp-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
-            <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="fp-gauge-pct">--%</text>
-          </svg>
-          <div style="font-size:11px;color:var(--gray);font-weight:600;margin-top:4px" id="fp-trs-lbl2">—</div>
-        </div>
-      </div>
-      <div class="card" style="margin-bottom:12px">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:8px">Timeline du poste</div>
-        <svg id="fp-tl" viewBox="0 0 800 40" preserveAspectRatio="none" style="width:100%;height:40px;display:block">
-          <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
+      <div id="fp-date" style="font-size:12px;font-weight:700;opacity:.9"></div>
+    </div>
+    <!-- Graphiques + KPI (en haut, compact) -->
+    <div style="display:flex;gap:8px;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;flex-wrap:wrap">
+      <div style="text-align:center;flex-shrink:0">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">TRS Poste</div>
+        <svg id="fp-gauge" viewBox="0 0 100 58" style="width:80px;display:block;margin:0 auto">
+          <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
+          <path id="fp-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
+          <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="fp-gauge-pct">--%</text>
         </svg>
+        <div style="font-size:10px;font-weight:700;margin-top:2px" id="fp-trs-lbl2">—</div>
       </div>
-      <div class="card" style="margin-bottom:12px">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:8px">Productions du poste</div>
-        <table class="fp-tbl">
-          <thead><tr><th>OF</th><th>Taille</th><th>Qté Fab</th><th>Éq</th><th>Durée</th><th>TRS%</th></tr></thead>
+      <div style="text-align:center;flex-shrink:0">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">Répartition</div>
+        <svg id="fp-pie" viewBox="0 0 130 115" style="width:80px;height:71px;display:block;margin:0 auto"></svg>
+      </div>
+      <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:5px">
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-trs">--%</div><div class="fp-lbl">TRS Shift</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-trs-of">--%</div><div class="fp-lbl">TRS Prod</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-eq">0</div><div class="fp-lbl">Équivalence</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-nof">0</div><div class="fp-lbl">Nb OF</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-prod-t">0 min</div><div class="fp-lbl">Durée prod</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-stop-t">0 min</div><div class="fp-lbl">Arrêts</div></div>
+      </div>
+    </div>
+    <!-- Timeline compact -->
+    <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline du poste</div>
+      <svg id="fp-tl" viewBox="0 0 800 32" preserveAspectRatio="none" style="width:100%;height:32px;display:block">
+        <rect x="0" y="2" width="800" height="24" fill="#e2e8f0" rx="4"/>
+      </svg>
+    </div>
+    <!-- Corps défilant : productions + arrêts côte à côte -->
+    <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="card" style="padding:8px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:5px">Productions</div>
+        <table class="fp-tbl" style="font-size:10px">
+          <thead><tr><th>OF</th><th>Qté</th><th>Éq</th><th>Durée</th><th>TRS%</th></tr></thead>
           <tbody id="fp-prods"></tbody>
         </table>
       </div>
-      <div class="card" style="margin-bottom:12px">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:8px">Arrêts du poste</div>
-        <div id="fp-stops-list"></div>
+      <div class="card" style="padding:8px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:5px">Arrêts du poste</div>
+        <div id="fp-stops-list" style="font-size:11px"></div>
       </div>
-      <div class="fp-acts">
-        <button class="btn btn-sec" onclick="goTab('main')">← Retour</button>
-        <button class="btn btn-danger btn-lg" onclick="confirmFinPoste()">⏹ Confirmer fin de poste &amp; Déconnexion</button>
-      </div>
+    </div>
+    <!-- Modèle horaire + recalcul TRS -->
+    <div style="padding:6px 12px;background:var(--card);border-top:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:11px;font-weight:700;color:var(--navy)">Modèle horaire :</span>
+      <select id="fp-model-sel" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px" onchange="recalcFPTRS()">
+        <option value="">-- Choisir --</option>
+      </select>
+      <span id="fp-shift-info" style="font-size:11px;color:var(--gray)"></span>
+    </div>
+    <!-- Boutons -->
+    <div style="padding:8px 12px;background:var(--card);border-top:1px solid var(--border);flex-shrink:0;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-sec" onclick="goTab('main')">← Retour</button>
+      <button class="btn btn-danger btn-lg" onclick="confirmFinPoste()">⏹ Confirmer fin de poste &amp; Déconnexion</button>
     </div>
   </div>
 
@@ -2149,6 +2279,13 @@ input[type=checkbox]{cursor:pointer}
           <label style="font-weight:600;font-size:12px">Prod ref (unités/8h):</label>
           <input id="cfg-pr" type="number" style="width:90px;padding:5px;border:1px solid var(--border);border-radius:5px">
           <button class="btn btn-ok" onclick="saveProdRef()">Enregistrer</button>
+        </div>
+      </div>
+      <div class="ss">
+        <h3>📊 Dashboard HTML superviseur</h3>
+        <div class="flex">
+          <button class="btn btn-prim" onclick="generateDashboard()">🔄 Générer le Dashboard HTML</button>
+          <span id="dash-status" style="font-size:11px;color:var(--gray);margin-left:8px"></span>
         </div>
       </div>
     </div>
@@ -2403,6 +2540,10 @@ async function loadLists() {
   popSel('er-typeprod', d.types_prod||[]);
   popSel('er-fibre', d.fibres||[]);
   popSel('er-traca', d.tracas||[]);
+  // Build equivalence coef map: type_prod -> coef
+  const eqs=d.equivalences||[]; const tps=d.types_prod||[];
+  window._equivCoefs={};
+  tps.forEach((t,i)=>{if(i<eqs.length&&eqs[i])window._equivCoefs[t]=parseFloat(String(eqs[i]).replace(',','.'))||1;});
   const pil = d.pilotes||[];
   const sel = document.getElementById('ln-pilot');
   pil.forEach(p => { const o=document.createElement('option'); o.value=p; o.textContent=p; sel.appendChild(o); });
@@ -2474,7 +2615,6 @@ function showApp(s) {
 
 async function doLogout() {
   if (ST.prod_active) { toast('Terminer la production avant de déconnecter','err'); return; }
-  if (!confirm('Déconnecter ?')) return;
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   resetToLogin();
 }
@@ -2574,8 +2714,11 @@ async function pollEvts() {
     const pilotOk=!pilot||!ev.pilote||ev.pilote===pilot;
     return dateOk&&pilotOk;
   });
-  renderTL('tl-svg',gEvts);
-  renderRecap(gEvts);
+  // Don't override prod-view recap/timeline — applyState handles that from live tl_events
+  if(!ST.prod_active){
+    renderTL('tl-svg',gEvts);
+    renderRecap(gEvts);
+  }
 }
 
 function applyState(s) {
@@ -2609,11 +2752,20 @@ function applyState(s) {
   // POB (pilot/OF banner)
   if(s.prod_active&&s.form) {
     document.getElementById('pob-of').textContent=s.form.of_num||'—';
-    fillFormFromState(s.form);
+    // Don't override form while user is actively typing in it
+    const af=document.activeElement;
+    if(!af||!af.closest||!af.closest('.form-col')) fillFormFromState(s.form);
   }
 
   // Render active stop chips
   renderStopChips(s);
+
+  // Render live events for current prod (recap + timeline) from tl_events in state
+  if(s.prod_active&&_curTab==='prod'){
+    const le=tlEventsToDisplayFmt(s.tl_events||[]);
+    renderTL('tl-svg',le);
+    renderRecap(le);
+  }
 
   // Pause button text
   const pbtn=document.getElementById('btn-pause');
@@ -2628,6 +2780,26 @@ function getEvtLabel(key) {
   if(ev) return (ev[2]==='ratt'?'Rattrapage: ':ev[2]==='pb'?'PB: ':'')+ev[0];
   if(key==='nettoyage') return 'Nettoyage';
   return key||'Arrêt';
+}
+
+function tlEventsToDisplayFmt(tlEvts){
+  return (tlEvts||[]).map(ev=>{
+    if(!ev.key||ev.key.startsWith('_')) return null;
+    const s=ev.start?new Date(ev.start):null;
+    const e=ev.end?new Date(ev.end):null;
+    if(!s) return null;
+    const pad=n=>String(n).padStart(2,'0');
+    const toHMS=d=>pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+    const dur=e?(e.getTime()-s.getTime())/1000:0;
+    let type;
+    if(ev.cat==='nettoyage') type='Nettoyage'+(ev.nettoyage_type?' '+ev.nettoyage_type:'');
+    else {
+      const evDef=EVENTS.find(x=>x[1]===ev.key);
+      if(evDef) type=(ev.cat==='ratt'?'Rattrapage: ':ev.cat==='pb'?'PB: ':'')+evDef[0];
+      else type=ev.key;
+    }
+    return {type,cat:ev.cat||'autre',debut:toHMS(s),fin:e?toHMS(e):'',duree:dur>0?fmtDur(dur):'',comment:ev.comment||'',hors_trs:ev.hors_trs||false,_live:!ev.end};
+  }).filter(Boolean);
 }
 
 function renderStopChips(s) {
@@ -2669,11 +2841,13 @@ function startTicker() {
     const pt=_pauseTotalAtPoll+(_curStopKey==='_pause'?dt:0);
     const tp=document.getElementById('sc-pause');
     if(tp) tp.textContent=fmtDur(pt);
-    // Pièces théoriques
+    // Équivalence théorique (basée sur type produit)
     const thEl=document.getElementById('sc-theo');
-    if(thEl&&ST.prod_ref&&ST.of_elapsed_s){
-      const theo=Math.round(ST.prod_ref*(_ofElapAtPoll+dt)/28800);
-      thEl.textContent=theo>0?theo+' pcs':'—';
+    if(thEl&&ST.prod_ref){
+      const typeProd=ST.form&&ST.form.type_prod||'';
+      const coef=(window._equivCoefs&&window._equivCoefs[typeProd])||1;
+      const theo=Math.round(ST.prod_ref*(_ofElapAtPoll+dt)/28800*coef);
+      thEl.textContent=theo>0?theo+' éq.':'—';
     }
     // Update stop chips timers
     if(ST.active_stops){
@@ -2930,20 +3104,25 @@ async function doEndProdPreview(){
 
 function renderEPModal(d,f){
   const ofNum=f.of_num||d.of_num||'';
-  document.getElementById('ep-title').textContent=`⏹ Fin de production${ofNum?' — '+ofNum:''}`;
+  document.getElementById('ep-title').textContent=`⏹ Fin d'OF/prod${ofNum?' — '+ofNum:''}`;
   // Graphs
   drawPie('ep-pie',[
     {label:'Prod',value:d.prod_s||0,color:'#16a34a'},
     {label:'Arrêts',value:d.stop_s||0,color:'#dc2626'},
   ]);
   drawGauge('ep-gauge-arc','ep-gauge-pct',d.trs>=0?d.trs:0);
+  const now=new Date();
+  const dateStr=String(now.getDate()).padStart(2,'0')+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+now.getFullYear();
   document.getElementById('ep-stats').innerHTML=`
+    <div class="ep-stat"><div class="val">${esc(ofNum||'—')}</div><div class="lbl">N° OF</div></div>
+    <div class="ep-stat"><div class="val">${esc(f.type_prod||d.type_prod||'—')}</div><div class="lbl">Type produit</div></div>
+    <div class="ep-stat"><div class="val">${esc(String(f.qte_fab||d.qte_fab||0))}</div><div class="lbl">Qté fabriquée</div></div>
+    <div class="ep-stat"><div class="val">${esc(String(f.qte_emb||d.qte_emb||0))}</div><div class="lbl">Qté emballée</div></div>
+    <div class="ep-stat"><div class="val">${dateStr}</div><div class="lbl">Date</div></div>
     <div class="ep-stat"><div class="val">${fmtTRS(d.trs)}</div><div class="lbl">TRS OF</div></div>
     <div class="ep-stat"><div class="val">${(d.equiv||0).toFixed(1)}</div><div class="lbl">Équivalence</div></div>
     <div class="ep-stat"><div class="val">${fmtD2(d.prod_s||0)}</div><div class="lbl">Durée prod</div></div>
     <div class="ep-stat"><div class="val">${fmtD2(d.stop_s||0)}</div><div class="lbl">Total arrêts</div></div>
-    <div class="ep-stat"><div class="val">${d.c1||0}</div><div class="lbl">Cad/h</div></div>
-    <div class="ep-stat"><div class="val">${d.c2||0}</div><div class="lbl">Cad/h/pers</div></div>
   `;
   const evts=d.tl_events||[];
   const stopMap={};
@@ -2963,11 +3142,13 @@ async function confirmEndProd(){
   if(!r) return;
   const d=await r.json();
   if(d.ok){
-    // Keep form in localStorage for next prod
-    saveFormToStorage();
-    // Only clear of_num for next prod
-    const fEl=document.getElementById('f-of_num');
-    if(fEl){fEl.value='';saveFormToStorage();}
+    // Clear all form fields for next prod
+    FORM_FIELDS.forEach(k=>{
+      const el=document.getElementById('f-'+k);
+      if(!el) return;
+      el.value='';
+    });
+    try{localStorage.removeItem('kpiorc_form');}catch(e){}
     await pollState();
     await pollEvts();
     goTab('main');
@@ -3248,9 +3429,21 @@ function drawTLFromISO(svgId,evts,startIso,endIso){
 
 function parseHMStoT(hms,dateStr){
   if(!hms) return null;
-  try{const base=dateStr?new Date(dateStr.slice(0,10)).getTime():new Date().setHours(0,0,0,0);
-  const[h,m,s]=(hms||'').split(':').map(Number);return base+h*3600000+m*60000+(s||0)*1000;}
-  catch(e){return null;}
+  try{
+    let base;
+    if(dateStr){
+      // Support both ISO (yyyy-mm-dd) and French (dd/mm/yyyy) formats
+      const parts=dateStr.split('/');
+      if(parts.length===3&&parts[2].length===4){
+        base=new Date(parts[2]+'-'+parts[1]+'-'+parts[0]).getTime();
+      } else {
+        base=new Date(dateStr.slice(0,10)).getTime();
+      }
+    } else {
+      const n=new Date();n.setHours(0,0,0,0);base=n.getTime();
+    }
+    const[h,m,s]=(hms||'').split(':').map(Number);return base+h*3600000+m*60000+(s||0)*1000;
+  }catch(e){return null;}
 }
 
 // ── RECAP ──
@@ -3306,6 +3499,16 @@ async function loadFPData(){
   document.getElementById('fp-nof').textContent=d.nb_of||0;
   document.getElementById('fp-prod-t').textContent=Math.round((d.tot_s||0)/60)+' min';
   document.getElementById('fp-who').textContent=`${d.pilot||ST.pilot||''} — ${ST.poste||''}`;
+  const now2=new Date();
+  const fpDateEl=document.getElementById('fp-date');
+  if(fpDateEl) fpDateEl.textContent=String(now2.getDate()).padStart(2,'0')+'/'+String(now2.getMonth()+1).padStart(2,'0')+'/'+now2.getFullYear();
+  // Populate model selector
+  const fpSel=document.getElementById('fp-model-sel');
+  if(fpSel&&_cfgModels&&_cfgModels.length){
+    fpSel.innerHTML='<option value="">— Modèle —</option>';
+    _cfgModels.forEach(m=>{const o=document.createElement('option');o.value=m.nom||'';o.textContent=m.nom||'';if(m.nom===ST.poste)o.selected=true;fpSel.appendChild(o);});
+  }
+  window._fpData=d;
 
   // Count stops
   const stops=gEvts.filter(e=>e.type);
@@ -3359,8 +3562,62 @@ async function loadFPData(){
   const fpL=document.getElementById('fp-trs-lbl2');if(fpL) fpL.textContent=fmtTRSv(trsS);
 }
 
+function recalcFPTRS(){
+  const sel=document.getElementById('fp-model-sel');
+  if(!sel||!window._fpData) return;
+  const modelNom=sel.value;
+  if(!modelNom) return;
+  const model=_cfgModels.find(m=>m.nom===modelNom);
+  if(!model) return;
+  // Show model shift info
+  const now=new Date();
+  const dayKeys=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=dayKeys[now.getDay()];
+  const jours=model.jours||{};
+  const jour=jours[dk]||{};
+  const shiftInfo=document.getElementById('fp-shift-info');
+  if(shiftInfo) shiftInfo.textContent=jour.debut&&jour.fin?`${jour.debut}→${jour.fin}`:'—';
+  // Recalculate TRS using this model's shift duration
+  if(jour.debut&&jour.fin){
+    const p=s=>{const[h,m]=s.split(':').map(Number);return h*3600+m*60;};
+    let shiftS=p(jour.fin)-p(jour.debut);
+    if(shiftS<0) shiftS+=86400;
+    const d=window._fpData;
+    const totEquiv=d.tot_equiv||0;
+    const prodRef=d.prod_ref||ST.prod_ref||200;
+    const trs=shiftS>0&&prodRef>0?Math.round(totEquiv/(prodRef*shiftS/28800)*1000)/10:0;
+    document.getElementById('fp-trs').textContent=fmtTRS(trs);
+  }
+}
+
 async function confirmFinPoste(){
-  if(!confirm('Confirmer fin de poste et se déconnecter ?')) return;
+  // Gather stop/pause/nettoyage totals from gEvts
+  const stops=gEvts.filter(e=>e.type);
+  const pSec=s=>s?s.split(':').reduce((a,v,i)=>a+(i===0?+v*3600:i===1?+v*60:+v),0):0;
+  let arret_s=0,pause_s=0,nett_s=0;
+  stops.forEach(e=>{
+    const dur=Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0'));
+    const t=(e.type||'').toLowerCase();
+    if(t.includes('pause')) pause_s+=dur;
+    else if(t.includes('nett')) nett_s+=dur;
+    else arret_s+=dur;
+  });
+  const fpData=await apiFetch('/api/fin_poste_data');
+  const posteRow={
+    date:new Date().toLocaleDateString('fr-FR'),
+    pilot:ST.pilot||'',
+    copilote:ST.form&&ST.form.copilote||'',
+    poste:ST.poste||'',
+    nb_of:fpData?fpData.nb_of||0:0,
+    tot_equiv:fpData?fpData.tot_equiv||0:0,
+    trs_shift:fpData?fpData.trs_shift||0:0,
+    trs_of:fpData?fpData.trs||0:0,
+    arret_min:Math.round(arret_s/60),
+    pause_min:Math.round(pause_s/60),
+    nett_min:Math.round(nett_s/60),
+    comment:''
+  };
+  await fetch('/api/save_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posteRow)});
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   resetToLogin();
   toast('Bonne fin de poste !','ok');
@@ -3426,9 +3683,9 @@ function addPilot(){
 function rmPilot(n){delete _cfgPwds[n];renderPwdList();}
 async function savePwds(){
   document.querySelectorAll('#pwd-list input[data-n]').forEach(i=>_cfgPwds[i.dataset.n]=i.value);
-  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,pilot_passwords:_cfgPwds})});
+  const r=await fetch('/api/pilot_passwords_excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,pilot_passwords:_cfgPwds})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('MDP enregistrés','ok');loadCfg();}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('MDP enregistrés et sauvegardés dans Excel','ok');loadCfg();}else toast(d&&d.error||'Erreur','err');
 }
 
 const DAYS=[{k:'lun',l:'Lun'},{k:'mar',l:'Mar'},{k:'mer',l:'Mer'},{k:'jeu',l:'Jeu'},{k:'ven',l:'Ven'},{k:'sam',l:'Sam'},{k:'dim',l:'Dim'}];
@@ -3464,6 +3721,15 @@ async function saveProdRef(){
   const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,prod_ref:v})});
   const d=r?await r.json():{};
   d&&d.ok?toast('Enregistré','ok'):toast(d&&d.error||'Erreur','err');
+}
+
+async function generateDashboard(){
+  const st=document.getElementById('dash-status');
+  if(st) st.textContent='Génération…';
+  const r=await fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  const d=r?await r.json():{};
+  if(d&&d.ok){if(st) st.textContent='Dashboard généré : '+esc(d.path||'');}
+  else {if(st) st.textContent='Erreur: '+(d&&d.error||'inconnue');}
 }
 
 // ── MODALS ──
