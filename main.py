@@ -1624,22 +1624,9 @@ def generate_dashboard_html():
     today_evts = [r for r in evt_rows_all if _row_date(r[2])==today_str and str(r[4] or "")==pilot_now]
 
     shift_start_dt = _S.get("shift_start")
-    last_fin_dt = None
-    for r in today_prod:
-        fin_str = str(r[17] or "")
-        if fin_str and ":" in fin_str:
-            try:
-                t = datetime.datetime.strptime(f"{today_str} {fin_str[:8]}", "%d/%m/%Y %H:%M:%S")
-                if last_fin_dt is None or t > last_fin_dt:
-                    last_fin_dt = t
-            except: pass
-    if prod_active:
-        last_fin_dt = datetime.datetime.now()
 
     trs_poste = -1.0
     elapsed_for_trs = 0.0
-    tot_equiv = sum(float(str(r[21] or "0").replace(",",".") or 0) for r in today_prod)
-    nb_of_today = len(today_prod)
 
     # Use model horaire debut as shift reference (not shift_start which may include pre-shift events)
     model_debut_dt = None
@@ -1655,6 +1642,30 @@ def generate_dashboard_html():
                     model_debut_dt = datetime.datetime.combine(datetime.date.today(), datetime.time(_h, _mi))
                 except: pass
             break
+    # Filter to only prods within model horaire window (same logic as JS inShiftDecls)
+    if model_debut_dt:
+        _mdeb_s = model_debut_dt.hour * 3600 + model_debut_dt.minute * 60
+        def _ts_s(s):
+            try: p = str(s)[:5].split(':'); return int(p[0]) * 3600 + int(p[1]) * 60
+            except: return 0
+        in_shift_prod = [r for r in today_prod if _ts_s(r[17]) >= _mdeb_s or _ts_s(r[16]) >= _mdeb_s]
+    else:
+        in_shift_prod = today_prod
+    tot_equiv = sum(float(str(r[21] or "0").replace(",",".") or 0) for r in in_shift_prod)
+    nb_of_today = len(in_shift_prod)
+    nb_pieces = sum(int(str(r[19] or 0).split('.')[0] or 0) for r in in_shift_prod)
+    # Recompute last_fin_dt from in_shift_prod for TRS elapsed
+    last_fin_dt = None
+    for r in in_shift_prod:
+        fin_str = str(r[17] or "")
+        if fin_str and ":" in fin_str:
+            try:
+                t = datetime.datetime.strptime(f"{today_str} {fin_str[:8]}", "%d/%m/%Y %H:%M:%S")
+                if last_fin_dt is None or t > last_fin_dt:
+                    last_fin_dt = t
+            except: pass
+    if prod_active:
+        last_fin_dt = datetime.datetime.now()
     ref_start_dt = model_debut_dt or shift_start_dt
     if ref_start_dt and last_fin_dt and prod_ref > 0:
         elapsed_for_trs = (last_fin_dt - ref_start_dt).total_seconds()
@@ -1707,7 +1718,7 @@ def generate_dashboard_html():
             return cx+r*math.cos(rad), cy+r*math.sin(rad)
         x1,y1=arc_pt(r_out,180); x2,y2=arc_pt(r_out,0)
         xi1,yi1=arc_pt(r_in,180); xi2,yi2=arc_pt(r_in,0)
-        bg=f'<path d="M{x1:.1f},{y1:.1f} A{r_out},{r_out} 0 0,1 {x2:.1f},{y2:.1f} L{xi2:.1f},{yi2:.1f} A{r_in},{r_in} 0 0,0 {xi1:.1f},{yi1:.1f} Z" fill="#1e293b"/>'
+        bg=f'<path d="M{x1:.1f},{y1:.1f} A{r_out},{r_out} 0 0,1 {x2:.1f},{y2:.1f} L{xi2:.1f},{yi2:.1f} A{r_in},{r_in} 0 0,0 {xi1:.1f},{yi1:.1f} Z" fill="#e2e8f0"/>'
         fg=""
         if pct > 0:
             end_deg = 180 - pct * 1.8
@@ -1745,7 +1756,7 @@ def generate_dashboard_html():
     # ── Timeline SVG ──
     def timeline_svg(W=1200, H=64):
         now_ts = datetime.datetime.now()
-        win_start = shift_start_dt if shift_start_dt else now_ts - datetime.timedelta(hours=8)
+        win_start = model_debut_dt if model_debut_dt else (shift_start_dt if shift_start_dt else now_ts - datetime.timedelta(hours=8))
         win_end = now_ts
         span = (win_end - win_start).total_seconds()
         if span <= 0: span = 28800
@@ -1757,7 +1768,7 @@ def generate_dashboard_html():
             except: return 0
         catcol = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7"}
         svg = f'<svg width="100%" viewBox="0 0 {W} {H}" style="display:block" preserveAspectRatio="none">'
-        svg += f'<rect x="0" y="{Y}" width="{W}" height="{BH}" fill="#1e293b" rx="4"/>'
+        svg += f'<rect x="0" y="{Y}" width="{W}" height="{BH}" fill="#e2e8f0" rx="4"/>'
         for r in today_prod:
             x1 = to_x(str(r[16] or ""))
             x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*W)
@@ -1777,11 +1788,11 @@ def generate_dashboard_html():
         while cur <= win_end:
             frac = (cur-win_start).total_seconds()/span
             x = int(frac*W)
-            svg += f'<line x1="{x}" y1="{Y}" x2="{x}" y2="{Y+BH}" stroke="#475569" stroke-width="1"/>'
-            svg += f'<text x="{x}" y="{Y-3}" font-size="12" fill="#94a3b8" text-anchor="middle">{cur.strftime("%H:%M")}</text>'
+            svg += f'<line x1="{x}" y1="{Y}" x2="{x}" y2="{Y+BH}" stroke="#94a3b8" stroke-width="1"/>'
+            svg += f'<text x="{x}" y="{Y-3}" font-size="12" fill="#475569" text-anchor="middle">{cur.strftime("%H:%M")}</text>'
             cur += datetime.timedelta(hours=step)
         now_x = int((now_ts-win_start).total_seconds()/span*W)
-        svg += f'<line x1="{now_x}" y1="{Y-4}" x2="{now_x}" y2="{Y+BH+4}" stroke="#fff" stroke-width="2.5"/>'
+        svg += f'<line x1="{now_x}" y1="{Y-4}" x2="{now_x}" y2="{Y+BH+4}" stroke="#1e293b" stroke-width="2.5"/>'
         svg += '</svg>'
         return svg
 
@@ -1793,11 +1804,11 @@ def generate_dashboard_html():
             pct = dur / max_dur * 100 if max_dur > 0 else 0
             col = "#ef4444" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#38bdf8" if "nett" in lbl.lower() else "#a855f7"
             pareto_html += f'''<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-              <div style="width:160px;font-size:14px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;color:#cbd5e1">{lbl[:22]}</div>
-              <div style="flex:1;background:#1e293b;border-radius:4px;height:22px">
+              <div style="width:160px;font-size:14px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;color:#475569">{lbl[:22]}</div>
+              <div style="flex:1;background:#e2e8f0;border-radius:4px;height:22px">
                 <div style="width:{pct:.0f}%;height:22px;background:{col};border-radius:4px"></div>
               </div>
-              <div style="width:56px;font-size:16px;font-weight:800;text-align:right;flex-shrink:0;color:#f1f5f9">{dur/60:.0f}m</div>
+              <div style="width:56px;font-size:16px;font-weight:800;text-align:right;flex-shrink:0;color:#1e293b">{dur/60:.0f}m</div>
             </div>'''
     else:
         pareto_html = '<div style="color:#475569;font-size:18px;padding:20px;text-align:center">Aucun arrêt enregistré</div>'
@@ -1812,14 +1823,14 @@ def generate_dashboard_html():
             trs_val = f'<span style="color:{tc};font-weight:900">{tv:.1f}%</span>'
         except: pass
         prod_rows_html += f'''<tr>
-          <td style="font-weight:800;font-size:16px">{r[1] or ""}</td>
-          <td>{str(r[16] or "")[:5]}</td><td>{str(r[17] or "")[:5]}</td>
-          <td>{r[18] or ""}</td>
-          <td>{r[19] or "0"}</td><td style="font-weight:800">{r[21] or ""}</td>
+          <td style="font-weight:800;font-size:16px;color:#1e293b">{r[1] or ""}</td>
+          <td style="color:#475569">{str(r[16] or "")[:5]}</td><td style="color:#475569">{str(r[17] or "")[:5]}</td>
+          <td style="color:#475569">{r[18] or ""}</td>
+          <td style="color:#1e293b">{r[19] or "0"}</td><td style="font-weight:800;color:#0891b2">{r[21] or ""}</td>
           <td>{trs_val}</td>
         </tr>'''
     if not prod_rows_html:
-        prod_rows_html = '<tr><td colspan="7" style="color:#475569;padding:20px;text-align:center;font-size:16px">Aucune production déclarée</td></tr>'
+        prod_rows_html = '<tr><td colspan="7" style="color:#94a3b8;padding:20px;text-align:center;font-size:16px">Aucune production déclarée</td></tr>'
 
     # ── ALERT BANNER HTML ──
     alert_html = ""
@@ -1837,25 +1848,25 @@ def generate_dashboard_html():
 </div>'''
     else:
         # ── PROD EN COURS BIG CARD ──
-        prod_card_bg = "#14532d" if prod_active else "#1e293b"
-        prod_card_border = "2px solid #22c55e" if prod_active else "2px solid #334155"
+        prod_card_bg = "#f0fdf4" if prod_active else "#f8fafc"
+        prod_card_border = "2px solid #22c55e" if prod_active else "2px solid #e2e8f0"
         prod_status_label = "▶ PRODUCTION EN COURS" if prod_active else "○ EN ATTENTE"
-        prod_status_col = "#4ade80" if prod_active else "#64748b"
+        prod_status_col = "#16a34a" if prod_active else "#64748b"
         alert_html = f'''
 <div style="background:{prod_card_bg};border:{prod_card_border};border-radius:16px;padding:20px 32px;display:flex;align-items:center;gap:32px;flex-shrink:0">
   <div style="flex:1">
     <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:{prod_status_col};margin-bottom:8px">{prod_status_label}</div>
-    <div style="font-size:48px;font-weight:900;color:#f1f5f9;line-height:1">OF {of_num_now}</div>
-    <div style="font-size:20px;color:#94a3b8;margin-top:8px">{'👤 ' + pilot_now + '  |  ' + poste_now if pilot_now else poste_now}</div>
+    <div style="font-size:48px;font-weight:900;color:#1e293b;line-height:1">OF {of_num_now}</div>
+    <div style="font-size:20px;color:#64748b;margin-top:8px">{'👤 ' + pilot_now + '  |  ' + poste_now if pilot_now else poste_now}</div>
   </div>
-  {f'<div style="text-align:center"><div style="font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">Taille / Type</div><div style="font-size:24px;font-weight:800;color:#e2e8f0">{taille_now} — {type_prod_now}</div></div>' if taille_now or type_prod_now else ''}
+  {f'<div style="text-align:center"><div style="font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">Taille / Type</div><div style="font-size:24px;font-weight:800;color:#1e293b">{taille_now} — {type_prod_now}</div></div>' if taille_now or type_prod_now else ''}
   <div style="text-align:center">
     <div style="font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">Éq. aujourd'hui</div>
-    <div style="font-size:48px;font-weight:900;color:#38bdf8;line-height:1">{tot_equiv:.1f}</div>
+    <div style="font-size:48px;font-weight:900;color:#0891b2;line-height:1">{tot_equiv:.1f}</div>
   </div>
   <div style="text-align:center">
     <div style="font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">OF déclarés</div>
-    <div style="font-size:48px;font-weight:900;color:#a78bfa;line-height:1">{nb_of_today}</div>
+    <div style="font-size:48px;font-weight:900;color:#7c3aed;line-height:1">{nb_of_today}</div>
   </div>
 </div>'''
 
@@ -1870,17 +1881,17 @@ def generate_dashboard_html():
 <title>Dashboard Encadrant — ORC</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#0f172a;color:#e2e8f0;font-size:16px}}
+html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1e293b;font-size:16px}}
 .hdr{{height:56px;background:#1e3a8a;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 24px;flex-shrink:0;border-bottom:2px solid #3b82f6}}
 .hdr-title{{font-size:20px;font-weight:900;display:flex;align-items:center;gap:14px}}
 .hdr-badge{{background:rgba(255,255,255,.15);border-radius:6px;padding:4px 14px;font-size:16px;font-weight:700}}
 .hdr-badge.green{{background:#15803d}}
 .hdr-badge.gray{{background:#475569}}
-.hdr-time{{font-size:14px;opacity:.75}}
+.hdr-time{{font-size:14px;opacity:.85}}
 .outer{{height:calc(100vh - 56px);display:flex;flex-direction:column;gap:10px;padding:10px;overflow:hidden}}
 /* MODE NORMAL */
 .main-grid{{flex:1;display:grid;grid-template-columns:300px 1fr 280px;gap:10px;overflow:hidden;min-height:0}}
-.panel{{background:#1e293b;border-radius:14px;display:flex;flex-direction:column;overflow:hidden}}
+.panel{{background:#fff;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
 .panel-hdr{{padding:10px 18px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
 .panel-body{{flex:1;overflow-y:auto;padding:12px 18px;min-height:0}}
 /* TRS PANEL */
@@ -1889,23 +1900,23 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 .trs-sub{{font-size:14px;color:#64748b;text-align:center;margin-top:6px}}
 /* STAT CARDS */
 .stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
-.stat-card{{background:#0f172a;border-radius:10px;padding:14px 16px;text-align:center}}
+.stat-card{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;text-align:center}}
 .stat-val{{font-size:40px;font-weight:900;line-height:1}}
 .stat-lbl{{font-size:12px;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px}}
 /* TIMELINE CELL */
-.tl-cell{{background:#1e293b;border-radius:14px;padding:12px 16px;flex-shrink:0}}
+.tl-cell{{background:#fff;border-radius:14px;padding:12px 16px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
 .tl-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:8px;display:flex;justify-content:space-between}}
 .tl-legend{{display:flex;gap:16px;font-size:13px;color:#64748b;margin-top:8px;flex-wrap:wrap}}
 /* TABLE */
 .ktbl{{width:100%;border-collapse:collapse;font-size:15px}}
-.ktbl th{{background:#0f172a;padding:8px 10px;font-weight:800;text-align:center;position:sticky;top:0;font-size:12px;text-transform:uppercase;color:#64748b}}
-.ktbl td{{padding:9px 10px;border-bottom:1px solid #0f172a;text-align:center;color:#e2e8f0}}
-.ktbl tr:hover td{{background:#0f172a}}
+.ktbl th{{background:#f1f5f9;padding:8px 10px;font-weight:800;text-align:center;position:sticky;top:0;font-size:12px;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0}}
+.ktbl td{{padding:9px 10px;border-bottom:1px solid #e2e8f0;text-align:center;color:#1e293b}}
+.ktbl tr:hover td{{background:#f8fafc}}
 /* ANIMATIONS */
 @keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.85}}}}
 @keyframes wag{{0%{{transform:rotate(-8deg)}}50%{{transform:rotate(8deg)}}100%{{transform:rotate(-8deg)}}}}
 /* SCROLLBAR */
-::-webkit-scrollbar{{width:6px}};::-webkit-scrollbar-track{{background:#0f172a}};::-webkit-scrollbar-thumb{{background:#334155;border-radius:3px}}
+::-webkit-scrollbar{{width:6px}};::-webkit-scrollbar-track{{background:#f1f5f9}};::-webkit-scrollbar-thumb{{background:#cbd5e1;border-radius:3px}}
 </style>
 </head>
 <body>
@@ -1928,10 +1939,10 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
   {'<!-- MODE ALERTE : mini stats bar -->' if has_alert else ''}
   {f'''<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px;flex-shrink:0">
     <div class="stat-card"><div class="stat-val" style="color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="stat-lbl">TRS Poste</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:#4ade80">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:#38bdf8">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#7c3aed">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#0891b2">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div></div>
     <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:20px">min</span></div><div class="stat-lbl">Arrêts</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:#4ade80">{prod_s_total/60:.0f}<span style="font-size:20px">min</span></div><div class="stat-lbl">Production</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#16a34a">{prod_s_total/60:.0f}<span style="font-size:20px">min</span></div><div class="stat-lbl">Production</div></div>
   </div>''' if has_alert else ''}
 
   {'<!-- MODE NORMAL -->' if not has_alert else ''}
@@ -1997,10 +2008,10 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
         <div class="panel-hdr" style="background:#1a1f5e;color:#fff">Indicateurs clés</div>
         <div class="panel-body">
           <div class="stat-grid">
-            <div class="stat-card"><div class="stat-val" style="color:#4ade80">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div></div>
+            <div class="stat-card"><div class="stat-val" style="color:#8b5cf6">{nb_pieces}</div><div class="stat-lbl">Pièces</div></div>
             <div class="stat-card"><div class="stat-val" style="color:#38bdf8">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div></div>
+            <div class="stat-card"><div class="stat-val" style="color:#4ade80">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div></div>
             <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:18px">m</span></div><div class="stat-lbl">Arrêts</div></div>
-            <div class="stat-card"><div class="stat-val" style="color:#4ade80">{prod_s_total/60:.0f}<span style="font-size:18px">m</span></div><div class="stat-lbl">Production</div></div>
           </div>
         </div>
       </div>
@@ -2021,7 +2032,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
   <div class="tl-cell" style="flex-shrink:0">
     <div class="tl-lbl">
       <span>Timeline du poste — {poste_now or "en cours"}</span>
-      <span style="font-size:12px">{shift_start_dt.strftime("%H:%M") if shift_start_dt else "—"} → maintenant</span>
+      <span style="font-size:12px">{(model_debut_dt or shift_start_dt).strftime("%H:%M") if (model_debut_dt or shift_start_dt) else "—"} → maintenant</span>
     </div>
     {tl_svg}
     <div class="tl-legend">
@@ -2030,7 +2041,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
       <span>■ <span style="color:#f59e0b">Rattrapage</span></span>
       <span>■ <span style="color:#38bdf8">Nettoyage</span></span>
       <span>■ <span style="color:#64748b">Pause</span></span>
-      <span style="color:#fff">| Maintenant</span>
+      <span style="color:#1e293b;font-weight:700">| Maintenant</span>
     </div>
   </div>
 
@@ -2391,73 +2402,72 @@ select{cursor:default}
         <button class="btn btn-sec" onclick="loadMainDecl()" style="font-size:12px;padding:8px 14px">↺ Actualiser</button>
       </div>
     </div>
-    <!-- KPI accueil — 2 lignes -->
-    <div style="background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
-      <!-- Ligne 1: TRS postes + modèle horaire -->
-      <div class="shift-kpis" style="padding:6px 10px;gap:6px">
-        <div class="skpi current" style="flex:2;display:flex;flex-direction:row;align-items:center;gap:10px">
-          <div style="text-align:center;flex-shrink:0">
-            <svg viewBox="0 0 100 58" style="width:90px;display:block;margin:0 auto">
+    <!-- KPI accueil — POSTE ACTUEL -->
+    <div style="background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;padding:8px 10px;display:flex;gap:8px;align-items:stretch;flex-wrap:wrap">
+
+      <!-- POSTE ACTUEL encart principal -->
+      <div style="flex:3;min-width:280px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:6px">
+        <!-- Titre + TRS jauge + valeur -->
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="flex-shrink:0;text-align:center">
+            <svg viewBox="0 0 100 58" style="width:88px;display:block;margin:0 auto">
               <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="rgba(0,0,0,.12)" stroke-width="11" stroke-linecap="round"/>
               <path id="gauge-poste-acc-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="11" stroke-linecap="round" stroke-dasharray="0,132"/>
               <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#15803d" id="gauge-poste-acc-pct">—</text>
             </svg>
-            <div style="font-size:10px;font-weight:700;color:#0369a1;margin-top:2px" id="gauge-poste-acc-lbl">TRS Poste</div>
           </div>
-          <div style="flex:1">
-            <div class="sk-lbl" id="kpi0-trs-lbl">Poste actuel — TRS à <span id="kpi0-heure">--h--</span></div>
-            <div class="sk-val" id="kpi0-trs">--%</div>
-            <div class="sk-sub" id="kpi0-date" style="font-size:10px;opacity:.85"></div>
-            <div class="sk-sub" id="kpi0-sub">0 OF</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:10px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px">TRS du Poste</div>
+            <div style="font-size:10px;color:#64748b;margin-bottom:2px" id="gauge-poste-acc-lbl">—</div>
+            <!-- Stats en ligne -->
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:2px">
+              <div style="text-align:center">
+                <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#64748b">N° OF</div>
+                <div style="font-size:18px;font-weight:900;color:#1e40af;line-height:1" id="acc-nb-of">0</div>
+              </div>
+              <div style="text-align:center">
+                <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#dc2626">Arrêts</div>
+                <div style="font-size:18px;font-weight:900;color:#b91c1c;line-height:1" id="main-stat-arrets">0 min</div>
+              </div>
+              <div style="text-align:center">
+                <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#16a34a">Prod</div>
+                <div style="font-size:18px;font-weight:900;color:#15803d;line-height:1" id="main-stat-prod">0 min</div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="skpi">
-          <div class="sk-lbl" id="kpi1-lbl">Poste précédent</div>
-          <div class="sk-val" id="kpi1-trs">--%</div>
-          <div class="sk-sub" id="kpi1-date" style="font-size:10px;opacity:.85"></div>
-          <div class="sk-sub" id="kpi1-sub">0 OF</div>
-        </div>
-        <div class="skpi">
-          <div class="sk-lbl" id="kpi2-lbl">Avant-dernier</div>
-          <div class="sk-val" id="kpi2-trs">--%</div>
-          <div class="sk-sub" id="kpi2-date" style="font-size:10px;opacity:.85"></div>
-          <div class="sk-sub" id="kpi2-sub">0 OF</div>
-        </div>
-        <!-- Modèle horaire modifiable -->
-        <div class="skpi" style="flex:2;background:#f0f9ff;border:1px solid #bae6fd">
-          <div class="sk-lbl" style="color:#0369a1">Modèle horaire du poste</div>
-          <div style="font-size:15px;font-weight:800;color:#0c4a6e" id="main-model-times">—</div>
-          <div style="margin-top:4px;display:flex;gap:5px;align-items:center;flex-wrap:wrap">
-            <input type="time" id="main-model-debut" style="padding:2px 5px;border:1px solid #bae6fd;border-radius:4px;font-size:11px;color:#0c4a6e">
-            <span style="font-size:11px;color:#0369a1">→</span>
-            <input type="time" id="main-model-fin" style="padding:2px 5px;border:1px solid #bae6fd;border-radius:4px;font-size:11px;color:#0c4a6e">
-            <button onclick="saveMainModelHours()" style="font-size:10px;padding:2px 7px;background:#0369a1;color:#fff;border:none;border-radius:4px;cursor:pointer">✓</button>
-          </div>
-          <div style="font-size:10px;color:#64748b;margin-top:3px" id="main-ref-calc"></div>
+        <!-- Modèle horaire -->
+        <div style="border-top:1px solid #bae6fd;padding-top:5px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:700;color:#0369a1">Modèle :</span>
+          <span style="font-size:12px;font-weight:800;color:#0c4a6e" id="main-model-times">—</span>
+          <input type="time" id="main-model-debut" style="padding:2px 5px;border:1px solid #bae6fd;border-radius:4px;font-size:11px;color:#0c4a6e">
+          <span style="font-size:11px;color:#0369a1">→</span>
+          <input type="time" id="main-model-fin" style="padding:2px 5px;border:1px solid #bae6fd;border-radius:4px;font-size:11px;color:#0c4a6e">
+          <button onclick="saveMainModelHours()" style="font-size:10px;padding:2px 7px;background:#0369a1;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">✓ Valider</button>
+          <span style="font-size:10px;color:#64748b" id="main-ref-calc"></span>
         </div>
       </div>
-      <!-- Ligne 2: Temps pause/nettoyage/réunion du poste -->
-      <div style="display:flex;gap:6px;padding:5px 10px;border-top:1px solid var(--border)">
-        <div style="flex:1;text-align:center;background:#f3e8ff;border-radius:7px;padding:5px">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#7c3aed;letter-spacing:.5px">Pauses</div>
-          <div style="font-size:16px;font-weight:800;color:#6d28d9" id="main-stat-pause">0 min</div>
-        </div>
-        <div style="flex:1;text-align:center;background:#e0f2fe;border-radius:7px;padding:5px">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#0891b2;letter-spacing:.5px">Nettoyage</div>
-          <div style="font-size:16px;font-weight:800;color:#0369a1" id="main-stat-nett">0 min</div>
-        </div>
-        <div style="flex:1;text-align:center;background:#fef3c7;border-radius:7px;padding:5px">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#d97706;letter-spacing:.5px">Réunion</div>
-          <div style="font-size:16px;font-weight:800;color:#b45309" id="main-stat-reunion">0 min</div>
-        </div>
-        <div style="flex:1;text-align:center;background:#f0fdf4;border-radius:7px;padding:5px">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px">Prod active</div>
-          <div style="font-size:16px;font-weight:800;color:#15803d" id="main-stat-prod">0 min</div>
-        </div>
-        <div style="flex:1;text-align:center;background:#fee2e2;border-radius:7px;padding:5px">
-          <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#dc2626;letter-spacing:.5px">Arrêts totaux</div>
-          <div style="font-size:16px;font-weight:800;color:#b91c1c" id="main-stat-arrets">0 min</div>
-        </div>
+
+      <!-- Poste précédent -->
+      <div class="skpi" style="flex:1;min-width:100px">
+        <div class="sk-lbl" id="kpi1-lbl">Poste précédent</div>
+        <div class="sk-val" id="kpi1-trs">--%</div>
+        <div class="sk-sub" id="kpi1-date" style="font-size:10px;opacity:.85"></div>
+        <div class="sk-sub" id="kpi1-sub">0 OF</div>
+      </div>
+      <div class="skpi" style="flex:1;min-width:100px">
+        <div class="sk-lbl" id="kpi2-lbl">Avant-dernier</div>
+        <div class="sk-val" id="kpi2-trs">--%</div>
+        <div class="sk-sub" id="kpi2-date" style="font-size:10px;opacity:.85"></div>
+        <div class="sk-sub" id="kpi2-sub">0 OF</div>
+      </div>
+
+      <!-- IDs cachés compatibles JS existant -->
+      <div style="display:none">
+        <span id="kpi0-trs"></span><span id="kpi0-sub"></span>
+        <span id="kpi0-date"></span><span id="kpi0-heure"></span>
+        <span id="main-stat-pause"></span><span id="main-stat-nett"></span>
+        <span id="main-stat-reunion"></span>
       </div>
     </div>
     <div class="table-wrap">
@@ -2796,93 +2806,93 @@ select{cursor:default}
   </div>
 
   <!-- ════ KPI VIEW ════ -->
-  <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden;background:#1a2540">
+  <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden;background:#f1f5f9">
     <!-- Barre titre -->
-    <div style="background:#1a2540;color:#fff;padding:6px 16px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #2d3f5e">
-      <div style="font-size:16px;font-weight:800;letter-spacing:.5px">📊 KPI — Vue d'ensemble</div>
-      <button style="font-size:12px;padding:4px 12px;background:#2d3f5e;border:1px solid #3d5475;border-radius:6px;color:#94a3b8;cursor:pointer" onclick="loadKPI()">↺ Actualiser</button>
+    <div style="background:#fff;color:#1e293b;padding:6px 16px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0">
+      <div style="font-size:16px;font-weight:800;letter-spacing:.5px;color:#1e3a8a">📊 KPI — Vue d'ensemble</div>
+      <button style="font-size:12px;padding:4px 12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;color:#475569;cursor:pointer" onclick="loadKPI()">↺ Actualiser</button>
     </div>
     <!-- Corps principal : 2 colonnes -->
     <div style="display:grid;grid-template-columns:1fr 380px;flex:1;overflow:hidden;min-height:0;gap:0">
       <!-- Colonne gauche : Jauges TRS + 4 Timelines -->
-      <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #2d3f5e">
+      <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #e2e8f0">
         <!-- Jauges TRS : poste actuel + 3 précédents -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;flex-shrink:0;border-bottom:1px solid #2d3f5e">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;flex-shrink:0;border-bottom:1px solid #e2e8f0">
           <!-- Jauge poste actuel (plus grande) -->
-          <div style="background:linear-gradient(135deg,#1e3a7a,#2d4d9e);padding:14px 10px;text-align:center;border-right:1px solid #2d3f5e">
-            <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:rgba(255,255,255,.6);letter-spacing:1px;margin-bottom:6px">Poste actuel</div>
+          <div style="background:linear-gradient(135deg,#dbeafe,#eff6ff);padding:14px 10px;text-align:center;border-right:1px solid #e2e8f0">
+            <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#3b82f6;letter-spacing:1px;margin-bottom:6px">Poste actuel</div>
             <svg viewBox="0 0 120 70" style="width:110px;display:block;margin:0 auto">
-              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="14" stroke-linecap="round"/>
-              <path id="kpi-g0-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#86efac" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
-              <text x="60" y="58" text-anchor="middle" font-size="20" font-weight="800" fill="#86efac" id="kpi-g0-pct">--%</text>
+              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="rgba(0,0,0,.08)" stroke-width="14" stroke-linecap="round"/>
+              <path id="kpi-g0-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#16a34a" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
+              <text x="60" y="58" text-anchor="middle" font-size="20" font-weight="800" fill="#16a34a" id="kpi-g0-pct">--%</text>
             </svg>
-            <div style="font-size:12px;color:#93c5fd;font-weight:600;margin-top:4px" id="kpi-cur-date">—</div>
-            <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px" id="kpi-cur-sub">0 OF</div>
+            <div style="font-size:12px;color:#3b82f6;font-weight:600;margin-top:4px" id="kpi-cur-date">—</div>
+            <div style="font-size:12px;color:#475569;margin-top:2px" id="kpi-cur-sub">0 OF</div>
           </div>
           <!-- 3 jauges précédentes -->
-          <div id="kpi-p1-card" style="background:#1e2d48;padding:12px 8px;text-align:center;border-right:1px solid #2d3f5e">
-            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#7ea8d8;letter-spacing:.8px;margin-bottom:4px" id="kpi-p1-lbl">Poste précédent</div>
+          <div id="kpi-p1-card" style="background:#fff;padding:12px 8px;text-align:center;border-right:1px solid #e2e8f0">
+            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:4px" id="kpi-p1-lbl">Poste précédent</div>
             <svg viewBox="0 0 120 70" style="width:90px;display:block;margin:0 auto">
-              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#2d3f5e" stroke-width="14" stroke-linecap="round"/>
+              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#e2e8f0" stroke-width="14" stroke-linecap="round"/>
               <path id="kpi-g1-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#16a34a" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
-              <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#e2e8f0" id="kpi-g1-pct">--%</text>
+              <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#1e293b" id="kpi-g1-pct">--%</text>
             </svg>
-            <div style="font-size:10px;color:#7ea8d8;margin-top:3px" id="kpi-p1-date"></div>
+            <div style="font-size:10px;color:#64748b;margin-top:3px" id="kpi-p1-date"></div>
             <div style="font-size:11px;color:#94a3b8;margin-top:1px" id="kpi-p1-sub">—</div>
           </div>
-          <div id="kpi-p2-card" style="background:#1e2d48;padding:12px 8px;text-align:center;border-right:1px solid #2d3f5e">
-            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#7ea8d8;letter-spacing:.8px;margin-bottom:4px" id="kpi-p2-lbl">Avant-dernier</div>
+          <div id="kpi-p2-card" style="background:#fff;padding:12px 8px;text-align:center;border-right:1px solid #e2e8f0">
+            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:4px" id="kpi-p2-lbl">Avant-dernier</div>
             <svg viewBox="0 0 120 70" style="width:90px;display:block;margin:0 auto">
-              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#2d3f5e" stroke-width="14" stroke-linecap="round"/>
+              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#e2e8f0" stroke-width="14" stroke-linecap="round"/>
               <path id="kpi-g2-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#16a34a" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
-              <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#e2e8f0" id="kpi-g2-pct">--%</text>
+              <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#1e293b" id="kpi-g2-pct">--%</text>
             </svg>
-            <div style="font-size:10px;color:#7ea8d8;margin-top:3px" id="kpi-p2-date"></div>
+            <div style="font-size:10px;color:#64748b;margin-top:3px" id="kpi-p2-date"></div>
             <div style="font-size:11px;color:#94a3b8;margin-top:1px" id="kpi-p2-sub">—</div>
           </div>
-          <div id="kpi-p3-card" style="background:#1e2d48;padding:12px 8px;text-align:center">
-            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#7ea8d8;letter-spacing:.8px;margin-bottom:4px" id="kpi-p3-lbl">Il y a 3 postes</div>
+          <div id="kpi-p3-card" style="background:#fff;padding:12px 8px;text-align:center">
+            <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:#64748b;letter-spacing:.8px;margin-bottom:4px" id="kpi-p3-lbl">Il y a 3 postes</div>
             <svg viewBox="0 0 120 70" style="width:90px;display:block;margin:0 auto">
-              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#2d3f5e" stroke-width="14" stroke-linecap="round"/>
+              <path d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#e2e8f0" stroke-width="14" stroke-linecap="round"/>
               <path id="kpi-g3-arc" d="M10,60 A50,50 0 0,1 110,60" fill="none" stroke="#16a34a" stroke-width="14" stroke-linecap="round" stroke-dasharray="0,157"/>
-              <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#e2e8f0" id="kpi-g3-pct">--%</text>
+              <text x="60" y="58" text-anchor="middle" font-size="18" font-weight="800" fill="#1e293b" id="kpi-g3-pct">--%</text>
             </svg>
-            <div style="font-size:10px;color:#7ea8d8;margin-top:3px" id="kpi-p3-date"></div>
+            <div style="font-size:10px;color:#64748b;margin-top:3px" id="kpi-p3-date"></div>
             <div style="font-size:11px;color:#94a3b8;margin-top:1px" id="kpi-p3-sub">—</div>
           </div>
         </div>
         <!-- 4 Timelines -->
-        <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;padding:10px 12px;gap:10px;min-height:0">
+        <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;padding:10px 12px;gap:10px;min-height:0;background:#f8fafc">
           <!-- Timeline poste actuel -->
           <div style="flex-shrink:0">
-            <div style="font-size:11px;font-weight:700;color:#93c5fd;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px" id="kpi-tl0-lbl">Poste actuel</div>
+            <div style="font-size:11px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px" id="kpi-tl0-lbl">Poste actuel</div>
             <svg id="kpi-tl0" viewBox="0 0 800 50" preserveAspectRatio="none" style="width:100%;height:72px;display:block;border-radius:6px">
-              <rect x="0" y="0" width="800" height="50" fill="#1e2d48" rx="4"/>
+              <rect x="0" y="0" width="800" height="50" fill="#e2e8f0" rx="4"/>
             </svg>
           </div>
           <!-- Timeline poste N-1 -->
           <div style="flex-shrink:0">
-            <div style="font-size:10px;font-weight:700;color:#7ea8d8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px" id="kpi-tl1-lbl">—</div>
+            <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px" id="kpi-tl1-lbl">—</div>
             <svg id="kpi-tl1" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;height:48px;display:block;border-radius:4px">
-              <rect x="0" y="0" width="800" height="36" fill="#1e2d48" rx="4"/>
+              <rect x="0" y="0" width="800" height="36" fill="#e2e8f0" rx="4"/>
             </svg>
           </div>
           <!-- Timeline poste N-2 -->
           <div style="flex-shrink:0">
-            <div style="font-size:10px;font-weight:700;color:#7ea8d8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px" id="kpi-tl2-lbl">—</div>
+            <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px" id="kpi-tl2-lbl">—</div>
             <svg id="kpi-tl2" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;height:48px;display:block;border-radius:4px">
-              <rect x="0" y="0" width="800" height="36" fill="#1e2d48" rx="4"/>
+              <rect x="0" y="0" width="800" height="36" fill="#e2e8f0" rx="4"/>
             </svg>
           </div>
           <!-- Timeline poste N-3 -->
           <div style="flex-shrink:0">
-            <div style="font-size:10px;font-weight:700;color:#7ea8d8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px" id="kpi-tl3-lbl">—</div>
+            <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:4px" id="kpi-tl3-lbl">—</div>
             <svg id="kpi-tl3" viewBox="0 0 800 36" preserveAspectRatio="none" style="width:100%;height:48px;display:block;border-radius:4px">
-              <rect x="0" y="0" width="800" height="36" fill="#1e2d48" rx="4"/>
+              <rect x="0" y="0" width="800" height="36" fill="#e2e8f0" rx="4"/>
             </svg>
           </div>
           <!-- Légende -->
-          <div style="display:flex;gap:14px;flex-shrink:0;font-size:11px;color:#7ea8d8">
+          <div style="display:flex;gap:14px;flex-shrink:0;font-size:11px;color:#475569">
             <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#dc2626"></i>PB/Panne</span>
             <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#3b82f6"></i>Organisation</span>
             <span style="display:flex;align-items:center;gap:4px"><i style="display:inline-block;width:14px;height:10px;border-radius:2px;background:#f59e0b"></i>Nettoyage</span>
@@ -2891,18 +2901,18 @@ select{cursor:default}
           </div>
         </div>
       </div>
-      <!-- Colonne droite : Camembert + Pareto + Stats -->
-      <div style="display:flex;flex-direction:column;overflow:hidden;gap:0">
+      <!-- Colonne droite : Camembert + Stats + Pareto -->
+      <div style="display:flex;flex-direction:column;overflow:hidden;gap:0;background:#fff">
         <!-- Camembert -->
-        <div style="background:#1e2d48;padding:12px 16px;flex-shrink:0;border-bottom:1px solid #2d3f5e;text-align:center">
-          <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#7ea8d8;letter-spacing:.8px;margin-bottom:6px">Prod / Arrêts — poste actuel</div>
+        <div style="background:#f8fafc;padding:12px 16px;flex-shrink:0;border-bottom:1px solid #e2e8f0;text-align:center">
+          <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#475569;letter-spacing:.8px;margin-bottom:6px">Prod / Arrêts — poste actuel</div>
           <svg id="kpi-pie" viewBox="0 0 130 115" style="width:150px;height:130px;display:block;margin:0 auto"></svg>
         </div>
         <!-- Stats chiffres clés -->
-        <div id="kpi-stats" style="background:#1a2540;padding:12px 16px;flex-shrink:0;border-bottom:1px solid #2d3f5e;display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+        <div id="kpi-stats" style="background:#fff;padding:12px 16px;flex-shrink:0;border-bottom:1px solid #e2e8f0;display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
         <!-- Pareto -->
-        <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:12px 16px;background:#1a2540">
-          <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#7ea8d8;letter-spacing:.8px;margin-bottom:8px;flex-shrink:0">Pareto arrêts</div>
+        <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding:12px 16px;background:#fff">
+          <div style="font-size:11px;text-transform:uppercase;font-weight:700;color:#475569;letter-spacing:.8px;margin-bottom:8px;flex-shrink:0">Pareto arrêts</div>
           <div id="kpi-pareto" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px"></div>
         </div>
       </div>
@@ -3746,12 +3756,18 @@ async function loadMainDecl() {
   // Accumuler équivalences et arrêts du poste pour les jauges
   const curPilotD=ST.pilot||'';
   const pilotDecls=decls.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD);
-  _todayEquivAccum=pilotDecls.reduce((a,r)=>a+parseFloat(r.equiv||0),0);
   const _hms2s=s=>{if(!s)return 0;const p=String(s).split(':');return p.length>=3?+p[0]*3600+ +p[1]*60+ +p[2]:p.length===2?+p[0]*60+ +p[1]:0;};
+  // Filter to model horaire window only — exclude pre-shift prods (changement de série before model debut)
+  const _dkLD=['dim','lun','mar','mer','jeu','ven','sam'][new Date().getDay()];
+  const _mLD=_cfgModels&&_cfgModels.find(m=>m.nom===(ST.poste||''));
+  const _jLD=_mLD&&_mLD.jours&&_mLD.jours[_dkLD];
+  const _mDebS=_jLD&&_jLD.debut?_hms2s(_jLD.debut):0;
+  const inShiftDecls=_mDebS>0?pilotDecls.filter(r=>_hms2s(r.fin||'')>=_mDebS||_hms2s(r.debut||'')>=_mDebS):pilotDecls;
+  _todayEquivAccum=inShiftDecls.reduce((a,r)=>a+parseFloat(r.equiv||0),0);
   _todayStopAccum=evts.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD).reduce((a,r)=>a+_hms2s(r.duree||''),0);
-  // Heure de la dernière déclaration prod enregistrée
-  if(pilotDecls.length){
-    const lastFin=pilotDecls.map(r=>r.fin||'').filter(Boolean).sort().pop();
+  // Heure de la dernière déclaration prod enregistrée (dans la fenêtre du poste)
+  if(inShiftDecls.length){
+    const lastFin=inShiftDecls.map(r=>r.fin||'').filter(Boolean).sort().pop();
     if(lastFin){const[h,m,s]=(lastFin+'::').split(':').map(Number);const d=new Date();d.setHours(h,m,s||0,0);_lastProdDeclTime=d;}
   }
   if(!allRows.length){bd.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();return;}
@@ -3797,6 +3813,7 @@ function saveMainModelHours(){
   updatePobModel(poste);
   updateGauge(ST);
   loadMainKPI();
+  loadKPI();
   toast('Horaires mis à jour','ok');
 }
 
@@ -3876,6 +3893,9 @@ async function loadMainKPI() {
   if(srEl) srEl.textContent=_fm(reunionS);
   if(saEl) saEl.textContent=_fm(arretS);
   if(sprodEl) sprodEl.textContent=_fm(prodS);
+  // Nb OF in new accueil block
+  const nbOfEl=document.getElementById('acc-nb-of');
+  if(nbOfEl) nbOfEl.textContent=d&&d.rows?d.rows.length:0;
 
   // Previous sessions from history (group by pilot+date, exclude current session)
   const allRows=await apiFetch('/api/history');
