@@ -750,6 +750,29 @@ def _state_json():
 def index():
     return render_template_string(HTML_TEMPLATE)
 
+@flask_app.route('/reset')
+def page_reset():
+    """Page de reset d'urgence — accessible directement dans le navigateur."""
+    _S["prod_active"] = False
+    _S["of_start"] = None
+    _S["tl_events"] = []
+    _S["timers"] = {}
+    _S["is_paused"] = False
+    _S["pause_start"] = None
+    _S["pause_total_s"] = 0.0
+    _S["pause_periods"] = []
+    _S["inter_of_s"] = 0.0
+    _S["form"] = {}
+    save_session()
+    return """<!DOCTYPE html><html><head><meta charset="utf-8"><title>KPI-ORC Reset</title>
+    <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc}
+    .box{text-align:center;padding:40px;background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+    h2{color:#16a34a;margin-bottom:10px}p{color:#64748b;margin-bottom:20px}
+    a{background:#1e3a5f;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700}</style></head>
+    <body><div class="box"><h2>✓ Production annulée</h2>
+    <p>La prod bloquée a été réinitialisée.<br>Vous pouvez maintenant démarrer une nouvelle production.</p>
+    <a href="/">Retour à l'application</a></div></body></html>"""
+
 @flask_app.route('/api/state')
 def api_state():
     return jsonify(_state_json())
@@ -1872,6 +1895,8 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .htab:hover{background:rgba(255,255,255,.12);color:#fff}
 .htab.on{background:rgba(255,255,255,.2);color:#fff;font-weight:700}
 .htab.prod-on{background:var(--green)!important;color:#fff!important;font-weight:700;animation:pt 2s infinite}
+#ht-prod{display:none}
+#ht-prod.prod-visible{display:inline-block!important}
 @keyframes pt{0%,100%{opacity:1}50%{opacity:.75}}
 #hdr-right{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:11px;color:rgba(255,255,255,.75)}
 #hdr-pilot-lbl{font-weight:800;color:#fff;font-size:18px;letter-spacing:.3px}
@@ -2138,6 +2163,9 @@ select{cursor:default}
     </div>
     <button class="btn-login" onclick="doLogin()">Valider</button>
     <div class="ln-err" id="ln-err"></div>
+    <div style="margin-top:14px;text-align:center;font-size:11px;color:#94a3b8">
+      Prod bloquée ? <a href="/reset" style="color:#dc2626;font-weight:700">Cliquer ici pour réinitialiser</a>
+    </div>
   </div>
 </div>
 
@@ -2147,7 +2175,7 @@ select{cursor:default}
     <div class="hdr-logo">⚙ KPI-ORC</div>
     <div class="hdr-tabs">
       <button class="htab on" id="ht-main" onclick="goTab('main')">Accueil</button>
-      <button class="htab prod-on" id="ht-prod" style="display:none" onclick="goTab('prod')">▶ Prod en cours</button>
+      <button class="htab prod-on" id="ht-prod" onclick="goTab('prod')">▶ Prod en cours</button>
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-cfg" onclick="goTab('settings')">Paramètres</button>
     </div>
@@ -2161,7 +2189,7 @@ select{cursor:default}
   <!-- ════ MAIN VIEW ════ -->
   <div id="v-main" class="view" style="flex-direction:column">
     <!-- Bannière prod en cours (visible si prod_active mais sur vue accueil) -->
-    <div id="main-prod-banner" style="display:none;background:#16a34a;color:#fff;padding:8px 14px;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:space-between">
+    <div id="main-prod-banner" style="display:none;background:#16a34a;color:#fff;padding:8px 14px;font-weight:700;font-size:13px;align-items:center;justify-content:space-between">
       <span style="cursor:pointer" onclick="goTab('prod')">▶ Production en cours — Cliquer ici pour y accéder</span>
       <button onclick="forceResetProd()" style="background:rgba(0,0,0,.25);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:5px;font-size:11px;padding:3px 10px;cursor:pointer;white-space:nowrap">⚠ Annuler cette prod</button>
     </div>
@@ -2933,7 +2961,7 @@ function showApp(s) {
   if (s.poste) { document.getElementById('f-poste').value=s.poste; document.getElementById('pob-poste').textContent=s.poste; }
   // Show prod tab button immediately if prod is active (don't wait for applyState)
   const tp=document.getElementById('ht-prod');
-  if(tp) tp.style.display=s.prod_active?'inline-block':'none';
+  if(tp) tp.classList.toggle('prod-visible',!!s.prod_active);
   // Also show the main banner immediately
   const mpb=document.getElementById('main-prod-banner');
   if(mpb) mpb.style.display=s.prod_active?'flex':'none';
@@ -3076,7 +3104,7 @@ function applyState(s) {
 
   // Prod tab visibility
   const tp=document.getElementById('ht-prod');
-  if(tp) tp.style.display=s.prod_active?'inline-block':'none';
+  if(tp) tp.classList.toggle('prod-visible',!!s.prod_active);
 
   // Main prod banner (shown when prod active but user is on main view)
   const mpb=document.getElementById('main-prod-banner');
