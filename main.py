@@ -927,36 +927,50 @@ def api_start_prod():
         _S["shift_start"] = now
     t_reset()
     save_session()
+    # Calcul du modèle horaire pour ce poste/jour (toujours, pas seulement 1er OF)
+    poste = _S.get("poste","")
+    day_keys = ["lun","mar","mer","jeu","ven","sam","dim"]
+    dk = day_keys[now.weekday()]
+    model_debut_dt = None
+    model_debut_str = ""
+    for m in cfg.get("modeles_horaires",[]):
+        if m.get("nom","") == poste:
+            jour = m.get("jours",{}).get(dk,{})
+            debut_str2 = jour.get("debut","")
+            if debut_str2:
+                try:
+                    h, mi = map(int, debut_str2.split(":"))
+                    sd = now.replace(hour=h, minute=mi, second=0, microsecond=0)
+                    if sd > now: sd -= datetime.timedelta(days=1)
+                    model_debut_dt = sd
+                    model_debut_str = debut_str2
+                except: pass
+            break
+    # Règle : si gap interposte > 7h, on l'oublie et on prend le gap depuis le début du modèle
+    ip_debut_hms = ""
+    ip_fin_hms = now.strftime("%H:%M")
+    if gap_s > 25200 and model_debut_dt:
+        gap_s = max(0.0, (now - model_debut_dt).total_seconds())
+        _S["interposte_s"] = gap_s
+        ip_debut_hms = model_debut_str
+    elif _S["last_of_end"]:
+        ip_debut_hms = _S["last_of_end"].strftime("%H:%M")
     # Calcul du gap pré-poste (1er OF vs heure début modèle horaire)
     pre_shift_gap_s = 0.0
     shift_model_start_str = ""
     shift_model_start_iso = ""
-    if is_first_of:
-        poste = _S.get("poste","")
-        day_keys = ["lun","mar","mer","jeu","ven","sam","dim"]
-        dk = day_keys[now.weekday()]
-        for m in cfg.get("modeles_horaires",[]):
-            if m.get("nom","") == poste:
-                jour = m.get("jours",{}).get(dk,{})
-                debut_str = jour.get("debut","")
-                if debut_str:
-                    try:
-                        h, mi = map(int, debut_str.split(":"))
-                        shift_deb = now.replace(hour=h, minute=mi, second=0, microsecond=0)
-                        # Si shift commence la veille (poste de nuit), on ajuste
-                        if shift_deb > now:
-                            shift_deb -= datetime.timedelta(days=1)
-                        diff = (now - shift_deb).total_seconds()
-                        if 120 < diff < 7200:  # entre 2 min et 2h de retard
-                            pre_shift_gap_s = diff
-                            shift_model_start_str = debut_str
-                            shift_model_start_iso = shift_deb.isoformat()
-                    except: pass
-                break
+    if is_first_of and model_debut_dt:
+        diff = (now - model_debut_dt).total_seconds()
+        if 120 < diff < 7200:
+            pre_shift_gap_s = diff
+            shift_model_start_str = model_debut_str
+            shift_model_start_iso = model_debut_dt.isoformat()
     return jsonify({"ok":True,"gap_s":round(gap_s,0),
                     "pre_shift_gap_s":round(pre_shift_gap_s,0),
                     "shift_model_start":shift_model_start_str,
-                    "shift_model_start_iso":shift_model_start_iso})
+                    "shift_model_start_iso":shift_model_start_iso,
+                    "ip_debut_hms":ip_debut_hms,
+                    "ip_fin_hms":ip_fin_hms})
 
 @flask_app.route('/api/set_of_start', methods=['POST'])
 def api_set_of_start():
@@ -980,8 +994,24 @@ def api_inter_of_confirm():
     _S["inter_of_s"] = float(data.get("inter_of_s",0))
     label = data.get("label","")
     comment = data.get("comment","")
-    if _S["inter_of_s"] > 30 and _S["last_of_end"] and _S["of_start"]:
-        write_changement_of(_S["last_of_end"], _S["of_start"], label=label or None, comment=comment)
+    debut_hms = data.get("debut_hms","")
+    fin_hms = data.get("fin_hms","")
+    start_dt = _S["last_of_end"]
+    end_dt = _S["of_start"]
+    today = datetime.date.today()
+    if debut_hms:
+        try:
+            h, mi = map(int, debut_hms.split(":"))
+            start_dt = datetime.datetime.combine(today, datetime.time(h, mi))
+        except: pass
+    if fin_hms:
+        try:
+            h, mi = map(int, fin_hms.split(":"))
+            end_dt = datetime.datetime.combine(today, datetime.time(h, mi))
+            if end_dt < start_dt: end_dt += datetime.timedelta(days=1)
+        except: pass
+    if _S["inter_of_s"] > 30 and start_dt and end_dt:
+        write_changement_of(start_dt, end_dt, label=label or None, comment=comment)
     save_session()
     return jsonify({"ok":True})
 
@@ -1602,7 +1632,7 @@ def api_past_sessions():
     sessions = {}
     for rn, r in _decl_cache:
         date_str = _row_date(r[2])
-        if not date_str or date_str == today_str: continue
+        if not date_str: continue
         pilot = str(r[4] or "")
         poste = str(r[3] or "")
         row_type = str(r[0] or "").strip().lower()
@@ -1658,14 +1688,17 @@ def api_session_report():
                 stop_s += dur_s
                 evt_rows.append({"type":str(r[0] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or "")})
             except: pass
-    debut_str, _ = _get_model_day_cfg(poste)
+    debut_str, fin_str = _get_model_day_cfg(poste)
     model_debut_s = _hms_to_sec(debut_str) if debut_str else None
     trs_shift = -1.0
     if model_debut_s and max_fin_s > model_debut_s and prod_ref > 0 and tot_eq > 0:
         elapsed_s = max_fin_s - model_debut_s
         trs_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
     trs_of = round(tot_eq/(prod_ref*tot_s/28800)*100,1) if prod_ref>0 and tot_s>0 and tot_eq>0 else -1
-    return jsonify({"date":date_str,"pilot":pilot,"poste":poste,"prod_rows":prod_rows,"evt_rows":evt_rows,"trs_shift":trs_shift,"trs":trs_of,"tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),"stop_s":round(stop_s,0),"nb_of":len(prod_rows)})
+    return jsonify({"date":date_str,"pilot":pilot,"poste":poste,"prod_rows":prod_rows,"evt_rows":evt_rows,
+                    "trs_shift":trs_shift,"trs":trs_of,"tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
+                    "stop_s":round(stop_s,0),"nb_of":len(prod_rows),
+                    "model_debut":debut_str or "","model_fin":fin_str or ""})
 
 @flask_app.route('/api/reload', methods=['POST'])
 def api_reload():
@@ -2957,9 +2990,19 @@ select{cursor:default}
 
   <!-- ════ MODAL INTERPOSTE ════ -->
   <div id="m-interposte" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
-    <div class="card" style="width:420px;padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--amber)">
+    <div class="card" style="width:440px;padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--amber)">
       <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:4px">⏱ Temps hors production</div>
-      <div id="ip-duration" style="font-size:13px;color:var(--amber);font-weight:700;margin-bottom:12px"></div>
+      <div id="ip-duration" style="font-size:13px;color:var(--amber);font-weight:700;margin-bottom:8px"></div>
+      <div style="display:flex;gap:10px;margin-bottom:12px;align-items:flex-end">
+        <div style="flex:1">
+          <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Début</label>
+          <input type="time" id="ip-debut" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-weight:700">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Fin</label>
+          <input type="time" id="ip-fin" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-weight:700">
+        </div>
+      </div>
       <div style="font-size:12px;color:var(--gray);margin-bottom:10px">Que s'est-il passé pendant cette période ?</div>
       <div id="ip-btns" style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px"></div>
       <div style="margin-bottom:10px">
@@ -2981,7 +3024,7 @@ select{cursor:default}
       <!-- Liste des postes -->
       <div style="border-right:1px solid var(--border);overflow-y:auto;background:#f8fafc;display:flex;flex-direction:column">
         <div style="padding:10px 14px;font-size:13px;font-weight:800;color:var(--navy);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
-          <span>📋 Postes précédents</span>
+          <span>📋 Tous les postes</span>
           <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="loadRapports()">↺</button>
         </div>
         <div id="rpt-list" style="flex:1;overflow-y:auto">
@@ -4250,6 +4293,8 @@ async function doStartProd() {
     document.getElementById('ip-duration').textContent=`Durée : ${_fmtMin(_pendingGapS)}`;
     document.getElementById('ip-custom').value='';
     document.getElementById('ip-comment').value='';
+    if(d.ip_debut_hms) document.getElementById('ip-debut').value=d.ip_debut_hms;
+    if(d.ip_fin_hms) document.getElementById('ip-fin').value=d.ip_fin_hms;
     _interposteLbls.forEach(lbl=>{
       const b=document.createElement('button');
       b.className='btn btn-ghost';
@@ -4280,6 +4325,9 @@ async function psChooseInterposte(){
   document.getElementById('ip-duration').textContent=`Durée : ${_fmtMin(gapS)} (début de poste → 1er OF)`;
   document.getElementById('ip-custom').value='Début de poste';
   document.getElementById('ip-comment').value='';
+  // Pré-remplir les heures : debut = heure modèle, fin = maintenant
+  if(startIso){const sd=new Date(startIso);document.getElementById('ip-debut').value=sd.getHours().toString().padStart(2,'0')+':'+sd.getMinutes().toString().padStart(2,'0');}
+  const now2=new Date();document.getElementById('ip-fin').value=now2.getHours().toString().padStart(2,'0')+':'+now2.getMinutes().toString().padStart(2,'0');
   const bc=document.getElementById('ip-btns');bc.innerHTML='';
   ['Mise en route machine','Réunion début de poste','Attente / Préparation','Nettoyage arrivée'].forEach(lbl=>{
     const b=document.createElement('button');
@@ -4360,8 +4408,17 @@ async function psConfirmModifyModel(){
 async function confirmInterposte(){
   const lbl=document.getElementById('ip-custom').value.trim()||'Interposte';
   const cmt=document.getElementById('ip-comment').value.trim();
+  const debutVal=document.getElementById('ip-debut').value;
+  const finVal=document.getElementById('ip-fin').value;
+  let interS=_pendingGapS;
+  if(debutVal&&finVal){
+    const[dh,dm]=debutVal.split(':').map(Number);const[fh,fm]=finVal.split(':').map(Number);
+    let ds=dh*3600+dm*60,fs=fh*3600+fm*60;
+    if(fs<ds) fs+=86400;
+    interS=Math.max(0,fs-ds);
+  }
   closeM('m-interposte');
-  await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inter_of_s:_pendingGapS,label:lbl,comment:cmt})});
+  await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inter_of_s:interS,label:lbl,comment:cmt,debut_hms:debutVal,fin_hms:finVal})});
   // Si on vient d'un popup pré-poste, rétrodater le shift_start aussi
   if(window._psStartIso){
     await fetch('/api/set_of_start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({iso:window._psStartIso})});
@@ -5600,7 +5657,7 @@ async function loadRapports(){
   listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Chargement…</div>';
   const sessions=await apiFetch('/api/past_sessions');
   if(!sessions||!sessions.length){
-    listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Aucun poste précédent disponible</div>';
+    listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Aucun poste disponible</div>';
     return;
   }
   listEl.innerHTML=sessions.map((s,i)=>{
@@ -5625,6 +5682,27 @@ async function loadSessionReport(date,pilot,poste,itemId){
   if(!d){detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur chargement</div>';return;}
   const trsS=d.trs_shift>=0?d.trs_shift:d.trs;
   const trsCol=trsS>=90?'#16a34a':trsS>=70?'#f59e0b':trsS>=0?'#dc2626':'#94a3b8';
+  const stopMin=Math.round((d.stop_s||0)/60);
+  const prodMin=Math.round((d.tot_s||0)/60);
+  const totalMin=prodMin+stopMin;
+  // Pareto des arrêts
+  const stopMap={};
+  (d.evt_rows||[]).forEach(r=>{
+    const k=r.type||'Inconnu';
+    if(!stopMap[k]) stopMap[k]=0;
+    const p=r.duree?r.duree.split(':'):[0,0,0];
+    stopMap[k]+=(parseInt(p[0]||0)*3600+parseInt(p[1]||0)*60+parseInt(p[2]||0))/60;
+  });
+  const stopArr=Object.entries(stopMap).sort((a,b)=>b[1]-a[1]);
+  const maxStopMin=stopArr.length?stopArr[0][1]:1;
+  const paretoHtml=stopArr.length?stopArr.map(([k,v])=>`
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+      <div style="font-size:10px;width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${esc(k)}</div>
+      <div style="flex:1;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden">
+        <div style="height:100%;background:#dc2626;border-radius:4px;width:${Math.round(v/maxStopMin*100)}%;opacity:.8"></div>
+      </div>
+      <div style="font-size:10px;font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">${Math.round(v)}mn</div>
+    </div>`).join(''):'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>';
   const prodsHtml=(d.prod_rows||[]).map(r=>{
     const tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
     return `<tr style="border-bottom:1px solid var(--border)">
@@ -5637,38 +5715,112 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <td style="padding:5px 8px;font-size:10px;color:var(--gray)">${esc(r.comment||'')}</td>
     </tr>`;
   }).join('');
-  const stopsHtml=(d.evt_rows||[]).map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
-    <span style="font-weight:600">${esc(r.type||'')}</span>
-    <span style="color:var(--gray)">${esc(r.debut||'')} → ${esc(r.fin||'')} (${esc(r.duree||'')})</span>
-  </div>`).join('');
-  const stopMin=Math.round((d.stop_s||0)/60);
-  const prodMin=Math.round((d.tot_s||0)/60);
+  // Timeline inline builder (ne dépend pas de ST)
+  function buildTL(prodRows,evtRows,dateStr,modelDebut,modelFin){
+    const W=800,Y=4,H2=28,H=40;
+    // Convertir dd/mm/yyyy → base ms
+    const parts=dateStr.split('/');
+    const baseMs=parts.length===3?new Date(parts[2]+'-'+parts[1]+'-'+parts[0]).getTime():Date.now();
+    const hm2ms=hm=>{if(!hm)return null;const[h,m]=(hm+':00').split(':').map(Number);return baseMs+h*3600000+m*60000;};
+    const mdMs=hm2ms(modelDebut),mfMs=hm2ms(modelFin);
+    // Compute range
+    let allMs=[];
+    prodRows.forEach(r=>{if(r.debut)allMs.push(hm2ms(r.debut));if(r.fin)allMs.push(hm2ms(r.fin));});
+    evtRows.forEach(r=>{if(r.debut)allMs.push(hm2ms(r.debut));if(r.fin)allMs.push(hm2ms(r.fin));});
+    const tS=mdMs||Math.min(...allMs.filter(Boolean));
+    const tE=mfMs||Math.max(...allMs.filter(Boolean));
+    if(!tS||!tE||tE<=tS) return `<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
+    const span=tE-tS;
+    const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
+    let html=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
+    prodRows.forEach(r=>{
+      const t1=hm2ms(r.debut),t2=hm2ms(r.fin);
+      if(!t1) return;
+      const x1=toX(t1),x2=toX(t2||tE);
+      if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="#bbf7d0" rx="3"/>`;
+    });
+    evtRows.forEach(r=>{
+      const t1=hm2ms(r.debut),t2=hm2ms(r.fin);
+      if(!t1) return;
+      const x1=toX(t1),x2=toX(t2||t1+1800000);
+      if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="#dc2626" rx="2" opacity=".75"/>`;
+    });
+    const fmt=ms=>{const d=new Date(ms);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
+    html+=`<text x="2" y="${H-1}" font-size="8" fill="#fff">${fmt(tS)}</text>`;
+    html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#fff">${fmt(tE)}</text>`;
+    html+=`<line x1="${W/2}" y1="${Y}" x2="${W/2}" y2="${Y+H2}" stroke="#94a3b8" stroke-width=".5" stroke-dasharray="2,2"/>`;
+    html+=`<text x="${W/2-10}" y="${H-1}" font-size="8" fill="#e2e8f0">${fmt((tS+tE)/2)}</text>`;
+    return html;
+  }
+  const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,d.model_debut,d.model_fin);
   detailEl.innerHTML=`
     <div style="background:var(--navy);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
       <div><div style="font-size:15px;font-weight:800">📋 Rapport — ${esc(poste)}</div><div style="font-size:11px;opacity:.8">${esc(pilot)} · ${esc(date)}</div></div>
       <div style="text-align:right"><div style="font-size:26px;font-weight:900;color:${trsCol}">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div><div style="font-size:11px;opacity:.7">TRS Shift</div></div>
     </div>
-    <div style="display:flex;gap:10px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-wrap:wrap">
-      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px;color:${trsCol}">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div><div class="fp-lbl">TRS Shift</div></div>
-      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px">${d.trs>=0?d.trs.toFixed(1)+'%':'—'}</div><div class="fp-lbl">TRS Prod</div></div>
-      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px;color:#0891b2">${(d.tot_equiv||0).toFixed(1)}</div><div class="fp-lbl">Équivalence</div></div>
-      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px;color:#7c3aed">${d.nb_of||0}</div><div class="fp-lbl">Nb OF</div></div>
-      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px;color:#16a34a">${prodMin} min</div><div class="fp-lbl">Prod</div></div>
-      <div class="fp-card" style="padding:8px 14px"><div class="fp-big" style="font-size:16px;color:#dc2626">${stopMin} min</div><div class="fp-lbl">Arrêts</div></div>
+    <!-- Graphiques + KPIs -->
+    <div style="display:flex;gap:12px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);align-items:center;flex-wrap:wrap">
+      <div style="text-align:center;flex-shrink:0">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">TRS Poste</div>
+        <svg id="rpt-gauge" viewBox="0 0 100 58" style="width:180px;display:block;margin:0 auto">
+          <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
+          <path id="rpt-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
+          <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="rpt-gauge-pct">--%</text>
+        </svg>
+      </div>
+      <div style="text-align:center;flex-shrink:0">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Répartition</div>
+        <svg id="rpt-pie" viewBox="0 0 130 115" style="width:170px;height:150px;display:block;margin:0 auto"></svg>
+      </div>
+      <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:5px">
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:${trsCol}">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div><div class="fp-lbl">TRS Shift</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px">${d.trs>=0?d.trs.toFixed(1)+'%':'—'}</div><div class="fp-lbl">TRS Prod</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0891b2">${(d.tot_equiv||0).toFixed(1)}</div><div class="fp-lbl">Équivalence</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#7c3aed">${d.nb_of||0}</div><div class="fp-lbl">Nb OF</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#16a34a">${prodMin} min</div><div class="fp-lbl">Prod</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#dc2626">${stopMin} min</div><div class="fp-lbl">Arrêts</div></div>
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:12px 14px;overflow-y:auto">
+    <!-- Timeline -->
+    <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border)">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline du poste</div>
+      <svg viewBox="0 0 800 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block">${tlContent}</svg>
+      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
+    </div>
+    <!-- Corps : prods + arrêts + pareto -->
+    <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div class="card" style="padding:10px">
         <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Productions</div>
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead><tr style="background:#f8fafc"><th style="padding:4px 8px;text-align:left">OF</th><th style="padding:4px 8px;text-align:left">Taille</th><th style="padding:4px 8px">Qté</th><th style="padding:4px 8px">Éq.</th><th style="padding:4px 8px">Heures</th><th style="padding:4px 8px">TRS</th><th style="padding:4px 8px">Comm.</th></tr></thead>
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr style="background:#f8fafc">
+            <th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>
+            <th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>
+            <th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th>
+          </tr></thead>
           <tbody>${prodsHtml||'<tr><td colspan="7" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
         </table>
       </div>
-      <div class="card" style="padding:10px">
-        <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Arrêts du poste</div>
-        ${stopsHtml||'<div style="color:var(--gray);font-size:12px;padding:8px">Aucun arrêt enregistré</div>'}
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="card" style="padding:10px">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Pareto des arrêts</div>
+          ${paretoHtml}
+        </div>
+        <div class="card" style="padding:10px;flex:1">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Détail arrêts</div>
+          ${(d.evt_rows||[]).map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px">
+            <span style="font-weight:600">${esc(r.type||'')}</span>
+            <span style="color:var(--gray)">${esc(r.debut||'')} → ${esc(r.fin||'')} (${esc(r.duree||'')})</span>
+          </div>`).join('')||'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>'}
+        </div>
       </div>
     </div>`;
+  // Dessiner gauge et pie (éléments maintenant dans le DOM)
+  drawGauge('rpt-gauge-arc','rpt-gauge-pct',trsS>=0?trsS:0);
+  drawPie('rpt-pie',[
+    {label:'Prod',value:prodMin,color:'#16a34a'},
+    {label:'Arrêts',value:stopMin,color:'#dc2626'},
+    {label:'Autre',value:Math.max(0,totalMin-prodMin-stopMin),color:'#94a3b8'}
+  ]);
 }
 
 // ── SETTINGS ──
