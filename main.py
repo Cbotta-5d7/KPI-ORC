@@ -705,7 +705,7 @@ def api_state():
 @flask_app.route('/api/lists')
 def api_lists():
     return jsonify({
-        "pilotes": get_list("Pilotes") or get_list("pilotes"),
+        "pilotes": get_list("Pilotes") or get_list("pilotes") or get_list("Pilote") or get_list("pilote") or list(cfg.get("pilot_passwords",{}).keys()),
         "tailles": get_list("Tailles") or get_list("taille"),
         "types_prod": get_list("Type produit") or get_list("types_prod"),
         "fibres": get_list("Fibres") or get_list("fibre"),
@@ -2546,7 +2546,19 @@ async function loadLists() {
   tps.forEach((t,i)=>{if(i<eqs.length&&eqs[i])window._equivCoefs[t]=parseFloat(String(eqs[i]).replace(',','.'))||1;});
   const pil = d.pilotes||[];
   const sel = document.getElementById('ln-pilot');
+  // Clear existing options (except first placeholder)
+  while(sel.options.length>1) sel.remove(1);
   pil.forEach(p => { const o=document.createElement('option'); o.value=p; o.textContent=p; sel.appendChild(o); });
+  // If no pilots yet, retry after 1.5s (Excel may still be loading)
+  if(!pil.length){
+    setTimeout(async()=>{
+      const d2=await apiFetch('/api/lists');
+      if(!d2) return;
+      const pil2=d2.pilotes||[];
+      while(sel.options.length>1) sel.remove(1);
+      pil2.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o);});
+    },1500);
+  }
   // Load models for login select
   await loadModelsForLogin();
 }
