@@ -1024,8 +1024,8 @@ def api_end_prod():
     prod_ref = get_prod_ref()
     trs = -1.0
     trs_str = ""
-    if prod_ref>0 and of_s>0:
-        trs = round(equiv/(prod_ref*of_s/28800)*100,1)
+    if prod_ref>0 and of_s_brut>0:
+        trs = round(equiv/(prod_ref*of_s_brut/28800)*100,1)
         trs_str = str(trs)
 
     # Ligne Production (37 cols, format unifié)
@@ -1134,8 +1134,8 @@ def api_preview_end_prod():
     c2 = round(equiv/(nb_pers*of_hrs),2) if of_hrs>0 else 0
     prod_ref = get_prod_ref()
     trs=-1.0
-    if prod_ref>0 and of_s>0:
-        trs=round(equiv/(prod_ref*of_s/28800)*100,1)
+    if prod_ref>0 and of_s_brut>0:
+        trs=round(equiv/(prod_ref*of_s_brut/28800)*100,1)
     return jsonify({
         "ok":True,
         "of_s":round(of_s,0),"of_s_brut":round(of_s_brut,0),
@@ -1242,11 +1242,14 @@ def api_history():
             trs = -1
             try:
                 equiv_v = float(str(r[21] or 0).replace(",","."))
-                of_s_v = _hms_to_sec(str(r[18] or "00:00:00"))
                 pr = get_prod_ref()
                 row_type = str(r[0] or "").strip().lower()
-                if row_type in ("production","prod","") and pr>0 and of_s_v>0 and equiv_v>0:
-                    trs = round(equiv_v/(pr*of_s_v/28800)*100,1)
+                if row_type in ("production","prod",""):
+                    debut_s = _hms_to_sec(str(r[16] or "00:00:00"))
+                    fin_s = _hms_to_sec(str(r[17] or "00:00:00"))
+                    brut_s = fin_s - debut_s if fin_s > debut_s else _hms_to_sec(str(r[18] or "00:00:00"))
+                    if pr>0 and brut_s>0 and equiv_v>0:
+                        trs = round(equiv_v/(pr*brut_s/28800)*100,1)
                 else:
                     trs_col = str(r[24] or "")
                     if trs_col:
@@ -1401,6 +1404,9 @@ def api_update_model_today():
 def api_delete_row():
     """Supprime n'importe quelle ligne de la feuille Declarations par row_num."""
     data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
     row_num = data.get("row_num")
     path = cfg.get("db_path","")
     if not row_num or not path or not os.path.exists(path):
@@ -1444,13 +1450,29 @@ def api_edit_row():
                 try:
                     row_type = str(ws.cell(row_num, 1).value or "").strip().lower()
                     if row_type in ("production","prod",""):
-                        equiv_v = 0.0
-                        try: equiv_v = float(str(ws.cell(row_num, 22).value or 0).replace(",","."))
+                        debut_s = _hms_to_sec(str(ws.cell(row_num, 17).value or "00:00:00"))
+                        fin_s = _hms_to_sec(str(ws.cell(row_num, 18).value or "00:00:00"))
+                        brut_s = fin_s - debut_s if fin_s > debut_s else 0
+                        if brut_s > 0:
+                            ws.cell(row_num, 19).value = fmt(brut_s)
+                        qte_fab_v = 0.0
+                        try: qte_fab_v = float(str(ws.cell(row_num, 20).value or 0).replace(",","."))
                         except: pass
-                        of_s_v = _hms_to_sec(str(ws.cell(row_num, 19).value or "00:00:00"))
+                        taille_v = str(ws.cell(row_num, 8).value or "").strip()
+                        type_prod_v = str(ws.cell(row_num, 10).value or "").strip()
+                        new_equiv = calc_equiv(qte_fab_v, taille_v, type_prod_v)
+                        if new_equiv > 0:
+                            ws.cell(row_num, 22).value = new_equiv
+                        nb_pers_v = 1
+                        try: nb_pers_v = max(1, float(str(ws.cell(row_num, 7).value or 1).replace(",",".") or 1))
+                        except: pass
+                        of_hrs = brut_s / 3600 if brut_s > 0 else 0
+                        if of_hrs > 0 and new_equiv > 0:
+                            ws.cell(row_num, 23).value = round(new_equiv / of_hrs, 2)
+                            ws.cell(row_num, 24).value = round(new_equiv / (nb_pers_v * of_hrs), 2)
                         pr = get_prod_ref()
-                        if pr>0 and of_s_v>0 and equiv_v>0:
-                            ws.cell(row_num, 25).value = str(round(equiv_v/(pr*of_s_v/28800)*100,1))
+                        if pr > 0 and brut_s > 0 and new_equiv > 0:
+                            ws.cell(row_num, 25).value = str(round(new_equiv/(pr*brut_s/28800)*100,1))
                 except: pass
                 _safe_excel_save(wb,path)
             threading.Thread(target=load_history,daemon=True).start()
@@ -1831,15 +1853,15 @@ def generate_dashboard_html():
         for lbl, dur in pareto:
             pct = dur / max_dur * 100 if max_dur > 0 else 0
             col = "#ef4444" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#38bdf8" if "nett" in lbl.lower() else "#a855f7"
-            pareto_html += f'''<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-              <div style="width:160px;font-size:14px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;color:#475569">{lbl[:22]}</div>
-              <div style="flex:1;background:#e2e8f0;border-radius:4px;height:22px">
-                <div style="width:{pct:.0f}%;height:22px;background:{col};border-radius:4px"></div>
+            pareto_html += f'''<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+              <div style="width:120px;font-size:11px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;color:#475569">{lbl[:22]}</div>
+              <div style="flex:1;background:#e2e8f0;border-radius:3px;height:16px">
+                <div style="width:{pct:.0f}%;height:16px;background:{col};border-radius:3px"></div>
               </div>
-              <div style="width:56px;font-size:16px;font-weight:800;text-align:right;flex-shrink:0;color:#1e293b">{dur/60:.0f}m</div>
+              <div style="width:40px;font-size:12px;font-weight:800;text-align:right;flex-shrink:0;color:#1e293b">{dur/60:.0f}m</div>
             </div>'''
     else:
-        pareto_html = '<div style="color:#475569;font-size:18px;padding:20px;text-align:center">Aucun arrêt enregistré</div>'
+        pareto_html = '<div style="color:#475569;font-size:12px;padding:10px;text-align:center">Aucun arrêt enregistré</div>'
 
     # ── Productions table ──
     prod_rows_html = ""
@@ -1851,22 +1873,22 @@ def generate_dashboard_html():
             trs_val = f'<span style="color:{tc};font-weight:900">{tv:.1f}%</span>'
         except: pass
         prod_rows_html += f'''<tr>
-          <td style="font-weight:800;font-size:16px;color:#1e293b">{r[1] or ""}</td>
+          <td style="font-weight:800;font-size:12px;color:#1e293b">{r[1] or ""}</td>
           <td style="color:#475569">{str(r[16] or "")[:5]}</td><td style="color:#475569">{str(r[17] or "")[:5]}</td>
           <td style="color:#475569">{r[18] or ""}</td>
           <td style="color:#1e293b">{r[19] or "0"}</td><td style="font-weight:800;color:#0891b2">{r[21] or ""}</td>
           <td>{trs_val}</td>
         </tr>'''
     if not prod_rows_html:
-        prod_rows_html = '<tr><td colspan="7" style="color:#94a3b8;padding:20px;text-align:center;font-size:16px">Aucune production déclarée</td></tr>'
+        prod_rows_html = '<tr><td colspan="7" style="color:#94a3b8;padding:10px;text-align:center;font-size:12px">Aucune production déclarée</td></tr>'
 
     # ── ALERT BANNER HTML ──
     alert_html = ""
     if has_alert:
         stops_html = "".join(
-            f'<div style="display:flex;align-items:center;justify-content:space-between;gap:24px;background:rgba(255,255,255,.12);border-radius:10px;padding:10px 20px;margin:4px 0;min-width:320px">'
-            f'<span style="font-size:28px;font-weight:800;color:#fef2f2">{nm}</span>'
-            f'<span style="font-size:36px;font-weight:900;color:#fecaca;font-variant-numeric:tabular-nums">{int(el/60)}<span style="font-size:18px">min</span></span>'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;background:rgba(255,255,255,.12);border-radius:8px;padding:6px 14px;margin:3px 0;min-width:240px">'
+            f'<span style="font-size:18px;font-weight:800;color:#fef2f2">{nm}</span>'
+            f'<span style="font-size:24px;font-weight:900;color:#fecaca;font-variant-numeric:tabular-nums">{int(el/60)}<span style="font-size:13px">min</span></span>'
             f'</div>'
             for nm, el in all_stops_info
         )
@@ -1874,10 +1896,10 @@ def generate_dashboard_html():
 <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   background:linear-gradient(135deg,#7f0000 0%,#b91c1c 50%,#ef4444 100%);
   animation:pulse 1.2s ease-in-out infinite;border-bottom:6px solid #fca5a5">
-  <div style="font-size:64px;line-height:1;animation:wag .8s ease-in-out infinite">🚨</div>
-  <div style="font-size:60px;font-weight:900;letter-spacing:4px;margin:10px 0;text-shadow:0 4px 16px rgba(0,0,0,.4);color:#fff">ARRÊT{"S" if len(all_stops_info)>1 else ""} EN COURS</div>
+  <div style="font-size:42px;line-height:1;animation:wag .8s ease-in-out infinite">🚨</div>
+  <div style="font-size:40px;font-weight:900;letter-spacing:4px;margin:8px 0;text-shadow:0 4px 16px rgba(0,0,0,.4);color:#fff">ARRÊT{"S" if len(all_stops_info)>1 else ""} EN COURS</div>
   {stops_html}
-  <div style="font-size:64px;line-height:1;animation:wag .8s ease-in-out infinite reverse;margin-top:10px">🚨</div>
+  <div style="font-size:42px;line-height:1;animation:wag .8s ease-in-out infinite reverse;margin-top:8px">🚨</div>
 </div>'''
     else:
         # ── PROD EN COURS BIG CARD ──
@@ -1886,20 +1908,20 @@ def generate_dashboard_html():
         prod_status_label = "▶ PRODUCTION EN COURS" if prod_active else "○ EN ATTENTE"
         prod_status_col = "#16a34a" if prod_active else "#64748b"
         alert_html = f'''
-<div style="background:{prod_card_bg};border:{prod_card_border};border-radius:16px;padding:20px 32px;display:flex;align-items:center;gap:32px;flex-shrink:0">
+<div style="background:{prod_card_bg};border:{prod_card_border};border-radius:10px;padding:10px 18px;display:flex;align-items:center;gap:18px;flex-shrink:0">
   <div style="flex:1">
-    <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:{prod_status_col};margin-bottom:8px">{prod_status_label}</div>
-    <div style="font-size:48px;font-weight:900;color:#1e293b;line-height:1">OF {of_num_now}</div>
-    <div style="font-size:20px;color:#64748b;margin-top:8px">{'👤 ' + pilot_now + '  |  ' + poste_now if pilot_now else poste_now}</div>
+    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:{prod_status_col};margin-bottom:4px">{prod_status_label}</div>
+    <div style="font-size:28px;font-weight:900;color:#1e293b;line-height:1">OF {of_num_now}</div>
+    <div style="font-size:13px;color:#64748b;margin-top:4px">{'👤 ' + pilot_now + '  |  ' + poste_now if pilot_now else poste_now}</div>
   </div>
-  {f'<div style="text-align:center"><div style="font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">Taille / Type</div><div style="font-size:24px;font-weight:800;color:#1e293b">{taille_now} — {type_prod_now}</div></div>' if taille_now or type_prod_now else ''}
+  {f'<div style="text-align:center"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px">Taille / Type</div><div style="font-size:16px;font-weight:800;color:#1e293b">{taille_now} — {type_prod_now}</div></div>' if taille_now or type_prod_now else ''}
   <div style="text-align:center">
-    <div style="font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">Éq. aujourd'hui</div>
-    <div style="font-size:48px;font-weight:900;color:#0891b2;line-height:1">{tot_equiv:.1f}</div>
+    <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px">Éq. aujourd'hui</div>
+    <div style="font-size:28px;font-weight:900;color:#0891b2;line-height:1">{tot_equiv:.1f}</div>
   </div>
   <div style="text-align:center">
-    <div style="font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px">OF déclarés</div>
-    <div style="font-size:48px;font-weight:900;color:#7c3aed;line-height:1">{nb_of_today}</div>
+    <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px">OF déclarés</div>
+    <div style="font-size:28px;font-weight:900;color:#7c3aed;line-height:1">{nb_of_today}</div>
   </div>
 </div>'''
 
@@ -1914,36 +1936,36 @@ def generate_dashboard_html():
 <title>Dashboard Encadrant — ORC</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1e293b;font-size:16px}}
-.hdr{{height:56px;background:#1e3a8a;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 24px;flex-shrink:0;border-bottom:2px solid #3b82f6}}
-.hdr-title{{font-size:20px;font-weight:900;display:flex;align-items:center;gap:14px}}
-.hdr-badge{{background:rgba(255,255,255,.15);border-radius:6px;padding:4px 14px;font-size:16px;font-weight:700}}
+html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1e293b;font-size:13px}}
+.hdr{{height:42px;background:#1e3a8a;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0;border-bottom:2px solid #3b82f6}}
+.hdr-title{{font-size:15px;font-weight:900;display:flex;align-items:center;gap:10px}}
+.hdr-badge{{background:rgba(255,255,255,.15);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700}}
 .hdr-badge.green{{background:#15803d}}
 .hdr-badge.gray{{background:#475569}}
-.hdr-time{{font-size:14px;opacity:.85}}
-.outer{{height:calc(100vh - 56px);display:flex;flex-direction:column;gap:10px;padding:10px;overflow:hidden}}
+.hdr-time{{font-size:11px;opacity:.85}}
+.outer{{height:calc(100vh - 42px);display:flex;flex-direction:column;gap:6px;padding:6px;overflow:hidden}}
 /* MODE NORMAL */
-.main-grid{{flex:1;display:grid;grid-template-columns:300px 1fr 280px;gap:10px;overflow:hidden;min-height:0}}
-.panel{{background:#fff;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
-.panel-hdr{{padding:10px 18px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
-.panel-body{{flex:1;overflow-y:auto;padding:12px 18px;min-height:0}}
+.main-grid{{flex:1;display:grid;grid-template-columns:200px 1fr 200px;gap:6px;overflow:hidden;min-height:0}}
+.panel{{background:#fff;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
+.panel-hdr{{padding:6px 12px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
+.panel-body{{flex:1;overflow-y:auto;padding:8px 12px;min-height:0}}
 /* TRS PANEL */
-.trs-num{{font-size:50px;font-weight:900;line-height:1;color:{trs_col};text-align:center}}
-.trs-lbl{{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:6px}}
-.trs-sub{{font-size:12px;color:#64748b;text-align:center;margin-top:4px}}
+.trs-num{{font-size:34px;font-weight:900;line-height:1;color:{trs_col};text-align:center}}
+.trs-lbl{{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:4px}}
+.trs-sub{{font-size:11px;color:#64748b;text-align:center;margin-top:3px}}
 /* STAT CARDS */
-.stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
-.stat-card{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;text-align:center}}
-.stat-val{{font-size:40px;font-weight:900;line-height:1}}
-.stat-lbl{{font-size:12px;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px}}
+.stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:6px}}
+.stat-card{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;text-align:center}}
+.stat-val{{font-size:26px;font-weight:900;line-height:1}}
+.stat-lbl{{font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:3px}}
 /* TIMELINE CELL */
-.tl-cell{{background:#fff;border-radius:14px;padding:12px 16px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
-.tl-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:8px;display:flex;justify-content:space-between}}
-.tl-legend{{display:flex;gap:16px;font-size:13px;color:#64748b;margin-top:8px;flex-wrap:wrap}}
+.tl-cell{{background:#fff;border-radius:10px;padding:6px 10px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
+.tl-lbl{{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:4px;display:flex;justify-content:space-between}}
+.tl-legend{{display:flex;gap:10px;font-size:11px;color:#64748b;margin-top:4px;flex-wrap:wrap}}
 /* TABLE */
-.ktbl{{width:100%;border-collapse:collapse;font-size:15px}}
-.ktbl th{{background:#f1f5f9;padding:8px 10px;font-weight:800;text-align:center;position:sticky;top:0;font-size:12px;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0}}
-.ktbl td{{padding:9px 10px;border-bottom:1px solid #e2e8f0;text-align:center;color:#1e293b}}
+.ktbl{{width:100%;border-collapse:collapse;font-size:12px}}
+.ktbl th{{background:#f1f5f9;padding:5px 8px;font-weight:800;text-align:center;position:sticky;top:0;font-size:10px;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0}}
+.ktbl td{{padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:center;color:#1e293b}}
 .ktbl tr:hover td{{background:#f8fafc}}
 /* ANIMATIONS */
 @keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.85}}}}
@@ -1970,12 +1992,12 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
   {alert_html}
 
   {'<!-- MODE ALERTE : mini stats bar -->' if has_alert else ''}
-  {f'''<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px;flex-shrink:0">
+  {f'''<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:6px;flex-shrink:0">
     <div class="stat-card"><div class="stat-val" style="color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="stat-lbl">TRS Poste</div></div>
     <div class="stat-card"><div class="stat-val" style="color:#7c3aed">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div></div>
     <div class="stat-card"><div class="stat-val" style="color:#0891b2">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:20px">min</span></div><div class="stat-lbl">Arrêts</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:#16a34a">{prod_s_total/60:.0f}<span style="font-size:20px">min</span></div><div class="stat-lbl">Production</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:14px">min</span></div><div class="stat-lbl">Arrêts</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#16a34a">{prod_s_total/60:.0f}<span style="font-size:14px">min</span></div><div class="stat-lbl">Production</div></div>
   </div>''' if has_alert else ''}
 
   {'<!-- MODE NORMAL -->' if not has_alert else ''}
@@ -1992,25 +2014,25 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
           <div class="trs-num">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
           {'<div class="trs-sub" style="font-weight:700;color:#0369a1">⏱ Modèle : ' + model_debut_dt.strftime("%H:%M") + ' → ' + (model_fin_dt.strftime("%H:%M") if model_fin_dt else "—") + '</div>' if model_debut_dt else ''}
           <div class="trs-sub">Réf : {prod_ref:.0f} éq / 8h &nbsp;|&nbsp; {elapsed_str}</div>
-          <div class="trs-sub" style="font-size:16px;font-weight:800;color:#0891b2;margin-top:4px">Éq. total : {tot_equiv:.1f}</div>
+          <div class="trs-sub" style="font-size:13px;font-weight:800;color:#0891b2;margin-top:4px">Éq. total : {tot_equiv:.1f}</div>
         </div>
       </div>
 
       <!-- Pie + répartition -->
       <div class="panel" style="flex-shrink:0">
         <div class="panel-hdr" style="background:#0c4a6e;color:#fff">Répartition temps</div>
-        <div class="panel-body" style="display:flex;align-items:center;justify-content:space-around;padding:16px">
-          {pie_svg(prod_s_total, stop_s_total, 160)}
-          <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="panel-body" style="display:flex;align-items:center;justify-content:space-around;padding:6px">
+          {pie_svg(prod_s_total, stop_s_total, 110)}
+          <div style="display:flex;flex-direction:column;gap:6px">
             <div>
-              <div style="font-size:13px;color:#64748b;text-transform:uppercase;font-weight:700">Production</div>
-              <div style="font-size:36px;font-weight:900;color:#22c55e">{prod_pct}%</div>
-              <div style="font-size:14px;color:#64748b">{prod_s_total/60:.0f} min</div>
+              <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700">Production</div>
+              <div style="font-size:24px;font-weight:900;color:#22c55e">{prod_pct}%</div>
+              <div style="font-size:11px;color:#64748b">{prod_s_total/60:.0f} min</div>
             </div>
             <div>
-              <div style="font-size:13px;color:#64748b;text-transform:uppercase;font-weight:700">Arrêts</div>
-              <div style="font-size:36px;font-weight:900;color:#ef4444">{100-prod_pct}%</div>
-              <div style="font-size:14px;color:#64748b">{stop_s_total/60:.0f} min</div>
+              <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700">Arrêts</div>
+              <div style="font-size:24px;font-weight:900;color:#ef4444">{100-prod_pct}%</div>
+              <div style="font-size:11px;color:#64748b">{stop_s_total/60:.0f} min</div>
             </div>
           </div>
         </div>
@@ -2045,7 +2067,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
             <div class="stat-card"><div class="stat-val" style="color:#8b5cf6">{nb_pieces}</div><div class="stat-lbl">Pièces</div></div>
             <div class="stat-card"><div class="stat-val" style="color:#38bdf8">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div></div>
             <div class="stat-card"><div class="stat-val" style="color:#4ade80">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div></div>
-            <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:18px">m</span></div><div class="stat-lbl">Arrêts</div></div>
+            <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:13px">m</span></div><div class="stat-lbl">Arrêts</div></div>
           </div>
         </div>
       </div>
@@ -3142,8 +3164,9 @@ select{cursor:default}
     </div>
     <div class="mbody">
       <input type="hidden" id="er-rownum"><input type="hidden" id="er-rowtype">
-      <div id="er-pw-row" style="margin-bottom:8px">
-        <div class="fr" style="max-width:200px"><label>MDP Admin</label><input type="password" id="er-pw" placeholder="••••"></div>
+      <div id="er-pw-row" style="display:none;margin-bottom:8px;padding:8px 10px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px">
+        <div class="fr" style="max-width:220px"><label>🔒 Mot de passe Admin</label><input type="password" id="er-pw" placeholder="••••" onkeydown="if(event.key==='Enter')saveEditRow()"></div>
+        <div style="font-size:10px;color:#92400e;margin-top:3px">Entrez le MDP puis cliquez à nouveau sur l'action.</div>
       </div>
       <div id="er-prod-fields">
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
@@ -4549,7 +4572,7 @@ function openEditRow(key) {
   document.getElementById('er-rowtype').value=row._rowType||'';
   document.getElementById('er-title').textContent=isProd?'✏ Modifier déclaration':'✏ Modifier événement';
   const pwRow=document.getElementById('er-pw-row'),pwEl=document.getElementById('er-pw');
-  if(_adminPw){pwEl.value=_adminPw;pwRow.style.display='none';}else{pwEl.value='';pwRow.style.display='';}
+  pwEl.value='';pwRow.style.display='none';
   document.getElementById('er-prod-fields').style.display=isProd?'':'none';
   document.getElementById('er-evt-fields').style.display=isProd?'none':'';
   if(isProd){
@@ -4594,8 +4617,11 @@ function openEditRow(key) {
 async function saveEditRow() {
   const rowNum=parseInt(document.getElementById('er-rownum').value);
   const rowType=document.getElementById('er-rowtype').value;
-  const pw=document.getElementById('er-pw').value||_adminPw;
+  const pwEl=document.getElementById('er-pw');
+  const pwRow=document.getElementById('er-pw-row');
+  const pw=pwEl.value||_adminPw;
   if(!rowNum){toast('Ligne invalide','err');return;}
+  if(!pw){pwRow.style.display='';pwEl.focus();return;}
   const v=id=>document.getElementById(id)?.value||'';
   const n=id=>parseFloat(document.getElementById(id)?.value)||0;
   let updates={};
@@ -4626,8 +4652,13 @@ async function saveEditRow() {
 
 async function deleteRow(key,rowNumId) {
   const rn=rowNumId?parseInt(document.getElementById(rowNumId)?.value):parseInt(window._rowMap[String(key)]?.row_num);
-  if(!rn||!confirm('Supprimer cette ligne ?')) return;
-  const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rn})});
+  if(!rn) return;
+  const pwEl=document.getElementById('er-pw');
+  const pwRow=document.getElementById('er-pw-row');
+  const pw=(pwEl&&pwEl.value)||_adminPw;
+  if(!pw){if(pwRow){pwRow.style.display='';pwEl&&pwEl.focus();}return;}
+  if(!confirm('Supprimer cette ligne ?')) return;
+  const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rn})});
   const d=r?await r.json():{};
   if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();loadKPI();toast('Supprimé','ok');}
   else toast(d?.error||'Erreur suppression','err');
@@ -5521,14 +5552,16 @@ def main():
         t = Thread(target=run_flask, daemon=True)
         t.start()
         import time; time.sleep(0.8)
-        webview.create_window(
+        _w = webview.create_window(
             "KPI-ORC",
             "http://127.0.0.1:5001",
             min_size=(900, 600),
             resizable=True,
-            fullscreen=True,
         )
-        webview.start()
+        def _on_shown():
+            try: _w.maximize()
+            except: pass
+        webview.start(_on_shown)
     except ImportError:
         # Fallback: run as plain Flask server (dev mode)
         print("pywebview non disponible — démarrage en mode serveur sur http://127.0.0.1:5001")
