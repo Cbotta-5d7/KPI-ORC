@@ -1879,7 +1879,24 @@ def generate_dashboard_html():
     of_num_now = (_S.get("form") or {}).get("of_num","") or "—"
     taille_now = (_S.get("form") or {}).get("taille","") or ""
     type_prod_now = (_S.get("form") or {}).get("type_prod","") or ""
+    kit_now = "Oui" if (_S.get("form") or {}).get("kit") else "Non"
+    of_start_dt = _S.get("of_start")
     is_paused = _S.get("is_paused", False)
+    # Temps écoulé depuis début OF (en cours)
+    of_elapsed_s = 0.0
+    if prod_active and of_start_dt:
+        try: of_elapsed_s = (datetime.datetime.now() - of_start_dt).total_seconds()
+        except: pass
+    # Arrêts en cours cumulés sur cet OF (depuis of_start via tl_events live)
+    of_stop_s = 0.0
+    for ev in (_S.get("tl_events") or []):
+        if of_start_dt and ev.get("key") != "_prod":
+            try:
+                ev_start = ev.get("start") or ev.get("t_start")
+                if ev_start and ev_start >= of_start_dt:
+                    ev_end = ev.get("end") or ev.get("t_end") or datetime.datetime.now()
+                    of_stop_s += max(0, (ev_end - ev_start).total_seconds())
+            except: pass
 
     today_prod = [r for r in prod_rows_all if _row_date(r[2])==today_str and str(r[4] or "")==pilot_now]
     today_evts = [r for r in evt_rows_all if _row_date(r[2])==today_str and str(r[4] or "")==pilot_now]
@@ -2162,37 +2179,64 @@ def generate_dashboard_html():
   <div style="font-size:42px;line-height:1;animation:wag .8s ease-in-out infinite reverse;margin-top:8px">🚨</div>
 </div>'''
     else:
-        # ── PROD EN COURS BIG CARD ──
-        prod_card_bg = "#f0fdf4" if prod_active else "#f8fafc"
-        prod_card_border = "2px solid #22c55e" if prod_active else "2px solid #e2e8f0"
-        prod_status_label = "▶ PRODUCTION EN COURS" if prod_active else "○ EN ATTENTE"
+        # ── PROD EN COURS + PRODUCTIONS DU POSTE ──
         prod_status_col = "#16a34a" if prod_active else "#64748b"
+        prod_status_label = "▶ PRODUCTION EN COURS" if prod_active else "○ EN ATTENTE"
+        of_debut_str = of_start_dt.strftime("%H:%M") if of_start_dt else "—"
+        of_elapsed_str = f"{int(of_elapsed_s//3600):02d}h{int((of_elapsed_s%3600)//60):02d}" if of_elapsed_s > 0 else "—"
+        of_stop_min = f"{of_stop_s/60:.0f}" if of_stop_s > 0 else "0"
+        kit_col = "#16a34a" if kit_now == "Oui" else "#94a3b8"
         alert_html = f'''
-<div style="background:{prod_card_bg};border:{prod_card_border};border-radius:10px;padding:10px 18px;display:flex;align-items:center;gap:18px;flex-shrink:0">
-  <div style="flex:1">
-    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:{prod_status_col};margin-bottom:4px">{prod_status_label}</div>
-    <div style="font-size:28px;font-weight:900;color:#1e293b;line-height:1">OF {of_num_now}</div>
-    <div style="font-size:13px;color:#64748b;margin-top:4px">{'👤 ' + pilot_now + '  |  ' + poste_now if pilot_now else poste_now}</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;flex-shrink:0">
+
+  <!-- OF EN COURS -->
+  <div style="background:#f0fdf4;border:2px solid {"#22c55e" if prod_active else "#e2e8f0"};border-radius:10px;padding:10px 16px">
+    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:{prod_status_col};margin-bottom:8px">{prod_status_label}</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 16px;align-items:center">
+      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">OF</div>
+      <div style="font-size:22px;font-weight:900;color:#1e293b;line-height:1">{of_num_now}</div>
+      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Type</div>
+      <div style="font-size:13px;font-weight:800;color:#1e293b">{type_prod_now or "—"}</div>
+      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Format</div>
+      <div style="font-size:13px;font-weight:800;color:#1e293b">{taille_now or "—"}</div>
+      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Kit</div>
+      <div style="font-size:13px;font-weight:800;color:{kit_col}">{kit_now}</div>
+      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Début</div>
+      <div style="font-size:13px;font-weight:800;color:#1e293b">{of_debut_str}</div>
+      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Écoulé</div>
+      <div style="font-size:13px;font-weight:900;color:#0891b2">{of_elapsed_str}</div>
+      <div style="font-size:10px;color:#ef4444;font-weight:700;text-transform:uppercase">Arrêts</div>
+      <div style="font-size:13px;font-weight:900;color:#ef4444">{of_stop_min} min</div>
+    </div>
   </div>
-  {f'<div style="text-align:center"><div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px">Taille / Type</div><div style="font-size:16px;font-weight:800;color:#1e293b">{taille_now} — {type_prod_now}</div></div>' if taille_now or type_prod_now else ''}
-  <div style="text-align:center">
-    <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px">Éq. aujourd'hui</div>
-    <div style="font-size:28px;font-weight:900;color:#0891b2;line-height:1">{tot_equiv:.1f}</div>
+
+  <!-- PRODUCTIONS DU POSTE ENTIER -->
+  <div style="background:#f8fafc;border:2px solid #e2e8f0;border-radius:10px;padding:10px 16px">
+    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#1e3a8a;margin-bottom:8px">Productions du poste entier</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="text-align:center;background:#fff;border-radius:8px;padding:6px 4px;border:1px solid #e2e8f0">
+        <div style="font-size:20px;font-weight:900;color:#0891b2;line-height:1">{tot_equiv:.1f}</div>
+        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px">Équivalence</div>
+      </div>
+      <div style="text-align:center;background:#fff;border-radius:8px;padding:6px 4px;border:1px solid #e2e8f0">
+        <div style="font-size:20px;font-weight:900;color:#7c3aed;line-height:1">{nb_pieces}</div>
+        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px">Qté déclarée</div>
+      </div>
+      <div style="text-align:center;background:#fff;border-radius:8px;padding:6px 4px;border:1px solid #e2e8f0">
+        <div style="font-size:20px;font-weight:900;color:#1e3a8a;line-height:1">{nb_of_today}</div>
+        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px">OF déclarés</div>
+      </div>
+      <div style="text-align:center;background:#fff;border-radius:8px;padding:6px 4px;border:1px solid #e2e8f0">
+        <div style="font-size:20px;font-weight:900;color:#16a34a;line-height:1">{prod_s_total/3600:.2f}<span style="font-size:11px">h</span></div>
+        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px">Prod déclarée</div>
+      </div>
+      <div style="text-align:center;background:#fff;border-radius:8px;padding:6px 4px;border:1px solid #e2e8f0;grid-column:span 2">
+        <div style="font-size:20px;font-weight:900;color:#ef4444;line-height:1">{stop_s_total/60:.0f}<span style="font-size:11px"> min</span></div>
+        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px">Arrêts totaux</div>
+      </div>
+    </div>
   </div>
-  <div style="text-align:center">
-    <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px">OF déclarés</div>
-    <div style="font-size:28px;font-weight:900;color:#7c3aed;line-height:1">{nb_of_today}</div>
-  </div>
-  <div style="text-align:center">
-    <div style="font-size:10px;font-weight:700;color:#ef4444;text-transform:uppercase;margin-bottom:3px">Arrêts</div>
-    <div style="font-size:24px;font-weight:900;color:#ef4444;line-height:1">{stop_s_total/3600:.1f}<span style="font-size:12px">h</span></div>
-    <div style="font-size:10px;color:#64748b">{stop_s_total/60:.0f} min</div>
-  </div>
-  <div style="text-align:center">
-    <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:3px">Déclaré</div>
-    <div style="font-size:24px;font-weight:900;color:#475569;line-height:1">{(prod_s_total+stop_s_total)/3600:.1f}<span style="font-size:12px">h</span></div>
-    <div style="font-size:10px;color:#64748b">{(prod_s_total+stop_s_total)/60:.0f} min</div>
-  </div>
+
 </div>'''
 
     tl_svg = timeline_svg()
@@ -2249,10 +2293,11 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 <div class="hdr">
   <div class="hdr-title">
     &#127981; Dashboard Encadrant — ORC
-    {'<span class="hdr-badge">' + ('👤 ' + pilot_now + ' | ' + poste_now if pilot_now else poste_now) + '</span>' if (pilot_now or poste_now) else ''}
   </div>
-  <div style="display:flex;align-items:center;gap:14px">
-    {'<span class="hdr-badge green">▶ PROD EN COURS — OF ' + of_num_now + '</span>' if prod_active else '<span class="hdr-badge gray">○ En attente</span>'}
+  <div style="display:flex;align-items:center;gap:18px">
+    {f'<div style="display:flex;flex-direction:column;align-items:center;line-height:1.1"><span style="font-size:18px;font-weight:900;color:#fff;letter-spacing:.5px">👤 {pilot_now}</span><span style="font-size:11px;font-weight:700;color:#93c5fd;text-transform:uppercase">{poste_now}</span></div>' if pilot_now else ''}
+    {f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px;text-align:center"><div style="font-size:10px;color:#93c5fd;font-weight:700;text-transform:uppercase">Modèle horaire</div><div style="font-size:14px;font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} → {model_fin_dt.strftime("%H:%M")}</div></div>' if (model_debut_dt and model_fin_dt) else (f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px"><div style="font-size:10px;color:#93c5fd;font-weight:700">Modèle</div><div style="font-size:14px;font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} →</div></div>' if model_debut_dt else '')}
+    {'<span class="hdr-badge green">▶ PROD — OF ' + of_num_now + '</span>' if prod_active else '<span class="hdr-badge gray">○ En attente</span>'}
     <span class="hdr-time">🔄 15s | {gen_time}</span>
   </div>
 </div>
@@ -2279,12 +2324,9 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     {f'''<!-- TRS Block -->
       <div class="panel" style="flex:1">
         <div class="panel-hdr" style="background:#1a1f5e;color:#fff">TRS Poste en cours</div>
-        <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:10px 14px">
-          <div class="trs-lbl">Taux de Rendement Synthétique</div>
-          <div class="trs-num">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
-          {('<div class="trs-sub" style="font-weight:700;color:#0369a1">⏱ Entre ' + model_debut_dt.strftime("%Hh%M") + ' et ' + last_fin_dt.strftime("%Hh%M") + '</div>') if (model_debut_dt and last_fin_dt) else ('<div class="trs-sub" style="font-weight:700;color:#0369a1">⏱ Modèle : ' + model_debut_dt.strftime("%H:%M") + ' →</div>') if model_debut_dt else ''}
-          <div class="trs-sub">Réf : {prod_ref:.0f} éq / 8h &nbsp;|&nbsp; {elapsed_str}</div>
-          <div class="trs-sub" style="font-size:13px;font-weight:800;color:#0891b2;margin-top:4px">Éq. total : {tot_equiv:.1f}</div>
+        <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px 10px">
+          {gauge_svg(trs_poste, 190)}
+          {('<div style="font-size:11px;font-weight:800;color:#0369a1;text-align:center;margin-top:2px">⏱ Entre ' + model_debut_dt.strftime("%Hh%M") + ' et ' + last_fin_dt.strftime("%Hh%M") + '</div>') if (model_debut_dt and last_fin_dt) else ('<div style="font-size:11px;color:#64748b;text-align:center">⏱ Modèle : ' + model_debut_dt.strftime("%H:%M") + ' →</div>') if model_debut_dt else '<div style="font-size:11px;color:#94a3b8;text-align:center">Aucune donnée</div>'}
         </div>
       </div>
 
@@ -2749,6 +2791,11 @@ select{cursor:default}
                 <div style="font-size:18px;font-weight:900;color:#15803d;line-height:1" id="main-stat-prod">0 min</div>
               </div>
             </div>
+          </div>
+          <!-- Répartition temps (pie) -->
+          <div style="flex-shrink:0;text-align:center;border-left:1px solid #bae6fd;padding-left:10px;min-width:110px">
+            <div style="font-size:9px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Répartition</div>
+            <svg id="pie-poste-acc" viewBox="0 0 130 115" style="width:100px;height:auto;display:block;margin:0 auto"></svg>
           </div>
         </div>
         <!-- Modèle horaire -->
@@ -4992,7 +5039,9 @@ function updateGauge(s){
   const shiftTotal=s.shift_start_iso?(Date.now()-new Date(s.shift_start_iso).getTime())/1000:0;
   const shiftStop=_todayStopAccum||0;
   const shiftProd=Math.max(0,shiftTotal-shiftStop);
-  drawPie('pie-poste',[{label:'Prod',value:shiftProd,color:'#16a34a'},{label:'Arrêts',value:shiftStop,color:'#dc2626'}]);
+  const postePieData=[{label:'Prod',value:shiftProd,color:'#16a34a'},{label:'Arrêts',value:shiftStop,color:'#dc2626'}];
+  drawPie('pie-poste',postePieData);
+  drawPie('pie-poste-acc',postePieData);
 }
 // Accumulateurs poste (mis à jour à chaque loadMainDecl)
 let _todayEquivAccum=0, _todayStopAccum=0, _lastProdDeclTime=null, _shiftRefDt=null;
