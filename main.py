@@ -3058,7 +3058,7 @@ select{cursor:default}
       <input type="hidden" id="ps-gap-s">
       <div style="display:flex;flex-direction:column;gap:8px">
         <button class="btn btn-prim" style="text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseInterposte()">
-          ⏱ Enregistrer comme temps d'arrêt Interposte<br>
+          ⏱ Enregistrer comme temps d'arrêt Interposte/InterOF<br>
           <span style="font-size:11px;font-weight:400;opacity:.85">Il n'y a pas eu de production pendant ce temps</span>
         </button>
         <button class="btn btn-green" style="text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseBackdate()">
@@ -3340,8 +3340,8 @@ select{cursor:default}
         <button class="btn btn-prim" style="margin-top:8px;font-size:12px" onclick="saveEvtList()">💾 Enregistrer la liste</button>
       </div>
       <div class="ss">
-        <h3>🔄 Labels "Entre 2 OFs" (interposte)</h3>
-        <div style="font-size:11px;color:var(--gray);margin-bottom:8px">Boutons de choix affichés dans la fenêtre "Temps entre 2 OFs". Configurez ici vos motifs d'interposte.</div>
+        <h3>🔄 Labels "Entre 2 OFs" (Interposte/InterOF)</h3>
+        <div style="font-size:11px;color:var(--gray);margin-bottom:8px">Boutons de choix affichés dans la fenêtre "Temps entre 2 OFs". Configurez ici vos motifs Interposte/InterOF.</div>
         <div id="interposte-list-ui" style="margin-bottom:10px"></div>
         <div style="display:flex;gap:6px;align-items:center;background:#f8fafc;padding:8px;border-radius:7px;border:1px solid var(--border)">
           <input id="ip-new-label" placeholder="Nouveau label interposte" style="flex:1;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
@@ -4448,7 +4448,7 @@ async function psChooseInterposte(){
   if(startIso){const sd=new Date(startIso);document.getElementById('ip-debut').value=sd.getHours().toString().padStart(2,'0')+':'+sd.getMinutes().toString().padStart(2,'0');}
   const now2=new Date();document.getElementById('ip-fin').value=now2.getHours().toString().padStart(2,'0')+':'+now2.getMinutes().toString().padStart(2,'0');
   const bc=document.getElementById('ip-btns');bc.innerHTML='';
-  ['Mise en route machine','Réunion début de poste','Attente / Préparation','Nettoyage arrivée'].forEach(lbl=>{
+  _interposteLbls.forEach(lbl=>{
     const b=document.createElement('button');
     b.className='btn btn-ghost';
     b.style.cssText='font-size:12px;transition:all .15s;border:2px solid var(--border)';
