@@ -237,6 +237,7 @@ def _get_arret_budget_key(label):
         if "long" in l: return "clean_long_min"
         if "court" in l: return "clean_short_min"
     if "réunion" in l or "reunion" in l or "meeting" in l: return "meeting_tol_min"
+    if "pause" in l: return "pause_min"
     return None
 
 def _compute_planned_deduction_s(evt_rows):
@@ -248,6 +249,7 @@ def _compute_planned_deduction_s(evt_rows):
         "clean_long_min":  float(cfg.get("clean_long_min",  0)) * 60,
         "clean_grand_min": float(cfg.get("clean_grand_min", 0)) * 60,
         "meeting_tol_min": float(cfg.get("meeting_tol_min", 0)) * 60,
+        "pause_min":       float(cfg.get("pause_min",       0)) * 60,
     }
     if all(v == 0 for v in budgets.values()):
         return 0.0
@@ -1417,6 +1419,7 @@ def api_config():
         "clean_long_min":  cfg.get("clean_long_min",  0),
         "clean_grand_min": cfg.get("clean_grand_min", 0),
         "meeting_tol_min": cfg.get("meeting_tol_min", 0),
+        "pause_min":       cfg.get("pause_min",       0),
     }
     return jsonify({
         "prod_ref": cfg.get("prod_ref",0),
@@ -1425,6 +1428,7 @@ def api_config():
         "clean_long_min": cfg.get("clean_long_min",0),
         "clean_grand_min": cfg.get("clean_grand_min",0),
         "meeting_tol_min": cfg.get("meeting_tol_min",0),
+        "pause_min": cfg.get("pause_min",0),
         "arrets_prevus": arrets_prevus,
         "db_path": cfg.get("db_path",""),
         "db_name": os.path.basename(cfg.get("db_path","")) if cfg.get("db_path") else "",
@@ -1438,7 +1442,7 @@ def api_settings():
     pw = data.get("pw","")
     if not _check_pw(pw):
         return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
-    for k in ["prod_ref","pause_max_min","clean_short_min","clean_long_min","clean_grand_min","meeting_tol_min"]:
+    for k in ["prod_ref","pause_max_min","clean_short_min","clean_long_min","clean_grand_min","meeting_tol_min","pause_min"]:
         if k in data:
             try: cfg[k]=float(data[k]) if k=="prod_ref" else int(data[k])
             except: pass
@@ -3369,14 +3373,43 @@ select{cursor:default}
             <label>📋 Réunion quotidienne (min)</label>
             <input type="number" id="ap-meeting" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
           </div>
+          <div class="lf" style="margin:0">
+            <label>⏸ Pause (min)</label>
+            <input type="number" id="ap-pause" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+          </div>
         </div>
-        <div style="font-size:10px;color:var(--gray);margin-top:6px">Pour l'affectation automatique : le libellé de l'arrêt doit contenir les mots "nettoyage court/long/très long" ou "réunion".</div>
+        <div style="font-size:10px;color:var(--gray);margin-top:6px">Pour l'affectation automatique : le libellé doit contenir "nettoyage court/long/très long", "réunion" ou "pause".</div>
         <button class="btn btn-prim" style="margin-top:10px;font-size:12px" onclick="saveArretsPrevus()">💾 Enregistrer arrêts prévus</button>
       </div>
     </div>
   </div>
 
 </div><!-- /app -->
+
+<!-- ════ MODAL: Choix type nettoyage ════ -->
+<div class="overlay" id="m-nett-type" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:700;align-items:center;justify-content:center">
+  <div class="card" style="width:360px;padding:22px;background:#fff;border-radius:14px;border-top:4px solid #f59e0b;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+    <div style="font-size:15px;font-weight:800;color:#78350f;margin-bottom:16px">🧹 Type de nettoyage</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn" id="nett-btn-court" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #fde68a;background:#fffbeb;font-size:13px;font-weight:700;color:#92400e;transition:all .15s"
+        onclick="doStartNettoyage('court')">
+        🧹 Nettoyage court
+        <span id="nett-lbl-court" style="font-size:11px;font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
+      </button>
+      <button class="btn" id="nett-btn-long" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #fcd34d;background:#fefce8;font-size:13px;font-weight:700;color:#78350f;transition:all .15s"
+        onclick="doStartNettoyage('long')">
+        🧹 Nettoyage long
+        <span id="nett-lbl-long" style="font-size:11px;font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
+      </button>
+      <button class="btn" id="nett-btn-grand" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #f59e0b;background:#fff7ed;font-size:13px;font-weight:700;color:#7c2d12;transition:all .15s"
+        onclick="doStartNettoyage('grand')">
+        🧹 Nettoyage très long
+        <span id="nett-lbl-grand" style="font-size:11px;font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
+      </button>
+    </div>
+    <button class="btn btn-sec" style="margin-top:14px;width:100%;font-size:12px" onclick="closeM('m-nett-type')">Annuler</button>
+  </div>
+</div>
 
 <!-- ════ MODAL: Déclarer un arrêt ════ -->
 <div class="overlay" id="m-stop">
@@ -4661,8 +4694,20 @@ async function doPause(){
   await pollState();
 }
 
-async function doNettoyage(){
-  try{await fetch('/api/start_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ntype:'court'})});}
+function doNettoyage(){
+  // Populate budget labels from config
+  const ap=_cfgArretsPrevus||{};
+  const fmtMin=m=>m>0?`Budget autorisé : ${m} min`:'Non limité';
+  const sc=document.getElementById('nett-lbl-court'),sl=document.getElementById('nett-lbl-long'),sg=document.getElementById('nett-lbl-grand');
+  if(sc) sc.textContent=fmtMin(ap.clean_short_min||0);
+  if(sl) sl.textContent=fmtMin(ap.clean_long_min||0);
+  if(sg) sg.textContent=fmtMin(ap.clean_grand_min||0);
+  openM('m-nett-type');
+}
+
+async function doStartNettoyage(ntype){
+  closeM('m-nett-type');
+  try{await fetch('/api/start_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ntype})});}
   catch(e){toast('Erreur connexion serveur','err');return;}
   await pollState();
 }
@@ -5984,7 +6029,7 @@ async function loadCfg(){
   if(dbEl&&d.db_path) dbEl.value=d.db_path;
   if(dbSt&&d.db_name){dbSt.textContent='Fichier actuel : '+d.db_name;dbSt.style.color='var(--green)';}
   // Arrêts prévus
-  const apMap={'ap-clean-short':'clean_short_min','ap-clean-long':'clean_long_min','ap-clean-grand':'clean_grand_min','ap-meeting':'meeting_tol_min'};
+  const apMap={'ap-clean-short':'clean_short_min','ap-clean-long':'clean_long_min','ap-clean-grand':'clean_grand_min','ap-meeting':'meeting_tol_min','ap-pause':'pause_min'};
   Object.entries(apMap).forEach(([elId,key])=>{const el=document.getElementById(elId);if(el)el.value=(_cfgArretsPrevus[key]||0);});
   renderPwdList();
   renderModelList();
@@ -6003,7 +6048,8 @@ async function saveArretsPrevus(){
   const clean_long=parseFloat(document.getElementById('ap-clean-long')?.value||0)||0;
   const clean_grand=parseFloat(document.getElementById('ap-clean-grand')?.value||0)||0;
   const meeting=parseFloat(document.getElementById('ap-meeting')?.value||0)||0;
-  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,clean_short_min:clean_short,clean_long_min:clean_long,clean_grand_min:clean_grand,meeting_tol_min:meeting})});
+  const pause_m=parseFloat(document.getElementById('ap-pause')?.value||0)||0;
+  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,clean_short_min:clean_short,clean_long_min:clean_long,clean_grand_min:clean_grand,meeting_tol_min:meeting,pause_min:pause_m})});
   const d=r?await r.json():{};
   if(d&&d.ok){toast('Arrêts prévus enregistrés','ok');await loadCfg();}
   else toast(d?.error||'Erreur','err');
