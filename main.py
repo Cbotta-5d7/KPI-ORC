@@ -2186,57 +2186,38 @@ def generate_dashboard_html():
         of_elapsed_str = f"{int(of_elapsed_s//3600):02d}h{int((of_elapsed_s%3600)//60):02d}" if of_elapsed_s > 0 else "—"
         of_stop_min = f"{of_stop_s/60:.0f}" if of_stop_s > 0 else "0"
         kit_col = "#16a34a" if kit_now == "Oui" else "#94a3b8"
+        of_border_col = "#22c55e" if prod_active else "#e2e8f0"
+        _of_chips = ""
+        for _lbl, _val, _col in [("Type", type_prod_now or "—", "#1e293b"), ("Format", taille_now or "—", "#1e293b"),
+                                   ("Kit", kit_now, kit_col), ("Début", of_debut_str, "#1e293b"),
+                                   ("Écoulé", of_elapsed_str, "#0891b2"), ("Arrêts", of_stop_min+" min", "#ef4444")]:
+            _of_chips += (f'<div style="text-align:center;flex-shrink:0">'
+                          f'<div style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase">{_lbl}</div>'
+                          f'<div style="font-size:12px;font-weight:800;color:{_col}">{_val}</div></div>')
+        _poste_chips = ""
+        for _i, (_lbl, _val, _col) in enumerate([("Éq.", f"{tot_equiv:.1f}", "#0891b2"),
+                                                   ("Qté", str(nb_pieces), "#7c3aed"),
+                                                   ("OF", str(nb_of_today), "#1e3a8a"),
+                                                   ("Prod", f"{prod_s_total/3600:.1f}h", "#16a34a"),
+                                                   ("Arrêts", f"{stop_s_total/60:.0f}min", "#ef4444")]):
+            _bl = "border-left:1px solid #e2e8f0;" if _i > 0 else ""
+            _poste_chips += (f'<div style="text-align:center;flex:1;padding:0 4px;{_bl}">'
+                             f'<div style="font-size:16px;font-weight:900;color:{_col};line-height:1">{_val}</div>'
+                             f'<div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:1px">{_lbl}</div></div>')
         alert_html = f'''
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;flex-shrink:0">
-
-  <!-- OF EN COURS -->
-  <div style="background:#f0fdf4;border:2px solid {"#22c55e" if prod_active else "#e2e8f0"};border-radius:10px;padding:10px 16px">
-    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:{prod_status_col};margin-bottom:8px">{prod_status_label}</div>
-    <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 16px;align-items:center">
-      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">OF</div>
-      <div style="font-size:22px;font-weight:900;color:#1e293b;line-height:1">{of_num_now}</div>
-      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Type</div>
-      <div style="font-size:13px;font-weight:800;color:#1e293b">{type_prod_now or "—"}</div>
-      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Format</div>
-      <div style="font-size:13px;font-weight:800;color:#1e293b">{taille_now or "—"}</div>
-      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Kit</div>
-      <div style="font-size:13px;font-weight:800;color:{kit_col}">{kit_now}</div>
-      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Début</div>
-      <div style="font-size:13px;font-weight:800;color:#1e293b">{of_debut_str}</div>
-      <div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">Écoulé</div>
-      <div style="font-size:13px;font-weight:900;color:#0891b2">{of_elapsed_str}</div>
-      <div style="font-size:10px;color:#ef4444;font-weight:700;text-transform:uppercase">Arrêts</div>
-      <div style="font-size:13px;font-weight:900;color:#ef4444">{of_stop_min} min</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex-shrink:0">
+  <div style="background:#f0fdf4;border:2px solid {of_border_col};border-radius:8px;padding:5px 12px;display:flex;align-items:center;gap:14px">
+    <div style="flex-shrink:0">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:{prod_status_col};letter-spacing:1px">{prod_status_label}</div>
+      <div style="font-size:20px;font-weight:900;color:#1e293b;line-height:1.1">OF {of_num_now}</div>
     </div>
+    <div style="height:32px;width:1px;background:#d1fae5;flex-shrink:0"></div>
+    {_of_chips}
   </div>
-
-  <!-- PRODUCTIONS DU POSTE ENTIER -->
-  <div style="background:#f8fafc;border:2px solid #e2e8f0;border-radius:10px;padding:10px 16px">
-    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:#1e3a8a;margin-bottom:8px">Productions du poste entier</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div style="text-align:center;background:#fff;border-radius:8px;padding:6px 4px;border:1px solid #e2e8f0">
-        <div style="font-size:20px;font-weight:900;color:#0891b2;line-height:1">{tot_equiv:.1f}</div>
-        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px">Équivalence</div>
-      </div>
-      <div style="text-align:center;background:#fff;border-radius:8px;padding:6px 4px;border:1px solid #e2e8f0">
-        <div style="font-size:20px;font-weight:900;color:#7c3aed;line-height:1">{nb_pieces}</div>
-        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px">Qté déclarée</div>
-      </div>
-      <div style="text-align:center;background:#fff;border-radius:8px;padding:6px 4px;border:1px solid #e2e8f0">
-        <div style="font-size:20px;font-weight:900;color:#1e3a8a;line-height:1">{nb_of_today}</div>
-        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px">OF déclarés</div>
-      </div>
-      <div style="text-align:center;background:#fff;border-radius:8px;padding:6px 4px;border:1px solid #e2e8f0">
-        <div style="font-size:20px;font-weight:900;color:#16a34a;line-height:1">{prod_s_total/3600:.2f}<span style="font-size:11px">h</span></div>
-        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px">Prod déclarée</div>
-      </div>
-      <div style="text-align:center;background:#fff;border-radius:8px;padding:6px 4px;border:1px solid #e2e8f0;grid-column:span 2">
-        <div style="font-size:20px;font-weight:900;color:#ef4444;line-height:1">{stop_s_total/60:.0f}<span style="font-size:11px"> min</span></div>
-        <div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:2px">Arrêts totaux</div>
-      </div>
-    </div>
+  <div style="background:#f8fafc;border:2px solid #e2e8f0;border-radius:8px;padding:5px 12px;display:flex;align-items:center;gap:0">
+    <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#1e3a8a;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:1px;flex-shrink:0;margin-right:10px">Poste entier</div>
+    {_poste_chips}
   </div>
-
 </div>'''
 
     tl_svg = timeline_svg()
@@ -2793,9 +2774,9 @@ select{cursor:default}
             </div>
           </div>
           <!-- Répartition temps (pie) -->
-          <div style="flex-shrink:0;text-align:center;border-left:1px solid #bae6fd;padding-left:10px;min-width:110px">
-            <div style="font-size:9px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Répartition</div>
-            <svg id="pie-poste-acc" viewBox="0 0 130 115" style="width:100px;height:auto;display:block;margin:0 auto"></svg>
+          <div style="flex-shrink:0;text-align:center;border-left:1px solid #bae6fd;padding-left:10px;min-width:140px">
+            <div style="font-size:10px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Répartition temps</div>
+            <svg id="pie-poste-acc" viewBox="0 0 130 115" style="width:160px;height:auto;display:block;margin:0 auto"></svg>
           </div>
         </div>
         <!-- Modèle horaire -->
