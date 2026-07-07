@@ -1000,7 +1000,8 @@ def api_start_prod():
     pre_shift_gap_s = 0.0
     shift_model_start_str = ""
     shift_model_start_iso = ""
-    if is_first_of and model_debut_dt:
+    last_end_is_today = bool(_S["last_of_end"] and _S["last_of_end"].date() == now.date())
+    if is_first_of and model_debut_dt and not last_end_is_today:
         diff = (now - model_debut_dt).total_seconds()
         if 120 < diff < 7200:
             pre_shift_gap_s = diff
@@ -4607,7 +4608,7 @@ async function confirmInterposte(){
   await pollState();
   await pollEvts();
   loadMainDecl(); // interposte row must appear in accueil without waiting
-  goTab('prod');
+  if(window._finPosteMode){window._finPosteMode=false;goTab('finposte');}else{goTab('prod');}
 }
 
 async function skipInterposte(){
@@ -4616,7 +4617,7 @@ async function skipInterposte(){
   if(_pendingGapS>30){
     await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inter_of_s:_pendingGapS,label:'Interposte',comment:''})});
   }
-  goTab('prod');
+  if(window._finPosteMode){window._finPosteMode=false;goTab('finposte');}else{goTab('prod');}
 }
 
 async function doCancelProd(){
@@ -5309,6 +5310,43 @@ function calcDur(d,f){
 // ── FIN DE POSTE ──
 async function doFinPoste(){
   if(ST.prod_active){toast('Terminer la production en cours avant de finir le poste','err');return;}
+  // Vérifier si du temps reste entre la dernière déclaration et la fin du modèle horaire
+  if(!window._finPosteMode){
+    const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+    const dk=DAY_KEYS[new Date().getDay()];
+    const model=_cfgModels&&_cfgModels.find(m=>m.nom===(ST.poste||''));
+    const jour=model&&model.jours&&model.jours[dk];
+    if(jour&&jour.fin&&_lastProdDeclTime){
+      const[fh,fm]=jour.fin.split(':').map(Number);
+      const modelFin=new Date();modelFin.setHours(fh,fm,0,0);
+      const gapS=(modelFin.getTime()-_lastProdDeclTime.getTime())/1000;
+      if(gapS>60){
+        // Ouvrir popup interposte pour ce temps restant
+        _pendingGapS=gapS;
+        window._finPosteMode=true;
+        document.getElementById('ip-duration').textContent=`Durée non déclarée : ${_fmtMin(gapS)} (fin OF → fin modèle)`;
+        document.getElementById('ip-custom').value='';
+        document.getElementById('ip-comment').value='';
+        const dh=String(_lastProdDeclTime.getHours()).padStart(2,'0'),dm=String(_lastProdDeclTime.getMinutes()).padStart(2,'0');
+        document.getElementById('ip-debut').value=dh+':'+dm;
+        document.getElementById('ip-fin').value=jour.fin;
+        const bc=document.getElementById('ip-btns');bc.innerHTML='';
+        _interposteLbls.forEach(lbl=>{
+          const b=document.createElement('button');b.className='btn btn-ghost';
+          b.style.cssText='font-size:12px;transition:all .15s;border:2px solid var(--border)';
+          b.textContent=lbl;
+          b.onclick=()=>{document.getElementById('ip-custom').value=lbl;
+            document.querySelectorAll('#ip-btns .btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
+            b.style.background='var(--navy)';b.style.color='#fff';b.style.borderColor='var(--navy)';
+            b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
+          };bc.appendChild(b);
+        });
+        openM('m-interposte');
+        return;
+      }
+    }
+  }
+  window._finPosteMode=false;
   goTab('finposte');
 }
 
