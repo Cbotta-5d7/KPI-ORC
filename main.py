@@ -2116,15 +2116,27 @@ def generate_dashboard_html():
             tc = trs_color(tv)
             trs_val = f'<span style="color:{tc};font-weight:900">{tv:.1f}%</span>'
         except: pass
+        kit_val = str(r[15] or "").strip()
+        if kit_val.lower() in ("oui","yes","1","true","x"): kit_disp = '<span style="color:#16a34a;font-weight:800">Oui</span>'
+        elif kit_val.lower() in ("non","no","0","false",""): kit_disp = '<span style="color:#94a3b8">Non</span>'
+        else: kit_disp = kit_val
+        cad_val = str(r[22] or "").strip()
+        cmt_val = str(r[35] or "").strip()
         prod_rows_html += f'''<tr>
           <td style="font-weight:800;font-size:12px;color:#1e293b">{r[1] or ""}</td>
+          <td style="color:#475569;font-size:11px">{r[9] or ""}</td>
+          <td style="color:#475569;font-size:11px">{r[7] or ""}</td>
+          <td style="text-align:center">{kit_disp}</td>
           <td style="color:#475569">{str(r[16] or "")[:5]}</td><td style="color:#475569">{str(r[17] or "")[:5]}</td>
           <td style="color:#475569">{r[18] or ""}</td>
-          <td style="color:#1e293b">{r[19] or "0"}</td><td style="font-weight:800;color:#0891b2">{r[21] or ""}</td>
+          <td style="color:#1e293b">{r[19] or "0"}</td>
+          <td style="color:#0369a1;font-size:11px">{cad_val}</td>
+          <td style="font-weight:800;color:#0891b2">{r[21] or ""}</td>
           <td>{trs_val}</td>
+          <td style="color:#64748b;font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{cmt_val}">{cmt_val}</td>
         </tr>'''
     if not prod_rows_html:
-        prod_rows_html = '<tr><td colspan="7" style="color:#94a3b8;padding:10px;text-align:center;font-size:12px">Aucune production déclarée</td></tr>'
+        prod_rows_html = '<tr><td colspan="12" style="color:#94a3b8;padding:10px;text-align:center;font-size:12px">Aucune production déclarée</td></tr>'
 
     # ── ALERT BANNER HTML ──
     alert_html = ""
@@ -2199,7 +2211,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 .hdr-time{{font-size:11px;opacity:.85}}
 .outer{{height:calc(100vh - 42px);display:flex;flex-direction:column;gap:6px;padding:6px;overflow:hidden}}
 /* MODE NORMAL */
-.main-grid{{flex:1;display:grid;grid-template-columns:200px 0.7fr 280px;gap:6px;overflow:hidden;min-height:0}}
+.main-grid{{flex:1;display:grid;grid-template-columns:200px 1fr 300px;gap:6px;overflow:hidden;min-height:0}}
 .panel{{background:#fff;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
 .panel-hdr{{padding:6px 12px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
 .panel-body{{flex:1;overflow-y:auto;padding:8px 12px;min-height:0}}
@@ -2266,7 +2278,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
         <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:10px 14px">
           <div class="trs-lbl">Taux de Rendement Synthétique</div>
           <div class="trs-num">{f"{trs_poste:.1f}%" if trs_poste >= 0 else "—"}</div>
-          {'<div class="trs-sub" style="font-weight:700;color:#0369a1">⏱ Modèle : ' + model_debut_dt.strftime("%H:%M") + ' → ' + (model_fin_dt.strftime("%H:%M") if model_fin_dt else "—") + '</div>' if model_debut_dt else ''}
+          {('<div class="trs-sub" style="font-weight:700;color:#0369a1">⏱ Entre ' + model_debut_dt.strftime("%Hh%M") + ' et ' + last_fin_dt.strftime("%Hh%M") + '</div>') if (model_debut_dt and last_fin_dt) else ('<div class="trs-sub" style="font-weight:700;color:#0369a1">⏱ Modèle : ' + model_debut_dt.strftime("%H:%M") + ' →</div>') if model_debut_dt else ''}
           <div class="trs-sub">Réf : {prod_ref:.0f} éq / 8h &nbsp;|&nbsp; {elapsed_str}</div>
           <div class="trs-sub" style="font-size:13px;font-weight:800;color:#0891b2;margin-top:4px">Éq. total : {tot_equiv:.1f}</div>
         </div>
@@ -2299,10 +2311,10 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 
       {f'''<!-- Productions déclarées -->
       <div class="panel" style="flex:1;min-height:0">
-        <div class="panel-hdr" style="background:#14532d;color:#fff">Productions déclarées — aujourd'hui</div>
+        <div class="panel-hdr" style="background:#14532d;color:#fff">Productions déclarées sur ce poste</div>
         <div class="panel-body" style="padding:0">
-          <table class="ktbl">
-            <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Éq.</th><th>TRS</th></tr></thead>
+          <table class="ktbl" style="font-size:11px">
+            <thead><tr><th>OF</th><th>Type</th><th>Format</th><th>Kit</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cadence/h</th><th>Éq.</th><th>TRS</th><th>Commentaire</th></tr></thead>
             <tbody>{prod_rows_html}</tbody>
           </table>
         </div>
