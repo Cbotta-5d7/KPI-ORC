@@ -5993,7 +5993,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,d.model_debut,d.model_fin);
   detailEl.innerHTML=`
     <div style="background:var(--navy);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <div><div style="font-size:15px;font-weight:800">📋 Rapport — ${esc(poste)}</div><div style="font-size:11px;opacity:.8">${esc(pilot)} · ${esc(date)}</div></div>
+      <div><div style="font-size:15px;font-weight:800">📋 Rapport — ${esc(poste)}</div><div style="font-size:11px;opacity:.8">${esc(pilot)} · ${esc(date)}${d.model_debut&&d.model_fin?' · Plage : '+esc(d.model_debut)+' → '+esc(d.model_fin):''}</div></div>
       <div style="text-align:right"><div style="font-size:26px;font-weight:900;color:${trsCol}">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div><div style="font-size:11px;opacity:.7">TRS Shift</div></div>
     </div>
     <!-- Graphiques + KPIs -->
