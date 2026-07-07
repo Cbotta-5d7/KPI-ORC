@@ -2031,14 +2031,14 @@ def generate_dashboard_html():
         h = int(size * 110 // 200)
         return (f'<svg width="{size}" height="{h}" viewBox="0 0 200 110">'
                 f'{bg}{fg}'
-                f'<text x="{cx}" y="{cy+6}" text-anchor="middle" font-size="28" font-weight="900" fill="{col}">{lbl_txt}</text>'
+                f'<text x="{cx}" y="{cy+6}" text-anchor="middle" font-size="35" font-weight="900" fill="{col}">{lbl_txt}</text>'
                 f'</svg>')
 
     # ── Pie chart SVG ──
     def pie_svg(prod_s, stop_s, size=180):
         total = prod_s + stop_s
         if total <= 0:
-            return f'<svg width="{size}" height="{size}"><text x="{size//2}" y="{size//2+6}" text-anchor="middle" font-size="16" fill="#475569">Pas de données</text></svg>'
+            return f'<svg width="{size}" height="{size}"><text x="{size//2}" y="{size//2+6}" text-anchor="middle" font-size="20" fill="#475569">Pas de données</text></svg>'
         cx = cy = size // 2
         r = size // 2 - 8
         def seg(start_a, end_a, color):
@@ -2050,8 +2050,8 @@ def generate_dashboard_html():
         prod_end = (prod_s / total) * 360 - 90
         parts = seg(-90, prod_end, "#22c55e") + seg(prod_end, 270, "#ef4444")
         pp = int(prod_s / total * 100)
-        lbl = f'<text x="{cx}" y="{cy-6}" text-anchor="middle" font-size="20" font-weight="900" fill="#fff">{pp}%</text>'
-        lbl += f'<text x="{cx}" y="{cy+16}" text-anchor="middle" font-size="13" fill="#cbd5e1">Prod</text>'
+        lbl = f'<text x="{cx}" y="{cy-6}" text-anchor="middle" font-size="25" font-weight="900" fill="#fff">{pp}%</text>'
+        lbl += f'<text x="{cx}" y="{cy+16}" text-anchor="middle" font-size="16" fill="#cbd5e1">Prod</text>'
         return f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">{parts}{lbl}</svg>'
 
     # ── Timeline SVG ──
@@ -2103,7 +2103,7 @@ def generate_dashboard_html():
             frac = (cur-win_start).total_seconds()/span
             x = int(frac*W)
             svg += f'<line x1="{x}" y1="{Y}" x2="{x}" y2="{Y+BH}" stroke="#94a3b8" stroke-width="1"/>'
-            svg += f'<text x="{x}" y="{Y-3}" font-size="12" fill="#475569" text-anchor="middle">{cur.strftime("%H:%M")}</text>'
+            svg += f'<text x="{x}" y="{Y-3}" font-size="15" fill="#475569" text-anchor="middle">{cur.strftime("%H:%M")}</text>'
             cur += datetime.timedelta(hours=step)
         now_x = int((now_ts-win_start).total_seconds()/span*W)
         svg += f'<line x1="{now_x}" y1="{Y-4}" x2="{now_x}" y2="{Y+BH+4}" stroke="#1e293b" stroke-width="2.5"/>'
@@ -2118,7 +2118,7 @@ def generate_dashboard_html():
             pct = dur / max_dur * 100 if max_dur > 0 else 0
             col = "#ef4444" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#38bdf8" if "nett" in lbl.lower() else "#a855f7"
             pareto_html += f'''<div style="margin-bottom:5px">
-              <div style="display:flex;justify-content:space-between;font-size:10px;color:#475569;margin-bottom:2px">
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:#475569;margin-bottom:2px">
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%">{lbl[:30]}</span>
                 <span style="font-weight:800;color:#1e293b;flex-shrink:0">{dur/60:.0f}m</span>
               </div>
@@ -2127,7 +2127,7 @@ def generate_dashboard_html():
               </div>
             </div>'''
     else:
-        pareto_html = '<div style="color:#475569;font-size:12px;padding:10px;text-align:center">Aucun arrêt enregistré</div>'
+        pareto_html = '<div style="color:#475569;font-size:15px;padding:10px;text-align:center">Aucun arrêt enregistré</div>'
 
     # ── Productions table ──
     prod_rows_html = ""
@@ -2145,28 +2145,28 @@ def generate_dashboard_html():
         cad_val = str(r[22] or "").strip()
         cmt_val = str(r[35] or "").strip()
         prod_rows_html += f'''<tr>
-          <td style="font-weight:800;font-size:12px;color:#1e293b">{r[1] or ""}</td>
-          <td style="color:#475569;font-size:11px">{r[9] or ""}</td>
-          <td style="color:#475569;font-size:11px">{r[7] or ""}</td>
+          <td style="font-weight:800;font-size:15px;color:#1e293b">{r[1] or ""}</td>
+          <td style="color:#475569;font-size:14px">{r[9] or ""}</td>
+          <td style="color:#475569;font-size:14px">{r[7] or ""}</td>
           <td style="text-align:center">{kit_disp}</td>
           <td style="color:#475569">{str(r[16] or "")[:5]}</td><td style="color:#475569">{str(r[17] or "")[:5]}</td>
           <td style="color:#475569">{r[18] or ""}</td>
           <td style="color:#1e293b">{r[19] or "0"}</td>
-          <td style="color:#0369a1;font-size:11px">{cad_val}</td>
+          <td style="color:#0369a1;font-size:14px">{cad_val}</td>
           <td style="font-weight:800;color:#0891b2">{r[21] or ""}</td>
           <td>{trs_val}</td>
-          <td style="color:#64748b;font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{cmt_val}">{cmt_val}</td>
+          <td style="color:#64748b;font-size:14px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{cmt_val}">{cmt_val}</td>
         </tr>'''
     if not prod_rows_html:
-        prod_rows_html = '<tr><td colspan="12" style="color:#94a3b8;padding:10px;text-align:center;font-size:12px">Aucune production déclarée</td></tr>'
+        prod_rows_html = '<tr><td colspan="12" style="color:#94a3b8;padding:10px;text-align:center;font-size:15px">Aucune production déclarée</td></tr>'
 
     # ── ALERT BANNER HTML ──
     alert_html = ""
     if has_alert:
         stops_html = "".join(
             f'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;background:rgba(255,255,255,.12);border-radius:8px;padding:6px 14px;margin:3px 0;min-width:240px">'
-            f'<span style="font-size:18px;font-weight:800;color:#fef2f2">{nm}</span>'
-            f'<span style="font-size:24px;font-weight:900;color:#fecaca;font-variant-numeric:tabular-nums">{int(el/60)}<span style="font-size:13px">min</span></span>'
+            f'<span style="font-size:22px;font-weight:800;color:#fef2f2">{nm}</span>'
+            f'<span style="font-size:30px;font-weight:900;color:#fecaca;font-variant-numeric:tabular-nums">{int(el/60)}<span style="font-size:16px">min</span></span>'
             f'</div>'
             for nm, el in all_stops_info
         )
@@ -2174,10 +2174,10 @@ def generate_dashboard_html():
 <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   background:linear-gradient(135deg,#7f0000 0%,#b91c1c 50%,#ef4444 100%);
   animation:pulse 1.2s ease-in-out infinite;border-bottom:6px solid #fca5a5">
-  <div style="font-size:42px;line-height:1;animation:wag .8s ease-in-out infinite">🚨</div>
-  <div style="font-size:40px;font-weight:900;letter-spacing:4px;margin:8px 0;text-shadow:0 4px 16px rgba(0,0,0,.4);color:#fff">ARRÊT{"S" if len(all_stops_info)>1 else ""} EN COURS</div>
+  <div style="font-size:52px;line-height:1;animation:wag .8s ease-in-out infinite">🚨</div>
+  <div style="font-size:50px;font-weight:900;letter-spacing:4px;margin:8px 0;text-shadow:0 4px 16px rgba(0,0,0,.4);color:#fff">ARRÊT{"S" if len(all_stops_info)>1 else ""} EN COURS</div>
   {stops_html}
-  <div style="font-size:42px;line-height:1;animation:wag .8s ease-in-out infinite reverse;margin-top:8px">🚨</div>
+  <div style="font-size:52px;line-height:1;animation:wag .8s ease-in-out infinite reverse;margin-top:8px">🚨</div>
 </div>'''
     else:
         # ── PROD EN COURS + PRODUCTIONS DU POSTE ──
@@ -2193,8 +2193,8 @@ def generate_dashboard_html():
                                    ("Kit", kit_now, kit_col), ("Début", of_debut_str, "#1e293b"),
                                    ("Écoulé", of_elapsed_str, "#0891b2"), ("Arrêts", of_stop_min+" min", "#ef4444")]:
             _of_chips += (f'<div style="text-align:center;flex-shrink:0">'
-                          f'<div style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase">{_lbl}</div>'
-                          f'<div style="font-size:12px;font-weight:800;color:{_col}">{_val}</div></div>')
+                          f'<div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">{_lbl}</div>'
+                          f'<div style="font-size:15px;font-weight:800;color:{_col}">{_val}</div></div>')
         _poste_chips = ""
         for _i, (_lbl, _val, _col) in enumerate([("Éq.", f"{tot_equiv:.1f}", "#0891b2"),
                                                    ("Qté", str(nb_pieces), "#7c3aed"),
@@ -2203,20 +2203,20 @@ def generate_dashboard_html():
                                                    ("Arrêts", f"{stop_s_total/60:.0f}min", "#ef4444")]):
             _bl = "border-left:1px solid #e2e8f0;" if _i > 0 else ""
             _poste_chips += (f'<div style="text-align:center;flex:1;padding:0 4px;{_bl}">'
-                             f'<div style="font-size:16px;font-weight:900;color:{_col};line-height:1">{_val}</div>'
-                             f'<div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:1px">{_lbl}</div></div>')
+                             f'<div style="font-size:20px;font-weight:900;color:{_col};line-height:1">{_val}</div>'
+                             f'<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:1px">{_lbl}</div></div>')
         alert_html = f'''
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex-shrink:0">
   <div style="background:#f0fdf4;border:2px solid {of_border_col};border-radius:8px;padding:5px 12px;display:flex;align-items:center;gap:14px">
     <div style="flex-shrink:0">
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:{prod_status_col};letter-spacing:1px">{prod_status_label}</div>
-      <div style="font-size:20px;font-weight:900;color:#1e293b;line-height:1.1">OF {of_num_now}</div>
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:{prod_status_col};letter-spacing:1px">{prod_status_label}</div>
+      <div style="font-size:25px;font-weight:900;color:#1e293b;line-height:1.1">OF {of_num_now}</div>
     </div>
     <div style="height:32px;width:1px;background:#d1fae5;flex-shrink:0"></div>
     {_of_chips}
   </div>
   <div style="background:#f8fafc;border:2px solid #e2e8f0;border-radius:8px;padding:5px 12px;display:flex;align-items:center;gap:0">
-    <div style="font-size:9px;font-weight:800;text-transform:uppercase;color:#1e3a8a;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:1px;flex-shrink:0;margin-right:10px">Poste entier</div>
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#1e3a8a;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:1px;flex-shrink:0;margin-right:10px">Poste entier</div>
     {_poste_chips}
   </div>
 </div>'''
@@ -2232,35 +2232,35 @@ def generate_dashboard_html():
 <title>Dashboard Encadrant — ORC</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1e293b;font-size:13px}}
+html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1e293b;font-size:16px}}
 .hdr{{height:42px;background:#1e3a8a;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0;border-bottom:2px solid #3b82f6}}
-.hdr-title{{font-size:15px;font-weight:900;display:flex;align-items:center;gap:10px}}
-.hdr-badge{{background:rgba(255,255,255,.15);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700}}
+.hdr-title{{font-size:19px;font-weight:900;display:flex;align-items:center;gap:10px}}
+.hdr-badge{{background:rgba(255,255,255,.15);border-radius:6px;padding:3px 10px;font-size:15px;font-weight:700}}
 .hdr-badge.green{{background:#15803d}}
 .hdr-badge.gray{{background:#475569}}
-.hdr-time{{font-size:11px;opacity:.85}}
+.hdr-time{{font-size:14px;opacity:.85}}
 .outer{{height:calc(100vh - 42px);display:flex;flex-direction:column;gap:6px;padding:6px;overflow:hidden}}
 /* MODE NORMAL */
 .main-grid{{flex:1;display:grid;grid-template-columns:200px 1fr 300px;gap:6px;overflow:hidden;min-height:0}}
 .panel{{background:#fff;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
-.panel-hdr{{padding:6px 12px;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
+.panel-hdr{{padding:6px 12px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
 .panel-body{{flex:1;overflow-y:auto;padding:8px 12px;min-height:0}}
 /* TRS PANEL */
-.trs-num{{font-size:34px;font-weight:900;line-height:1;color:{trs_col};text-align:center}}
-.trs-lbl{{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:4px}}
-.trs-sub{{font-size:11px;color:#64748b;text-align:center;margin-top:3px}}
+.trs-num{{font-size:42px;font-weight:900;line-height:1;color:{trs_col};text-align:center}}
+.trs-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:4px}}
+.trs-sub{{font-size:14px;color:#64748b;text-align:center;margin-top:3px}}
 /* STAT CARDS */
 .stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:6px}}
 .stat-card{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;text-align:center}}
-.stat-val{{font-size:26px;font-weight:900;line-height:1}}
-.stat-lbl{{font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:3px}}
+.stat-val{{font-size:32px;font-weight:900;line-height:1}}
+.stat-lbl{{font-size:12px;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:3px}}
 /* TIMELINE CELL */
 .tl-cell{{background:#fff;border-radius:10px;padding:6px 10px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
-.tl-lbl{{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:4px;display:flex;justify-content:space-between}}
-.tl-legend{{display:flex;gap:10px;font-size:11px;color:#64748b;margin-top:4px;flex-wrap:wrap}}
+.tl-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:4px;display:flex;justify-content:space-between}}
+.tl-legend{{display:flex;gap:10px;font-size:14px;color:#64748b;margin-top:4px;flex-wrap:wrap}}
 /* TABLE */
-.ktbl{{width:100%;border-collapse:collapse;font-size:12px}}
-.ktbl th{{background:#f1f5f9;padding:5px 8px;font-weight:800;text-align:center;position:sticky;top:0;font-size:10px;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0}}
+.ktbl{{width:100%;border-collapse:collapse;font-size:15px}}
+.ktbl th{{background:#f1f5f9;padding:5px 8px;font-weight:800;text-align:center;position:sticky;top:0;font-size:12px;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0}}
 .ktbl td{{padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:center;color:#1e293b}}
 .ktbl tr:hover td{{background:#f8fafc}}
 /* ANIMATIONS */
@@ -2277,8 +2277,8 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     &#127981; Dashboard Encadrant — ORC
   </div>
   <div style="display:flex;align-items:center;gap:18px">
-    {f'<div style="display:flex;flex-direction:column;align-items:center;line-height:1.1"><span style="font-size:18px;font-weight:900;color:#fff;letter-spacing:.5px">👤 {pilot_now}</span><span style="font-size:11px;font-weight:700;color:#93c5fd;text-transform:uppercase">{poste_now}</span></div>' if pilot_now else ''}
-    {f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px;text-align:center"><div style="font-size:10px;color:#93c5fd;font-weight:700;text-transform:uppercase">Modèle horaire</div><div style="font-size:14px;font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} → {model_fin_dt.strftime("%H:%M")}</div></div>' if (model_debut_dt and model_fin_dt) else (f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px"><div style="font-size:10px;color:#93c5fd;font-weight:700">Modèle</div><div style="font-size:14px;font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} →</div></div>' if model_debut_dt else '')}
+    {f'<div style="display:flex;flex-direction:column;align-items:center;line-height:1.1"><span style="font-size:22px;font-weight:900;color:#fff;letter-spacing:.5px">👤 {pilot_now}</span><span style="font-size:14px;font-weight:700;color:#93c5fd;text-transform:uppercase">{poste_now}</span></div>' if pilot_now else ''}
+    {f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px;text-align:center"><div style="font-size:12px;color:#93c5fd;font-weight:700;text-transform:uppercase">Modèle horaire</div><div style="font-size:18px;font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} → {model_fin_dt.strftime("%H:%M")}</div></div>' if (model_debut_dt and model_fin_dt) else (f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px"><div style="font-size:12px;color:#93c5fd;font-weight:700">Modèle</div><div style="font-size:18px;font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} →</div></div>' if model_debut_dt else '')}
     {'<span class="hdr-badge green">▶ PROD — OF ' + of_num_now + '</span>' if prod_active else '<span class="hdr-badge gray">○ En attente</span>'}
     <span class="hdr-time">🔄 15s | {gen_time}</span>
   </div>
@@ -2293,8 +2293,8 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     <div class="stat-card"><div class="stat-val" style="color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="stat-lbl">TRS Poste</div></div>
     <div class="stat-card"><div class="stat-val" style="color:#7c3aed">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div></div>
     <div class="stat-card"><div class="stat-val" style="color:#0891b2">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:14px">min</span></div><div class="stat-lbl">Arrêts</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:#16a34a">{prod_s_total/60:.0f}<span style="font-size:14px">min</span></div><div class="stat-lbl">Production</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:18px">min</span></div><div class="stat-lbl">Arrêts</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#16a34a">{prod_s_total/60:.0f}<span style="font-size:18px">min</span></div><div class="stat-lbl">Production</div></div>
   </div>''' if has_alert else ''}
 
   {'<!-- MODE NORMAL -->' if not has_alert else ''}
@@ -2308,7 +2308,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
         <div class="panel-hdr" style="background:#1a1f5e;color:#fff">TRS Poste en cours</div>
         <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px 10px">
           {gauge_svg(trs_poste, 190)}
-          {('<div style="font-size:11px;font-weight:800;color:#0369a1;text-align:center;margin-top:2px">⏱ Entre ' + model_debut_dt.strftime("%Hh%M") + ' et ' + last_fin_dt.strftime("%Hh%M") + '</div>') if (model_debut_dt and last_fin_dt) else ('<div style="font-size:11px;color:#64748b;text-align:center">⏱ Modèle : ' + model_debut_dt.strftime("%H:%M") + ' →</div>') if model_debut_dt else '<div style="font-size:11px;color:#94a3b8;text-align:center">Aucune donnée</div>'}
+          {('<div style="font-size:14px;font-weight:800;color:#0369a1;text-align:center;margin-top:2px">⏱ Entre ' + model_debut_dt.strftime("%Hh%M") + ' et ' + last_fin_dt.strftime("%Hh%M") + '</div>') if (model_debut_dt and last_fin_dt) else ('<div style="font-size:14px;color:#64748b;text-align:center">⏱ Modèle : ' + model_debut_dt.strftime("%H:%M") + ' →</div>') if model_debut_dt else '<div style="font-size:14px;color:#94a3b8;text-align:center">Aucune donnée</div>'}
         </div>
       </div>
 
@@ -2319,14 +2319,14 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
           {pie_svg(prod_s_total, stop_s_total, 110)}
           <div style="display:flex;flex-direction:column;gap:6px">
             <div>
-              <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700">Production</div>
-              <div style="font-size:24px;font-weight:900;color:#22c55e">{prod_pct}%</div>
-              <div style="font-size:11px;color:#64748b">{prod_s_total/60:.0f} min</div>
+              <div style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:700">Production</div>
+              <div style="font-size:30px;font-weight:900;color:#22c55e">{prod_pct}%</div>
+              <div style="font-size:14px;color:#64748b">{prod_s_total/60:.0f} min</div>
             </div>
             <div>
-              <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700">Arrêts</div>
-              <div style="font-size:24px;font-weight:900;color:#ef4444">{100-prod_pct}%</div>
-              <div style="font-size:11px;color:#64748b">{stop_s_total/60:.0f} min</div>
+              <div style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:700">Arrêts</div>
+              <div style="font-size:30px;font-weight:900;color:#ef4444">{100-prod_pct}%</div>
+              <div style="font-size:14px;color:#64748b">{stop_s_total/60:.0f} min</div>
             </div>
           </div>
         </div>
@@ -2341,7 +2341,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
       <div class="panel" style="flex:1;min-height:0">
         <div class="panel-hdr" style="background:#14532d;color:#fff">Productions déclarées sur ce poste</div>
         <div class="panel-body" style="padding:0">
-          <table class="ktbl" style="font-size:11px">
+          <table class="ktbl" style="font-size:14px">
             <thead><tr><th>OF</th><th>Type</th><th>Format</th><th>Kit</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cadence/h</th><th>Éq.</th><th>TRS</th><th>Commentaire</th></tr></thead>
             <tbody>{prod_rows_html}</tbody>
           </table>
@@ -2369,7 +2369,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
   <div class="tl-cell" style="flex-shrink:0">
     <div class="tl-lbl">
       <span>Timeline du poste — {poste_now or "en cours"}</span>
-      <span style="font-size:12px">{(model_debut_dt or shift_start_dt).strftime("%H:%M") if (model_debut_dt or shift_start_dt) else "—"} → maintenant</span>
+      <span style="font-size:15px">{(model_debut_dt or shift_start_dt).strftime("%H:%M") if (model_debut_dt or shift_start_dt) else "—"} → maintenant</span>
     </div>
     {tl_svg}
     <div class="tl-legend">
@@ -2695,7 +2695,10 @@ select{cursor:default}
     </div>
     <button class="btn-login" onclick="doLogin()">Valider</button>
     <div class="ln-err" id="ln-err"></div>
-    <div style="margin-top:14px;text-align:center;font-size:11px;color:#94a3b8">
+    <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,.15);padding-top:12px;text-align:center">
+      <button onclick="doGuestLogin()" style="background:rgba(255,255,255,.12);color:#cbd5e1;border:1px solid rgba(255,255,255,.25);border-radius:7px;padding:7px 18px;font-size:12px;cursor:pointer;width:100%;font-weight:600">👁 Consulter en tant qu'invité</button>
+    </div>
+    <div style="margin-top:10px;text-align:center;font-size:11px;color:#94a3b8">
       Prod bloquée ? <a href="/reset" style="color:#dc2626;font-weight:700">Cliquer ici pour réinitialiser</a>
     </div>
   </div>
@@ -2708,6 +2711,7 @@ select{cursor:default}
     <div class="hdr-tabs">
       <button class="htab on" id="ht-main" onclick="goTab('main')">Accueil</button>
       <button class="htab prod-on" id="ht-prod" onclick="goTab('prod')">▶ Prod en cours</button>
+      <span id="ht-guest-badge" style="display:none;font-size:11px;font-weight:700;color:#94a3b8;padding:4px 10px;border:1px solid #94a3b8;border-radius:12px;margin-left:4px">👁 Invité</span>
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📊 KPI</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports</button>
@@ -2735,7 +2739,7 @@ select{cursor:default}
       ⚠ Fichier Excel ouvert par un autre programme — impossible de lire/écrire les données
     </div>
     <div class="main-hdr">
-      <div class="mbtns" style="margin-left:0">
+      <div class="mbtns" style="margin-left:0" id="main-action-btns">
         <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:14px;padding:10px 18px;font-weight:800">▶ Démarrer production</button>
         <button class="btn btn-amber" onclick="doFinPoste()" style="font-size:14px;padding:10px 18px;font-weight:800">🏁 Fin de poste</button>
         <button class="btn btn-sec" onclick="loadMainDecl()" style="font-size:12px;padding:8px 14px">↺ Actualiser</button>
@@ -3139,9 +3143,30 @@ select{cursor:default}
       <div style="margin-bottom:10px">
         <input id="ip-comment" placeholder="Commentaire (optionnel)" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
       </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn btn-sec" onclick="skipInterposte()">Ignorer</button>
-        <button class="btn btn-prim" onclick="confirmInterposte()">✓ Valider</button>
+      <!-- Formulaire modification plage horaire (caché par défaut) -->
+      <div id="ip-model-form" style="display:none;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:10px;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:700;color:#0369a1;margin-bottom:8px;text-transform:uppercase">Modifier la plage horaire du poste</div>
+        <div style="display:flex;gap:10px;margin-bottom:8px">
+          <div style="flex:1">
+            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Début modèle</label>
+            <input type="time" id="ip-model-debut" style="width:100%;padding:6px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:13px;font-weight:700">
+          </div>
+          <div style="flex:1">
+            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Fin modèle</label>
+            <input type="time" id="ip-model-fin" style="width:100%;padding:6px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:13px;font-weight:700">
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;justify-content:flex-end">
+          <button class="btn btn-sec" style="font-size:11px;padding:4px 10px" onclick="document.getElementById('ip-model-form').style.display='none'">Annuler</button>
+          <button class="btn btn-prim" style="font-size:11px;padding:4px 10px" onclick="ipConfirmModifyModel()">✓ Appliquer</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
+        <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:#0369a1;border-color:#bae6fd" onclick="ipShowModifyModel()">✏ Modifier plage horaire</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sec" onclick="skipInterposte()">Ignorer</button>
+          <button class="btn btn-prim" onclick="confirmInterposte()">✓ Valider</button>
+        </div>
       </div>
     </div>
   </div>
@@ -3816,6 +3841,29 @@ async function doLogin() {
   }
 }
 
+function doGuestLogin(){
+  window._guestMode=true;
+  document.getElementById('v-login').classList.remove('on');
+  const app=document.getElementById('app');
+  app.style.display='flex';app.classList.remove('hidden');
+  setToday();
+  loadCfg();
+  _applyGuestMode();
+  goTab('main');
+  loadMainDecl();
+}
+
+function _applyGuestMode(){
+  const actionBtns=document.getElementById('main-action-btns');
+  if(actionBtns) actionBtns.style.display='none';
+  const prodTab=document.getElementById('ht-prod');
+  if(prodTab) prodTab.style.display='none';
+  const guestBadge=document.getElementById('ht-guest-badge');
+  if(guestBadge) guestBadge.style.display='';
+  const pilotLbl=document.getElementById('hdr-pilot-lbl');
+  if(pilotLbl) pilotLbl.textContent='👁 Invité';
+}
+
 function _getPobModelText(poste) {
   if(!poste||!_cfgModels) return poste||'—';
   const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
@@ -3904,11 +3952,16 @@ async function doLogout() {
 
 function resetToLogin() {
   ST={}; _curStopKey=null;
+  window._guestMode=false;
   document.getElementById('app').style.display='none';
   document.getElementById('ln-pw').value='';
   document.getElementById('ln-err').textContent='';
   document.getElementById('v-login').classList.add('on');
   _settingsUnlocked = false;
+  // Restaurer les éléments cachés en mode invité
+  const actionBtns=document.getElementById('main-action-btns');if(actionBtns) actionBtns.style.display='';
+  const prodTab=document.getElementById('ht-prod');if(prodTab) prodTab.style.display='';
+  const guestBadge=document.getElementById('ht-guest-badge');if(guestBadge) guestBadge.style.display='none';
   // Reset horaires login aux valeurs config
   const _lnM=document.getElementById('ln-model');
   if(_lnM) _lnM.value='';
@@ -3926,6 +3979,7 @@ function setToday() {
 
 // ── NAVIGATION ──
 function goTab(tab) {
+  if(window._guestMode && (tab==='prod'||tab==='finposte')){toast('Mode consultation — accès restreint','warn');return;}
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   document.querySelectorAll('.htab').forEach(t=>t.classList.remove('on'));
@@ -4584,6 +4638,73 @@ async function psConfirmModifyModel(){
   await pollState();
   toast('Horaires mis à jour, OF rétro-daté','ok');
   goTab('prod');
+}
+
+function ipShowModifyModel(){
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=DAY_KEYS[new Date().getDay()];
+  const model=_cfgModels&&_cfgModels.find(m=>m.nom===(ST.poste||''));
+  const jour=model&&model.jours&&model.jours[dk];
+  document.getElementById('ip-model-debut').value=(jour&&jour.debut)||'';
+  document.getElementById('ip-model-fin').value=(jour&&jour.fin)||'';
+  document.getElementById('ip-model-form').style.display='block';
+}
+
+async function ipConfirmModifyModel(){
+  const newDebut=document.getElementById('ip-model-debut').value;
+  const newFin=document.getElementById('ip-model-fin').value;
+  if(!newDebut||!newFin){toast('Remplissez le début et la fin','warn');return;}
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=DAY_KEYS[new Date().getDay()];
+  const mi=_cfgModels.findIndex(m=>m.nom===(ST.poste||''));
+  if(mi>=0){
+    if(!_cfgModels[mi].jours)_cfgModels[mi].jours={};
+    if(!_cfgModels[mi].jours[dk])_cfgModels[mi].jours[dk]={};
+    _cfgModels[mi].jours[dk].debut=newDebut;
+    _cfgModels[mi].jours[dk].fin=newFin;
+    await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,modeles_horaires:_cfgModels})});
+  }
+  document.getElementById('ip-model-form').style.display='none';
+  // Recalculer le gap selon le contexte (fin de poste ou inter-OF)
+  if(window._finPosteMode){
+    // Gap = fin nouveau modèle - dernière déclaration
+    if(_lastProdDeclTime){
+      const[fh,fm]=newFin.split(':').map(Number);
+      const modelFin=new Date();modelFin.setHours(fh,fm,0,0);
+      const newGapS=(modelFin.getTime()-_lastProdDeclTime.getTime())/1000;
+      if(newGapS>60){
+        _pendingGapS=newGapS;
+        document.getElementById('ip-duration').textContent=`Durée non déclarée : ${_fmtMin(newGapS)} (fin OF → fin modèle)`;
+        const dh=String(_lastProdDeclTime.getHours()).padStart(2,'0'),dm=String(_lastProdDeclTime.getMinutes()).padStart(2,'0');
+        document.getElementById('ip-debut').value=dh+':'+dm;
+        document.getElementById('ip-fin').value=newFin;
+        toast('Plage mise à jour','ok');
+        return; // garder popup ouverte
+      }
+    }
+    // Pas d'écart → aller directement à fin de poste
+    window._finPosteMode=false;
+    closeM('m-interposte');
+    goTab('finposte');
+  } else {
+    // Contexte interposte normal : recalculer depuis model debut vers maintenant
+    const[dh2,dm2]=newDebut.split(':').map(Number);
+    const modelDebut=new Date();modelDebut.setHours(dh2,dm2,0,0);
+    const now2=new Date();
+    const newGapS=(now2.getTime()-modelDebut.getTime())/1000;
+    if(newGapS>60){
+      _pendingGapS=newGapS;
+      document.getElementById('ip-duration').textContent=`Durée : ${_fmtMin(newGapS)} (début de poste → maintenant)`;
+      document.getElementById('ip-debut').value=newDebut;
+      const nh=String(now2.getHours()).padStart(2,'0'),nm=String(now2.getMinutes()).padStart(2,'0');
+      document.getElementById('ip-fin').value=nh+':'+nm;
+      toast('Plage mise à jour','ok');
+      return; // garder popup ouverte
+    }
+    // Pas d'écart
+    closeM('m-interposte');
+    goTab('prod');
+  }
 }
 
 async function confirmInterposte(){
