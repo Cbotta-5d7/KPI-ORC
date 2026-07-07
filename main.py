@@ -74,8 +74,13 @@ def get_events_list():
         return custom
     return [{"label": e[0], "key": e[1], "cat": e[2]} for e in EVENTS]
 
+def _get_or_create_listes_ws(wb):
+    if "Listes" not in wb.sheetnames:
+        wb.create_sheet("Listes")
+    return wb["Listes"]
+
 def write_events_to_excel(ev_list):
-    """Écrit la liste des arrêts dans l'onglet Listes col K (format: label|cat)."""
+    """Écrit la liste des arrêts dans l'onglet Listes col K=label, L=cat."""
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return
     def _bg():
@@ -83,16 +88,59 @@ def write_events_to_excel(ev_list):
             with _excel_lock:
                 wb = _get_wb(path)
                 if wb is None: return
-                if "Listes" not in wb.sheetnames:
-                    wb.create_sheet("Listes")
-                ws = wb["Listes"]
+                ws = _get_or_create_listes_ws(wb)
                 ws.cell(1, 11).value = "Arrêts"
-                for ri in range(2, ws.max_row + 2):
+                ws.cell(1, 12).value = "Type arrêt"
+                max_r = max(ws.max_row, len(ev_list) + 2)
+                for ri in range(2, max_r + 2):
                     ws.cell(ri, 11).value = None
+                    ws.cell(ri, 12).value = None
                 for ri, ev in enumerate(ev_list, start=2):
-                    ws.cell(ri, 11).value = f"{ev.get('label','')}|{ev.get('cat','pb')}"
+                    ws.cell(ri, 11).value = ev.get("label","")
+                    ws.cell(ri, 12).value = ev.get("cat","pb")
                 _safe_excel_save(wb, path)
             threading.Thread(target=load_lists, daemon=True).start()
+        except: pass
+    threading.Thread(target=_bg, daemon=True).start()
+
+def write_interposte_to_excel(labels):
+    """Écrit les labels interposte dans l'onglet Listes col M."""
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path): return
+    def _bg():
+        try:
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None: return
+                ws = _get_or_create_listes_ws(wb)
+                ws.cell(1, 13).value = "Interposte"
+                max_r = max(ws.max_row, len(labels) + 2)
+                for ri in range(2, max_r + 2):
+                    ws.cell(ri, 13).value = None
+                for ri, lbl in enumerate(labels, start=2):
+                    ws.cell(ri, 13).value = lbl
+                _safe_excel_save(wb, path)
+        except: pass
+    threading.Thread(target=_bg, daemon=True).start()
+
+_ARRETS_PREVUS_KEYS = ["clean_short_min","clean_long_min","clean_grand_min","meeting_tol_min","pause_min"]
+
+def write_arrets_prevus_to_excel():
+    """Écrit les budgets arrêts prévus dans l'onglet Listes col N (clé=valeur)."""
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path): return
+    def _bg():
+        try:
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None: return
+                ws = _get_or_create_listes_ws(wb)
+                ws.cell(1, 14).value = "Arrêts prévus"
+                for ri in range(2, len(_ARRETS_PREVUS_KEYS) + 3):
+                    ws.cell(ri, 14).value = None
+                for ri, k in enumerate(_ARRETS_PREVUS_KEYS, start=2):
+                    ws.cell(ri, 14).value = f"{k}={cfg.get(k, 0)}"
+                _safe_excel_save(wb, path)
         except: pass
     threading.Thread(target=_bg, daemon=True).start()
 
@@ -470,21 +518,43 @@ def load_lists():
                         vals.append(str(v).strip())
                 if vals:
                     _lists[list_key] = vals
-            # Col K (11): liste des arrêts configurables (format: "label|cat")
+            # Col K (11)=label, L (12)=cat : liste des arrêts configurables
             evts_k = []
             for ri in range(2, ws.max_row+1):
-                v = ws.cell(ri, 11).value
-                if v is not None and str(v).strip():
-                    parts = str(v).strip().split("|")
-                    lbl = parts[0].strip()
-                    cat = parts[1].strip() if len(parts) > 1 else "pb"
-                    if lbl:
-                        key = lbl.lower().replace(" ","_").replace("/","_").replace("é","e").replace("è","e").replace("ê","e").replace("à","a").replace("ç","c")[:28]
-                        evts_k.append({"label": lbl, "key": key, "cat": cat})
+                lbl_v = ws.cell(ri, 11).value
+                cat_v = ws.cell(ri, 12).value
+                if lbl_v is not None and str(lbl_v).strip():
+                    lbl = str(lbl_v).strip()
+                    # Rétro-compat : ancien format "label|cat" en col K seule
+                    if "|" in lbl and not cat_v:
+                        parts = lbl.split("|"); lbl = parts[0].strip(); cat_v = parts[1].strip()
+                    cat = str(cat_v or "pb").strip() or "pb"
+                    key = lbl.lower().replace(" ","_").replace("/","_").replace("é","e").replace("è","e").replace("ê","e").replace("à","a").replace("ç","c")[:28]
+                    evts_k.append({"label": lbl, "key": key, "cat": cat})
             if evts_k:
                 _lists["arrêts_k"] = evts_k
                 cfg["events_list"] = evts_k
                 save_cfg_data()
+            # Col M (13) : labels interposte
+            ipl = []
+            for ri in range(2, ws.max_row+1):
+                v = ws.cell(ri, 13).value
+                if v is not None and str(v).strip():
+                    ipl.append(str(v).strip())
+            if ipl:
+                cfg["interposte_labels"] = ipl
+                save_cfg_data()
+            # Col N (14) : arrêts prévus (format "clé=valeur")
+            for ri in range(2, ws.max_row+1):
+                v = ws.cell(ri, 14).value
+                if v is not None and str(v).strip():
+                    try:
+                        k, val = str(v).strip().split("=", 1)
+                        k = k.strip(); val = val.strip()
+                        if k in _ARRETS_PREVUS_KEYS:
+                            cfg[k] = float(val)
+                    except: pass
+            save_cfg_data()
         wb.close()
     except: pass
 
@@ -1086,6 +1156,7 @@ def api_interposte_cfg_post():
     labels = data.get("labels",[])
     cfg["interposte_labels"] = [str(l) for l in labels if str(l).strip()]
     save_cfg_data()
+    write_interposte_to_excel(cfg["interposte_labels"])
     return jsonify({"ok":True})
 
 @flask_app.route('/api/end_prod', methods=['POST'])
@@ -1454,6 +1525,9 @@ def api_settings():
     if "pilot_passwords" in data:
         cfg["pilot_passwords"] = data["pilot_passwords"]
     save_cfg_data()
+    # Persister arrêts prévus dans Excel si concerné
+    if any(k in data for k in _ARRETS_PREVUS_KEYS):
+        write_arrets_prevus_to_excel()
     return jsonify({"ok":True})
 
 @flask_app.route('/api/set_db', methods=['POST'])
@@ -1769,7 +1843,7 @@ def api_session_report():
             try:
                 dur_s = _hms_to_sec(str(r[18] or "00:00:00"))
                 stop_s += dur_s
-                evt_rows.append({"type":str(r[0] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or "")})
+                evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or "")})
             except: pass
     debut_str, fin_str = _get_model_day_cfg(poste)
     model_debut_s = _hms_to_sec(debut_str) if debut_str else None
@@ -3201,6 +3275,15 @@ select{cursor:default}
       <label style="font-size:11px;font-weight:600;color:var(--gray)">Du <input type="date" id="hist-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;margin-left:4px"></label>
       <label style="font-size:11px;font-weight:600;color:var(--gray)">Au <input type="date" id="hist-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;margin-left:4px"></label>
       <button class="btn btn-primary" onclick="loadHist()" style="padding:5px 12px;font-size:12px">Charger</button>
+      <div style="width:1px;height:22px;background:var(--border);flex-shrink:0"></div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:10px;font-weight:700;color:var(--gray);text-transform:uppercase">Filtrer :</span>
+        <button class="hf-btn" data-hf="production" onclick="toggleHistFilter(this)" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1.5px solid #16a34a;color:#16a34a;background:none;cursor:pointer;font-weight:700;transition:all .15s">🏭 Production</button>
+        <button class="hf-btn" data-hf="arret" onclick="toggleHistFilter(this)" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1.5px solid #dc2626;color:#dc2626;background:none;cursor:pointer;font-weight:700;transition:all .15s">⛔ Arrêts</button>
+        <button class="hf-btn" data-hf="nettoyage" onclick="toggleHistFilter(this)" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1.5px solid #0891b2;color:#0891b2;background:none;cursor:pointer;font-weight:700;transition:all .15s">🧹 Nettoyage</button>
+        <button class="hf-btn" data-hf="pause" onclick="toggleHistFilter(this)" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1.5px solid #f59e0b;color:#f59e0b;background:none;cursor:pointer;font-weight:700;transition:all .15s">⏸ Pause</button>
+        <button class="hf-btn" data-hf="reunion" onclick="toggleHistFilter(this)" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1.5px solid #8b5cf6;color:#8b5cf6;background:none;cursor:pointer;font-weight:700;transition:all .15s">👥 Réunion</button>
+      </div>
     </div>
     <div style="flex:1;overflow-y:auto">
       <table class="ktbl"><thead><tr id="hist-hd"></tr></thead><tbody id="hist-bd"></tbody></table>
@@ -3980,6 +4063,7 @@ function setToday() {
 // ── NAVIGATION ──
 function goTab(tab) {
   if(window._guestMode && (tab==='prod'||tab==='finposte')){toast('Mode consultation — accès restreint','warn');return;}
+  const _prevTab=_curTab;
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   document.querySelectorAll('.htab').forEach(t=>t.classList.remove('on'));
@@ -3990,6 +4074,7 @@ function goTab(tab) {
   const ntEl=document.getElementById(nt[tab]);
   if(ntEl) ntEl.classList.add('on');
   if(tab==='history') loadHist();
+  else if(_prevTab==='history') _resetHistFilters();
   if(tab==='finposte') loadFPData();
   if(tab==='rapports') loadRapports();
   if(tab==='main') { loadMainDecl(); }
@@ -5951,6 +6036,65 @@ async function loadKPI(){
 }
 
 // ── HISTORY ──
+let _histFilters=new Set(); // filtres actifs
+
+function toggleHistFilter(btn){
+  const key=btn.dataset.hf;
+  if(_histFilters.has(key)){
+    _histFilters.delete(key);
+    btn.style.background='none';
+    btn.style.color=btn.style.borderColor; // remettre couleur texte
+    btn.style.opacity='1';
+  } else {
+    _histFilters.add(key);
+    btn.style.background=btn.style.borderColor;
+    btn.style.color='#fff';
+  }
+  _applyHistFilter();
+}
+
+function _histMatchFilter(r){
+  if(!_histFilters.size) return true;
+  const t=String(r.type||r._rowType||'').toLowerCase();
+  const isProd=r._rowType==='prod'||t==='production'||t==='prod'||t==='';
+  if(_histFilters.has('production')&&isProd) return true;
+  if(_histFilters.has('nettoyage')&&(t.includes('nettoyage')||t.includes('nett'))) return true;
+  if(_histFilters.has('pause')&&t.includes('pause')) return true;
+  if(_histFilters.has('reunion')&&(t.includes('réunion')||t.includes('reunion')||t.includes('meeting'))) return true;
+  if(_histFilters.has('arret')&&!isProd&&!t.includes('nettoyage')&&!t.includes('pause')&&!(t.includes('réunion')||t.includes('reunion')||t.includes('meeting'))) return true;
+  return false;
+}
+
+function _applyHistFilter(){
+  const rows=document.querySelectorAll('#hist-bd tr[data-hftype]');
+  rows.forEach(tr=>{
+    const t=tr.dataset.hftype||'';
+    const isProd=t==='prod';
+    const isNett=t.includes('nettoyage')||t.includes('nett');
+    const isPause=t.includes('pause');
+    const isReunion=t.includes('réunion')||t.includes('reunion')||t.includes('meeting');
+    const isArret=!isProd&&!isNett&&!isPause&&!isReunion;
+    let show=!_histFilters.size;
+    if(!show){
+      if(_histFilters.has('production')&&isProd) show=true;
+      if(_histFilters.has('nettoyage')&&isNett) show=true;
+      if(_histFilters.has('pause')&&isPause) show=true;
+      if(_histFilters.has('reunion')&&isReunion) show=true;
+      if(_histFilters.has('arret')&&isArret) show=true;
+    }
+    tr.style.display=show?'':'none';
+  });
+}
+
+function _resetHistFilters(){
+  _histFilters.clear();
+  document.querySelectorAll('.hf-btn').forEach(b=>{
+    b.style.background='none';
+    b.style.color=b.style.borderColor;
+    b.style.opacity='1';
+  });
+}
+
 async function loadHist(){
   const today=new Date().toISOString().slice(0,10);
   const from=document.getElementById('hist-from').value||today;
@@ -5992,13 +6136,15 @@ async function loadHist(){
     const key=r.row_num||r.debut;
     window._rowMap[String(key)]=r;
     const isProd=r._rowType==='prod';
+    const rt=String(r.type||'').toLowerCase();
+    const hftype=isProd?'prod':rt||'arret';
     const t=parseFloat(r.trs||0);
-    const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.type&&r.type.toLowerCase().includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>');
+    const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(rt.includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':rt.includes('pause')?'<span class="row-tag tag-n" style="border-color:#f59e0b;color:#f59e0b">⏸ Pause</span>':(rt.includes('réunion')||rt.includes('reunion'))?'<span class="row-tag tag-n" style="border-color:#8b5cf6;color:#8b5cf6">👥 Réunion</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>');
     const details=isProd?esc(r.taille||''):esc(r.type||'');
     const qty=isProd?esc(String(r.qte_fab||'')):esc(r.duree||'');
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
     const cmt=esc(r.comment||'');
-    return `<tr class="${isProd?'row-prod':'row-evt'}">
+    return `<tr class="${isProd?'row-prod':'row-evt'}" data-hftype="${esc(hftype)}">
       <td>${tag}</td><td style="font-weight:600">${esc(r.of||'')}</td>
       <td style="font-size:10px">${esc(r.date||'')}</td><td style="font-size:10px">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
@@ -6007,6 +6153,7 @@ async function loadHist(){
       <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:15px;cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
     </tr>`;
   }).join('');
+  _applyHistFilter();
 }
 
 // ── RAPPORTS DES POSTES ──
@@ -6168,10 +6315,26 @@ async function loadSessionReport(date,pilot,poste,itemId){
         </div>
         <div class="card" style="padding:10px;flex:1">
           <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Détail arrêts</div>
-          ${(d.evt_rows||[]).map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px">
-            <span style="font-weight:600">${esc(r.type||'')}</span>
-            <span style="color:var(--gray)">${esc(r.debut||'')} → ${esc(r.fin||'')} (${esc(r.duree||'')})</span>
-          </div>`).join('')||'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>'}
+          ${(d.evt_rows||[]).length?`<table style="width:100%;border-collapse:collapse;font-size:10px">
+            <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
+              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray);white-space:nowrap">Arrêt</th>
+              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">OF</th>
+              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Format</th>
+              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Type</th>
+              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray);white-space:nowrap">Plage</th>
+              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Durée</th>
+              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Commentaire</th>
+            </tr></thead>
+            <tbody>${(d.evt_rows||[]).map(r=>`<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:4px 5px;font-weight:600;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis">${esc(r.type||'')}</td>
+              <td style="padding:4px 5px;color:#0369a1;font-weight:700">${esc(r.of||'—')}</td>
+              <td style="padding:4px 5px;color:var(--text)">${esc(r.taille||'—')}</td>
+              <td style="padding:4px 5px;color:var(--text)">${esc(r.type_prod||'—')}</td>
+              <td style="padding:4px 5px;white-space:nowrap;color:var(--gray)">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
+              <td style="padding:4px 5px;font-weight:700;white-space:nowrap">${esc(r.duree||'')}</td>
+              <td style="padding:4px 5px;color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.comment||'')}">${esc(r.comment||'—')}</td>
+            </tr>`).join('')}</tbody>
+          </table>`:'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>'}
         </div>
       </div>
     </div>`;
