@@ -1609,6 +1609,9 @@ def api_delete_row():
     path = cfg.get("db_path","")
     if not row_num or not path or not os.path.exists(path):
         return jsonify({"ok":False,"error":"Paramètre manquant"}),400
+    # Suppression synchrone du cache pour éviter stale data
+    global _decl_cache
+    _decl_cache = [(rn, row) for rn, row in _decl_cache if rn != row_num]
     def _bg():
         try:
             with _excel_lock:
@@ -2553,7 +2556,40 @@ def generate_dashboard_html():
             _tv_h2 = float(str(r[24] or "").replace(",","."))
             _trs_of = _tv_h2
         except: pass
-        _dash_of_list.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"kit":str(r[15] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"date":_of_date,"pilot":_of_pilot,"poste":str(r[3] or ""),"trs":_trs_of,"comment":str(r[35] or ""),"stops":_of_stops})
+        _dash_of_list.append({
+            "of":str(r[1] or ""),
+            "date":_of_date,
+            "pilot":_of_pilot,
+            "poste":str(r[3] or ""),
+            "copilote":str(r[5] or ""),
+            "nb_pers":str(r[6] or ""),
+            "taille":str(r[7] or ""),
+            "code_prod":str(r[8] or ""),
+            "type_prod":str(r[9] or ""),
+            "kit":str(r[15] or ""),
+            "debut":str(r[16] or "")[:5],
+            "fin":str(r[17] or "")[:5],
+            "duree":str(r[18] or ""),
+            "qte_fab":str(r[19] or ""),
+            "qte_emb":str(r[20] or ""),
+            "equiv":str(r[21] or ""),
+            "poids":str(r[10] or ""),
+            "fibre":str(r[11] or ""),
+            "of_taie":str(r[12] or ""),
+            "traca":str(r[13] or ""),
+            "ref_taie":str(r[14] or ""),
+            "qte_init_taie":str(r[22] or ""),
+            "nb_taie2_choix":str(r[23] or ""),
+            "trs":_trs_of,
+            "duree_mq_mp":str(r[26] or "") if len(r)>26 else "",
+            "manquant_pers":str(r[27] or "") if len(r)>27 else "",
+            "nb_def_cout":str(r[28] or "") if len(r)>28 else "",
+            "mq_taie":str(r[29] or "") if len(r)>29 else "",
+            "mq_housse_encart":str(r[30] or "") if len(r)>30 else "",
+            "nb_pp_cousue":str(r[31] or "") if len(r)>31 else "",
+            "comment":str(r[35] or "") if len(r)>35 else "",
+            "stops":_of_stops
+        })
         hist_html += (f'<tr style="cursor:pointer" onclick="showDashOf({_hidx})" title="Voir détail OF">'
             f'<td style="font-weight:800">{str(r[2] or "")[:10]}</td>'
             f'<td style="font-weight:800;color:#1e3a8a;text-decoration:underline">{r[1] or ""}</td>'
@@ -2826,9 +2862,18 @@ function showDashOf(i){{
   var r=_dashOf[i];if(!r)return;
   var tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
   var kit=(r.kit||'').toLowerCase()==='oui'?'<span style="color:#16a34a;font-weight:800">✓ Oui</span>':'Non';
-  var chips=[['Taille',r.taille],['Type',r.type_prod],['Kit',kit,'raw'],['Qté',r.qte_fab],['Éq.',r.equiv],['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':'—'],['Début',r.debut],['Fin',r.fin],['Durée',r.duree]];
-  if(r.code_prod)chips.push(['Code Prod',r.code_prod]);
-  if(r.ref_taie)chips.push(['Code Taie',r.ref_taie]);
+  var chips=[
+    ['Date',r.date],['Poste',r.poste],['Pilote',r.pilot],['Co-Pilote',r.copilote||'—'],
+    ['Taille',r.taille||'—'],['Type',r.type_prod||'—'],['Kit',kit,'raw'],
+    ['Nb Pers.',r.nb_pers||'—'],['Code Produit',r.code_prod||'—'],
+    ['Début',r.debut||'—'],['Fin',r.fin||'—'],['Durée',r.duree||'—'],
+    ['Qté Fab.',r.qte_fab||'—'],['Qté Emb.',r.qte_emb||'—'],['Équivalence',r.equiv||'—'],
+    ['Poids (g)',r.poids||'—'],['Fibre',r.fibre||'—'],['OF Taie',r.of_taie||'—'],
+    ['Traca',r.traca||'—'],['Code Taie',r.ref_taie||'—'],
+    ['Qté Init Taie',r.qte_init_taie||'—'],['Nb Taie 2nd',r.nb_taie2_choix||'—'],
+    ['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':'—'],
+  ];
+  chips=chips.filter(function(c){{return c[1]&&c[1]!=='—'||c[0]==='TRS OF';}});
   var chipsHtml=chips.map(function(c){{return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;text-align:center"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b">'+c[0]+'</div><div style="font-size:14px;font-weight:800;color:#1e293b">'+(c[2]==='raw'?c[1]:String(c[1]||'—').replace(/&/g,'&amp;').replace(/</g,'&lt;'))+'</div></div>';}}).join('');
   var stopsHtml=(r.stops&&r.stops.length)?r.stops.map(function(e){{return '<tr><td style="padding:4px 8px;font-size:12px;font-weight:600">'+String(e.type||'').replace(/&/g,'&amp;')+'</td><td style="padding:4px 8px;font-size:11px;white-space:nowrap">'+e.debut+'→'+e.fin+'</td><td style="padding:4px 8px;font-weight:700">'+e.duree+'</td><td style="padding:4px 8px;font-size:11px;color:#64748b">'+String(e.comment||'').replace(/&/g,'&amp;')+'</td></tr>';}}).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:#94a3b8">Aucun arrêt</td></tr>';
   document.getElementById('dash-of-detail-content').innerHTML='<div style="font-size:22px;font-weight:900;color:#1e3a8a;margin-bottom:12px;font-family:monospace">OF '+String(r.of||'—').replace(/&/g,'&amp;')+'</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px">'+chipsHtml+'</div>'+(r.comment?'<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:13px">💬 '+String(r.comment).replace(/&/g,'&amp;')+'</div>':'')+'<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:6px">Arrêts pendant cet OF</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:11px">Type</th><th style="padding:4px 8px;font-size:11px">Plage</th><th style="padding:4px 8px;font-size:11px">Durée</th><th style="padding:4px 8px;font-size:11px">Commentaire</th></tr></thead><tbody>'+stopsHtml+'</tbody></table>';
@@ -4122,10 +4167,6 @@ select{cursor:default}
     </div>
     <div class="mbody">
       <input type="hidden" id="er-rownum"><input type="hidden" id="er-rowtype">
-      <div id="er-pw-row" style="display:none;margin-bottom:8px;padding:8px 10px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px">
-        <div class="fr" style="max-width:220px"><label>🔒 Mot de passe Admin</label><input type="password" id="er-pw" placeholder="••••" onkeydown="if(event.key==='Enter')saveEditRow()"></div>
-        <div style="font-size:10px;color:#92400e;margin-top:3px">Entrez le MDP puis cliquez à nouveau sur l'action.</div>
-      </div>
       <div id="er-prod-fields">
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
           <div class="fr"><label>N° OF</label><input id="er-of"></div>
@@ -4172,6 +4213,17 @@ select{cursor:default}
       <button class="btn btn-sec" onclick="closeM('m-editrow')">Annuler</button>
       <button class="btn btn-danger" onclick="deleteRow(null,'er-rownum')">🗑 Supprimer</button>
       <button class="btn btn-ok" onclick="saveEditRow()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div id="m-pw-action" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:5000;align-items:center;justify-content:center">
+  <div class="mbox" style="max-width:320px;padding:20px" onclick="event.stopPropagation()">
+    <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0"><h2 id="pwa-title">🔒 Mot de passe Admin</h2></div>
+    <div class="fr" style="margin-bottom:14px"><label>Mot de passe</label><input type="password" id="pwa-pw" placeholder="••••" style="padding:6px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:14px;width:100%" onkeydown="if(event.key==='Enter')_pwaConfirm()"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-prim" onclick="_pwaConfirm()">✓ Confirmer</button>
+      <button class="btn btn-sec" onclick="closeM('m-pw-action')">Annuler</button>
     </div>
   </div>
 </div>
@@ -4688,6 +4740,17 @@ function applyState(s) {
   // Render live events for current prod (recap + timeline) from tl_events in state
   if(s.prod_active&&_curTab==='prod'){
     const le=tlEventsToDisplayFmt(s.tl_events||[]);
+    // Add completed pauses from pause_periods
+    (s.pause_periods||[]).forEach(([pStart,pEnd])=>{
+      const s0=pStart?new Date(pStart):null;
+      const e0=pEnd?new Date(pEnd):null;
+      if(!s0) return;
+      const pad=n=>String(n).padStart(2,'0');
+      const toHMS=d=>pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+      const dur=e0?(e0.getTime()-s0.getTime())/1000:0;
+      le.push({type:'Pause',cat:'_pause',debut:toHMS(s0),fin:e0?toHMS(e0):'',duree:dur>0?fmtDur(dur):'',comment:'',hors_trs:false,_live:!pEnd});
+    });
+    le.sort((a,b)=>a.debut.localeCompare(b.debut));
     renderTL('tl-svg',le);
     renderRecap(le);
   }
@@ -5344,7 +5407,6 @@ async function skipInterposte(){
 }
 
 async function doCancelProd(){
-  if(!confirm('Annuler cette production ? Aucune donnée ne sera écrite dans Excel.')) return;
   await fetch('/api/force_reset_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   await pollState();
   goTab('main');
@@ -5636,7 +5698,6 @@ async function confirmEndProd(){
 }
 
 async function forceResetProd(){
-  if(!confirm('Annuler la prod en cours ? Les données non enregistrées seront perdues.')) return;
   await fetch('/api/force_reset_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   await pollState();
   toast('Production annulée','warn');
@@ -5765,8 +5826,6 @@ function openEditRow(key) {
   document.getElementById('er-rownum').value=row.row_num||'';
   document.getElementById('er-rowtype').value=row._rowType||'';
   document.getElementById('er-title').textContent=isProd?'✏ Modifier déclaration':'✏ Modifier événement';
-  const pwRow=document.getElementById('er-pw-row'),pwEl=document.getElementById('er-pw');
-  pwEl.value='';pwRow.style.display=''; // toujours visible — mot de passe requis
   document.getElementById('er-prod-fields').style.display=isProd?'':'none';
   document.getElementById('er-evt-fields').style.display=isProd?'none':'';
   if(isProd){
@@ -5808,14 +5867,26 @@ function openEditRow(key) {
   openM('m-editrow');
 }
 
-async function saveEditRow() {
+let _pwaCallback=null;
+function _showPwAction(title,cb){
+  document.getElementById('pwa-title').textContent=title;
+  document.getElementById('pwa-pw').value='';
+  _pwaCallback=cb;
+  openM('m-pw-action');
+  setTimeout(()=>document.getElementById('pwa-pw').focus(),80);
+}
+function _pwaConfirm(){
+  const pw=document.getElementById('pwa-pw').value;
+  closeM('m-pw-action');
+  if(_pwaCallback){_pwaCallback(pw);_pwaCallback=null;}
+}
+
+function saveEditRow() {
+  _showPwAction('🔒 Confirmer modification',async function(pw){
   const rowNum=parseInt(document.getElementById('er-rownum').value);
   const rowType=document.getElementById('er-rowtype').value;
-  const pwEl=document.getElementById('er-pw');
-  const pwRow=document.getElementById('er-pw-row');
-  const pw=pwEl.value;
   if(!rowNum){toast('Ligne invalide','err');return;}
-  if(!pw){pwEl.focus();toast('Mot de passe requis','err');return;}
+  if(!pw){toast('Mot de passe requis','err');return;}
   const v=id=>document.getElementById(id)?.value||'';
   const n=id=>parseFloat(document.getElementById(id)?.value)||0;
   let updates={};
@@ -5842,20 +5913,19 @@ async function saveEditRow() {
   const d=r?await r.json():{};
   if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();loadKPI();toast('Ligne modifiée','ok');}
   else toast(d?.error||'Erreur modification','err');
+  });
 }
 
-async function deleteRow(key,rowNumId) {
+function deleteRow(key,rowNumId) {
   const rn=rowNumId?parseInt(document.getElementById(rowNumId)?.value):parseInt(window._rowMap[String(key)]?.row_num);
   if(!rn) return;
-  const pwEl=document.getElementById('er-pw');
-  const pwRow=document.getElementById('er-pw-row');
-  const pw=(pwEl&&pwEl.value)||'';
-  if(!pw){pwEl&&pwEl.focus();toast('Mot de passe requis','err');return;}
-  if(!confirm('Supprimer cette ligne ?')) return;
-  const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rn})});
-  const d=r?await r.json():{};
-  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();loadKPI();toast('Supprimé','ok');}
-  else toast(d?.error||'Erreur suppression','err');
+  _showPwAction('🗑 Confirmer suppression',async function(pw){
+    if(!pw){toast('Mot de passe requis','err');return;}
+    const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rn})});
+    const d=r?await r.json():{};
+    if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();loadKPI();toast('Supprimé','ok');}
+    else toast(d?.error||'Erreur suppression','err');
+  });
 }
 
 // ── EDIT STOP (recap prod view) ──
@@ -5896,7 +5966,7 @@ async function saveEditStop(){
 async function deleteStop(){
   const key=document.getElementById('es-key').value;
   const ev=window._evMap[key];
-  if(!ev||!confirm('Supprimer ?')) return;
+  if(!ev) return;
   const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:ev.row_num})});
   if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Supprimé','ok');}
 }
@@ -6217,53 +6287,9 @@ async function skipMissingDecl(){
 // ── FIN DE POSTE ──
 async function doFinPoste(){
   if(ST.prod_active){toast('Terminer la production en cours avant de finir le poste','err');return;}
-  // Vérifier si du temps reste entre la dernière déclaration et la fin du modèle horaire
-  if(!window._finPosteMode){
-    const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
-    const dk=DAY_KEYS[new Date().getDay()];
-    const model=_cfgModels&&_cfgModels.find(m=>m.nom===(ST.poste||''));
-    const jour=model&&model.jours&&model.jours[dk];
-    if(jour&&jour.fin&&_lastProdDeclTime){
-      const[fh,fm]=jour.fin.split(':').map(Number);
-      const modelFin=new Date();modelFin.setHours(fh,fm,0,0);
-      // Poste de nuit : si la fin modèle est avant la dernière déclaration, on passe au lendemain
-      if(modelFin<_lastProdDeclTime) modelFin.setDate(modelFin.getDate()+1);
-      const gapS=(modelFin.getTime()-_lastProdDeclTime.getTime())/1000;
-      if(gapS>60){
-        // Ouvrir popup interposte pour ce temps restant
-        _pendingGapS=gapS;
-        window._finPosteMode=true;
-        document.getElementById('ip-duration').textContent=`Durée non déclarée : ${_fmtMin(gapS)} (fin OF → fin modèle)`;
-        document.getElementById('ip-custom').value='';
-        document.getElementById('ip-comment').value='';
-        const dh=String(_lastProdDeclTime.getHours()).padStart(2,'0'),dm=String(_lastProdDeclTime.getMinutes()).padStart(2,'0');
-        document.getElementById('ip-debut').value=dh+':'+dm;
-        document.getElementById('ip-fin').value=jour.fin;
-        const bc=document.getElementById('ip-btns');bc.innerHTML='';
-        _fillIpArretsPrevus();
-        _interposteLbls.forEach(lbl=>{
-          const b=document.createElement('button');b.className='btn btn-ghost';
-          b.style.cssText='font-size:12px;transition:all .15s;border:2px solid var(--border)';
-          b.textContent=lbl;
-          b.onclick=()=>{document.getElementById('ip-custom').value=lbl;
-            document.querySelectorAll('#ip-btns .btn, #ip-arrprev-group .btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
-            b.style.background='var(--navy)';b.style.color='#fff';b.style.borderColor='var(--navy)';
-            b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
-          };bc.appendChild(b);
-        });
-        openM('m-interposte');
-        return;
-      }
-    }
-  }
-  window._finPosteMode=false;
-  // Vérifier arrêts manquants (pause/nettoyage/réunion) si pas déjà fait
-  if(!_missingDeclChecked){
-    const hadMissing=await checkMissingDecls();
-    if(hadMissing) return; // modal ouverte → attendre action utilisateur
-  }
-  _missingDeclChecked=false;
-  await _doGoFinPoste();
+  const fpd=await apiFetch('/api/fin_poste_data');
+  if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
+  else goTab('finposte');
 }
 
 async function _doGoFinPoste(){
