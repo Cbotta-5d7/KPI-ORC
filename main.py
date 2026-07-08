@@ -2422,6 +2422,59 @@ def generate_dashboard_html():
 
     tl_svg = timeline_svg()
 
+    # ── Historique: all prods sorted by date+time desc (last 30) ──
+    hist_rows = sorted(prod_rows_all, key=lambda r: (str(r[2] or ''), str(r[16] or '')), reverse=True)[:30]
+    hist_html = ""
+    for r in hist_rows:
+        tc_hist = ""
+        try:
+            tv_h = float(str(r[24] or "").replace(",","."))
+            tc_hist = f'<span style="color:{trs_color(tv_h)};font-weight:900">{tv_h:.1f}%</span>'
+        except: pass
+        hist_html += (f'<tr>'
+            f'<td style="font-weight:800">{str(r[2] or "")[:10]}</td>'
+            f'<td style="font-weight:800">{r[1] or ""}</td>'
+            f'<td>{r[9] or ""}</td>'
+            f'<td>{str(r[3] or "")}</td>'
+            f'<td>{str(r[4] or "")}</td>'
+            f'<td>{str(r[16] or "")[:5]}</td><td>{str(r[17] or "")[:5]}</td>'
+            f'<td>{r[18] or ""}</td>'
+            f'<td>{r[19] or "0"}</td>'
+            f'<td style="color:#0891b2;font-weight:800">{r[21] or ""}</td>'
+            f'<td>{tc_hist}</td>'
+            f'</tr>')
+    if not hist_html:
+        hist_html = '<tr><td colspan="11" style="text-align:center;color:#94a3b8;padding:12px">Aucune production</td></tr>'
+
+    # ── Rapports: groupé par type_prod ──
+    from collections import defaultdict as _dd2
+    _rpt = _dd2(lambda: {'count':0,'equiv':0.0,'qty':0,'trs_sum':0.0,'trs_cnt':0})
+    for r in prod_rows_all:
+        _tp = str(r[9] or '').strip() or '(sans type)'
+        _rpt[_tp]['count'] += 1
+        try: _rpt[_tp]['equiv'] += float(str(r[21] or '0').replace(',','.') or 0)
+        except: pass
+        try: _rpt[_tp]['qty'] += int(str(r[19] or '0').split('.')[0] or 0)
+        except: pass
+        try:
+            _tv = float(str(r[24] or '').replace(',','.'))
+            if _tv >= 0: _rpt[_tp]['trs_sum'] += _tv; _rpt[_tp]['trs_cnt'] += 1
+        except: pass
+    rpt_html = ""
+    for _tpk, _dr in sorted(_rpt.items(), key=lambda x: -x[1]['equiv']):
+        _atrs = _dr['trs_sum']/_dr['trs_cnt'] if _dr['trs_cnt'] else -1
+        _tcrpt = (f'<span style="color:{trs_color(_atrs)};font-weight:900">{_atrs:.1f}%</span>'
+                  if _atrs >= 0 else '<span style="color:#94a3b8">—</span>')
+        rpt_html += (f'<tr>'
+            f'<td style="font-weight:800;text-align:left;padding:6px 10px">{_tpk}</td>'
+            f'<td style="text-align:center">{_dr["count"]}</td>'
+            f'<td style="text-align:center;color:#0891b2;font-weight:800">{_dr["equiv"]:.1f}</td>'
+            f'<td style="text-align:center">{_dr["qty"]}</td>'
+            f'<td style="text-align:center">{_tcrpt}</td>'
+            f'</tr>')
+    if not rpt_html:
+        rpt_html = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:12px">Aucune donnée</td></tr>'
+
     html = f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -2467,6 +2520,12 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 @keyframes wag{{0%{{transform:rotate(-8deg)}}50%{{transform:rotate(8deg)}}100%{{transform:rotate(-8deg)}}}}
 /* SCROLLBAR */
 ::-webkit-scrollbar{{width:6px}};::-webkit-scrollbar-track{{background:#f1f5f9}};::-webkit-scrollbar-thumb{{background:#cbd5e1;border-radius:3px}}
+/* TABS */
+.tab-bar{{display:flex;gap:4px;flex-shrink:0;border-bottom:2px solid #e2e8f0;padding-bottom:4px}}
+.tab-btn{{background:none;border:none;padding:6px 18px;font-size:13px;font-weight:700;color:#64748b;cursor:pointer;border-radius:6px 6px 0 0;transition:all .15s}}
+.tab-btn:hover{{background:#f1f5f9;color:#1e293b}}
+.tab-btn.active{{background:#1e3a8a;color:#fff}}
+.tab-pane{{flex:1;display:flex;flex-direction:column;gap:6px;overflow:hidden;min-height:0}}
 </style>
 </head>
 <body>
@@ -2484,6 +2543,16 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 </div>
 
 <div class="outer">
+
+  <!-- ONGLETS -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tb-accueil" onclick="showTab('accueil')">🏠 Accueil</button>
+    <button class="tab-btn" id="tb-historique" onclick="showTab('historique')">📋 Historique</button>
+    <button class="tab-btn" id="tb-rapports" onclick="showTab('rapports')">📊 Rapports</button>
+  </div>
+
+  <!-- ONGLET ACCUEIL -->
+  <div id="tab-accueil" class="tab-pane">
 
   {alert_html}
 
@@ -2564,7 +2633,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 
   {('</div>' if not has_alert else '')}
 
-  <!-- TIMELINE (toujours visible) -->
+  <!-- TIMELINE (toujours visible dans Accueil) -->
   <div class="tl-cell" style="flex-shrink:0">
     <div class="tl-lbl">
       <span>Timeline du poste — {poste_now or "en cours"}</span>
@@ -2582,7 +2651,58 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     </div>
   </div>
 
-</div>
+  </div><!-- /tab-accueil -->
+
+  <!-- ONGLET HISTORIQUE -->
+  <div id="tab-historique" class="tab-pane" style="display:none;flex-direction:column">
+    <div class="panel" style="flex:1;min-height:0">
+      <div class="panel-hdr" style="background:#1e3a8a;color:#fff">Historique des productions ({len(hist_rows)} dernières)</div>
+      <div class="panel-body" style="padding:0">
+        <table class="ktbl">
+          <thead><tr>
+            <th>Date</th><th>OF</th><th>Type</th><th>Poste</th><th>Pilote</th>
+            <th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Éq.</th><th>TRS</th>
+          </tr></thead>
+          <tbody>{hist_html}</tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tab-historique -->
+
+  <!-- ONGLET RAPPORTS -->
+  <div id="tab-rapports" class="tab-pane" style="display:none;flex-direction:column">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex-shrink:0">
+      <div class="stat-card"><div class="stat-val" style="color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="stat-lbl">TRS Poste (aujourd'hui)</div></div>
+      <div class="stat-card"><div class="stat-val" style="color:#7c3aed">{nb_of_today}</div><div class="stat-lbl">OF aujourd'hui</div></div>
+      <div class="stat-card"><div class="stat-val" style="color:#0891b2">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalences (poste)</div></div>
+      <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:18px">min</span></div><div class="stat-lbl">Arrêts (poste)</div></div>
+    </div>
+    <div class="panel" style="flex:1;min-height:0">
+      <div class="panel-hdr" style="background:#78350f;color:#fff">Résumé par type de produit (toutes dates)</div>
+      <div class="panel-body" style="padding:0">
+        <table class="ktbl">
+          <thead><tr>
+            <th style="text-align:left;padding:5px 10px">Type produit</th>
+            <th>OF</th><th>Éq.</th><th>Qté</th><th>TRS moyen</th>
+          </tr></thead>
+          <tbody>{rpt_html}</tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /tab-rapports -->
+
+</div><!-- /outer -->
+
+<script>
+function showTab(name){{
+  ['accueil','historique','rapports'].forEach(function(n){{
+    var p=document.getElementById('tab-'+n);
+    var b=document.getElementById('tb-'+n);
+    if(p) p.style.display=(n===name)?'flex':'none';
+    if(b) b.classList.toggle('active',n===name);
+  }});
+}}
+</script>
 
 </body>
 </html>"""
@@ -3144,9 +3264,22 @@ select{cursor:default}
         </div>
       </div>
       <!-- RIGHT: recap + gauges + pie charts -->
-      <div class="recap-col" style="width:310px">
-        <div class="recap-hdr">Arrêts / pauses</div>
-        <div class="recap-body" id="recap-list"></div>
+      <div class="recap-col" style="width:380px">
+        <div class="recap-hdr">OF en cours</div>
+        <div class="recap-body" style="padding:8px 10px;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray)">Heure début</span>
+            <span style="font-size:18px;font-weight:800;color:var(--navy)" id="rc-debut">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray)">Heure fin</span>
+            <span style="font-size:18px;font-weight:800;color:var(--gray)" id="rc-fin">—</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray)">Durée OF</span>
+            <span style="font-size:18px;font-weight:800;color:#0891b2" id="rc-duree">—</span>
+          </div>
+        </div>
         <!-- TRS OF gauge -->
         <div class="gauge-box" style="padding:8px 4px 4px">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;align-items:center">
@@ -4238,9 +4371,9 @@ function goTab(tab) {
   if(tab==='main') { loadMainDecl(); }
   if(tab==='kpi') loadKPI();
   if(tab==='settings') {
-    // Show lock screen if not unlocked
-    document.getElementById('settings-lock').style.display = _settingsUnlocked?'none':'flex';
-    document.getElementById('v-settings-content').style.display = _settingsUnlocked?'block':'none';
+    _settingsUnlocked = false;
+    document.getElementById('settings-lock').style.display = 'flex';
+    document.getElementById('v-settings-content').style.display = 'none';
     document.getElementById('lock-pw').value='';
     document.getElementById('lock-err').textContent='';
   }
@@ -4370,6 +4503,17 @@ function applyState(s) {
     }
   }
 
+  // OF timing in recap panel
+  const rcDebut=document.getElementById('rc-debut');
+  const rcFin=document.getElementById('rc-fin');
+  if(rcDebut){
+    if(s.of_start_iso){
+      const os=new Date(s.of_start_iso);
+      rcDebut.textContent=String(os.getHours()).padStart(2,'0')+':'+String(os.getMinutes()).padStart(2,'0');
+    } else rcDebut.textContent='—';
+  }
+  if(rcFin) rcFin.textContent=s.prod_active?'en cours':'—';
+
   // Render active stop chips
   renderStopChips(s);
 
@@ -4449,6 +4593,8 @@ function startTicker() {
     const ofEl=_ofElapAtPoll+(!ST.is_paused?dt:0);
     const t=document.getElementById('sc-of');
     if(t) t.textContent=fmtDur(ofEl);
+    const rd=document.getElementById('rc-duree');
+    if(rd) rd.textContent=fmtDur(ofEl);
     // Stops total
     const sw=_stopWallAtPoll+((_curStopKey&&_curStopKey!=='_pause')?dt:0);
     const ts=document.getElementById('sc-stops');
@@ -4735,7 +4881,7 @@ function _fillIpArretsPrevus(){
     const b=document.createElement('button');
     b.className='btn btn-ghost';
     b.style.cssText=`font-size:11px;padding:4px 10px;border:2px solid ${a.color};color:${a.color};background:none;transition:all .15s`;
-    b.textContent=a.lbl+' ('+ap[a.key]+'min)';
+    b.textContent=a.lbl+' ('+ap[a.key]+'min max autorisé pendant ce poste)';
     b.onclick=()=>{
       document.getElementById('ip-custom').value=a.lbl;
       document.querySelectorAll('#ip-btns .btn, #ip-arrprev-group .btn').forEach(x=>{
@@ -5279,12 +5425,19 @@ function renderEPModal(d,f){
   const evts=d.tl_events||[];
   const stopMap={};
   const totalS=d.stop_s||1;
-  evts.forEach(e=>{if(!e.key||e.key==='prod')return;stopMap[e.key]=(stopMap[e.key]||0)+(e.dur_s||0);});
+  evts.forEach(e=>{
+    if(!e.key||e.key==='prod'||e.key.startsWith('_')) return;
+    const dur=(e.start&&e.end)?(new Date(e.end).getTime()-new Date(e.start).getTime())/1000:(e.dur_s||0);
+    stopMap[e.key]=(stopMap[e.key]||0)+dur;
+  });
   const tbody=document.getElementById('ep-stops');
   tbody.innerHTML=Object.entries(stopMap).map(([k,s])=>`
     <tr><td>${getEvtLabel(k)}</td><td>${fmtD2(s)}</td><td>${Math.round(s/totalS*100)}%</td></tr>
   `).join('')||'<tr><td colspan="3" style="color:var(--gray)">Aucun arrêt</td></tr>';
-  drawTL('ep-tl',evts,d.debut,d.now_str);
+  const epDisplayEvts=tlEventsToDisplayFmt(evts);
+  const _epS=parseHMStoT(d.debut,null)||(Date.now()-3600000);
+  const _epE=parseHMStoT(d.now_str,null)||Date.now();
+  drawTLFromISO('ep-tl',epDisplayEvts,new Date(_epS).toISOString(),new Date(_epE).toISOString());
 }
 
 async function confirmEndProd(){
@@ -5651,10 +5804,17 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
     if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${STOP_COL.pb||'#b91c1c'}" rx="2" opacity=".9"/>`;
   }
   const fT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
+  // Hourly tick marks
+  let tickT=Math.ceil(tS/3600000)*3600000;
+  while(tickT<tE){
+    const tx=toX(tickT);
+    const hr=new Date(tickT).getHours();
+    html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(255,255,255,.4)" stroke-width="1"/>`;
+    html+=`<text x="${tx+2}" y="${Y+H2-3}" font-size="7" fill="rgba(255,255,255,.85)">${String(hr).padStart(2,'0')}h</text>`;
+    tickT+=3600000;
+  }
   html+=`<text x="2" y="${H-1}" font-size="8" fill="#fff">${fT(tS)}</text>`;
   html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#fff">${fT(tE)}</text>`;
-  html+=`<line x1="${W/2}" y1="${Y}" x2="${W/2}" y2="${Y+H2}" stroke="#94a3b8" stroke-width=".5" stroke-dasharray="2,2"/>`;
-  html+=`<text x="${W/2-10}" y="${H-1}" font-size="8" fill="#e2e8f0">${fT((tS+tE)/2)}</text>`;
   svg.innerHTML=html;
 }
 
