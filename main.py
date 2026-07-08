@@ -175,6 +175,12 @@ cfg = {}
 
 flask_app = Flask(__name__)
 
+@flask_app.after_request
+def _add_cors(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    return response
+
 # ── Utilitaires ────────────────────────────────────────────────────────────────
 def fmt(seconds):
     s = max(0, int(seconds or 0))
@@ -1908,7 +1914,8 @@ def api_session_report():
     prod_rows = []; evt_rows = []; tot_eq = 0.0; tot_s = 0.0; max_fin_s = 0.0; stop_s = 0.0
     all_debut_s = []; all_fin_s = []
     for rn, r in _decl_cache:
-        if _row_date(r[2]) != date_str: continue
+        row_date_key = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
+        if row_date_key != date_str: continue
         if str(r[4] or "") != pilot: continue
         if str(r[3] or "") != poste: continue
         row_type = str(r[0] or "").strip().lower()
@@ -3991,63 +3998,52 @@ select{cursor:default}
   <!-- ════ KPI VIEW ════ -->
   <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden;background:#f1f5f9">
     <!-- Barre titre + filtres -->
-    <div style="background:#1e3a8a;color:#fff;padding:8px 16px;flex-shrink:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <div style="font-size:15px;font-weight:800;letter-spacing:.5px">📊 KPI Performance</div>
-      <div style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap">
+    <div style="background:#1e3a8a;color:#fff;padding:7px 14px;flex-shrink:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="font-size:14px;font-weight:800;letter-spacing:.5px">📊 KPI Performance</div>
+      <div style="display:flex;align-items:center;gap:5px;margin-left:auto;flex-wrap:wrap">
         <label style="font-size:11px;opacity:.8">Du</label>
-        <input type="date" id="kpi-from" style="padding:4px 8px;border:1px solid rgba(255,255,255,.3);border-radius:5px;font-size:12px;background:rgba(255,255,255,.15);color:#fff;outline:none">
+        <input type="date" id="kpi-from" style="padding:3px 7px;border:1px solid rgba(255,255,255,.3);border-radius:5px;font-size:11px;background:rgba(255,255,255,.15);color:#fff;outline:none">
         <label style="font-size:11px;opacity:.8">au</label>
-        <input type="date" id="kpi-to" style="padding:4px 8px;border:1px solid rgba(255,255,255,.3);border-radius:5px;font-size:12px;background:rgba(255,255,255,.15);color:#fff;outline:none">
-        <button onclick="loadKPI()" style="padding:5px 14px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);border-radius:6px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">↺ Actualiser</button>
+        <input type="date" id="kpi-to" style="padding:3px 7px;border:1px solid rgba(255,255,255,.3);border-radius:5px;font-size:11px;background:rgba(255,255,255,.15);color:#fff;outline:none">
+        <button onclick="loadKPI()" style="padding:4px 12px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);border-radius:6px;color:#fff;font-size:11px;font-weight:700;cursor:pointer">↺</button>
       </div>
     </div>
-    <!-- KPI Cards row -->
-    <div id="kpi-cards" style="display:grid;grid-template-columns:repeat(5,1fr);flex-shrink:0;border-bottom:2px solid #e2e8f0;background:#fff"></div>
-    <!-- Main scrollable body -->
-    <div style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px;min-height:0">
-      <!-- Row 1 : Évolution TRS (bar) + Donut prod/arrêts -->
-      <div style="display:grid;grid-template-columns:1fr 220px;gap:12px">
-        <!-- TRS bar chart -->
-        <div style="background:#fff;border-radius:10px;border:1px solid #e2e8f0;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.7px;margin-bottom:10px">Évolution TRS par poste</div>
-          <div id="kpi-trs-chart" style="width:100%;overflow-x:auto"></div>
+    <!-- KPI Cards row — défilement horizontal si petite fenêtre -->
+    <div id="kpi-cards" style="display:flex;flex-shrink:0;border-bottom:1px solid #e2e8f0;background:#fff;overflow-x:auto"></div>
+    <!-- Corps principal sans scroll : grille fixe -->
+    <div style="flex:1;overflow:hidden;display:grid;grid-template-columns:1fr 240px;grid-template-rows:1fr;gap:0;min-height:0">
+      <!-- Colonne gauche : 3 courbes + pareto -->
+      <div style="display:grid;grid-template-rows:1fr 1fr 1fr;gap:0;overflow:hidden;border-right:1px solid #e2e8f0;min-height:0">
+        <!-- Courbe TRS -->
+        <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px;border-bottom:1px solid #f1f5f9;background:#fff">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.6px;margin-bottom:3px;flex-shrink:0">Évolution TRS (%)</div>
+          <div id="kpi-trs-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
-        <!-- Donut -->
-        <div style="background:#fff;border-radius:10px;border:1px solid #e2e8f0;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);display:flex;flex-direction:column;align-items:center">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.7px;margin-bottom:8px;align-self:flex-start">Prod vs Arrêts</div>
-          <svg id="kpi-donut" viewBox="0 0 140 140" style="width:140px;height:140px"></svg>
-          <div id="kpi-donut-legend" style="display:flex;flex-direction:column;gap:4px;align-self:flex-start;margin-top:6px;font-size:11px"></div>
+        <!-- Courbe Arrêts -->
+        <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px;border-bottom:1px solid #f1f5f9;background:#fafafa">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.6px;margin-bottom:3px;flex-shrink:0">Évolution Arrêts (min)</div>
+          <div id="kpi-arr-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+        </div>
+        <!-- Courbe Nb OF -->
+        <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px;background:#fff">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.6px;margin-bottom:3px;flex-shrink:0">Évolution Nb OF</div>
+          <div id="kpi-of-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
       </div>
-      <!-- Row 2 : Pareto arrêts + Tableau sessions -->
-      <div style="display:grid;grid-template-columns:1fr 300px;gap:12px">
-        <!-- Pareto horizontal -->
-        <div style="background:#fff;border-radius:10px;border:1px solid #e2e8f0;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.7px;margin-bottom:10px">Pareto arrêts — top causes</div>
-          <div id="kpi-pareto-new" style="display:flex;flex-direction:column;gap:7px"></div>
-        </div>
-        <!-- Stats + Sessions table -->
-        <div style="display:flex;flex-direction:column;gap:12px">
-          <!-- Chiffres clés -->
-          <div id="kpi-stats-new" style="background:#fff;border-radius:10px;border:1px solid #e2e8f0;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
-          <!-- Sessions list -->
-          <div style="background:#fff;border-radius:10px;border:1px solid #e2e8f0;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.05);flex:1;overflow:hidden;display:flex;flex-direction:column">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.7px;margin-bottom:8px;flex-shrink:0">Postes sur la période</div>
-            <div id="kpi-sessions-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+      <!-- Colonne droite : donut + pareto + sessions -->
+      <div style="display:flex;flex-direction:column;overflow:hidden;background:#fff;min-height:0">
+        <!-- Donut -->
+        <div style="padding:8px 10px;border-bottom:1px solid #f1f5f9;flex-shrink:0;display:flex;flex-direction:column;align-items:center">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.6px;margin-bottom:4px;align-self:flex-start">Prod vs Arrêts</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <svg id="kpi-donut" viewBox="0 0 100 100" style="width:90px;height:90px;flex-shrink:0"></svg>
+            <div id="kpi-donut-legend" style="display:flex;flex-direction:column;gap:3px;font-size:10px"></div>
           </div>
         </div>
-      </div>
-      <!-- Row 3 : Tendance cadence + Disponibilité -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <!-- Cadence chart -->
-        <div style="background:#fff;border-radius:10px;border:1px solid #e2e8f0;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.7px;margin-bottom:10px">Cadence équiv./poste (pcs/h)</div>
-          <div id="kpi-cad-chart" style="width:100%;overflow-x:auto"></div>
-        </div>
-        <!-- Stop types repartition -->
-        <div style="background:#fff;border-radius:10px;border:1px solid #e2e8f0;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.7px;margin-bottom:10px">Répartition types d'arrêts</div>
-          <div id="kpi-stop-types" style="display:flex;flex-direction:column;gap:6px"></div>
+        <!-- Pareto -->
+        <div style="flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:0;min-height:0">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.6px;margin-bottom:6px;flex-shrink:0">Pareto arrêts</div>
+          <div id="kpi-pareto-new" style="display:flex;flex-direction:column;gap:5px"></div>
         </div>
       </div>
     </div>
@@ -6450,7 +6446,9 @@ function _showEcartModal(fpd){
   const modelDebut=fpd.model_debut||'';
   const modelFin=fpd.model_fin||'';
   const overflow_min=Math.round(fpd.overflow_min||0);
-  // Guide header
+  const gaps=fpd.gap_intervals||[];
+  const hasGaps=gaps.length>0;
+  // Guide header — basé sur les gaps réels, pas sur ecart_min
   const guidEl=document.getElementById('ecart-guide');
   if(guidEl){
     if(overflow_min>0){
@@ -6458,14 +6456,15 @@ function _showEcartModal(fpd){
       guidEl.innerHTML='<span style="color:#dc2626;font-weight:800;font-size:13px">⚠ Dépassement de plage : +'+overflow_min+' min au-delà de '+esc(modelFin)+'</span><br>'+
         '<span style="color:#7f1d1d">Un ou plusieurs OFs se terminent après la fin du modèle. Souhaitez-vous modifier la plage horaire ?</span> '+
         '<button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:4px;border-color:#fca5a5;color:#dc2626" onclick="alert(\'Modifiez la plage dans Paramètres → Modèles horaires\')">Modifier la plage</button>';
-    } else if(ecart_min<=0){
+    } else if(!hasGaps){
       guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#f0fdf4;border:1px solid #bbf7d0;line-height:1.5';
-      guidEl.innerHTML='<span style="color:#16a34a;font-weight:800;font-size:13px">✓ Toute la plage '+esc(modelDebut)+'→'+esc(modelFin)+' est couverte !</span>';
+      guidEl.innerHTML='<span style="color:#16a34a;font-weight:800;font-size:13px">✓ Toute la plage '+esc(modelDebut)+' → '+esc(modelFin)+' est couverte !</span>';
     } else {
+      const gapTotal=gaps.reduce((a,g)=>a+(g.duree_min||0),0);
       guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#fff7ed;border:1px solid #fed7aa;line-height:1.5';
       guidEl.innerHTML='Objectif : couvrir <b>'+esc(modelDebut)+' → '+esc(modelFin)+'</b> ('+model_min+' min).<br>'+
-        '<span style="color:#dc2626;font-weight:700">'+ecart_min+' min non justifiées.</span> '+
-        '<span style="color:var(--gray)">Déclarez les arrêts manquants ou corrigez les horaires des OFs ci-dessous.</span>';
+        '<span style="color:#dc2626;font-weight:700">'+gapTotal+' min de plages non couvertes ('+gaps.length+' écart'+(gaps.length>1?'s':'')+').</span> '+
+        '<span style="color:var(--gray)">Déclarez les arrêts manquants ou corrigez les horaires des OFs.</span>';
     }
   }
   // Stats
@@ -6481,9 +6480,8 @@ function _showEcartModal(fpd){
   if(dl){dl.innerHTML=(_interposteLbls||[]).map(l=>`<option value="${esc(l)}">`).join('');}
   // Gap intervals
   const gapsEl=document.getElementById('ecart-gaps');
-  const gaps=fpd.gap_intervals||[];
   if(gapsEl){
-    if(!gaps.length||ecart_min<=0){
+    if(!hasGaps){
       gapsEl.innerHTML='<div style="color:#16a34a;font-size:12px;font-weight:700;padding:4px 0">✓ Aucune plage non couverte</div>';
     } else {
       gapsEl.innerHTML='';
@@ -6845,15 +6843,15 @@ function _drawKpiTL(svgId,evts,startISO,endISO,isCurrent){
 }
 
 // ── KPI helpers ──
-function _kpiDateToFR(iso){const d=new Date(iso);const dd=String(d.getDate()).padStart(2,'0'),mm=String(d.getMonth()+1).padStart(2,'0'),yy=d.getFullYear();return dd+'/'+mm+'/'+yy;}
 function _kpiParseFR(fr){if(!fr)return null;const p=fr.split('/');if(p.length!==3)return null;return new Date(parseInt(p[2]),parseInt(p[1])-1,parseInt(p[0])).getTime();}
 function _kpiTrsColor(t){return t>=90?'#16a34a':t>=70?'#f59e0b':t>=0?'#dc2626':'#94a3b8';}
+
 function _kpiDrawDonut(svgId,legendId,segments){
   const svg=document.getElementById(svgId);const leg=document.getElementById(legendId);
   if(!svg)return;
   const total=segments.reduce((a,s)=>a+s.v,0);
-  if(total<=0){svg.innerHTML='<text x="70" y="75" text-anchor="middle" font-size="11" fill="#94a3b8">Aucune donnée</text>';if(leg)leg.innerHTML='';return;}
-  const cx=70,cy=70,R=58,r=32;let html='',a=-Math.PI/2;
+  if(total<=0){svg.innerHTML='<text x="50" y="55" text-anchor="middle" font-size="9" fill="#94a3b8">Aucune donnée</text>';if(leg)leg.innerHTML='';return;}
+  const cx=50,cy=50,R=42,r=22;let html='',a=-Math.PI/2;
   segments.forEach(s=>{
     if(s.v<=0)return;
     const ang=(s.v/total)*2*Math.PI;if(ang<0.002)return;
@@ -6862,43 +6860,59 @@ function _kpiDrawDonut(svgId,legendId,segments){
     const x2=(cx+R*Math.cos(ea)).toFixed(1),y2=(cy+R*Math.sin(ea)).toFixed(1);
     const ix1=(cx+r*Math.cos(a)).toFixed(1),iy1=(cy+r*Math.sin(a)).toFixed(1);
     const ix2=(cx+r*Math.cos(ea)).toFixed(1),iy2=(cy+r*Math.sin(ea)).toFixed(1);
-    html+=`<path d="M${x1},${y1} A${R},${R} 0 ${lg},1 ${x2},${y2} L${ix2},${iy2} A${r},${r} 0 ${lg},0 ${ix1},${iy1} Z" fill="${s.col}" opacity=".9"/>`;
+    html+=`<path d="M${x1},${y1} A${R},${R} 0 ${lg},1 ${x2},${y2} L${ix2},${iy2} A${r},${r} 0 ${lg},0 ${ix1},${iy1} Z" fill="${s.col}"/>`;
     a=ea;
   });
   const top=segments.reduce((a,s)=>s.v>a.v?s:a,segments[0]);
   const topPct=Math.round(top.v/total*100);
-  html+=`<text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="18" font-weight="800" fill="#1e293b">${topPct}%</text>`;
-  html+=`<text x="${cx}" y="${cy+16}" text-anchor="middle" font-size="9" fill="#64748b">${esc(top.label)}</text>`;
+  html+=`<text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="14" font-weight="800" fill="#1e293b">${topPct}%</text>`;
+  html+=`<text x="${cx}" y="${cy+13}" text-anchor="middle" font-size="8" fill="#64748b">${esc(top.label)}</text>`;
   svg.innerHTML=html;
-  if(leg) leg.innerHTML=segments.map(s=>{const p=Math.round(s.v/total*100);return `<div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:2px;background:${s.col};flex-shrink:0"></div><span style="font-size:11px;color:#475569">${esc(s.label)}</span><span style="font-size:11px;font-weight:700;color:#1e293b;margin-left:auto">${p}%</span></div>`;}).join('');
+  if(leg) leg.innerHTML=segments.map(s=>{const p=Math.round(s.v/total*100);return `<div style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:2px;background:${s.col};flex-shrink:0"></div><span style="color:#475569">${esc(s.label)}</span><b style="margin-left:3px;color:#1e293b">${p}%</b></div>`;}).join('');
 }
-function _kpiBarChart(containerId,items,valueKey,labelKey,colorFn,unit,chartH){
+
+function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
   const el=document.getElementById(containerId);if(!el)return;
-  if(!items.length){el.innerHTML='<div style="color:#94a3b8;font-size:12px;padding:8px">Aucune donnée</div>';return;}
-  const W=Math.max(400,items.length*52);
-  const H=chartH||160;
-  const maxV=Math.max(...items.map(x=>x[valueKey]||0),1);
-  const pad={t:10,b:38,l:8,r:8};
-  const bW=Math.max(16,Math.min(40,(W-pad.l-pad.r)/items.length-6));
-  let svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:${Math.min(W,600)}px;height:${H}px;display:block">`;
-  // grid lines
-  [0,25,50,75,100].forEach(pct=>{
-    const y=(pad.t+(H-pad.t-pad.b)*(1-pct/100)).toFixed(1);
-    svg+=`<line x1="${pad.l}" y1="${y}" x2="${W-pad.r}" y2="${y}" stroke="#f1f5f9" stroke-width="1"/>`;
-    if(pct>0) svg+=`<text x="${pad.l}" y="${parseFloat(y)-2}" font-size="8" fill="#94a3b8">${Math.round(maxV*pct/100)}${unit||''}</text>`;
-  });
+  const rect=el.getBoundingClientRect();
+  const W=Math.max(rect.width||400,200);
+  const H=Math.max(rect.height||100,60);
+  if(!items.length){el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%"><text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="10" fill="#94a3b8">Aucune donnée</text></svg>`;return;}
+  const vals=items.map(it=>it[valueKey]||0);
+  const minV=yMin!==undefined?yMin:Math.max(0,Math.min(...vals)-5);
+  const maxV=yMax!==undefined?yMax:Math.max(...vals,1)+2;
+  const padL=30,padR=8,padT=10,padB=52;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  const toX=i=>padL+i/(Math.max(items.length-1,1))*gW;
+  const toY=v=>padT+gH*(1-(v-minV)/(maxV-minV||1));
+  // grid
+  let svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%">`;
+  const nTicks=4;
+  for(let t=0;t<=nTicks;t++){
+    const v=minV+(maxV-minV)*t/nTicks;
+    const y=toY(v);
+    svg+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1"/>`;
+    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="8" fill="#94a3b8">${v%1?v.toFixed(0):v}${unit||''}</text>`;
+  }
+  // area fill
+  let areaD=`M${toX(0).toFixed(1)},${(H-padB).toFixed(1)}`;
+  items.forEach((it,i)=>{areaD+=` L${toX(i).toFixed(1)},${toY(it[valueKey]||0).toFixed(1)}`;});
+  areaD+=` L${toX(items.length-1).toFixed(1)},${(H-padB).toFixed(1)} Z`;
+  const areaCol=colorFn?colorFn(items[0]):'#6366f1';
+  svg+=`<path d="${areaD}" fill="${areaCol}" opacity=".08"/>`;
+  // line
+  let lineD='';
+  items.forEach((it,i)=>{lineD+=(i===0?'M':'L')+toX(i).toFixed(1)+','+toY(it[valueKey]||0).toFixed(1)+' ';});
+  svg+=`<path d="${lineD}" fill="none" stroke="${areaCol}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  // dots + value labels
   items.forEach((it,i)=>{
+    const x=toX(i),y=toY(it[valueKey]||0);
+    const col=colorFn?colorFn(it):areaCol;
+    svg+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${col}" stroke="#fff" stroke-width="1.5"/>`;
     const v=it[valueKey]||0;
-    const bH=Math.max(2,(H-pad.t-pad.b)*(v/maxV));
-    const x=pad.l+(W-pad.l-pad.r)/items.length*i+(W-pad.l-pad.r)/items.length/2-bW/2;
-    const y=H-pad.b-bH;
-    const col=colorFn?colorFn(it):('#6366f1');
-    svg+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bW}" height="${bH.toFixed(1)}" fill="${col}" rx="3" opacity=".85"/>`;
-    if(v>0) svg+=`<text x="${(x+bW/2).toFixed(1)}" y="${(y-3).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="${col}">${typeof v==='number'&&v%1?v.toFixed(1):v}</text>`;
-    const lbl=String(it[labelKey]||'');
-    const shortLbl=lbl.length>8?lbl.slice(0,7)+'…':lbl;
-    svg+=`<text x="${(x+bW/2).toFixed(1)}" y="${H-pad.b+12}" text-anchor="middle" font-size="8" fill="#64748b">${esc(shortLbl)}</text>`;
-    if(lbl.length>8) svg+=`<title>${esc(lbl)}</title>`;
+    svg+=`<text x="${x.toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${col}">${v%1?v.toFixed(1):v}</text>`;
+    // X label — date\nposte\npilote en biais
+    const lbl=(it._xLabel||'');
+    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+4).toFixed(1)}) rotate(40)" font-size="7" fill="#64748b" dominant-baseline="hanging">${esc(lbl)}</text>`;
   });
   svg+='</svg>';
   el.innerHTML=svg;
@@ -6922,75 +6936,80 @@ async function loadKPI(){
   const allRows=Array.isArray(histData)?histData:[];
   const allEvts=Array.isArray(evtData)?evtData:[];
 
-  // Filter by date range
   const inRange=dateStr=>{const ms=_kpiParseFR(dateStr);return ms&&ms>=fromMs&&ms<=toMs;};
-  const rows=allRows.filter(r=>inRange(r.date));
+  const rows=allRows.filter(r=>inRange(r.date)&&(r.type||'').trim().toLowerCase()!=='');
+  const prodRows=allRows.filter(r=>inRange(r.date)&&['production','prod',''].includes((r.type||'').trim().toLowerCase()));
   const evts=allEvts.filter(e=>inRange(e.date));
 
   // Build sessions (one per pilot+date+poste)
   const sessMap={};
-  rows.forEach(r=>{
+  prodRows.forEach(r=>{
     const key=(r.pilote||'')+'||'+(r.date||'')+'||'+(r.poste||'');
-    if(!sessMap[key]) sessMap[key]={pilot:r.pilote||'',date:r.date||'',poste:r.poste||'',nb_of:0,tot_equiv:0,tot_s:0,trs_vals:[]};
+    if(!sessMap[key]) sessMap[key]={pilot:r.pilote||'',date:r.date||'',poste:r.poste||'',nb_of:0,tot_equiv:0,tot_s:0,tot_qte:0,trs_vals:[]};
     const s=sessMap[key];
     s.nb_of++;
-    const eq=parseFloat(r.equiv_prod||r.equiv||0)||0; s.tot_equiv+=eq;
+    const eq=parseFloat(r.equiv||0)||0; s.tot_equiv+=eq;
+    const qte=parseFloat(r.qte_fab||0)||0; s.tot_qte+=qte;
     const ds=pSec(r.debut||'0:0:0'),fs=pSec(r.fin||'0:0:0'),dur=Math.max(0,fs-ds); s.tot_s+=dur;
     const t=parseFloat(r.trs||0);if(t>0)s.trs_vals.push(t);
   });
-  const sessArr=Object.values(sessMap).sort((a,b)=>{const da=_kpiParseFR(a.date)||0,db=_kpiParseFR(b.date)||0;return db-da;});
-  sessArr.forEach(s=>{s.trs=s.trs_vals.length?Math.round(s.trs_vals.reduce((a,v)=>a+v,0)/s.trs_vals.length*10)/10:-1;});
-
-  // Aggregate evts per session
-  const evtByKey={};
-  evts.forEach(e=>{
-    const key=(e.pilote||'')+'||'+(e.date||'')+'||'+(e.poste||'');
-    if(!evtByKey[key])evtByKey[key]=[];
-    evtByKey[key].push(e);
-  });
+  // Order chronologically
+  const sessArr=Object.values(sessMap).sort((a,b)=>{const da=_kpiParseFR(a.date)||0,db=_kpiParseFR(b.date)||0;return da-db;});
   sessArr.forEach(s=>{
-    const key=s.pilot+'||'+s.date+'||'+s.poste;
-    const ses=evtByKey[key]||[];
-    s.stop_s=ses.reduce((a,e)=>a+Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0')),0);
+    s.trs=s.trs_vals.length?Math.round(s.trs_vals.reduce((a,v)=>a+v,0)/s.trs_vals.length*10)/10:-1;
+    s.cad=s.tot_s>60?Math.round(s.tot_equiv/(s.tot_s/3600)*10)/10:0;
+    const evtKey=s.pilot+'||'+s.date+'||'+s.poste;
+    s.stop_min=Math.round((evts.filter(e=>(e.pilote||'')+'||'+(e.date||'')+'||'+(e.poste||'')==evtKey).reduce((a,e)=>a+Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0')),0))/60);
+    // Label X axis
+    const dParts=(s.date||'').split('/');
+    const dateShort=dParts.length===3?dParts[0]+'/'+dParts[1]:s.date;
+    s._xLabel=dateShort+'\n'+s.poste+'\n'+s.pilot;
   });
 
-  // Totals
-  const totalProdS=sessArr.reduce((a,s)=>a+s.tot_s,0);
-  const totalStopS=sessArr.reduce((a,s)=>a+s.stop_s,0);
+  const nbSess=sessArr.length;
   const totalEquiv=sessArr.reduce((a,s)=>a+s.tot_equiv,0);
   const totalOF=sessArr.reduce((a,s)=>a+s.nb_of,0);
+  const totalQte=sessArr.reduce((a,s)=>a+s.tot_qte,0);
+  const totalProdS=sessArr.reduce((a,s)=>a+s.tot_s,0);
+  const totalStopMin=sessArr.reduce((a,s)=>a+s.stop_min,0);
   const trsVals=sessArr.filter(s=>s.trs>=0).map(s=>s.trs);
   const avgTRS=trsVals.length?Math.round(trsVals.reduce((a,v)=>a+v,0)/trsVals.length*10)/10:-1;
   const avgCadH=totalProdS>0?Math.round(totalEquiv/(totalProdS/3600)*10)/10:0;
-  const nbSess=sessArr.length;
+  const avgOFperSess=nbSess?Math.round(totalOF/nbSess*10)/10:0;
+  const avgQtePerSess=nbSess?Math.round(totalQte/nbSess*10)/10:0;
+  const avgEquivPerSess=nbSess?Math.round(totalEquiv/nbSess*10)/10:0;
 
   // ── KPI Cards ──
   const cards=document.getElementById('kpi-cards');
   if(cards){
-    const mkCard=(lbl,val,sub,col,icon)=>`
-      <div style="padding:14px 12px;border-right:1px solid #f1f5f9;text-align:center">
-        <div style="font-size:22px;margin-bottom:2px">${icon}</div>
-        <div style="font-size:22px;font-weight:900;color:${col}">${val}</div>
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.5px;margin-top:3px">${lbl}</div>
-        ${sub?`<div style="font-size:10px;color:#cbd5e1;margin-top:1px">${sub}</div>`:''}
-      </div>`;
+    const mkCard=(lbl,val,col)=>`<div style="padding:8px 10px;border-right:1px solid #f1f5f9;text-align:center;min-width:90px;flex-shrink:0">
+      <div style="font-size:17px;font-weight:900;color:${col};line-height:1">${val}</div>
+      <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;margin-top:3px;line-height:1.2">${lbl}</div>
+    </div>`;
     cards.innerHTML=
-      mkCard('TRS Moyen',avgTRS>=0?avgTRS.toFixed(1)+'%':'—','sur '+trsVals.length+' postes',_kpiTrsColor(avgTRS),'📊')+
-      mkCard('Nb OF',totalOF,'',  '#6366f1','🔧')+
-      mkCard('Postes',nbSess,'','#0891b2','📅')+
-      mkCard('Équiv. totale',totalEquiv.toFixed(1),'pcs équiv.','#16a34a','⚙')+
-      mkCard('Cadence moy.',avgCadH>0?avgCadH+' /h':'—','pcs équiv/h','#f59e0b','⚡');
+      mkCard('TRS moyen',avgTRS>=0?avgTRS.toFixed(1)+'%':'—',_kpiTrsColor(avgTRS))+
+      mkCard('Nb OF total',totalOF,'#6366f1')+
+      mkCard('OF moy/poste',avgOFperSess,'#818cf8')+
+      mkCard('Nb postes',nbSess,'#0891b2')+
+      mkCard('Pièces fab.',Math.round(totalQte),'#7c3aed')+
+      mkCard('Pièces moy/poste',avgQtePerSess,'#a78bfa')+
+      mkCard('Équiv. totale',totalEquiv.toFixed(1),'#16a34a')+
+      mkCard('Équiv. moy/poste',avgEquivPerSess.toFixed(1),'#4ade80')+
+      mkCard('Cadence moy.',avgCadH>0?avgCadH+'/h':'—','#f59e0b');
   }
 
-  // ── TRS Evolution bar chart ──
-  const trsItems=sessArr.filter(s=>s.trs>=0).slice(0,30).reverse();
-  _kpiBarChart('kpi-trs-chart',trsItems,'trs','date',
-    it=>_kpiTrsColor(it.trs),'%',170);
+  // ── 3 courbes ──
+  const trsItems=sessArr.filter(s=>s.trs>=0);
+  _kpiLineChart('kpi-trs-chart',trsItems,'trs',it=>_kpiTrsColor(it.trs),'%',0,100);
+  const arrItems=sessArr;
+  _kpiLineChart('kpi-arr-chart',arrItems,'stop_min',()=>'#dc2626','min');
+  const ofItems=sessArr;
+  _kpiLineChart('kpi-of-chart',ofItems,'nb_of',()=>'#6366f1','');
 
   // ── Donut Prod/Arrêts ──
   _kpiDrawDonut('kpi-donut','kpi-donut-legend',[
     {label:'Prod',v:totalProdS,col:'#16a34a'},
-    {label:'Arrêts',v:totalStopS,col:'#dc2626'},
+    {label:'Arrêts',v:totalStopMin*60,col:'#dc2626'},
   ]);
 
   // ── Pareto ──
@@ -7005,90 +7024,23 @@ async function loadKPI(){
   const paretoTotal=paretoArr.reduce((a,[,v])=>a+v,0);
   const parEl=document.getElementById('kpi-pareto-new');
   if(parEl){
-    if(!paretoArr.length){parEl.innerHTML='<div style="color:#94a3b8;font-size:12px">Aucun arrêt sur cette période</div>';}
+    if(!paretoArr.length){parEl.innerHTML='<div style="color:#94a3b8;font-size:11px">Aucun arrêt</div>';}
     else{
       const maxP=paretoArr[0][1];
       let cumul=0;
-      parEl.innerHTML=paretoArr.slice(0,12).map(([type,s])=>{
+      parEl.innerHTML=paretoArr.slice(0,10).map(([type,s])=>{
         const pct=Math.round(s/maxP*100);
         const min=Math.round(s/60);
         const pctTot=paretoTotal>0?Math.round(s/paretoTotal*100):0;
         cumul+=pctTot;
         const col=STOP_COL[stopCat[type]]||'#94a3b8';
         return `<div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#374151;margin-bottom:3px">
-            <div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:2px;background:${col};flex-shrink:0"></div>${esc(type)}</div>
-            <span style="color:#6b7280">${min} min &nbsp;<b style="color:#1e293b">${pctTot}%</b>&nbsp;<span style="color:#94a3b8;font-size:10px">(cumulé ${cumul}%)</span></span>
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:#374151;margin-bottom:2px">
+            <div style="display:flex;align-items:center;gap:3px;min-width:0"><div style="width:7px;height:7px;border-radius:1px;background:${col};flex-shrink:0"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">${esc(type)}</span></div>
+            <span style="white-space:nowrap;color:#6b7280;flex-shrink:0">${min}m <b style="color:#1e293b">${pctTot}%</b></span>
           </div>
-          <div style="background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden">
-            <div style="width:${pct}%;background:${col};height:100%;border-radius:4px"></div>
-          </div>
-        </div>`;
-      }).join('');
-    }
-  }
-
-  // ── Stats cards ──
-  const statsEl=document.getElementById('kpi-stats-new');
-  if(statsEl){
-    const mkS=(lbl,val,col)=>`<div style="background:#f8fafc;border-radius:8px;padding:10px 8px;text-align:center;border:1px solid #f1f5f9">
-      <div style="font-size:18px;font-weight:800;color:${col||'#1e293b'}">${val}</div>
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.5px;margin-top:2px">${lbl}</div>
-    </div>`;
-    const prodMin=Math.round(totalProdS/60);
-    const stopMin=Math.round(totalStopS/60);
-    statsEl.innerHTML=
-      mkS('Prod min',prodMin,'#16a34a')+
-      mkS('Arrêts min',stopMin,'#dc2626')+
-      mkS('Équiv. totale',totalEquiv.toFixed(1),'#6366f1')+
-      mkS('OF totaux',totalOF,'#0891b2');
-  }
-
-  // ── Sessions list ──
-  const listEl=document.getElementById('kpi-sessions-list');
-  if(listEl){
-    if(!sessArr.length){listEl.innerHTML='<div style="color:#94a3b8;font-size:12px;padding:8px">Aucun poste</div>';}
-    else{listEl.innerHTML=sessArr.map(s=>{
-      const tc=_kpiTrsColor(s.trs);
-      return `<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;background:#f8fafc;border-radius:6px;border:1px solid #f1f5f9;font-size:11px">
-        <div style="font-weight:700;color:${tc};min-width:38px">${s.trs>=0?s.trs.toFixed(1)+'%':'—'}</div>
-        <div style="flex:1;min-width:0"><div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.pilot)} — ${esc(s.poste)}</div><div style="color:#94a3b8;font-size:10px">${esc(s.date)} · ${s.nb_of} OF · ${Math.round(s.stop_s/60)} min arrêts</div></div>
-      </div>`;
-    }).join('');}
-  }
-
-  // ── Cadence chart ──
-  const cadItems=sessArr.filter(s=>s.tot_s>60).slice(0,30).reverse().map(s=>({...s,cad:s.tot_s>0?Math.round(s.tot_equiv/(s.tot_s/3600)*10)/10:0}));
-  _kpiBarChart('kpi-cad-chart',cadItems,'cad','date',()=>'#f59e0b','/h',150);
-
-  // ── Stop types repartition (cat level) ──
-  const catMap={};
-  evts.forEach(e=>{
-    const cat=e.cat||'autre';
-    const dur=Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0'));
-    catMap[cat]=(catMap[cat]||0)+dur;
-  });
-  const catArr=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
-  const catTotal=catArr.reduce((a,[,v])=>a+v,0);
-  const catEl=document.getElementById('kpi-stop-types');
-  if(catEl){
-    if(!catArr.length){catEl.innerHTML='<div style="color:#94a3b8;font-size:12px">Aucun arrêt</div>';}
-    else{
-      const maxC=catArr[0][1];
-      catEl.innerHTML=catArr.map(([cat,s])=>{
-        const pct=Math.round(s/maxC*100);
-        const min=Math.round(s/60);
-        const pctTot=catTotal>0?Math.round(s/catTotal*100):0;
-        const col=STOP_COL[cat]||'#94a3b8';
-        const labels={'pb_panne':'🔴 Panne/PB','nettoyage':'🟡 Nettoyage','orga':'🔵 Organisation','pause':'⚪ Pause','autre':'⚫ Autre'};
-        const lbl=labels[cat]||cat;
-        return `<div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
-            <span style="font-weight:600;color:#374151">${esc(lbl)}</span>
-            <span style="color:#6b7280">${min} min <b style="color:#1e293b">(${pctTot}%)</b></span>
-          </div>
-          <div style="background:#f1f5f9;border-radius:5px;height:16px;overflow:hidden">
-            <div style="width:${pct}%;background:${col};height:100%;border-radius:5px;opacity:.85"></div>
+          <div style="background:#f1f5f9;border-radius:3px;height:10px;overflow:hidden">
+            <div style="width:${pct}%;background:${col};height:100%;border-radius:3px"></div>
           </div>
         </div>`;
       }).join('');
@@ -7336,10 +7288,13 @@ async function loadSessionReport(date,pilot,poste,itemId){
     html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#fff">${fmt(tE)}</text>`;
     return html;
   }
-  const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,d.model_debut,d.model_fin);
+  const tlDebut=d.actual_debut||d.model_debut;
+  const tlFin=d.actual_fin||d.model_fin;
+  const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
+  const plageStr=(tlDebut&&tlFin)?(' · Plage : '+esc(tlDebut)+' → '+esc(tlFin)):'';
   detailEl.innerHTML=`
     <div style="background:var(--navy);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <div><div style="font-size:15px;font-weight:800">📋 Rapport — ${esc(poste)}</div><div style="font-size:11px;opacity:.8">${esc(pilot)} · ${esc(date)}${d.model_debut&&d.model_fin?' · Plage : '+esc(d.model_debut)+' → '+esc(d.model_fin):''}</div></div>
+      <div><div style="font-size:15px;font-weight:800">📋 Rapport — ${esc(poste)}</div><div style="font-size:11px;opacity:.8">${esc(pilot)} · ${esc(date)}${plageStr}</div></div>
       <div style="text-align:right"><div style="font-size:26px;font-weight:900;color:${trsCol}">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div><div style="font-size:11px;opacity:.7">TRS Shift</div></div>
     </div>
     <!-- Graphiques + KPIs -->
