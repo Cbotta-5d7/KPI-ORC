@@ -5857,8 +5857,6 @@ async function doFinPoste(){
   await _doGoFinPoste();
 }
 
-let _ecartChecked=false;
-
 async function _doGoFinPoste(){
   if(!_ecartChecked){
     const fpd=await apiFetch('/api/fin_poste_data');
