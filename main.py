@@ -741,8 +741,9 @@ def write_excel_bg(prod_row, evt_rows):
                         time.sleep(4)
                         continue
                     ws = _ensure_decl_sheet(wb)
-                    ws.append(prod_row)
-                    _format_row(ws, ws.max_row)
+                    if prod_row:
+                        ws.append(prod_row)
+                        _format_row(ws, ws.max_row)
                     for er in evt_rows:
                         ws.append(er)
                         _format_row(ws, ws.max_row)
@@ -1721,10 +1722,12 @@ def api_fin_poste_data():
     model_dur_s = get_shift_duration_s(pilot_poste, datetime.date.today())
     ecart_s = max(0.0, model_dur_s - (tot_s + declared_stop_s))
     trs_poste_shift = -1.0
-    if model_debut_s is not None and max_fin_s > model_debut_s and prod_ref > 0:
-        elapsed_s = max(1.0, (max_fin_s - model_debut_s) - planned_ded)
-        trs_poste_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
-    elif prod_ref > 0 and tot_s > 0:
+    if model_debut_s is not None and max_fin_s > 0:
+        if max_fin_s < model_debut_s: max_fin_s += 86400  # poste de nuit
+        if max_fin_s > model_debut_s and prod_ref > 0:
+            elapsed_s = max(1.0, (max_fin_s - model_debut_s) - planned_ded)
+            trs_poste_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
+    if trs_poste_shift < 0 and prod_ref > 0 and tot_s > 0:
         trs_poste_shift = round(tot_eq/(prod_ref*tot_s/28800)*100,1)
     return jsonify({
         "pilot":pilot,"date":today,
@@ -1810,8 +1813,10 @@ def api_past_sessions():
             debut_str, _ = _get_model_day_cfg(s["poste"])
             model_debut_s = _hms_to_sec(debut_str) if debut_str else None
             planned_ded = _compute_planned_deduction_s(session_evts.get(key, []))
-            if model_debut_s and s["max_fin_s"] > model_debut_s:
-                elapsed_s = max(1.0, (s["max_fin_s"] - model_debut_s) - planned_ded)
+            mfs = s["max_fin_s"]
+            if model_debut_s and mfs < model_debut_s: mfs += 86400  # poste de nuit
+            if model_debut_s and mfs > model_debut_s:
+                elapsed_s = max(1.0, (mfs - model_debut_s) - planned_ded)
                 trs = round(s["tot_equiv"] / (prod_ref * elapsed_s / 28800) * 100, 1)
         result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs})
     result.sort(key=lambda x: x["date"], reverse=True)
@@ -1851,9 +1856,11 @@ def api_session_report():
     model_dur_s = get_shift_duration_s(poste)
     ecart_s = max(0.0, model_dur_s - (tot_s + stop_s))
     trs_shift = -1.0
-    if model_debut_s and max_fin_s > model_debut_s and prod_ref > 0 and tot_eq > 0:
-        elapsed_s = max(1.0, (max_fin_s - model_debut_s) - planned_ded)
-        trs_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
+    if model_debut_s and max_fin_s > 0:
+        if max_fin_s < model_debut_s: max_fin_s += 86400  # poste de nuit
+        if max_fin_s > model_debut_s and prod_ref > 0 and tot_eq > 0:
+            elapsed_s = max(1.0, (max_fin_s - model_debut_s) - planned_ded)
+            trs_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
     trs_of = round(tot_eq/(prod_ref*tot_s/28800)*100,1) if prod_ref>0 and tot_s>0 and tot_eq>0 else -1
     return jsonify({"date":date_str,"pilot":pilot,"poste":poste,"prod_rows":prod_rows,"evt_rows":evt_rows,
                     "trs_shift":trs_shift,"trs":trs_of,"tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
@@ -1861,6 +1868,41 @@ def api_session_report():
                     "model_debut":debut_str or "","model_fin":fin_str or "",
                     "ecart_s":round(ecart_s,0),"model_dur_s":round(model_dur_s,0),
                     "planned_ded_s":round(planned_ded,0)})
+
+@flask_app.route('/api/add_stop_decl', methods=['POST'])
+def api_add_stop_decl():
+    """Ajoute rétroactivement une déclaration d'arrêt (pause/nettoyage/réunion) pour le pilote connecté."""
+    data = request.json or {}
+    stop_type = str(data.get("type","")).strip()
+    debut_hms = str(data.get("debut_hms","")).strip()
+    fin_hms   = str(data.get("fin_hms","")).strip()
+    comment   = str(data.get("comment","")).strip()
+    if not stop_type or not debut_hms or not fin_hms:
+        return jsonify({"ok":False,"error":"type/debut/fin requis"}),400
+    pilot = _S.get("pilot","")
+    poste = _S.get("poste","")
+    if not pilot:
+        return jsonify({"ok":False,"error":"Pas de pilote connecté"}),400
+    now = datetime.datetime.now()
+    try:
+        dh,dm = [int(x) for x in debut_hms.split(":")[:2]]
+        fh,fm = [int(x) for x in fin_hms.split(":")[:2]]
+        start_dt = now.replace(hour=dh, minute=dm, second=0, microsecond=0)
+        end_dt   = now.replace(hour=fh, minute=fm, second=0, microsecond=0)
+        if end_dt <= start_dt: end_dt += datetime.timedelta(days=1)  # poste de nuit
+        dur_s = max(0, (end_dt - start_dt).total_seconds())
+        kit_val = "Oui" if _S.get("form",{}).get("kit") else "Non"
+        row = [
+            stop_type, _S.get("form",{}).get("of_num",""),
+            start_dt.strftime("%d/%m/%Y"), poste, pilot,
+            "","","","","","","","","","",kit_val,
+            start_dt.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"), fmt(dur_s),
+            "","","","","","","","","","","","","","","","","",comment,"",
+        ]
+        write_excel_bg([], [row])
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)}),500
+    return jsonify({"ok":True})
 
 @flask_app.route('/api/reload', methods=['POST'])
 def api_reload():
@@ -3245,6 +3287,19 @@ select{cursor:default}
     </div>
   </div>
 
+  <!-- ════ MODAL ARRÊTS MANQUANTS ════ -->
+  <div id="m-missing-decl" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
+    <div class="card" style="width:480px;max-height:85vh;overflow-y:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #f59e0b">
+      <div style="font-size:15px;font-weight:800;color:#92400e;margin-bottom:4px">⚠ Arrêts non déclarés</div>
+      <div style="font-size:12px;color:#78350f;margin-bottom:14px">Vous n'avez pas déclaré les arrêts prévus suivants. Souhaitez-vous les ajouter avant de terminer le poste ?</div>
+      <div id="md-rows" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sec" onclick="skipMissingDecl()">Ignorer et continuer</button>
+        <button class="btn btn-prim" style="background:#f59e0b;border-color:#f59e0b" onclick="skipMissingDecl()">✓ Continuer</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ════ RAPPORTS DES POSTES ════ -->
   <div id="v-rapports" class="view" style="flex-direction:column;overflow:hidden">
     <div style="display:grid;grid-template-columns:280px 1fr;flex:1;overflow:hidden;min-height:0">
@@ -4364,6 +4419,7 @@ async function loadMainDecl() {
   _todayEquivAccum=inShiftDecls.reduce((a,r)=>a+parseFloat(r.equiv||0),0);
   const _pilotEvts=evts.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD);
   const inShiftEvts=_mDebS>0?_pilotEvts.filter(r=>_hms2s(r.fin||'')>=_mDebS||_hms2s(r.debut||'')>=_mDebS):_pilotEvts;
+  window._lastMainRows=inShiftEvts; // pour checkMissingDecls()
   _todayStopAccum=inShiftEvts.reduce((a,r)=>a+_hms2s(r.duree||''),0);
   // Heure de la dernière déclaration prod enregistrée (dans la fenêtre du poste)
   if(inShiftDecls.length){
@@ -4756,6 +4812,7 @@ async function ipConfirmModifyModel(){
     if(_lastProdDeclTime){
       const[fh,fm]=newFin.split(':').map(Number);
       const modelFin=new Date();modelFin.setHours(fh,fm,0,0);
+      if(modelFin<_lastProdDeclTime) modelFin.setDate(modelFin.getDate()+1); // poste de nuit
       const newGapS=(modelFin.getTime()-_lastProdDeclTime.getTime())/1000;
       if(newGapS>60){
         _pendingGapS=newGapS;
@@ -5513,6 +5570,95 @@ function calcDur(d,f){
   const diff=p(f)-p(d);return diff>0?fmtDur(diff):'';}catch(e){return '';}
 }
 
+// ── ARRÊTS MANQUANTS ──
+let _missingDeclChecked = false;
+
+function _hasDeclaredType(keywords){
+  // Cherche dans les déclarations du poste actuel (accueil)
+  const rows=window._lastMainRows||[];
+  return rows.some(r=>{
+    const t=String(r.type||r._type||r[0]||'').toLowerCase();
+    return keywords.some(k=>t.includes(k));
+  });
+}
+
+async function checkMissingDecls(){
+  // Refresh des déclarations avant check
+  await loadMainDecl();
+  const ap=_cfgArretsPrevus||{};
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=DAY_KEYS[new Date().getDay()];
+  const model=_cfgModels&&_cfgModels.find(m=>m.nom===(ST.poste||''));
+  const jour=model&&model.jours&&model.jours[dk];
+  const missing=[];
+  if((ap.pause_min||0)>0 && !_hasDeclaredType(['pause'])){
+    missing.push({label:'Pause',budget:ap.pause_min||0,keywords:['pause'],id:'md-pause'});
+  }
+  if((ap.clean_short_min||0)>0 && !_hasDeclaredType(['nettoyage','nett'])){
+    missing.push({label:'Nettoyage court',budget:ap.clean_short_min||0,keywords:['nettoyage','nett'],id:'md-nett'});
+  }
+  if((ap.meeting_tol_min||0)>0 && !_hasDeclaredType(['réunion','reunion','meeting'])){
+    missing.push({label:'Réunion',budget:ap.meeting_tol_min||0,keywords:['réunion','reunion','meeting'],id:'md-meet'});
+  }
+  if(!missing.length) return false;
+  // Construire les lignes du modal
+  const lastFin=_lastProdDeclTime;
+  const container=document.getElementById('md-rows');
+  container.innerHTML='';
+  missing.forEach(item=>{
+    // Heure de début suggérée = fin dernière prod ou fin modèle - budget
+    let sugStart='',sugEnd='';
+    if(jour&&jour.fin){
+      const[fh,fm]=jour.fin.split(':').map(Number);
+      const budMin=item.budget;
+      const endM=fh*60+fm;
+      const startM=endM-budMin;
+      const sh=Math.floor(((startM%1440)+1440)%1440/60),sm=((startM%1440)+1440)%1440%60;
+      sugStart=String(sh).padStart(2,'0')+':'+String(sm).padStart(2,'0');
+      sugEnd=jour.fin;
+    } else if(lastFin){
+      sugStart=String(lastFin.getHours()).padStart(2,'0')+':'+String(lastFin.getMinutes()).padStart(2,'0');
+      const e=new Date(lastFin.getTime()+item.budget*60000);
+      sugEnd=String(e.getHours()).padStart(2,'0')+':'+String(e.getMinutes()).padStart(2,'0');
+    }
+    const div=document.createElement('div');
+    div.style.cssText='background:#fffbeb;border:1.5px solid #fde68a;border-radius:8px;padding:10px 12px';
+    div.innerHTML=`<div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:6px">${esc(item.label)} <span style="font-weight:400;color:#a16207">(prévu ${item.budget} min)</span></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:11px;font-weight:600">De <input type="time" id="${item.id}-debut" value="${sugStart}" style="padding:4px 6px;border:1.5px solid #fde68a;border-radius:5px;font-size:12px;font-weight:700;margin-left:4px"></label>
+        <label style="font-size:11px;font-weight:600">à <input type="time" id="${item.id}-fin" value="${sugEnd}" style="padding:4px 6px;border:1.5px solid #fde68a;border-radius:5px;font-size:12px;font-weight:700;margin-left:4px"></label>
+        <button onclick="addMissingDecl('${item.id}','${esc(item.label)}')" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer">+ Ajouter</button>
+        <span id="${item.id}-ok" style="display:none;color:#16a34a;font-weight:700;font-size:12px">✓ Ajouté</span>
+      </div>`;
+    container.appendChild(div);
+  });
+  openM('m-missing-decl');
+  return true;
+}
+
+async function addMissingDecl(rowId, label){
+  const debut=document.getElementById(rowId+'-debut')?.value;
+  const fin=document.getElementById(rowId+'-fin')?.value;
+  if(!debut||!fin){toast('Remplissez les heures','warn');return;}
+  const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:label,debut_hms:debut,fin_hms:fin,comment:'Déclaré rétroactivement'})});
+  const d=r?await r.json():{};
+  if(d.ok){
+    const ok=document.getElementById(rowId+'-ok');if(ok) ok.style.display='';
+    // Griser la ligne
+    const btn=document.querySelector(`button[onclick="addMissingDecl('${rowId}','${label.replace(/'/g,"\\'")}')"]`);
+    if(btn){btn.disabled=true;btn.style.opacity='.4';}
+    toast(label+' ajouté','ok');
+  } else {
+    toast('Erreur : '+(d.error||'?'),'err');
+  }
+}
+
+async function skipMissingDecl(){
+  closeM('m-missing-decl');
+  _missingDeclChecked=true;
+  await doFinPoste();
+}
+
 // ── FIN DE POSTE ──
 async function doFinPoste(){
   if(ST.prod_active){toast('Terminer la production en cours avant de finir le poste','err');return;}
@@ -5525,6 +5671,8 @@ async function doFinPoste(){
     if(jour&&jour.fin&&_lastProdDeclTime){
       const[fh,fm]=jour.fin.split(':').map(Number);
       const modelFin=new Date();modelFin.setHours(fh,fm,0,0);
+      // Poste de nuit : si la fin modèle est avant la dernière déclaration, on passe au lendemain
+      if(modelFin<_lastProdDeclTime) modelFin.setDate(modelFin.getDate()+1);
       const gapS=(modelFin.getTime()-_lastProdDeclTime.getTime())/1000;
       if(gapS>60){
         // Ouvrir popup interposte pour ce temps restant
@@ -5553,6 +5701,12 @@ async function doFinPoste(){
     }
   }
   window._finPosteMode=false;
+  // Vérifier arrêts manquants (pause/nettoyage/réunion) si pas déjà fait
+  if(!_missingDeclChecked){
+    const hadMissing=await checkMissingDecls();
+    if(hadMissing) return; // modal ouverte → attendre action utilisateur
+  }
+  _missingDeclChecked=false;
   goTab('finposte');
 }
 
