@@ -189,6 +189,11 @@ def _hms_to_sec(s):
     except: pass
     return 0.0
 
+def _sec_to_hm(s):
+    """Convert seconds to HH:MM string."""
+    s = int(max(0, s)) % 86400
+    return f"{s//3600:02d}:{(s%3600)//60:02d}"
+
 def _row_date(v):
     if not v: return ""
     s = str(v)
@@ -1745,6 +1750,38 @@ def api_fin_poste_data():
             trs_poste_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
     if trs_poste_shift < 0 and prod_ref > 0 and tot_s > 0:
         trs_poste_shift = round(tot_eq/(prod_ref*tot_s/28800)*100,1)
+    # Compute gap intervals (plages non justifiées)
+    debut_str2, fin_str2 = _get_model_day_cfg(pilot_poste, datetime.date.today())
+    gap_intervals = []
+    model_debut_hm = debut_str2 or ""
+    model_fin_hm = fin_str2 or ""
+    if debut_str2 and fin_str2:
+        md_s = _hms_to_sec(debut_str2)
+        mf_s = _hms_to_sec(fin_str2)
+        if mf_s <= md_s: mf_s += 86400
+        all_slots = []
+        for rn2, r2 in _decl_cache:
+            rd2 = _row_date(r2[2])
+            if rd2 != shift_date_str and rd2 != today: continue
+            if str(r2[4] or "") != pilot: continue
+            ds2 = _hms_to_sec(str(r2[16] or "00:00:00"))
+            fs2 = _hms_to_sec(str(r2[17] or "00:00:00"))
+            if fs2 > ds2 and ds2 >= 0: all_slots.append([ds2, fs2])
+        all_slots.sort()
+        merged = []
+        for s2, e2 in all_slots:
+            if merged and s2 <= merged[-1][1] + 60:
+                merged[-1][1] = max(merged[-1][1], e2)
+            else:
+                merged.append([s2, e2])
+        covered = md_s
+        for s2, e2 in merged:
+            s2 = max(s2, md_s); e2 = min(e2, mf_s)
+            if s2 > covered + 60:
+                gap_intervals.append({"debut": _sec_to_hm(covered), "fin": _sec_to_hm(s2), "duree_min": round((s2-covered)/60)})
+            covered = max(covered, e2)
+        if mf_s > covered + 60:
+            gap_intervals.append({"debut": _sec_to_hm(covered), "fin": _sec_to_hm(mf_s), "duree_min": round((mf_s-covered)/60)})
     return jsonify({
         "pilot":pilot,"date":today,
         "nb_of":len(of_list),"trs":trs_poste,"trs_shift":trs_poste_shift,
@@ -1754,6 +1791,9 @@ def api_fin_poste_data():
         "ecart_s": round(ecart_s, 0),
         "model_dur_s": round(model_dur_s, 0),
         "planned_ded_s": round(planned_ded, 0),
+        "gap_intervals": gap_intervals,
+        "model_debut": model_debut_hm,
+        "model_fin": model_fin_hm,
     })
 
 @flask_app.route('/api/history_today')
@@ -1838,7 +1878,11 @@ def api_past_sessions():
                 elapsed_s = max(1.0, (mfs - model_debut_s) - planned_ded)
                 trs = round(s["tot_equiv"] / (prod_ref * elapsed_s / 28800) * 100, 1)
         result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs})
-    result.sort(key=lambda x: x["date"], reverse=True)
+    def _date_sort_key(d):
+        try:
+            p=d.split('/'); return (int(p[2]),int(p[1]),int(p[0]))
+        except: return (0,0,0)
+    result.sort(key=lambda x: _date_sort_key(x["date"]), reverse=True)
     return jsonify(result[:60])
 
 @flask_app.route('/api/session_report')
@@ -1922,6 +1966,12 @@ def api_add_stop_decl():
             shift_date2,
         ]
         write_excel_bg([], [row])
+        # Synchronously update cache so fin_poste_data sees it immediately
+        try:
+            next_rn = max((rn for rn,_ in _decl_cache), default=1) + 1
+            padded = tuple(row) + ('',) * max(0, 40 - len(row))
+            _decl_cache.append((next_rn, padded))
+        except: pass
     except Exception as e:
         return jsonify({"ok":False,"error":str(e)}),500
     return jsonify({"ok":True})
@@ -3619,27 +3669,27 @@ select{cursor:default}
 
   <!-- ════ MODAL ÉCART FIN DE POSTE ════ -->
   <div id="m-ecart-poste" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
-    <div class="card" style="width:520px;max-height:85vh;overflow-y:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #dc2626">
-      <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:4px">📊 Écart fin de poste</div>
-      <div style="font-size:12px;color:var(--gray);margin-bottom:12px">Du temps n'est pas justifié entre vos déclarations et la durée théorique du poste.</div>
-      <div id="ecart-info" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px"></div>
-      <div id="ecart-of-panel" style="display:none;margin-bottom:14px">
-        <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">Productions du poste (modifier début / fin) :</div>
-        <div id="ecart-of-list" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div class="card" style="width:580px;max-height:90vh;overflow-y:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #dc2626">
+      <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:6px">📊 Réconciliation fin de poste</div>
+      <div id="ecart-guide" style="font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;line-height:1.5"></div>
+      <div id="ecart-info" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px"></div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Plages non justifiées</div>
+      <div id="ecart-gaps" style="margin-bottom:14px"></div>
+      <div id="ecart-of-panel" style="margin-bottom:14px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Modifier les horaires des OFs</div>
+        <div id="ecart-of-list" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
-      <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap">
-        <button class="btn btn-ghost" style="font-size:12px;color:#0369a1;border-color:#bae6fd" onclick="ecartOpenOfPanel()">✏ Modifier les OFs</button>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-ecart-poste')">Annuler</button>
-          <button class="btn btn-sec" onclick="skipEcartPoste()">Valider et terminer</button>
-        </div>
+      <datalist id="ecart-stop-opts"></datalist>
+      <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
+        <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-ecart-poste')">Annuler</button>
+        <button class="btn btn-sec" onclick="skipEcartPoste()">Valider et terminer</button>
       </div>
     </div>
   </div>
 
 <!-- Modal saisie code formaté (DDDDDD_DDD) -->
-<div id="m-code-input" class="modal" style="backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);background:rgba(0,0,0,0.72)" onclick="if(event.target===this)closeM('m-code-input')">
-  <div class="mbox" style="max-width:480px;text-align:center;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:90%">
+<div id="m-code-input" class="modal" style="position:fixed;inset:0;z-index:9999;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);background:rgba(0,0,0,0.75);align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-code-input')">
+  <div style="background:#fff;border-radius:14px;padding:24px 28px;width:90%;max-width:480px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.5)">
     <div style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:8px;letter-spacing:.05em" id="code-input-lbl">CODE</div>
     <div style="font-family:monospace;font-size:22px;font-weight:900;color:var(--navy);letter-spacing:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px">0 0 0 0 0 0 _ 0 0 0</div>
     <input id="code-input-val" maxlength="10" autocomplete="off" spellcheck="false" inputmode="numeric"
@@ -6246,20 +6296,73 @@ function _showEcartModal(fpd){
   const model_min=Math.round((fpd.model_dur_s||0)/60);
   const prod_min=Math.round((fpd.tot_s||0)/60);
   const stop_min=Math.max(0,model_min-prod_min-ecart_min);
+  const modelDebut=fpd.model_debut||'';
+  const modelFin=fpd.model_fin||'';
+  // Guide header
+  const guidEl=document.getElementById('ecart-guide');
+  if(guidEl){
+    if(ecart_min<=0){
+      guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#f0fdf4;border:1px solid #bbf7d0;line-height:1.5';
+      guidEl.innerHTML='<span style="color:#16a34a;font-weight:800;font-size:13px">✓ Toute la plage '+esc(modelDebut)+'→'+esc(modelFin)+' est couverte !</span>';
+    } else {
+      guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#fff7ed;border:1px solid #fed7aa;line-height:1.5';
+      guidEl.innerHTML='Objectif : couvrir <b>'+esc(modelDebut)+' → '+esc(modelFin)+'</b> ('+model_min+' min).<br>'+
+        '<span style="color:#dc2626;font-weight:700">'+ecart_min+' min non justifiées.</span> '+
+        '<span style="color:var(--gray)">Déclarez les arrêts manquants ou corrigez les horaires des OFs ci-dessous.</span>';
+    }
+  }
+  // Stats
   document.getElementById('ecart-info').innerHTML=
-    '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px">'+
+    '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:3px 16px;font-size:12px">'+
     '<span style="color:var(--gray)">Durée modèle :</span><b>'+model_min+' min</b>'+
     '<span style="color:var(--gray)">Prod déclarée :</span><b>'+prod_min+' min</b>'+
     '<span style="color:var(--gray)">Arrêts déclarés :</span><b>'+stop_min+' min</b>'+
-    '<span style="color:#dc2626;font-weight:700">Écart non justifié :</span><b style="color:#dc2626;font-size:15px">'+ecart_min+' min</b>'+
+    '<span style="color:#dc2626;font-weight:700">Écart :</span><b style="color:#dc2626;font-weight:900">'+ecart_min+' min</b>'+
     '</div>';
+  // Datalist for stop types
+  const dl=document.getElementById('ecart-stop-opts');
+  if(dl){dl.innerHTML=(_interposteLbls||[]).map(l=>`<option value="${esc(l)}">`).join('');}
+  // Gap intervals
+  const gapsEl=document.getElementById('ecart-gaps');
+  const gaps=fpd.gap_intervals||[];
+  if(gapsEl){
+    if(!gaps.length||ecart_min<=0){
+      gapsEl.innerHTML='<div style="color:#16a34a;font-size:12px;font-weight:700;padding:4px 0">✓ Aucune plage non couverte</div>';
+    } else {
+      gapsEl.innerHTML='';
+      gaps.forEach((g,gi)=>{
+        const div=document.createElement('div');
+        div.style.cssText='background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:8px 10px;margin-bottom:6px';
+        div.innerHTML=
+          '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">'+
+            '<span style="font-size:12px;font-weight:700;color:#dc2626">⚠ '+esc(g.debut)+' → '+esc(g.fin)+
+              ' <span style="font-weight:400;color:#9f1239">('+g.duree_min+' min)</span></span>'+
+            '<button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;color:#dc2626;border-color:#fca5a5" onclick="ecartToggleGapForm('+gi+')">+ Déclarer un arrêt</button>'+
+          '</div>'+
+          '<div id="ecart-gap-form-'+gi+'" style="display:none;margin-top:8px;border-top:1px solid #fca5a5;padding-top:8px">'+
+            '<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">'+
+              '<div><label style="font-size:10px;color:var(--gray);display:block;margin-bottom:2px">Début</label>'+
+                '<input type="time" id="ecart-gap-debut-'+gi+'" value="'+esc(g.debut)+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;width:90px"></div>'+
+              '<div><label style="font-size:10px;color:var(--gray);display:block;margin-bottom:2px">Fin</label>'+
+                '<input type="time" id="ecart-gap-fin-'+gi+'" value="'+esc(g.fin)+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;width:90px"></div>'+
+              '<div style="flex:1;min-width:140px"><label style="font-size:10px;color:var(--gray);display:block;margin-bottom:2px">Type d\'arrêt</label>'+
+                '<input id="ecart-gap-type-'+gi+'" placeholder="Ex : Pause, Nettoyage…" list="ecart-stop-opts" style="width:100%;padding:4px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px"></div>'+
+              '<button class="btn btn-prim" style="font-size:11px;padding:5px 12px" onclick="saveEcartGapStop('+gi+')">✓ Ajouter</button>'+
+            '</div>'+
+          '</div>';
+        gapsEl.appendChild(div);
+      });
+    }
+  }
+  // OFs list
   const list=document.getElementById('ecart-of-list');
   list.innerHTML='';
   (fpd.of_list||[]).forEach(of=>{
     const div=document.createElement('div');
     div.style.cssText='display:flex;align-items:center;gap:8px;padding:8px;background:#f8fafc;border-radius:6px;border:1px solid var(--border);flex-wrap:wrap';
-    const ofNum=(of.of||'').replace(/'/g,"\\'");
-    div.innerHTML='<span style="flex:1;font-size:12px;font-weight:700;min-width:80px">'+(of.of||'OF')+' — '+(of.taille||'—')+'</span>'+
+    div.innerHTML='<span style="flex:1;font-size:12px;font-weight:700;min-width:80px">'+(of.of||'OF')+
+      ' <span style="font-weight:400;color:var(--gray);font-size:11px">'+esc(of.taille||'')+'</span> '+
+      '<span style="font-size:10px;color:#64748b">'+esc(of.debut||'')+'→'+esc(of.fin||'')+'</span></span>'+
       '<div style="display:flex;align-items:center;gap:4px">'+
       '<input type="time" class="ecart-debut" value="'+(of.debut||'')+'" data-oldebut="'+(of.debut||'')+'" data-ofnum="'+(of.of||'')+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;width:90px">'+
       '<span style="color:var(--gray)">→</span>'+
@@ -6268,8 +6371,29 @@ function _showEcartModal(fpd){
       '</div>';
     list.appendChild(div);
   });
-  document.getElementById('ecart-of-panel').style.display='none';
   openM('m-ecart-poste');
+}
+
+function ecartToggleGapForm(gi){
+  const f=document.getElementById('ecart-gap-form-'+gi);
+  if(f) f.style.display=f.style.display==='none'?'block':'none';
+}
+
+async function saveEcartGapStop(gi){
+  const debut=(document.getElementById('ecart-gap-debut-'+gi)||{}).value||'';
+  const fin=(document.getElementById('ecart-gap-fin-'+gi)||{}).value||'';
+  const type=((document.getElementById('ecart-gap-type-'+gi)||{}).value||'').trim();
+  if(!debut||!fin||!type){toast('Renseigner début, fin et type d\'arrêt','err');return;}
+  const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,comment:'Déclaré depuis réconciliation fin de poste'})});
+  const d=r?await r.json():{};
+  if(d.ok){
+    toast(type+' ajouté','ok');
+    const fpd=await apiFetch('/api/fin_poste_data');
+    if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
+  } else {
+    toast('Erreur : '+(d.error||'?'),'err');
+  }
 }
 
 async function skipEcartPoste(){
@@ -6279,7 +6403,7 @@ async function skipEcartPoste(){
 }
 
 function ecartOpenOfPanel(){
-  document.getElementById('ecart-of-panel').style.display='block';
+  // OF panel is always visible now - kept for backward compat
 }
 
 async function saveEcartOf(btn){
@@ -7011,10 +7135,17 @@ async function loadSessionReport(date,pilot,poste,itemId){
       if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="#dc2626" rx="2" opacity=".75"/>`;
     });
     const fmt=ms=>{const d=new Date(ms);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
+    // Hourly tick marks
+    let tickT=Math.ceil(tS/3600000)*3600000;
+    while(tickT<tE){
+      const tx=toX(tickT);
+      const hr=new Date(tickT).getHours();
+      html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(255,255,255,.4)" stroke-width="1"/>`;
+      html+=`<text x="${tx+2}" y="${Y+H2-3}" font-size="7" fill="rgba(255,255,255,.85)">${String(hr).padStart(2,'0')}h</text>`;
+      tickT+=3600000;
+    }
     html+=`<text x="2" y="${H-1}" font-size="8" fill="#fff">${fmt(tS)}</text>`;
     html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#fff">${fmt(tE)}</text>`;
-    html+=`<line x1="${W/2}" y1="${Y}" x2="${W/2}" y2="${Y+H2}" stroke="#94a3b8" stroke-width=".5" stroke-dasharray="2,2"/>`;
-    html+=`<text x="${W/2-10}" y="${H-1}" font-size="8" fill="#e2e8f0">${fmt((tS+tE)/2)}</text>`;
     return html;
   }
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,d.model_debut,d.model_fin);
