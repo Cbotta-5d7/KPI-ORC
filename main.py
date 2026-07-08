@@ -37,7 +37,7 @@ EVENTS = [
     ("Reunion",              "arret_reunion",    "ratt"),
 ]
 
-# Nouveau schéma unifié - 39 colonnes
+# Nouveau schéma unifié - 40 colonnes
 DECL_HEADERS = [
     "Type","OF","Date","Poste","Pilote","Co-Pilote","Nb Personnes",
     "Taille","Code Produit","Type Produit","Poids Garnissage","Fibre",
@@ -48,7 +48,7 @@ DECL_HEADERS = [
     "Mq Taie","Mq Housse/Encart","Nb PP Cousue",
     "","Manquant MP","Manquant Personnel/Reunion",
     "","Commentaire","Prevu/Hors TRS",
-    "Duree Arrets","Duree Prod Pure",
+    "Duree Arrets","Duree Prod Pure","Date_poste",
 ]
 
 POSTES = ["Matin","Midi","Nuit","Jour"]
@@ -670,38 +670,42 @@ def _ensure_decl_sheet(wb):
     return wb["Declarations"]
 
 def build_decl_rows(v, tl_events, of_start, pause_periods):
-    """Construit les lignes arrêts/pauses au format unifié (37 cols)."""
+    """Construit les lignes arrêts/pauses au format unifié (40 cols)."""
     rows = []
     kit_val = "Oui" if v.get("kit") else "Non"
     def _base_row(type_decl, start, end, comment="", hors_trs=""):
         dur = max(0,(end-start).total_seconds())
+        shift_dt = _S.get("shift_start") or start
+        shift_date_str = shift_dt.strftime("%d/%m/%Y")
         return [
-            type_decl,                          # 1 Type
-            v.get("of_num",""),                 # 2 OF
-            start.strftime("%d/%m/%Y"),          # 3 Date
-            v.get("poste",""),                  # 4 Poste
-            v.get("pilote",""),                 # 5 Pilote
-            v.get("copilote",""),               # 6 Co-Pilote
-            v.get("nb_pers",""),                # 7 Nb Personnes
-            v.get("taille",""),                 # 8 Taille
-            v.get("code_prod",""),              # 9 Code Produit
-            v.get("type_prod",""),              # 10 Type Produit
-            v.get("poids",""),                  # 11 Poids Garnissage
-            v.get("fibre",""),                  # 12 Fibre
-            v.get("of_taie",""),                # 13 OF Taie
-            v.get("traca",""),                  # 14 Traca Fibre
-            v.get("ref_taie",""),               # 15 Ref Taie
-            kit_val,                            # 16 Kit
-            start.strftime("%H:%M:%S"),          # 17 Heure Debut
-            end.strftime("%H:%M:%S"),            # 18 Heure Fin
-            fmt(dur),                           # 19 Duree
-            "","","","","",                     # 20-24 prod only
-            "",                                 # 25 TRS%
-            "","","","","","",                  # 26-31 prod only
-            "","","",                           # 32-34
-            "",                                 # 35 Nettoyage
-            comment,                            # 36 Commentaire
-            hors_trs,                           # 37 Prevu/Hors TRS
+            type_decl,                          # 0 Type
+            v.get("of_num",""),                 # 1 OF
+            start.strftime("%d/%m/%Y"),          # 2 Date
+            v.get("poste",""),                  # 3 Poste
+            v.get("pilote",""),                 # 4 Pilote
+            v.get("copilote",""),               # 5 Co-Pilote
+            v.get("nb_pers",""),                # 6 Nb Personnes
+            v.get("taille",""),                 # 7 Taille
+            v.get("code_prod",""),              # 8 Code Produit
+            v.get("type_prod",""),              # 9 Type Produit
+            v.get("poids",""),                  # 10 Poids Garnissage
+            v.get("fibre",""),                  # 11 Fibre
+            v.get("of_taie",""),                # 12 OF Taie
+            v.get("traca",""),                  # 13 Traca Fibre
+            v.get("ref_taie",""),               # 14 Ref Taie
+            kit_val,                            # 15 Kit
+            start.strftime("%H:%M:%S"),          # 16 Heure Debut
+            end.strftime("%H:%M:%S"),            # 17 Heure Fin
+            fmt(dur),                           # 18 Duree
+            "","","","","",                     # 19-23 prod only
+            "",                                 # 24 TRS%
+            "","","","","","",                  # 25-30 prod only
+            "","","",                           # 31-33
+            "",                                 # 34
+            comment,                            # 35 Commentaire
+            hors_trs,                           # 36 Prevu/Hors TRS
+            "","",                              # 37-38 Duree Arrets, Duree Prod Pure
+            shift_date_str,                     # 39 Date_poste
         ]
     for ev in tl_events:
         if ev.get("cat") not in ("ratt","pb","nettoyage","autre"): continue
@@ -765,11 +769,14 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
     pilot = _S.get("last_of_pilot") or _S.get("pilot") or ""
     dur_s = (end_dt-start_dt).total_seconds()
     row_type = label or "Changement d'OF"
+    shift_dt = _S.get("shift_start") or start_dt
+    shift_date_str = shift_dt.strftime("%d/%m/%Y")
     row = [
         row_type,"",start_dt.strftime("%d/%m/%Y"),
         _S.get("poste",""),pilot,"","","","","","","","","","","",
         start_dt.strftime("%H:%M:%S"),end_dt.strftime("%H:%M:%S"),fmt(dur_s),
         "","","","","","","","","","","","","","","","",comment,
+        "","",shift_date_str,
     ]
     def _bg():
         try:
@@ -1193,7 +1200,9 @@ def api_end_prod():
         trs = round(equiv/(prod_ref*of_s_brut/28800)*100,1)
         trs_str = str(trs)
 
-    # Ligne Production (37 cols, format unifié)
+    # Ligne Production (40 cols, format unifié)
+    _shift_dt = _S.get("shift_start") or datetime.datetime.now()
+    _shift_date_str = _shift_dt.strftime("%d/%m/%Y")
     prod_row = [
         "Production",
         v.get("of_num",""),
@@ -1234,6 +1243,7 @@ def api_end_prod():
         "",
         fmt(stop_s),
         fmt(max(0, of_s_brut - stop_s)),
+        _shift_date_str,
     ]
     evt_rows = build_decl_rows(
         dict(v, pilote=v.get("pilote",_S["pilot"] or ""), poste=v.get("poste",_S["poste"] or "")),
@@ -1776,10 +1786,10 @@ def api_history_today():
 @flask_app.route('/api/past_sessions')
 def api_past_sessions():
     prod_ref = get_prod_ref()
-    today_str = datetime.date.today().strftime("%d/%m/%Y")
     sessions = {}
     for rn, r in _decl_cache:
-        date_str = _row_date(r[2])
+        # Use Date_poste (col 39) if available, else fall back to row date (col 2)
+        date_str = str(r[39] if len(r) > 39 else "") .strip() or _row_date(r[2])
         if not date_str: continue
         pilot = str(r[4] or "")
         poste = str(r[3] or "")
@@ -1798,7 +1808,7 @@ def api_past_sessions():
     # Also gather stop events per session for planned deduction
     session_evts = {}
     for rn, r in _decl_cache:
-        date_str2 = _row_date(r[2])
+        date_str2 = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
         if not date_str2: continue
         pilot2 = str(r[4] or ""); poste2 = str(r[3] or "")
         row_type2 = str(r[0] or "").strip().lower()
@@ -1810,7 +1820,10 @@ def api_past_sessions():
     for key, s in sessions.items():
         trs = -1.0
         if prod_ref > 0 and s["tot_equiv"] > 0:
-            debut_str, _ = _get_model_day_cfg(s["poste"])
+            try:
+                parts = s["date"].split('/'); date_obj = datetime.date(int(parts[2]), int(parts[1]), int(parts[0]))
+            except: date_obj = None
+            debut_str, _ = _get_model_day_cfg(s["poste"], date_obj)
             model_debut_s = _hms_to_sec(debut_str) if debut_str else None
             planned_ded = _compute_planned_deduction_s(session_evts.get(key, []))
             mfs = s["max_fin_s"]
@@ -1892,16 +1905,86 @@ def api_add_stop_decl():
         if end_dt <= start_dt: end_dt += datetime.timedelta(days=1)  # poste de nuit
         dur_s = max(0, (end_dt - start_dt).total_seconds())
         kit_val = "Oui" if _S.get("form",{}).get("kit") else "Non"
+        shift_dt2 = _S.get("shift_start") or now
+        shift_date2 = shift_dt2.strftime("%d/%m/%Y")
         row = [
             stop_type, _S.get("form",{}).get("of_num",""),
             start_dt.strftime("%d/%m/%Y"), poste, pilot,
             "","","","","","","","","","",kit_val,
             start_dt.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"), fmt(dur_s),
             "","","","","","","","","","","","","","","","","",comment,"",
+            shift_date2,
         ]
         write_excel_bg([], [row])
     except Exception as e:
         return jsonify({"ok":False,"error":str(e)}),500
+    return jsonify({"ok":True})
+
+@flask_app.route('/api/update_of_time', methods=['POST'])
+def api_update_of_time():
+    """Modifie l'heure début/fin d'un OF déclaré (pour correction écart fin de poste)."""
+    data = request.json or {}
+    of_num = str(data.get("of_num","")).strip()
+    old_debut = str(data.get("old_debut","")).strip()  # HH:MM
+    new_debut = str(data.get("new_debut","")).strip()  # HH:MM
+    new_fin   = str(data.get("new_fin","")).strip()    # HH:MM
+    if not of_num or not new_debut or not new_fin:
+        return jsonify({"ok":False,"error":"of_num/new_debut/new_fin requis"}),400
+    pilot = _S.get("pilot","")
+    now = datetime.datetime.now()
+    today = now.strftime("%d/%m/%Y")
+    shift_start_dt = _S.get("shift_start")
+    shift_date_str = shift_start_dt.strftime("%d/%m/%Y") if shift_start_dt else today
+    # Find matching row in cache
+    target_rn = None
+    for rn, r in _decl_cache:
+        rd = _row_date(r[2])
+        if rd not in (today, shift_date_str): continue
+        if str(r[4] or "") != pilot: continue
+        if str(r[0] or "").strip().lower() not in ("production","prod",""): continue
+        row_of = str(r[1] or "")
+        row_debut = str(r[16] or "")[:5]
+        if row_of == of_num and (not old_debut or row_debut == old_debut):
+            target_rn = rn
+            break
+    if target_rn is None:
+        return jsonify({"ok":False,"error":"OF non trouvé"}),404
+    try:
+        dh,dm = [int(x) for x in new_debut.split(":")[:2]]
+        fh,fm = [int(x) for x in new_fin.split(":")[:2]]
+        start_dt2 = now.replace(hour=dh, minute=dm, second=0, microsecond=0)
+        end_dt2   = now.replace(hour=fh, minute=fm, second=0, microsecond=0)
+        if end_dt2 <= start_dt2: end_dt2 += datetime.timedelta(days=1)
+        dur_s2 = max(0, (end_dt2 - start_dt2).total_seconds())
+        new_debut_hms = f"{dh:02d}:{dm:02d}:00"
+        new_fin_hms   = f"{fh:02d}:{fm:02d}:00"
+        dur_hms = fmt(dur_s2)
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)}),400
+    # Update in-memory cache
+    for i, (rn, r) in enumerate(_decl_cache):
+        if rn == target_rn:
+            r_list = list(r)
+            r_list[16] = new_debut_hms
+            r_list[17] = new_fin_hms
+            r_list[18] = dur_hms
+            _decl_cache[i] = (rn, tuple(r_list))
+            break
+    # Update Excel in background
+    path = cfg.get("db_path","")
+    if path:
+        def _bg():
+            try:
+                with _excel_lock:
+                    wb = _get_wb(path)
+                    if wb is None: return
+                    ws = wb["Declarations"] if "Declarations" in wb.sheetnames else wb.active
+                    ws.cell(target_rn, 17).value = new_debut_hms
+                    ws.cell(target_rn, 18).value = new_fin_hms
+                    ws.cell(target_rn, 19).value = dur_hms
+                    _safe_excel_save(wb, path)
+            except: pass
+        threading.Thread(target=_bg, daemon=True).start()
     return jsonify({"ok":True})
 
 @flask_app.route('/api/reload', methods=['POST'])
@@ -3252,6 +3335,7 @@ select{cursor:default}
         </div>
       </div>
       <div style="font-size:12px;color:var(--gray);margin-bottom:10px">Que s'est-il passé pendant cette période ?</div>
+      <div id="ip-arrprev-group" style="display:none;margin-bottom:10px"></div>
       <div id="ip-btns" style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px"></div>
       <div style="margin-bottom:10px">
         <input id="ip-custom" placeholder="Ou saisir librement…" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
@@ -3296,6 +3380,23 @@ select{cursor:default}
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn btn-sec" onclick="skipMissingDecl()">Ignorer et continuer</button>
         <button class="btn btn-prim" style="background:#f59e0b;border-color:#f59e0b" onclick="skipMissingDecl()">✓ Continuer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ MODAL ÉCART FIN DE POSTE ════ -->
+  <div id="m-ecart-poste" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
+    <div class="card" style="width:520px;max-height:85vh;overflow-y:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #dc2626">
+      <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:4px">📊 Écart fin de poste</div>
+      <div style="font-size:12px;color:var(--gray);margin-bottom:12px">Du temps n'est pas justifié entre vos déclarations et la durée théorique du poste.</div>
+      <div id="ecart-info" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px"></div>
+      <div id="ecart-of-panel" style="display:none;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">Productions du poste (modifier début / fin) :</div>
+        <div id="ecart-of-list" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-ghost" id="ecart-btn-modify-of" style="font-size:12px;color:#0369a1;border-color:#bae6fd" onclick="ecartToggleOfPanel()">✏ Modifier un OF</button>
+        <button class="btn btn-sec" onclick="skipEcartPoste()">Ignorer et terminer</button>
       </div>
     </div>
   </div>
@@ -3527,7 +3628,6 @@ select{cursor:default}
           <select id="ev-new-cat" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
             <option value="pb">🔴 Panne</option>
             <option value="ratt">🟠 Rattrapage</option>
-            <option value="nettoyage">🟡 Nettoyage</option>
             <option value="organisation">🔵 Organisation</option>
             <option value="autre">⚫ Autre</option>
           </select>
@@ -4091,6 +4191,9 @@ async function doLogout() {
 function resetToLogin() {
   ST={}; _curStopKey=null;
   window._guestMode=false;
+  _missingDeclChecked=false;
+  _ecartChecked=false;
+  window._finPosteMode=false;
   document.getElementById('app').style.display='none';
   document.getElementById('ln-pw').value='';
   document.getElementById('ln-err').textContent='';
@@ -4606,6 +4709,46 @@ async function loadMainKPI() {
   }
 }
 
+// ── Remplit le groupe "Arrêts prévus" dans la popup interposte ──
+function _fillIpArretsPrevus(){
+  const g=document.getElementById('ip-arrprev-group');
+  if(!g) return;
+  g.innerHTML='';
+  const ap=_cfgArretsPrevus||{};
+  const ARRETS=[
+    {key:'pause_min',lbl:'Pause',color:'#94a3b8'},
+    {key:'clean_short_min',lbl:'Nettoyage court',color:'#f59e0b'},
+    {key:'clean_long_min',lbl:'Nettoyage long',color:'#d97706'},
+    {key:'clean_grand_min',lbl:'Nettoyage très long',color:'#b45309'},
+    {key:'meeting_tol_min',lbl:'Réunion',color:'#3b82f6'},
+  ];
+  const visible=ARRETS.filter(a=>(ap[a.key]||0)>0);
+  if(!visible.length){g.style.display='none';return;}
+  g.style.display='block';
+  const title=document.createElement('div');
+  title.style.cssText='font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:6px;letter-spacing:.04em';
+  title.textContent='Arrêts prévus';
+  g.appendChild(title);
+  const row=document.createElement('div');
+  row.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;padding-bottom:10px;border-bottom:1px solid var(--border)';
+  visible.forEach(a=>{
+    const b=document.createElement('button');
+    b.className='btn btn-ghost';
+    b.style.cssText=`font-size:11px;padding:4px 10px;border:2px solid ${a.color};color:${a.color};background:none;transition:all .15s`;
+    b.textContent=a.lbl+' ('+ap[a.key]+'min)';
+    b.onclick=()=>{
+      document.getElementById('ip-custom').value=a.lbl;
+      document.querySelectorAll('#ip-btns .btn, #ip-arrprev-group .btn').forEach(x=>{
+        x.style.background='';x.style.color=x._origColor||'';x.style.borderColor='var(--border)';x.style.transform='';
+      });
+      b.style.background=a.color;b.style.color='#fff';b.style.borderColor=a.color;
+      b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
+    };
+    row.appendChild(b);
+  });
+  g.appendChild(row);
+}
+
 // ── START PROD ──
 let _pendingGapS=0;
 let _interposteLbls=["Changement de série","Réglage / Setup machine","Attente matière première","Réunion / Formation","Nettoyage interposte","Pause"];
@@ -4671,6 +4814,7 @@ async function doStartProd() {
     document.getElementById('ip-comment').value='';
     if(d.ip_debut_hms) document.getElementById('ip-debut').value=d.ip_debut_hms;
     if(d.ip_fin_hms) document.getElementById('ip-fin').value=d.ip_fin_hms;
+    _fillIpArretsPrevus();
     _interposteLbls.forEach(lbl=>{
       const b=document.createElement('button');
       b.className='btn btn-ghost';
@@ -4678,7 +4822,7 @@ async function doStartProd() {
       b.textContent=lbl;
       b.onclick=()=>{
         document.getElementById('ip-custom').value=lbl;
-        document.querySelectorAll('#ip-btns .btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
+        document.querySelectorAll('#ip-btns .btn, #ip-arrprev-group .btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
         b.style.background='var(--navy)';b.style.color='#fff';b.style.borderColor='var(--navy)';
         b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
       };
@@ -4705,6 +4849,7 @@ async function psChooseInterposte(){
   if(startIso){const sd=new Date(startIso);document.getElementById('ip-debut').value=sd.getHours().toString().padStart(2,'0')+':'+sd.getMinutes().toString().padStart(2,'0');}
   const now2=new Date();document.getElementById('ip-fin').value=now2.getHours().toString().padStart(2,'0')+':'+now2.getMinutes().toString().padStart(2,'0');
   const bc=document.getElementById('ip-btns');bc.innerHTML='';
+  _fillIpArretsPrevus();
   _interposteLbls.forEach(lbl=>{
     const b=document.createElement('button');
     b.className='btn btn-ghost';
@@ -4712,7 +4857,7 @@ async function psChooseInterposte(){
     b.textContent=lbl;
     b.onclick=()=>{
       document.getElementById('ip-custom').value=lbl;
-      document.querySelectorAll('#ip-btns .btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
+      document.querySelectorAll('#ip-btns .btn, #ip-arrprev-group .btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
       b.style.background='var(--navy)';b.style.color='#fff';b.style.borderColor='var(--navy)';
       b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
     };
@@ -4871,7 +5016,7 @@ async function confirmInterposte(){
   await pollState();
   await pollEvts();
   loadMainDecl(); // interposte row must appear in accueil without waiting
-  if(window._finPosteMode){window._finPosteMode=false;goTab('finposte');}else{goTab('prod');}
+  if(window._finPosteMode){window._finPosteMode=false;await _doGoFinPoste();}else{goTab('prod');}
 }
 
 async function skipInterposte(){
@@ -4880,7 +5025,7 @@ async function skipInterposte(){
   if(_pendingGapS>30){
     await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inter_of_s:_pendingGapS,label:'Interposte',comment:''})});
   }
-  if(window._finPosteMode){window._finPosteMode=false;goTab('finposte');}else{goTab('prod');}
+  if(window._finPosteMode){window._finPosteMode=false;await _doGoFinPoste();}else{goTab('prod');}
 }
 
 async function doCancelProd(){
@@ -5572,6 +5717,7 @@ function calcDur(d,f){
 
 // ── ARRÊTS MANQUANTS ──
 let _missingDeclChecked = false;
+let _ecartChecked = false;
 
 function _hasDeclaredType(keywords){
   // Cherche dans les déclarations du poste actuel (accueil)
@@ -5685,12 +5831,13 @@ async function doFinPoste(){
         document.getElementById('ip-debut').value=dh+':'+dm;
         document.getElementById('ip-fin').value=jour.fin;
         const bc=document.getElementById('ip-btns');bc.innerHTML='';
+        _fillIpArretsPrevus();
         _interposteLbls.forEach(lbl=>{
           const b=document.createElement('button');b.className='btn btn-ghost';
           b.style.cssText='font-size:12px;transition:all .15s;border:2px solid var(--border)';
           b.textContent=lbl;
           b.onclick=()=>{document.getElementById('ip-custom').value=lbl;
-            document.querySelectorAll('#ip-btns .btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
+            document.querySelectorAll('#ip-btns .btn, #ip-arrprev-group .btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
             b.style.background='var(--navy)';b.style.color='#fff';b.style.borderColor='var(--navy)';
             b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
           };bc.appendChild(b);
@@ -5707,7 +5854,93 @@ async function doFinPoste(){
     if(hadMissing) return; // modal ouverte → attendre action utilisateur
   }
   _missingDeclChecked=false;
+  await _doGoFinPoste();
+}
+
+let _ecartChecked=false;
+
+async function _doGoFinPoste(){
+  if(!_ecartChecked){
+    const fpd=await apiFetch('/api/fin_poste_data');
+    if(fpd&&(fpd.ecart_s||0)>60){
+      window._ecartFpData=fpd;
+      _showEcartModal(fpd);
+      return;
+    }
+  }
+  _ecartChecked=false;
   goTab('finposte');
+}
+
+function _showEcartModal(fpd){
+  const ecart_min=Math.round((fpd.ecart_s||0)/60);
+  const model_min=Math.round((fpd.model_dur_s||0)/60);
+  const prod_min=Math.round((fpd.tot_s||0)/60);
+  const stop_min=Math.max(0,model_min-prod_min-ecart_min);
+  document.getElementById('ecart-info').innerHTML=
+    '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px">'+
+    '<span style="color:var(--gray)">Durée modèle :</span><b>'+model_min+' min</b>'+
+    '<span style="color:var(--gray)">Prod déclarée :</span><b>'+prod_min+' min</b>'+
+    '<span style="color:var(--gray)">Arrêts déclarés :</span><b>'+stop_min+' min</b>'+
+    '<span style="color:#dc2626;font-weight:700">Écart non justifié :</span><b style="color:#dc2626;font-size:15px">'+ecart_min+' min</b>'+
+    '</div>';
+  const list=document.getElementById('ecart-of-list');
+  list.innerHTML='';
+  (fpd.of_list||[]).forEach(of=>{
+    const div=document.createElement('div');
+    div.style.cssText='display:flex;align-items:center;gap:8px;padding:8px;background:#f8fafc;border-radius:6px;border:1px solid var(--border);flex-wrap:wrap';
+    const ofNum=(of.of||'').replace(/'/g,"\\'");
+    div.innerHTML='<span style="flex:1;font-size:12px;font-weight:700;min-width:80px">'+(of.of||'OF')+' — '+(of.taille||'—')+'</span>'+
+      '<div style="display:flex;align-items:center;gap:4px">'+
+      '<input type="time" class="ecart-debut" value="'+(of.debut||'')+'" data-oldebut="'+(of.debut||'')+'" data-ofnum="'+(of.of||'')+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;width:90px">'+
+      '<span style="color:var(--gray)">→</span>'+
+      '<input type="time" class="ecart-fin" value="'+(of.fin||'')+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;width:90px">'+
+      '<button class="btn btn-prim" style="font-size:11px;padding:3px 10px" onclick="saveEcartOf(this)">✓</button>'+
+      '</div>';
+    list.appendChild(div);
+  });
+  document.getElementById('ecart-of-panel').style.display='none';
+  document.getElementById('ecart-btn-modify-of').textContent='✏ Modifier un OF';
+  openM('m-ecart-poste');
+}
+
+async function skipEcartPoste(){
+  closeM('m-ecart-poste');
+  _ecartChecked=true;
+  await _doGoFinPoste();
+}
+
+function ecartToggleOfPanel(){
+  const p=document.getElementById('ecart-of-panel');
+  const btn=document.getElementById('ecart-btn-modify-of');
+  if(p.style.display==='none'){
+    p.style.display='block';
+    btn.textContent='▲ Masquer';
+  } else {
+    p.style.display='none';
+    btn.textContent='✏ Modifier un OF';
+  }
+}
+
+async function saveEcartOf(btn){
+  const row=btn.closest('div');
+  const debutIn=row.querySelector('.ecart-debut');
+  const finIn=row.querySelector('.ecart-fin');
+  const ofNum=debutIn?debutIn.dataset.ofnum:'';
+  const oldDebut=debutIn?debutIn.dataset.oldebut:'';
+  const newDebut=debutIn?debutIn.value:'';
+  const newFin=finIn?finIn.value:'';
+  if(!newDebut||!newFin){toast('Renseigner début et fin','err');return;}
+  const r=await apiFetch('/api/update_of_time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({of_num:ofNum,old_debut:oldDebut,new_debut:newDebut,new_fin:newFin})});
+  if(r&&r.ok){
+    toast('OF mis à jour','ok');
+    if(debutIn) debutIn.dataset.oldebut=newDebut;
+    // Recalculer l'écart
+    const fpd=await apiFetch('/api/fin_poste_data');
+    if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
+  } else {
+    toast('Erreur mise à jour','err');
+  }
 }
 
 async function loadFPData(){
