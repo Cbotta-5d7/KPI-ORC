@@ -1855,7 +1855,7 @@ def api_session_report():
                 trs = round(eq/(prod_ref*dur_s/28800)*100,1) if prod_ref>0 and dur_s>0 and eq>0 else -1
                 tot_eq += eq; tot_s += dur_s
                 if fin_s > max_fin_s: max_fin_s = fin_s
-                prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"trs":trs,"comment":str(r[35] or "")})
+                prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),"qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"trs":trs,"comment":str(r[35] or ""),"nb_pers":str(r[6] or "")})
             except: pass
         else:
             try:
@@ -1920,6 +1920,12 @@ def api_add_stop_decl():
         return jsonify({"ok":False,"error":str(e)}),500
     return jsonify({"ok":True})
 
+@flask_app.route('/api/reload_excel', methods=['POST'])
+def api_reload_excel():
+    """Force un rechargement du cache Excel depuis le disque."""
+    load_history()
+    return jsonify({"ok": True, "rows": len(_decl_cache)})
+
 @flask_app.route('/api/update_of_time', methods=['POST'])
 def api_update_of_time():
     """Modifie l'heure début/fin d'un OF déclaré (pour correction écart fin de poste)."""
@@ -1947,6 +1953,30 @@ def api_update_of_time():
         if row_of == of_num and (not old_debut or row_debut == old_debut):
             target_rn = rn
             break
+    if target_rn is None:
+        # Fallback: search directly in Excel file (cache may not be updated yet after background write)
+        path = cfg.get("db_path","")
+        if path:
+            try:
+                with _excel_lock:
+                    wb = _get_wb(path)
+                    if wb is not None:
+                        ws = wb["Declarations"] if "Declarations" in wb.sheetnames else wb.active
+                        for row in ws.iter_rows(min_row=2, values_only=False):
+                            rn_fb = row[0].row
+                            r_fb = tuple(c.value for c in row)
+                            if len(r_fb) < 18: continue
+                            rd = _row_date(r_fb[2])
+                            if rd not in (today, shift_date_str): continue
+                            if str(r_fb[4] or "") != pilot: continue
+                            if str(r_fb[0] or "").strip().lower() not in ("production","prod",""): continue
+                            row_of = str(r_fb[1] or "")
+                            row_debut = str(r_fb[16] or "")[:5]
+                            if row_of == of_num and (not old_debut or row_debut == old_debut):
+                                target_rn = rn_fb
+                                break
+            except Exception as _e:
+                pass
     if target_rn is None:
         return jsonify({"ok":False,"error":"OF non trouvé"}),404
     try:
@@ -2294,6 +2324,23 @@ def generate_dashboard_html():
             x2 = max(x2, x1+3)
             col = catcol["pb"] if ("pb" in t or "panne" in t or "technique" in t) else catcol["ratt"] if "ratt" in t else catcol["nettoyage"] if "nett" in t else catcol["pause"] if "pause" in t else "#94a3b8"
             svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="{col}" rx="2" opacity="0.95"/>'
+        # Live events from _S (in-memory, not yet in Excel)
+        _catcol2 = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7"}
+        for _ev in (_S.get("tl_events") or []):
+            _key = _ev.get("key","")
+            if not _key or _key.startswith("_"): continue
+            _ev_start = _ev.get("start")
+            if not _ev_start: continue
+            _ev_end = _ev.get("end") or now_ts
+            _cat = _ev.get("cat","autre")
+            _col = _catcol2.get(_cat, "#94a3b8")
+            try:
+                x1 = to_x(_ev_start)
+                x2 = to_x(_ev_end)
+                x2 = max(x2, x1+3)
+                if x2 > x1:
+                    svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="{_col}" rx="2" opacity="0.95"/>'
+            except: pass
         h_span = span / 3600
         step = 1 if h_span <= 10 else 2
         cur = win_start.replace(minute=0, second=0, microsecond=0)
@@ -2424,16 +2471,36 @@ def generate_dashboard_html():
 
     # ── Historique: all prods sorted by date+time desc (last 30) ──
     hist_rows = sorted(prod_rows_all, key=lambda r: (str(r[2] or ''), str(r[16] or '')), reverse=True)[:30]
+    import json as _json
+    _dash_of_list = []
     hist_html = ""
-    for r in hist_rows:
+    for _hidx, r in enumerate(hist_rows):
         tc_hist = ""
         try:
             tv_h = float(str(r[24] or "").replace(",","."))
             tc_hist = f'<span style="color:{trs_color(tv_h)};font-weight:900">{tv_h:.1f}%</span>'
         except: pass
-        hist_html += (f'<tr>'
+        # Compute stops for this OF
+        _of_date = str(r[2] or "")[:10]
+        _of_pilot = str(r[4] or "")
+        _of_deb_s = hms2s(r[16])
+        _of_fin_s = hms2s(r[17]) or 86400
+        _of_stops = []
+        for _er in evt_rows_all:
+            if str(_er[2] or "")[:10] != _of_date: continue
+            if str(_er[4] or "") != _of_pilot: continue
+            _er_s = hms2s(_er[16])
+            if _of_deb_s <= _er_s <= _of_fin_s:
+                _of_stops.append({"type":str(_er[0] or ""),"debut":str(_er[16] or "")[:5],"fin":str(_er[17] or "")[:5],"duree":str(_er[18] or ""),"comment":str(_er[35] or "")})
+        _trs_of = -1.0
+        try:
+            _tv_h2 = float(str(r[24] or "").replace(",","."))
+            _trs_of = _tv_h2
+        except: pass
+        _dash_of_list.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"kit":str(r[15] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"date":_of_date,"pilot":_of_pilot,"poste":str(r[3] or ""),"trs":_trs_of,"comment":str(r[35] or ""),"stops":_of_stops})
+        hist_html += (f'<tr style="cursor:pointer" onclick="showDashOf({_hidx})" title="Voir détail OF">'
             f'<td style="font-weight:800">{str(r[2] or "")[:10]}</td>'
-            f'<td style="font-weight:800">{r[1] or ""}</td>'
+            f'<td style="font-weight:800;color:#1e3a8a;text-decoration:underline">{r[1] or ""}</td>'
             f'<td>{r[9] or ""}</td>'
             f'<td>{str(r[3] or "")}</td>'
             f'<td>{str(r[4] or "")}</td>'
@@ -2445,6 +2512,7 @@ def generate_dashboard_html():
             f'</tr>')
     if not hist_html:
         hist_html = '<tr><td colspan="11" style="text-align:center;color:#94a3b8;padding:12px">Aucune production</td></tr>'
+    _dash_of_json = _json.dumps(_dash_of_list, ensure_ascii=True, default=str)
 
     # ── Rapports: groupé par type_prod ──
     from collections import defaultdict as _dd2
@@ -2520,6 +2588,9 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 @keyframes wag{{0%{{transform:rotate(-8deg)}}50%{{transform:rotate(8deg)}}100%{{transform:rotate(-8deg)}}}}
 /* SCROLLBAR */
 ::-webkit-scrollbar{{width:6px}};::-webkit-scrollbar-track{{background:#f1f5f9}};::-webkit-scrollbar-thumb{{background:#cbd5e1;border-radius:3px}}
+/* DASH OF MODAL */
+.dash-modal-overlay{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:9999}}
+.dash-modal-box{{background:#fff;border-radius:12px;padding:20px;max-width:640px;width:95%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}}
 /* TABS */
 .tab-bar{{display:flex;gap:4px;flex-shrink:0;border-bottom:2px solid #e2e8f0;padding-bottom:4px}}
 .tab-btn{{background:none;border:none;padding:6px 18px;font-size:13px;font-weight:700;color:#64748b;cursor:pointer;border-radius:6px 6px 0 0;transition:all .15s}}
@@ -2694,6 +2765,19 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 </div><!-- /outer -->
 
 <script>
+var _dashOf={_dash_of_json};
+function showDashOf(i){{
+  var r=_dashOf[i];if(!r)return;
+  var tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
+  var kit=(r.kit||'').toLowerCase()==='oui'?'<span style="color:#16a34a;font-weight:800">✓ Oui</span>':'Non';
+  var chips=[['Taille',r.taille],['Type',r.type_prod],['Kit',kit,'raw'],['Qté',r.qte_fab],['Éq.',r.equiv],['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':'—'],['Début',r.debut],['Fin',r.fin],['Durée',r.duree]];
+  if(r.code_prod)chips.push(['Code Prod',r.code_prod]);
+  if(r.ref_taie)chips.push(['Code Taie',r.ref_taie]);
+  var chipsHtml=chips.map(function(c){{return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;text-align:center"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b">'+c[0]+'</div><div style="font-size:14px;font-weight:800;color:#1e293b">'+(c[2]==='raw'?c[1]:String(c[1]||'—').replace(/&/g,'&amp;').replace(/</g,'&lt;'))+'</div></div>';}}).join('');
+  var stopsHtml=(r.stops&&r.stops.length)?r.stops.map(function(e){{return '<tr><td style="padding:4px 8px;font-size:12px;font-weight:600">'+String(e.type||'').replace(/&/g,'&amp;')+'</td><td style="padding:4px 8px;font-size:11px;white-space:nowrap">'+e.debut+'→'+e.fin+'</td><td style="padding:4px 8px;font-weight:700">'+e.duree+'</td><td style="padding:4px 8px;font-size:11px;color:#64748b">'+String(e.comment||'').replace(/&/g,'&amp;')+'</td></tr>';}}).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:#94a3b8">Aucun arrêt</td></tr>';
+  document.getElementById('dash-of-detail-content').innerHTML='<div style="font-size:22px;font-weight:900;color:#1e3a8a;margin-bottom:12px;font-family:monospace">OF '+String(r.of||'—').replace(/&/g,'&amp;')+'</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px">'+chipsHtml+'</div>'+(r.comment?'<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:13px">💬 '+String(r.comment).replace(/&/g,'&amp;')+'</div>':'')+'<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:6px">Arrêts pendant cet OF</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:11px">Type</th><th style="padding:4px 8px;font-size:11px">Plage</th><th style="padding:4px 8px;font-size:11px">Durée</th><th style="padding:4px 8px;font-size:11px">Commentaire</th></tr></thead><tbody>'+stopsHtml+'</tbody></table>';
+  document.getElementById('dash-of-modal').style.display='flex';
+}}
 function showTab(name){{
   ['accueil','historique','rapports'].forEach(function(n){{
     var p=document.getElementById('tab-'+n);
@@ -2703,6 +2787,16 @@ function showTab(name){{
   }});
 }}
 </script>
+
+<div id="dash-of-modal" class="dash-modal-overlay" onclick="if(event.target.id==='dash-of-modal')this.style.display='none'">
+  <div class="dash-modal-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-size:14px;font-weight:800;color:#1e3a8a">📋 Détail OF</span>
+      <button onclick="document.getElementById('dash-of-modal').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#64748b">✕</button>
+    </div>
+    <div id="dash-of-detail-content"></div>
+  </div>
+</div>
 
 </body>
 </html>"""
@@ -3210,7 +3304,7 @@ select{cursor:default}
           <!-- Zone Identification -->
           <div class="fzone zi">
             <h4>📋 Identification</h4>
-            <div class="fr"><label>N° OF *</label><input id="f-of_num" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>N° OF *</label><input id="f-of_num" oninput="scheduleAutoSave()" onfocus="openCodeInput('of_num','N° OF')"></div>
             <div class="fr ro"><label>Date</label><input id="f-date" readonly></div>
             <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
@@ -3230,7 +3324,7 @@ select{cursor:default}
             <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>OF Taie</label><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Traca Fibre</label><input type="text" id="f-traca" oninput="scheduleAutoSave()" placeholder="n° de traca"></div>
-            <div class="fr"><label>Réf Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()" onfocus="openCodeInput('ref_taie','Code Taie')"></div>
             <div class="fr"><label>Mq MP (min)</label><input id="f-duree_mq_mp" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Mq Personnel (min)</label><input id="f-manquant_pers" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
           </div>
@@ -3372,7 +3466,7 @@ select{cursor:default}
       <div class="card" style="padding:8px">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:5px">Productions</div>
         <table class="fp-tbl" style="font-size:10px">
-          <thead><tr><th>OF</th><th>Qté</th><th>Éq</th><th>Durée</th><th>TRS%</th></tr></thead>
+          <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Qté</th><th>Éq</th><th>Durée</th><th>TRS%</th></tr></thead>
           <tbody id="fp-prods"></tbody>
         </table>
       </div>
@@ -3528,11 +3622,39 @@ select{cursor:default}
         <div id="ecart-of-list" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
       <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap">
-        <button class="btn btn-ghost" id="ecart-btn-modify-of" style="font-size:12px;color:#0369a1;border-color:#bae6fd" onclick="ecartToggleOfPanel()">✏ Modifier un OF</button>
-        <button class="btn btn-sec" onclick="skipEcartPoste()">Ignorer et terminer</button>
+        <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-ecart-poste')">Annuler</button>
+        <button class="btn btn-ghost" id="ecart-btn-modify-of" style="font-size:12px;color:#0369a1;border-color:#bae6fd" onclick="ecartToggleOfPanel()">✏ Modifier les plages horaires de mes OF</button>
+        <button class="btn btn-sec" onclick="skipEcartPoste()">Modifier la durée d'un/des OFs</button>
       </div>
     </div>
   </div>
+
+<!-- Modal saisie code formaté (XXXXXX_XXX) -->
+<div id="m-code-input" class="modal" onclick="if(event.target===this)closeM('m-code-input')">
+  <div class="mbox" style="max-width:480px;text-align:center">
+    <div style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:8px;letter-spacing:.05em" id="code-input-lbl">CODE</div>
+    <div style="font-family:monospace;font-size:22px;font-weight:900;color:var(--navy);letter-spacing:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px">X X X X X X _ X X X</div>
+    <input id="code-input-val" maxlength="10" autocomplete="off" spellcheck="false"
+      style="font-size:42px;font-weight:900;text-align:center;letter-spacing:4px;font-family:monospace;border:2px solid var(--navy);border-radius:8px;padding:10px 16px;width:100%;color:var(--navy);background:#fff;margin-bottom:16px"
+      oninput="_codeInputFmt(this)" onkeydown="if(event.key==='Enter')_codeInputConfirm();else if(event.key==='Escape')closeM('m-code-input')">
+    <div style="font-size:11px;color:var(--gray);margin-bottom:16px">Format : 6 caractères, tiret bas, 3 caractères &nbsp;(ex : AB1234_C56)</div>
+    <div style="display:flex;gap:8px;justify-content:center">
+      <button class="btn btn-ghost" onclick="closeM('m-code-input')">Annuler</button>
+      <button class="btn btn-primary" onclick="_codeInputConfirm()">Confirmer ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal détail OF -->
+<div id="m-of-detail" class="modal" onclick="if(event.target===this)closeM('m-of-detail')">
+  <div class="mbox" style="max-width:700px;max-height:80vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-shrink:0">
+      <span style="font-size:14px;font-weight:800;color:var(--navy)">📋 Détail OF</span>
+      <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-of-detail')">✕</button>
+    </div>
+    <div id="of-detail-content"></div>
+  </div>
+</div>
 
   <!-- ════ RAPPORTS DES POSTES ════ -->
   <div id="v-rapports" class="view" style="flex-direction:column;overflow:hidden">
@@ -3541,7 +3663,7 @@ select{cursor:default}
       <div style="border-right:1px solid var(--border);overflow-y:auto;background:#f8fafc;display:flex;flex-direction:column">
         <div style="padding:10px 14px;font-size:13px;font-weight:800;color:var(--navy);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
           <span>📋 Tous les postes</span>
-          <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="loadRapports()">↺</button>
+          <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="reloadAndLoadRapports()">↺</button>
         </div>
         <div id="rpt-list" style="flex:1;overflow-y:auto">
           <div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Chargement…</div>
@@ -5875,6 +5997,85 @@ function calcDur(d,f){
   const diff=p(f)-p(d);return diff>0?fmtDur(diff):'';}catch(e){return '';}
 }
 
+// ── CODE INPUT OVERLAY ──
+let _codeInputTarget = null;
+function openCodeInput(fieldId, label) {
+  _codeInputTarget = fieldId;
+  document.getElementById('code-input-lbl').textContent = label || 'Code';
+  const current = (document.getElementById('f-' + fieldId) || {}).value || '';
+  const inp = document.getElementById('code-input-val');
+  if(inp) { inp.value = current; inp.style.borderColor = 'var(--navy)'; }
+  openM('m-code-input');
+  setTimeout(() => { if(inp){ inp.focus(); inp.select(); } }, 80);
+}
+function _codeInputFmt(inp) {
+  let v = inp.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  v = v.slice(0, 9);
+  if(v.length > 6) inp.value = v.slice(0, 6) + '_' + v.slice(6);
+  else inp.value = v;
+}
+function _codeInputConfirm() {
+  const inp = document.getElementById('code-input-val');
+  const v = (inp ? inp.value : '').trim().toUpperCase();
+  if(v.length > 0 && !/^[A-Z0-9]{1,6}(_[A-Z0-9]{1,3})?$/.test(v)) {
+    inp.style.borderColor = '#dc2626';
+    toast('Format requis : XXXXXX_XXX', 'err'); return;
+  }
+  const field = document.getElementById('f-' + _codeInputTarget);
+  if(field) { field.value = v; scheduleAutoSave(); }
+  closeM('m-code-input');
+}
+
+// ── OF DETAIL REPORT ──
+window._rptProdRows = [];
+window._rptEvtRows = [];
+function showOfDetail(ri) {
+  const r = window._rptProdRows[ri];
+  const evtRows = window._rptEvtRows || [];
+  if(!r) return;
+  function _hm2s(hm) { if(!hm) return 0; const [h,m] = hm.split(':').map(Number); return (h||0)*3600+(m||0)*60; }
+  const debS = _hm2s(r.debut), finS = _hm2s(r.fin)||86400;
+  const ofEvts = evtRows.filter(e => { const t = _hm2s(e.debut); return t >= debS && t <= finS; });
+  const tc = r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
+  const kitStr = (r.kit||'').toLowerCase();
+  const kitDisp = kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓ Oui</span>':'<span style="color:#94a3b8">Non</span>';
+  const evtsHtml = ofEvts.length ? ofEvts.map(e=>`<tr>
+    <td style="padding:4px 8px;font-weight:600;font-size:11px">${esc(e.type||'')}</td>
+    <td style="padding:4px 8px;font-size:11px;white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</td>
+    <td style="padding:4px 8px;font-weight:700;font-size:11px">${esc(e.duree||'')}</td>
+    <td style="padding:4px 8px;font-size:10px;color:var(--gray)">${esc(e.comment||'')}</td>
+  </tr>`).join('') : '<tr><td colspan="4" style="padding:8px;text-align:center;color:var(--gray);font-size:11px">Aucun arrêt</td></tr>';
+  const chips = [
+    ['Taille',r.taille||'—',''],['Type',r.type_prod||'—',''],['Kit',kitDisp,'raw'],
+    ['Qté fab.',r.qte_fab||'—',''],['Équivalence',r.equiv||'—','color:#0891b2;font-weight:800'],
+    ['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':'—',`color:${tc}`],
+    ['Heure début',r.debut||'—',''],['Heure fin',r.fin||'—',''],['Durée',r.duree||'—',''],
+  ].filter(c=>c[1]&&c[1]!=='—'||c[0]==='TRS OF');
+  if(r.code_prod) chips.push(['Code Produit',r.code_prod,'font-family:monospace']);
+  if(r.ref_taie) chips.push(['Code Taie',r.ref_taie,'font-family:monospace']);
+  if(r.of_taie) chips.push(['OF Taie',r.of_taie,'']);
+  if(r.nb_pers) chips.push(['Nb Pers.',r.nb_pers,'']);
+  const chipsHtml = chips.map(([lbl,val,sty])=>`<div class="fp-card" style="padding:7px">
+    <div class="fp-lbl">${lbl}</div>
+    <div class="fp-big" style="font-size:14px;${sty==='raw'?'':''}${sty&&sty!=='raw'?sty:''}">${sty==='raw'?val:esc(String(val))}</div>
+  </div>`).join('');
+  document.getElementById('of-detail-content').innerHTML = `
+    <div style="font-size:22px;font-weight:900;color:var(--navy);margin-bottom:14px;font-family:monospace">OF ${esc(r.of||'—')}</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px">${chipsHtml}</div>
+    ${r.comment?`<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px">💬 ${esc(r.comment)}</div>`:''}
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Arrêts pendant cet OF</div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
+        <th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Type</th>
+        <th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Plage</th>
+        <th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Durée</th>
+        <th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Commentaire</th>
+      </tr></thead>
+      <tbody>${evtsHtml}</tbody>
+    </table>`;
+  openM('m-of-detail');
+}
+
 // ── ARRÊTS MANQUANTS ──
 let _missingDeclChecked = false;
 let _ecartChecked = false;
@@ -6058,7 +6259,7 @@ function _showEcartModal(fpd){
     list.appendChild(div);
   });
   document.getElementById('ecart-of-panel').style.display='none';
-  document.getElementById('ecart-btn-modify-of').textContent='✏ Modifier un OF';
+  document.getElementById('ecart-btn-modify-of').textContent='✏ Modifier les plages horaires de mes OF';
   openM('m-ecart-poste');
 }
 
@@ -6076,7 +6277,7 @@ function ecartToggleOfPanel(){
     btn.textContent='▲ Masquer';
   } else {
     p.style.display='none';
-    btn.textContent='✏ Modifier un OF';
+    btn.textContent='✏ Modifier les plages horaires de mes OF';
   }
 }
 
@@ -6167,12 +6368,14 @@ async function loadFPData(){
     fpb.innerHTML=d.of_list.map(p=>`
       <tr>
         <td style="font-weight:600">${esc(p.of||'')}</td>
+        <td>${esc(p.debut||'')}</td>
+        <td>${esc(p.fin||'')}</td>
         <td>${esc(p.taille||'')}</td>
         <td>${esc(String(p.qte_fab||0))}</td>
         <td>${esc(String(p.equiv||''))}</td>
         <td>${esc(p.duree||'')}</td>
         <td class="${(p.trs||0)>=90?'tg':(p.trs||0)>=75?'tm':'tb'}">${fmtTRS(p.trs||0)}</td>
-      </tr>`).join('')||'<tr><td colspan="6" style="color:var(--gray)">Aucune production</td></tr>';
+      </tr>`).join('')||'<tr><td colspan="8" style="color:var(--gray)">Aucune production</td></tr>';
   }
 
   // Stops list
@@ -6702,6 +6905,11 @@ async function loadHist(){
 }
 
 // ── RAPPORTS DES POSTES ──
+async function reloadAndLoadRapports(){
+  toast('Rechargement depuis Excel…','ok');
+  await apiFetch('/api/reload_excel',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  await loadRapports();
+}
 async function loadRapports(){
   const listEl=document.getElementById('rpt-list');
   if(!listEl) return;
@@ -6754,11 +6962,16 @@ async function loadSessionReport(date,pilot,poste,itemId){
       </div>
       <div style="font-size:10px;font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">${Math.round(v)}mn</div>
     </div>`).join(''):'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>';
-  const prodsHtml=(d.prod_rows||[]).map(r=>{
+  window._rptProdRows = d.prod_rows || [];
+  window._rptEvtRows = d.evt_rows || [];
+  const prodsHtml=(d.prod_rows||[]).map((r,ri)=>{
     const tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
-    return `<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:5px 8px;font-weight:700">${esc(r.of||'')}</td>
+    const kitStr=(r.kit||'').toLowerCase();
+    const kitDisp=kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
+    return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="showOfDetail(${ri})" title="Voir détail OF">
+      <td style="padding:5px 8px;font-weight:700;color:#1e3a8a;text-decoration:underline">${esc(r.of||'')}</td>
       <td style="padding:5px 8px;font-size:11px">${esc(r.taille||'')} ${esc(r.type_prod||'')}</td>
+      <td style="padding:5px 8px;text-align:center">${kitDisp}</td>
       <td style="padding:5px 8px">${esc(r.qte_fab||'')}</td>
       <td style="padding:5px 8px;color:#0891b2;font-weight:700">${esc(r.equiv||'')}</td>
       <td style="padding:5px 8px">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
@@ -6847,10 +7060,10 @@ async function loadSessionReport(date,pilot,poste,itemId){
         <table style="width:100%;border-collapse:collapse;font-size:11px">
           <thead><tr style="background:#f8fafc">
             <th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>
-            <th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>
+            <th style="padding:4px 6px">Kit</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>
             <th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th>
           </tr></thead>
-          <tbody>${prodsHtml||'<tr><td colspan="7" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
+          <tbody>${prodsHtml||'<tr><td colspan="8" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
         </table>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
