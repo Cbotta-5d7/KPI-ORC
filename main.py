@@ -1004,6 +1004,11 @@ def api_logout():
     _S["poste"] = None
     _S["shift_start"] = None
     save_session()
+    # Reload cfg from disk so temporary session horaire overrides are cleared
+    # (login screen will show original Paramètres values again)
+    global cfg
+    cfg.clear()
+    cfg.update(load_cfg())
     return jsonify({"ok":True})
 
 @flask_app.route('/api/force_reset_prod', methods=['POST'])
@@ -1584,7 +1589,8 @@ def api_update_model_today():
             m["jours"][day_key]["debut"] = debut
             m["jours"][day_key]["fin"] = fin
             break
-    save_cfg_data()
+    # Do NOT save to disk — these are temporary session overrides only.
+    # Paramètres horaires are preserved; cfg reloads from disk on next logout.
     return jsonify({"ok":True})
 
 @flask_app.route('/api/delete_row', methods=['POST'])
