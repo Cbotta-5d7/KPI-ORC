@@ -2669,6 +2669,10 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 /* TIMELINE CELL */
 .tl-cell{{background:#fff;border-radius:10px;padding:6px 10px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
 .tl-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:4px;display:flex;justify-content:space-between}}
+.fp-card{{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;text-align:center}}
+.fp-big{{font-size:20px;font-weight:900;color:#1e3a8a;line-height:1.1}}
+.fp-lbl{{font-size:9px;text-transform:uppercase;font-weight:700;color:#64748b;margin-top:2px}}
+.rpt-card{{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px}}
 .tl-legend{{display:flex;gap:10px;font-size:14px;color:#64748b;margin-top:4px;flex-wrap:wrap}}
 /* TABLE */
 .ktbl{{width:100%;border-collapse:collapse;font-size:15px}}
@@ -2833,23 +2837,22 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
   </div><!-- /tab-historique -->
 
   <!-- ONGLET RAPPORTS -->
-  <div id="tab-rapports" class="tab-pane" style="display:none;flex-direction:column">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex-shrink:0">
-      <div class="stat-card"><div class="stat-val" style="color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="stat-lbl">TRS Poste (aujourd'hui)</div></div>
-      <div class="stat-card"><div class="stat-val" style="color:#7c3aed">{nb_of_today}</div><div class="stat-lbl">OF aujourd'hui</div></div>
-      <div class="stat-card"><div class="stat-val" style="color:#0891b2">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalences (poste)</div></div>
-      <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:18px">min</span></div><div class="stat-lbl">Arrêts (poste)</div></div>
-    </div>
-    <div class="panel" style="flex:1;min-height:0">
-      <div class="panel-hdr" style="background:#78350f;color:#fff">Résumé par type de produit (toutes dates)</div>
-      <div class="panel-body" style="padding:0">
-        <table class="ktbl">
-          <thead><tr>
-            <th style="text-align:left;padding:5px 10px">Type produit</th>
-            <th>OF</th><th>Éq.</th><th>Qté</th><th>TRS moyen</th>
-          </tr></thead>
-          <tbody>{rpt_html}</tbody>
-        </table>
+  <div id="tab-rapports" class="tab-pane" style="display:none;flex-direction:column;overflow:hidden">
+    <div style="display:grid;grid-template-columns:280px 1fr;flex:1;overflow:hidden;min-height:0">
+      <div style="border-right:1px solid #e2e8f0;overflow-y:auto;background:#f8fafc;display:flex;flex-direction:column">
+        <div style="padding:10px 14px;font-size:13px;font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
+          <span>📋 Tous les postes</span>
+          <button onclick="loadRapports()" style="font-size:11px;padding:3px 8px;background:none;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#64748b">↺</button>
+        </div>
+        <div id="rpt-list" style="flex:1;overflow-y:auto">
+          <div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Chargement…</div>
+        </div>
+      </div>
+      <div id="rpt-detail" style="overflow-y:auto;flex:1;padding:0">
+        <div style="padding:60px;text-align:center;color:#94a3b8">
+          <div style="font-size:40px;margin-bottom:12px">📋</div>
+          <div style="font-size:14px;font-weight:600">Sélectionner un poste dans la liste</div>
+        </div>
       </div>
     </div>
   </div><!-- /tab-rapports -->
@@ -2886,6 +2889,7 @@ function showTab(name){{
     if(p) p.style.display=(n===name)?'flex':'none';
     if(b) b.classList.toggle('active',n===name);
   }});
+  if(name==='rapports') loadRapports();
 }}
 </script>
 
@@ -2901,6 +2905,168 @@ function showTab(name){{
 
 </body>
 </html>"""
+
+    # Inject rapports JS
+    _rapports_js = r"""
+<script>
+function _dashEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+async function _dashFetch(url){try{var r=await fetch(url);return r.ok?await r.json():null;}catch(e){return null;}}
+function _dashFmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}
+function _dashDrawPie(svgId,segments){
+  var svg=document.getElementById(svgId);if(!svg)return;
+  var total=segments.reduce(function(a,s){return a+s.value;},0);
+  if(total<=0){svg.innerHTML='<text x="65" y="60" text-anchor="middle" font-size="9" fill="#94a3b8">Pas de données</text>';return;}
+  var cx=65,cy=57,r=44,ir=24,html='',startAngle=-Math.PI/2;
+  segments.forEach(function(seg){
+    if(seg.value<=0)return;
+    var angle=(seg.value/total)*2*Math.PI;if(angle<0.001)return;
+    var endAngle=startAngle+angle,large=angle>Math.PI?1:0;
+    var x1=(cx+r*Math.cos(startAngle)).toFixed(2),y1=(cy+r*Math.sin(startAngle)).toFixed(2);
+    var x2=(cx+r*Math.cos(endAngle)).toFixed(2),y2=(cy+r*Math.sin(endAngle)).toFixed(2);
+    var ix1=(cx+ir*Math.cos(startAngle)).toFixed(2),iy1=(cy+ir*Math.sin(startAngle)).toFixed(2);
+    var ix2=(cx+ir*Math.cos(endAngle)).toFixed(2),iy2=(cy+ir*Math.sin(endAngle)).toFixed(2);
+    html+='<path d="M'+x1+','+y1+' A'+r+','+r+' 0 '+large+',1 '+x2+','+y2+' L'+ix2+','+iy2+' A'+ir+','+ir+' 0 '+large+',0 '+ix1+','+iy1+' Z" fill="'+seg.color+'"/>';
+    startAngle=endAngle;
+  });
+  var m=segments[0],mp=total>0?Math.round(m.value/total*100):0;
+  html+='<text x="'+cx+'" y="'+(cy+5)+'" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e">'+mp+'%</text>';
+  html+='<text x="'+cx+'" y="'+(cy+15)+'" text-anchor="middle" font-size="7" fill="#64748b">'+_dashEsc(m.label)+'</text>';
+  var lx=0;segments.filter(function(s){return s.value>0;}).forEach(function(s){
+    var p=Math.round(s.value/total*100);
+    html+='<rect x="'+lx+'" y="108" width="7" height="7" fill="'+s.color+'" rx="1"/>';
+    html+='<text x="'+(lx+9)+'" y="115" font-size="7" fill="#475569">'+_dashEsc(s.label)+' '+p+'%</text>';
+    lx+=65;
+  });
+  svg.innerHTML=html;
+}
+function _dashDrawGauge(arcId,pctId,trs){
+  var arc=document.getElementById(arcId),pct=document.getElementById(pctId);if(!arc||!pct)return;
+  var pArc=132,v=Math.max(0,Math.min(100,trs||0)),dash=(v/100)*pArc;
+  var col=v>=90?'#16a34a':v>=75?'#d97706':'#dc2626';
+  arc.setAttribute('stroke-dasharray',dash.toFixed(1)+','+pArc);arc.setAttribute('stroke',col);
+  pct.textContent=_dashFmtTRS(trs);pct.setAttribute('fill',col);
+}
+async function loadRapports(){
+  var listEl=document.getElementById('rpt-list');
+  if(!listEl)return;
+  listEl.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Chargement…</div>';
+  var sessions=await _dashFetch('/api/past_sessions');
+  if(!sessions||!sessions.length){
+    listEl.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Aucun poste disponible</div>';
+    return;
+  }
+  listEl.innerHTML=sessions.map(function(s,i){
+    var trsStr=s.trs>=0?s.trs.toFixed(1)+'%':'—';
+    var trsCol=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
+    return '<div class="rpt-item" id="rpt-item-'+i+'" onclick="loadSessionReport(\''+_dashEsc(s.date)+'\',\''+_dashEsc(s.pilot||\'\')+'\',\''+_dashEsc(s.poste||\'\')+'\',\'rpt-item-'+i+'\')" style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s"><div style="font-size:12px;font-weight:800;color:#1e3a8a">'+_dashEsc(s.date)+' — '+_dashEsc(s.poste||'')+'</div><div style="font-size:11px;color:#64748b;margin-top:2px">'+_dashEsc(s.pilot||'?')+' | '+s.nb_of+' OF | Éq. '+s.tot_equiv+'</div><div style="font-size:16px;font-weight:900;color:'+trsCol+';margin-top:2px">'+trsStr+'</div></div>';
+  }).join('');
+}
+async function loadSessionReport(date,pilot,poste,itemId){
+  document.querySelectorAll('.rpt-item').forEach(function(el){el.style.background='';});
+  var sel=document.getElementById(itemId);if(sel)sel.style.background='#eff6ff';
+  var detailEl=document.getElementById('rpt-detail');
+  if(!detailEl)return;
+  detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#64748b">Chargement…</div>';
+  var d=await _dashFetch('/api/session_report?date='+encodeURIComponent(date)+'&pilot='+encodeURIComponent(pilot)+'&poste='+encodeURIComponent(poste));
+  if(!d){detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur chargement</div>';return;}
+  var trsS=d.trs_shift>=0?d.trs_shift:(d.trs>=0?d.trs:-1);
+  var trsCol=trsS>=90?'#16a34a':trsS>=70?'#f59e0b':trsS>=0?'#dc2626':'#94a3b8';
+  var stopMin=Math.round((d.stop_s||0)/60);
+  var prodMin=Math.round((d.tot_s||0)/60);
+  var totalMin=prodMin+stopMin;
+  var stopMap={};
+  (d.evt_rows||[]).forEach(function(r){
+    var k=r.type||'Inconnu';
+    if(!stopMap[k])stopMap[k]=0;
+    var p=r.duree?r.duree.split(':'):[0,0,0];
+    stopMap[k]+=(parseInt(p[0]||0)*3600+parseInt(p[1]||0)*60+parseInt(p[2]||0))/60;
+  });
+  var stopArr=Object.entries(stopMap).sort(function(a,b){return b[1]-a[1];});
+  var maxStopMin=stopArr.length?stopArr[0][1]:1;
+  var paretoHtml=stopArr.length?stopArr.map(function(e){
+    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px"><div style="font-size:10px;width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_dashEsc(e[0])+'</div><div style="flex:1;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden"><div style="height:100%;background:#dc2626;border-radius:4px;width:'+Math.round(e[1]/maxStopMin*100)+'%;opacity:.8"></div></div><div style="font-size:10px;font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">'+Math.round(e[1])+'mn</div></div>';
+  }).join(''):'<div style="color:#64748b;font-size:12px">Aucun arrêt</div>';
+  var tlContent=(function(prodRows,evtRows,dateStr,modelDebut,modelFin){
+    var W=800,Y=4,H2=28,H=40;
+    var parts=dateStr.split('/');
+    var baseMs=parts.length===3?new Date(parts[2]+'-'+parts[1]+'-'+parts[0]).getTime():Date.now();
+    function hm2ms(hm){if(!hm)return null;var a=(hm+':00').split(':').map(Number);return baseMs+a[0]*3600000+a[1]*60000;}
+    var mdMs=hm2ms(modelDebut),mfMs=hm2ms(modelFin);
+    var allMs=[];
+    prodRows.forEach(function(r){if(r.debut)allMs.push(hm2ms(r.debut));if(r.fin)allMs.push(hm2ms(r.fin));});
+    evtRows.forEach(function(r){if(r.debut)allMs.push(hm2ms(r.debut));if(r.fin)allMs.push(hm2ms(r.fin));});
+    var validMs=allMs.filter(Boolean);
+    var tS=mdMs||(validMs.length?Math.min.apply(null,validMs):null);
+    var tE=mfMs||(validMs.length?Math.max.apply(null,validMs):null);
+    if(!tS||!tE||tE<=tS)return '<rect x="0" y="'+Y+'" width="'+W+'" height="'+H2+'" fill="#e2e8f0" rx="4"/>';
+    var span=tE-tS;
+    function toX(t){return Math.max(0,Math.min(W,(t-tS)/span*W));}
+    var html='<rect x="0" y="'+Y+'" width="'+W+'" height="'+H2+'" fill="#e2e8f0" rx="4"/>';
+    prodRows.forEach(function(r){
+      var t1=hm2ms(r.debut),t2=hm2ms(r.fin);if(!t1)return;
+      var x1=toX(t1),x2=toX(t2||tE);
+      if(x2>x1)html+='<rect x="'+x1+'" y="'+Y+'" width="'+(x2-x1)+'" height="'+H2+'" fill="#bbf7d0" rx="3"/>';
+    });
+    evtRows.forEach(function(r){
+      var t1=hm2ms(r.debut),t2=hm2ms(r.fin);if(!t1)return;
+      var x1=toX(t1),x2=toX(t2||t1+1800000);
+      if(x2>x1)html+='<rect x="'+x1+'" y="'+Y+'" width="'+(x2-x1)+'" height="'+H2+'" fill="#dc2626" rx="2" opacity=".75"/>';
+    });
+    function fmt(ms){var dd=new Date(ms);return String(dd.getHours()).padStart(2,'0')+':'+String(dd.getMinutes()).padStart(2,'0');}
+    var tickT=Math.ceil(tS/3600000)*3600000;
+    while(tickT<tE){
+      var tx=toX(tickT);var hr=new Date(tickT).getHours();
+      html+='<line x1="'+tx+'" y1="'+Y+'" x2="'+tx+'" y2="'+(Y+H2)+'" stroke="rgba(255,255,255,.4)" stroke-width="1"/>';
+      html+='<text x="'+(tx+2)+'" y="'+(Y+H2-3)+'" font-size="7" fill="rgba(255,255,255,.85)">'+String(hr).padStart(2,'0')+'h</text>';
+      tickT+=3600000;
+    }
+    html+='<text x="2" y="'+(H-1)+'" font-size="8" fill="#fff">'+fmt(tS)+'</text>';
+    html+='<text x="'+(W-30)+'" y="'+(H-1)+'" font-size="8" fill="#fff">'+fmt(tE)+'</text>';
+    return html;
+  })(d.prod_rows||[],d.evt_rows||[],date,d.model_debut,d.model_fin);
+  var prodsHtml=(d.prod_rows||[]).map(function(r){
+    var tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
+    var kitDisp=(r.kit||'').toLowerCase()==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
+    return '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:5px 8px;font-weight:700;color:#1e3a8a">'+_dashEsc(r.of||'')+'</td><td style="padding:5px 8px;font-size:11px">'+_dashEsc(r.taille||'')+' '+_dashEsc(r.type_prod||'')+'</td><td style="padding:5px 8px;text-align:center">'+kitDisp+'</td><td style="padding:5px 8px">'+_dashEsc(r.qte_fab||'')+'</td><td style="padding:5px 8px;color:#0891b2;font-weight:700">'+_dashEsc(r.equiv||'')+'</td><td style="padding:5px 8px">'+_dashEsc(r.debut||'')+' → '+_dashEsc(r.fin||'')+'</td><td style="padding:5px 8px;font-weight:800;color:'+tc+'">'+(r.trs>=0?r.trs.toFixed(1)+'%':'—')+'</td><td style="padding:5px 8px;font-size:10px;color:#64748b">'+_dashEsc(r.comment||'')+'</td></tr>';
+  }).join('');
+  var evtsRows=d.evt_rows||[];
+  var evtsHtml=evtsRows.length?('<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0"><th style="padding:3px 5px;text-align:left;font-weight:700;color:#64748b">Arrêt</th><th style="padding:3px 5px;font-weight:700;color:#64748b">OF</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Format</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Type</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Plage</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Durée</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Commentaire</th></tr></thead><tbody>'+evtsRows.map(function(r){return '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:4px 5px;font-weight:600">'+_dashEsc(r.type||'')+'</td><td style="padding:4px 5px;color:#0369a1;font-weight:700">'+_dashEsc(r.of||'—')+'</td><td style="padding:4px 5px">'+_dashEsc(r.taille||'—')+'</td><td style="padding:4px 5px">'+_dashEsc(r.type_prod||'—')+'</td><td style="padding:4px 5px;white-space:nowrap;color:#64748b">'+_dashEsc(r.debut||'')+' → '+_dashEsc(r.fin||'')+'</td><td style="padding:4px 5px;font-weight:700">'+_dashEsc(r.duree||'')+'</td><td style="padding:4px 5px;color:#64748b">'+_dashEsc(r.comment||'—')+'</td></tr>';}).join('')+'</tbody></table>'):'<div style="color:#64748b;font-size:12px">Aucun arrêt</div>';
+  detailEl.innerHTML=
+    '<div style="background:#1e3a8a;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
+    +'<div><div style="font-size:15px;font-weight:800">📋 Rapport — '+_dashEsc(poste)+'</div><div style="font-size:11px;opacity:.8">'+_dashEsc(pilot)+' · '+_dashEsc(date)+(d.model_debut&&d.model_fin?' · Plage : '+_dashEsc(d.model_debut)+' → '+_dashEsc(d.model_fin):'')+'</div></div>'
+    +'<div style="text-align:right"><div style="font-size:26px;font-weight:900;color:'+trsCol+'">'+_dashFmtTRS(trsS)+'</div><div style="font-size:11px;opacity:.7">TRS Shift</div></div></div>'
+    +'<div style="display:flex;gap:12px;padding:10px 14px;background:#fff;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap">'
+    +'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">TRS Poste</div>'
+    +'<svg id="rpt-gauge" viewBox="0 0 100 58" style="width:180px;display:block;margin:0 auto"><path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/><path id="rpt-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/><text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="rpt-gauge-pct">--%</text></svg></div>'
+    +'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">Répartition</div><svg id="rpt-pie" viewBox="0 0 130 115" style="width:170px;height:150px;display:block;margin:0 auto"></svg></div>'
+    +'<div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:5px">'
+    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:'+trsCol+'">'+_dashFmtTRS(trsS)+'</div><div class="fp-lbl">TRS Shift</div></div>'
+    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px">'+_dashFmtTRS(d.trs)+'</div><div class="fp-lbl">TRS Prod</div></div>'
+    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0891b2">'+((d.tot_equiv||0).toFixed(1))+'</div><div class="fp-lbl">Équivalence</div></div>'
+    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#7c3aed">'+(d.nb_of||0)+'</div><div class="fp-lbl">Nb OF</div></div>'
+    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#16a34a">'+prodMin+' min</div><div class="fp-lbl">Prod</div></div>'
+    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#dc2626">'+stopMin+' min</div><div class="fp-lbl">Arrêts</div></div>'
+    +((d.ecart_s||0)>0?'<div class="fp-card" style="padding:7px;border:1.5px solid #f59e0b"><div class="fp-big" style="font-size:16px;color:#d97706">'+Math.round((d.ecart_s||0)/60)+' min</div><div class="fp-lbl">Non déclaré</div></div>':'')
+    +'</div></div>'
+    +'<div style="padding:5px 12px;background:#fff;border-bottom:1px solid #e2e8f0">'
+    +'<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:3px">Timeline du poste</div>'
+    +'<svg viewBox="0 0 800 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block">'+tlContent+'</svg>'
+    +'<div style="display:flex;gap:10px;font-size:9px;color:#64748b;margin-top:4px"><span><i style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#dc2626;margin-right:3px"></i>Arrêt</span><span><i style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#bbf7d0;border:1px solid #86efac;margin-right:3px"></i>Prod</span></div></div>'
+    +'<div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+    +'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Productions</div>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#f8fafc"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th><th style="padding:4px 6px">Kit</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th><th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th></tr></thead><tbody>'
+    +(prodsHtml||'<tr><td colspan="8" style="padding:8px;text-align:center;color:#64748b">Aucune production</td></tr>')+'</tbody></table></div>'
+    +'<div style="display:flex;flex-direction:column;gap:8px">'
+    +'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px">Pareto des arrêts</div>'+paretoHtml+'</div>'
+    +'<div class="rpt-card" style="padding:10px;flex:1"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Détail arrêts</div>'+evtsHtml+'</div>'
+    +'</div></div>';
+  setTimeout(function(){
+    _dashDrawGauge('rpt-gauge-arc','rpt-gauge-pct',trsS>=0?trsS:0);
+    _dashDrawPie('rpt-pie',[{label:'Prod',value:prodMin,color:'#16a34a'},{label:'Arrêts',value:stopMin,color:'#dc2626'},{label:'Autre',value:Math.max(0,totalMin-prodMin-stopMin),color:'#94a3b8'}]);
+  },50);
+}
+</script>"""
+    html = html.replace('</body>', _rapports_js + '\n</body>', 1)
 
     try:
         html_path = os.path.join(os.path.dirname(path), "KPI_Dashboard.html")
