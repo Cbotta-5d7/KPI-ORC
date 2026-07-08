@@ -3325,6 +3325,14 @@ select{cursor:default}
         <div class="pob-lbl">Départ OF</div>
         <div class="pob-val" style="font-size:16px;color:#fbbf24" id="pob-of-start">—</div>
       </div>
+      <div class="pob-item">
+        <div class="pob-lbl">Fin OF</div>
+        <div class="pob-val" style="font-size:16px;color:#94a3b8" id="rc-fin">—</div>
+      </div>
+      <div class="pob-item">
+        <div class="pob-lbl">Durée OF</div>
+        <div class="pob-val" style="font-size:16px;color:#0891b2" id="rc-duree">—</div>
+      </div>
       <div class="pob-item trs">
         <div class="pob-lbl">TRS estimé</div>
         <div class="pob-val" id="pob-trs">—</div>
@@ -3413,25 +3421,12 @@ select{cursor:default}
           <button class="act-btn act-endprod" onclick="doEndProdPreview()">🏁 Fin d'OF/prod</button>
         </div>
       </div>
-      <!-- RIGHT: recap + gauges + pie charts -->
-      <div class="recap-col" style="width:380px">
-        <div class="recap-hdr">OF en cours</div>
-        <div class="recap-body" style="padding:8px 10px;display:flex;flex-direction:column;gap:6px">
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
-            <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray)">Heure début</span>
-            <span style="font-size:18px;font-weight:800;color:var(--navy)" id="rc-debut">—</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
-            <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray)">Heure fin</span>
-            <span style="font-size:18px;font-weight:800;color:var(--gray)" id="rc-fin">—</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
-            <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray)">Durée OF</span>
-            <span style="font-size:18px;font-weight:800;color:#0891b2" id="rc-duree">—</span>
-          </div>
-        </div>
+      <!-- RIGHT: recap arrêts + gauges + pie charts -->
+      <div class="recap-col" style="width:310px">
+        <div class="recap-hdr">Arrêts / pauses</div>
+        <div class="recap-body" id="recap-list"></div>
         <!-- TRS OF gauge -->
-        <div class="gauge-box" style="padding:8px 4px 4px">
+        <div class="gauge-box" style="padding:8px 4px 4px;border-top:1px solid var(--border);flex-shrink:0">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;align-items:center">
             <div style="text-align:center">
               <svg viewBox="0 0 100 56" style="width:100%;max-width:110px">
@@ -4683,15 +4678,8 @@ function applyState(s) {
     }
   }
 
-  // OF timing in recap panel
-  const rcDebut=document.getElementById('rc-debut');
+  // OF timing in pob banner
   const rcFin=document.getElementById('rc-fin');
-  if(rcDebut){
-    if(s.of_start_iso){
-      const os=new Date(s.of_start_iso);
-      rcDebut.textContent=String(os.getHours()).padStart(2,'0')+':'+String(os.getMinutes()).padStart(2,'0');
-    } else rcDebut.textContent='—';
-  }
   if(rcFin) rcFin.textContent=s.prod_active?'en cours':'—';
 
   // Render active stop chips
