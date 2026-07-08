@@ -3310,14 +3310,14 @@ select{cursor:default}
           <!-- Zone Identification -->
           <div class="fzone zi">
             <h4>📋 Identification</h4>
-            <div class="fr"><label>N° OF *</label><input id="f-of_num" oninput="scheduleAutoSave()" onfocus="openCodeInput('of_num','N° OF')"></div>
+            <div class="fr"><label>N° OF *</label><input id="f-of_num" oninput="scheduleAutoSave()"></div>
             <div class="fr ro"><label>Date</label><input id="f-date" readonly></div>
             <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
             <div class="fr"><label>Co-Pilote</label><select id="f-copilote" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>Code Produit</label><input id="f-code_prod" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Code Produit</label><input id="f-code_prod" oninput="scheduleAutoSave()" onfocus="openCodeInput('code_prod','Code Produit')"></div>
             <div class="fr"><label>Type Produit</label><select id="f-type_prod" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Kit</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
           </div>
@@ -3628,22 +3628,24 @@ select{cursor:default}
         <div id="ecart-of-list" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
       <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap">
-        <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-ecart-poste')">Annuler</button>
-        <button class="btn btn-ghost" id="ecart-btn-modify-of" style="font-size:12px;color:#0369a1;border-color:#bae6fd" onclick="ecartToggleOfPanel()">✏ Modifier les plages horaires de mes OF</button>
-        <button class="btn btn-sec" onclick="skipEcartPoste()">Modifier la durée d'un/des OFs</button>
+        <button class="btn btn-ghost" style="font-size:12px;color:#0369a1;border-color:#bae6fd" onclick="ecartOpenOfPanel()">✏ Modifier les OFs</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-ecart-poste')">Annuler</button>
+          <button class="btn btn-sec" onclick="skipEcartPoste()">Valider et terminer</button>
+        </div>
       </div>
     </div>
   </div>
 
-<!-- Modal saisie code formaté (XXXXXX_XXX) -->
-<div id="m-code-input" class="modal" onclick="if(event.target===this)closeM('m-code-input')">
-  <div class="mbox" style="max-width:480px;text-align:center">
+<!-- Modal saisie code formaté (DDDDDD_DDD) -->
+<div id="m-code-input" class="modal" style="backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);background:rgba(0,0,0,0.72)" onclick="if(event.target===this)closeM('m-code-input')">
+  <div class="mbox" style="max-width:480px;text-align:center;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:90%">
     <div style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:8px;letter-spacing:.05em" id="code-input-lbl">CODE</div>
-    <div style="font-family:monospace;font-size:22px;font-weight:900;color:var(--navy);letter-spacing:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px">X X X X X X _ X X X</div>
-    <input id="code-input-val" maxlength="10" autocomplete="off" spellcheck="false"
+    <div style="font-family:monospace;font-size:22px;font-weight:900;color:var(--navy);letter-spacing:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px">0 0 0 0 0 0 _ 0 0 0</div>
+    <input id="code-input-val" maxlength="10" autocomplete="off" spellcheck="false" inputmode="numeric"
       style="font-size:42px;font-weight:900;text-align:center;letter-spacing:4px;font-family:monospace;border:2px solid var(--navy);border-radius:8px;padding:10px 16px;width:100%;color:var(--navy);background:#fff;margin-bottom:16px"
       oninput="_codeInputFmt(this)" onkeydown="if(event.key==='Enter')_codeInputConfirm();else if(event.key==='Escape')closeM('m-code-input')">
-    <div style="font-size:11px;color:var(--gray);margin-bottom:16px">Format : 6 caractères, tiret bas, 3 caractères &nbsp;(ex : AB1234_C56)</div>
+    <div style="font-size:11px;color:var(--gray);margin-bottom:16px">Format : 6 chiffres, tiret bas, 3 chiffres &nbsp;(ex : 123456_789)</div>
     <div style="display:flex;gap:8px;justify-content:center">
       <button class="btn btn-ghost" onclick="closeM('m-code-input')">Annuler</button>
       <button class="btn btn-primary" onclick="_codeInputConfirm()">Confirmer ✓</button>
@@ -5008,12 +5010,13 @@ function _fillIpArretsPrevus(){
   visible.forEach(a=>{
     const b=document.createElement('button');
     b.className='btn btn-ghost';
-    b.style.cssText=`font-size:11px;padding:4px 10px;border:2px solid ${a.color};color:${a.color};background:none;transition:all .15s`;
+    b._origColor=a.color;
+    b.style.cssText=`font-size:12px;padding:5px 10px;border:2px solid ${a.color};color:${a.color};background:transparent;transition:all .15s`;
     b.textContent=a.lbl+' ('+ap[a.key]+'min max autorisé pendant ce poste)';
     b.onclick=()=>{
       document.getElementById('ip-custom').value=a.lbl;
       document.querySelectorAll('#ip-btns .btn, #ip-arrprev-group .btn').forEach(x=>{
-        x.style.background='';x.style.color=x._origColor||'';x.style.borderColor='var(--border)';x.style.transform='';
+        x.style.background='';x.style.color=x._origColor||'';x.style.borderColor=x._origColor||'var(--border)';x.style.transform='';
       });
       b.style.background=a.color;b.style.color='#fff';b.style.borderColor=a.color;
       b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
@@ -6015,17 +6018,18 @@ function openCodeInput(fieldId, label) {
   setTimeout(() => { if(inp){ inp.focus(); inp.select(); } }, 80);
 }
 function _codeInputFmt(inp) {
-  let v = inp.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  let v = inp.value.replace(/[^0-9]/g, '');
   v = v.slice(0, 9);
   if(v.length > 6) inp.value = v.slice(0, 6) + '_' + v.slice(6);
   else inp.value = v;
+  inp.style.borderColor = /^[0-9]{6}_[0-9]{3}$/.test(inp.value) ? '#16a34a' : 'var(--navy)';
 }
 function _codeInputConfirm() {
   const inp = document.getElementById('code-input-val');
-  const v = (inp ? inp.value : '').trim().toUpperCase();
-  if(v.length > 0 && !/^[A-Z0-9]{1,6}(_[A-Z0-9]{1,3})?$/.test(v)) {
+  const v = (inp ? inp.value : '').trim();
+  if(!/^[0-9]{6}_[0-9]{3}$/.test(v)) {
     inp.style.borderColor = '#dc2626';
-    toast('Format requis : XXXXXX_XXX', 'err'); return;
+    toast('Format requis : 6 chiffres_3 chiffres (ex : 123456_789)', 'err'); return;
   }
   const field = document.getElementById('f-' + _codeInputTarget);
   if(field) { field.value = v; scheduleAutoSave(); }
@@ -6265,7 +6269,6 @@ function _showEcartModal(fpd){
     list.appendChild(div);
   });
   document.getElementById('ecart-of-panel').style.display='none';
-  document.getElementById('ecart-btn-modify-of').textContent='✏ Modifier les plages horaires de mes OF';
   openM('m-ecart-poste');
 }
 
@@ -6275,16 +6278,8 @@ async function skipEcartPoste(){
   await _doGoFinPoste();
 }
 
-function ecartToggleOfPanel(){
-  const p=document.getElementById('ecart-of-panel');
-  const btn=document.getElementById('ecart-btn-modify-of');
-  if(p.style.display==='none'){
-    p.style.display='block';
-    btn.textContent='▲ Masquer';
-  } else {
-    p.style.display='none';
-    btn.textContent='✏ Modifier les plages horaires de mes OF';
-  }
+function ecartOpenOfPanel(){
+  document.getElementById('ecart-of-panel').style.display='block';
 }
 
 async function saveEcartOf(btn){
