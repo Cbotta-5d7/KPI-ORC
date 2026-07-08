@@ -936,6 +936,7 @@ def _state_json():
         "shift_duration_s": get_shift_duration_s(_S["poste"]),
         "shift_start_iso": _dt_str(_S.get("shift_start")),
         "excel_busy": _excel_busy,
+        "pause_periods": [[_dt_str(a), _dt_str(b)] for a, b in _S.get("pause_periods", [])],
     }
 
 @flask_app.route('/')
@@ -1777,14 +1778,20 @@ def api_fin_poste_data():
                 merged[-1][1] = max(merged[-1][1], e2)
             else:
                 merged.append([s2, e2])
+        overflow_s = 0.0
+        for s2_raw, e2_raw in merged:
+            if e2_raw > mf_s:
+                overflow_s = max(overflow_s, e2_raw - mf_s)
         covered = md_s
         for s2, e2 in merged:
             s2 = max(s2, md_s); e2 = min(e2, mf_s)
-            if s2 > covered + 60:
+            if s2 >= covered + 60:
                 gap_intervals.append({"debut": _sec_to_hm(covered), "fin": _sec_to_hm(s2), "duree_min": round((s2-covered)/60)})
             covered = max(covered, e2)
-        if mf_s > covered + 60:
+        if mf_s >= covered + 60:
             gap_intervals.append({"debut": _sec_to_hm(covered), "fin": _sec_to_hm(mf_s), "duree_min": round((mf_s-covered)/60)})
+    else:
+        overflow_s = 0.0
     return jsonify({
         "pilot":pilot,"date":today,
         "nb_of":len(of_list),"trs":trs_poste,"trs_shift":trs_poste_shift,
@@ -1797,6 +1804,7 @@ def api_fin_poste_data():
         "gap_intervals": gap_intervals,
         "model_debut": model_debut_hm,
         "model_fin": model_fin_hm,
+        "overflow_min": round(overflow_s / 60),
     })
 
 @flask_app.route('/api/history_today')
@@ -1845,7 +1853,8 @@ def api_past_sessions():
         row_type = str(r[0] or "").strip().lower()
         key = f"{date_str}||{pilot}||{poste}"
         if key not in sessions:
-            sessions[key] = {"date":date_str,"pilot":pilot,"poste":poste,"nb_of":0,"tot_equiv":0.0,"max_fin_s":0.0}
+            sessions[key] = {"date":date_str,"pilot":pilot,"poste":poste,"nb_of":0,"tot_equiv":0.0,"max_fin_s":0.0,"max_rn":0}
+        if rn > sessions[key]["max_rn"]: sessions[key]["max_rn"] = rn
         if row_type in ("production","prod",""):
             try:
                 eq = float(str(r[21] or 0).replace(",","."))
@@ -1880,12 +1889,14 @@ def api_past_sessions():
             if model_debut_s and mfs > model_debut_s:
                 elapsed_s = max(1.0, (mfs - model_debut_s) - planned_ded)
                 trs = round(s["tot_equiv"] / (prod_ref * elapsed_s / 28800) * 100, 1)
-        result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs})
-    def _date_sort_key(d):
+        result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs,"_rn":s["max_rn"]})
+    def _date_sort_key(x):
+        d = x["date"]
         try:
-            p=d.split('/'); return (int(p[2]),int(p[1]),int(p[0]))
-        except: return (0,0,0)
-    result.sort(key=lambda x: _date_sort_key(x["date"]), reverse=True)
+            p=d.split('/'); return (int(p[2]),int(p[1]),int(p[0]),x.get("_rn",0))
+        except: return (0,0,0,0)
+    result.sort(key=_date_sort_key, reverse=True)
+    for x in result: x.pop("_rn", None)
     return jsonify(result[:60])
 
 @flask_app.route('/api/session_report')
@@ -1895,10 +1906,17 @@ def api_session_report():
     poste = request.args.get('poste','')
     prod_ref = get_prod_ref()
     prod_rows = []; evt_rows = []; tot_eq = 0.0; tot_s = 0.0; max_fin_s = 0.0; stop_s = 0.0
+    all_debut_s = []; all_fin_s = []
     for rn, r in _decl_cache:
         if _row_date(r[2]) != date_str: continue
         if str(r[4] or "") != pilot: continue
+        if str(r[3] or "") != poste: continue
         row_type = str(r[0] or "").strip().lower()
+        deb_raw = str(r[16] or ""); fin_raw = str(r[17] or "")
+        deb_s_r = _hms_to_sec(deb_raw) if deb_raw else -1
+        fin_s_r = _hms_to_sec(fin_raw) if fin_raw else -1
+        if deb_s_r >= 0: all_debut_s.append(deb_s_r)
+        if fin_s_r >= 0: all_fin_s.append(fin_s_r)
         if row_type in ("production","prod",""):
             try:
                 eq = float(str(r[21] or 0).replace(",","."))
@@ -1916,6 +1934,8 @@ def api_session_report():
                 stop_s += dur_s
                 evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or "")})
             except: pass
+    actual_debut = _sec_to_hm(min(all_debut_s)) if all_debut_s else ""
+    actual_fin = _sec_to_hm(max(all_fin_s)) if all_fin_s else ""
     debut_str, fin_str = _get_model_day_cfg(poste)
     model_debut_s = _hms_to_sec(debut_str) if debut_str else None
     planned_ded = _compute_planned_deduction_s(evt_rows)
@@ -1932,6 +1952,7 @@ def api_session_report():
                     "trs_shift":trs_shift,"trs":trs_of,"tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
                     "stop_s":round(stop_s,0),"nb_of":len(prod_rows),
                     "model_debut":debut_str or "","model_fin":fin_str or "",
+                    "actual_debut":actual_debut,"actual_fin":actual_fin,
                     "ecart_s":round(ecart_s,0),"model_dur_s":round(model_dur_s,0),
                     "planned_ded_s":round(planned_ded,0)})
 
@@ -2640,7 +2661,6 @@ def generate_dashboard_html():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="15">
 <title>Dashboard Encadrant — ORC</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
@@ -2882,7 +2902,9 @@ function showDashOf(i){{
   document.getElementById('dash-of-detail-content').innerHTML='<div style="font-size:22px;font-weight:900;color:#1e3a8a;margin-bottom:12px;font-family:monospace">OF '+String(r.of||'—').replace(/&/g,'&amp;')+'</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px">'+chipsHtml+'</div>'+(r.comment?'<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:13px">💬 '+String(r.comment).replace(/&/g,'&amp;')+'</div>':'')+'<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:6px">Arrêts pendant cet OF</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:11px">Type</th><th style="padding:4px 8px;font-size:11px">Plage</th><th style="padding:4px 8px;font-size:11px">Durée</th><th style="padding:4px 8px;font-size:11px">Commentaire</th></tr></thead><tbody>'+stopsHtml+'</tbody></table>';
   document.getElementById('dash-of-modal').style.display='flex';
 }}
+var _currentDashTab='accueil';
 function showTab(name){{
+  _currentDashTab=name;
   ['accueil','historique','rapports'].forEach(function(n){{
     var p=document.getElementById('tab-'+n);
     var b=document.getElementById('tb-'+n);
@@ -2891,6 +2913,7 @@ function showTab(name){{
   }});
   if(name==='rapports') loadRapports();
 }}
+setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},15000);
 </script>
 
 <div id="dash-of-modal" class="dash-modal-overlay" onclick="if(event.target.id==='dash-of-modal')this.style.display='none'">
@@ -2910,7 +2933,7 @@ function showTab(name){{
     _rapports_js = r"""
 <script>
 function _dashEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-async function _dashFetch(url){try{var r=await fetch(url);return r.ok?await r.json():null;}catch(e){return null;}}
+async function _dashFetch(url){try{var r=await fetch('http://127.0.0.1:5001'+url);return r.ok?await r.json():null;}catch(e){return null;}}
 function _dashFmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}
 function _dashDrawPie(svgId,segments){
   var svg=document.getElementById(svgId);if(!svg)return;
@@ -3023,7 +3046,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     html+='<text x="2" y="'+(H-1)+'" font-size="8" fill="#fff">'+fmt(tS)+'</text>';
     html+='<text x="'+(W-30)+'" y="'+(H-1)+'" font-size="8" fill="#fff">'+fmt(tE)+'</text>';
     return html;
-  })(d.prod_rows||[],d.evt_rows||[],date,d.model_debut,d.model_fin);
+  })(d.prod_rows||[],d.evt_rows||[],date,d.actual_debut||d.model_debut,d.actual_fin||d.model_fin);
   var prodsHtml=(d.prod_rows||[]).map(function(r){
     var tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
     var kitDisp=(r.kit||'').toLowerCase()==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
@@ -3033,7 +3056,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
   var evtsHtml=evtsRows.length?('<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0"><th style="padding:3px 5px;text-align:left;font-weight:700;color:#64748b">Arrêt</th><th style="padding:3px 5px;font-weight:700;color:#64748b">OF</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Format</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Type</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Plage</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Durée</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Commentaire</th></tr></thead><tbody>'+evtsRows.map(function(r){return '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:4px 5px;font-weight:600">'+_dashEsc(r.type||'')+'</td><td style="padding:4px 5px;color:#0369a1;font-weight:700">'+_dashEsc(r.of||'—')+'</td><td style="padding:4px 5px">'+_dashEsc(r.taille||'—')+'</td><td style="padding:4px 5px">'+_dashEsc(r.type_prod||'—')+'</td><td style="padding:4px 5px;white-space:nowrap;color:#64748b">'+_dashEsc(r.debut||'')+' → '+_dashEsc(r.fin||'')+'</td><td style="padding:4px 5px;font-weight:700">'+_dashEsc(r.duree||'')+'</td><td style="padding:4px 5px;color:#64748b">'+_dashEsc(r.comment||'—')+'</td></tr>';}).join('')+'</tbody></table>'):'<div style="color:#64748b;font-size:12px">Aucun arrêt</div>';
   detailEl.innerHTML=
     '<div style="background:#1e3a8a;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
-    +'<div><div style="font-size:15px;font-weight:800">📋 Rapport — '+_dashEsc(poste)+'</div><div style="font-size:11px;opacity:.8">'+_dashEsc(pilot)+' · '+_dashEsc(date)+(d.model_debut&&d.model_fin?' · Plage : '+_dashEsc(d.model_debut)+' → '+_dashEsc(d.model_fin):'')+'</div></div>'
+    +'<div><div style="font-size:15px;font-weight:800">📋 Rapport — '+_dashEsc(poste)+'</div><div style="font-size:11px;opacity:.8">'+_dashEsc(pilot)+' · '+_dashEsc(date)+((d.actual_debut&&d.actual_fin)?' · Plage déclarée : '+_dashEsc(d.actual_debut)+' → '+_dashEsc(d.actual_fin):(d.model_debut&&d.model_fin?' · Plage modèle : '+_dashEsc(d.model_debut)+' → '+_dashEsc(d.model_fin):''))+'</div></div>'
     +'<div style="text-align:right"><div style="font-size:26px;font-weight:900;color:'+trsCol+'">'+_dashFmtTRS(trsS)+'</div><div style="font-size:11px;opacity:.7">TRS Shift</div></div></div>'
     +'<div style="display:flex;gap:12px;padding:10px 14px;background:#fff;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap">'
     +'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">TRS Poste</div>'
@@ -6478,10 +6501,16 @@ function _showEcartModal(fpd){
   const stop_min=Math.max(0,model_min-prod_min-ecart_min);
   const modelDebut=fpd.model_debut||'';
   const modelFin=fpd.model_fin||'';
+  const overflow_min=Math.round(fpd.overflow_min||0);
   // Guide header
   const guidEl=document.getElementById('ecart-guide');
   if(guidEl){
-    if(ecart_min<=0){
+    if(overflow_min>0){
+      guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#fef2f2;border:1px solid #fca5a5;line-height:1.5';
+      guidEl.innerHTML='<span style="color:#dc2626;font-weight:800;font-size:13px">⚠ Dépassement de plage : +'+overflow_min+' min au-delà de '+esc(modelFin)+'</span><br>'+
+        '<span style="color:#7f1d1d">Un ou plusieurs OFs se terminent après la fin du modèle. Souhaitez-vous modifier la plage horaire ?</span> '+
+        '<button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:4px;border-color:#fca5a5;color:#dc2626" onclick="alert(\'Modifiez la plage dans Paramètres → Modèles horaires\')">Modifier la plage</button>';
+    } else if(ecart_min<=0){
       guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#f0fdf4;border:1px solid #bbf7d0;line-height:1.5';
       guidEl.innerHTML='<span style="color:#16a34a;font-weight:800;font-size:13px">✓ Toute la plage '+esc(modelDebut)+'→'+esc(modelFin)+' est couverte !</span>';
     } else {
