@@ -1216,6 +1216,11 @@ def api_start_prod():
         gap_s = max(0.0, (now - model_debut_dt).total_seconds())
         _S["interposte_s"] = gap_s
         ip_debut_hms = model_debut_str
+        # Alimenter pre_shift_gap_s pour que le JS ouvre m-preshift (dialogue 1er OF)
+        if gap_s > 120:
+            pre_shift_gap_s = gap_s
+            shift_model_start_str = model_debut_str
+            shift_model_start_iso = model_debut_dt.isoformat()
     elif _S["last_of_end"]:
         ip_debut_hms = _S["last_of_end"].strftime("%H:%M")
     return jsonify({"ok":True,"gap_s":round(gap_s,0),
