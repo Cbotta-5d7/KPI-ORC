@@ -4,6 +4,12 @@ from flask import Flask, request, jsonify, render_template_string
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Border, Side, PatternFill
 
+"""KPI-ORC v6.3 - Flask + pywebview"""
+import json, os, sys, datetime, threading, math, shutil, time, atexit, signal
+from flask import Flask, request, jsonify, render_template_string
+from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Border, Side, PatternFill
+
 CONFIG_FILE  = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
 SESSION_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_session.json")
 PENDING_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_pending.json")
@@ -262,14 +268,21 @@ def get_prod_ref():
     return _prod_ref_cached
 
 def _get_model_day_cfg(poste, date_obj=None):
-    """Retourne (debut_str, fin_str) du modèle horaire pour le poste/jour donné."""
+    """Retourne (debut_str, fin_str) du modèle horaire pour le poste/jour donné.
+    Vérifie d'abord les surcharges de session (_S['model_overrides']) avant cfg."""
+    day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
+    day_key = day_map.get((date_obj or datetime.date.today()).weekday(), 'lun')
+    # Session override (temporary, never saved to disk)
+    overrides = _S.get("model_overrides", {})
+    if poste and poste in overrides and day_key in overrides[poste]:
+        ov = overrides[poste][day_key]
+        return ov.get("debut","05:00"), ov.get("fin","13:00")
     models = cfg.get("modeles_horaires", [])
     model = next((m for m in models if str(m.get("nom","")).strip().lower()==str(poste or "").strip().lower()), None)
     if not model: return None, None
     jours = model.get("jours", {})
     if date_obj and jours:
-        day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
-        day_cfg = jours.get(day_map.get(date_obj.weekday(),'lun'))
+        day_cfg = jours.get(day_key)
     else:
         day_cfg = next((v for k,v in jours.items() if v and v.get("debut") and v.get("fin")), None) if jours else None
     if not day_cfg:
@@ -902,6 +915,7 @@ def toggle_hors_trs_excel(row_num, new_val):
                     _safe_excel_save(wb,path)
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
+
 
 # ── Flask helpers ─────────────────────────────────────────────────────────────
 def _check_pw(pw):
@@ -1592,17 +1606,12 @@ def api_update_model_today():
     fin = data.get("fin","")
     if not nom or not day_key or not debut or not fin:
         return jsonify({"ok":False,"error":"Paramètre manquant"}),400
-    for m in cfg.get("modeles_horaires",[]):
-        if m.get("nom","") == nom:
-            if "jours" not in m:
-                m["jours"] = {}
-            if day_key not in m["jours"]:
-                m["jours"][day_key] = {}
-            m["jours"][day_key]["debut"] = debut
-            m["jours"][day_key]["fin"] = fin
-            break
-    # Do NOT save to disk — these are temporary session overrides only.
-    # Paramètres horaires are preserved; cfg reloads from disk on next logout.
+    # Stocker dans _S uniquement — cfg n'est jamais modifié, Paramètres reste intact
+    if "model_overrides" not in _S:
+        _S["model_overrides"] = {}
+    if nom not in _S["model_overrides"]:
+        _S["model_overrides"][nom] = {}
+    _S["model_overrides"][nom][day_key] = {"debut": debut, "fin": fin}
     return jsonify({"ok":True})
 
 @flask_app.route('/api/delete_row', methods=['POST'])
@@ -2149,6 +2158,7 @@ def dashboard_view():
     except Exception as e:
         return f"<html><body>Erreur lecture fichier: {e}</body></html>", 500
 
+
 # ── Dashboard HTML superviseur ─────────────────────────────────────────────────
 def generate_dashboard_html():
     path = cfg.get("db_path","")
@@ -2638,9 +2648,9 @@ def generate_dashboard_html():
         _sess_key = f"{str(r[2] or '')[:10]}|{str(r[3] or '')}|{str(r[4] or '')}"
         if _sess_key != _prev_session_key:
             _prev_session_key = _sess_key
-            hist_html += (f'<tr style="background:#1e3a8a">'
-                f'<td colspan="12" style="padding:5px 10px;font-size:11px;font-weight:800;color:#fff;letter-spacing:.3px">'
-                f'📅 {str(r[2] or "")[:10]} — 🏭 {str(r[3] or "")} — 👤 {str(r[4] or "")}'
+            hist_html += (f'<tr style="background:#f0f4fa;border-top:2px solid #c7d2e8">'
+                f'<td colspan="12" style="padding:3px 10px;font-size:10px;font-weight:600;color:#334155;letter-spacing:.2px">'
+                f'📅 {str(r[2] or "")[:10]} &nbsp;·&nbsp; 🏭 {str(r[3] or "")} &nbsp;·&nbsp; 👤 {str(r[4] or "")}'
                 f'</td></tr>')
         _fibre_h = str(r[11] or "").strip()
         _fibre_short_h = _fibre_h[:9] + ('…' if len(_fibre_h) > 9 else '')
@@ -2963,12 +2973,102 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
 </body>
 </html>"""
 
+    # ── Compute embedded sessions & reports (no fetch calls needed) ──
+    import json as _json_rpt
+    _sess_map_r = {}
+    _sess_evts_map_r = {}
+    for _r in decl_rows:
+        _dkey = str(_r[39] if len(_r) > 39 else "").strip() or _row_date(_r[2])
+        if not _dkey: continue
+        _pilot_r = str(_r[4] or ""); _poste_r = str(_r[3] or "")
+        _rtype_r = str(_r[0] or "").strip().lower()
+        _sk_r = f"{_dkey}||{_pilot_r}||{_poste_r}"
+        if _sk_r not in _sess_map_r:
+            _sess_map_r[_sk_r] = {"date":_dkey,"pilot":_pilot_r,"poste":_poste_r,"nb_of":0,"tot_equiv":0.0,"max_fin_s":0.0}
+            _sess_evts_map_r[_sk_r] = []
+        if _rtype_r in ("production","prod",""):
+            try:
+                _eq_r = float(str(_r[21] or 0).replace(",","."))
+                _fs_r = hms2s(_r[17])
+                _sess_map_r[_sk_r]["nb_of"] += 1
+                _sess_map_r[_sk_r]["tot_equiv"] += _eq_r
+                if _fs_r > _sess_map_r[_sk_r]["max_fin_s"]: _sess_map_r[_sk_r]["max_fin_s"] = _fs_r
+            except: pass
+        else:
+            _sess_evts_map_r[_sk_r].append(_r)
+    _embedded_sessions_list = []
+    for _sk_r, _s_r in _sess_map_r.items():
+        _trs_r = -1.0
+        try:
+            _p2 = _s_r["date"].split('/'); _do2 = datetime.date(int(_p2[2]),int(_p2[1]),int(_p2[0]))
+        except: _do2 = None
+        _deb2, _ = _get_model_day_cfg(_s_r["poste"], _do2)
+        _mds2 = hms2s(_deb2) if _deb2 else None
+        _ded2 = sum(hms2s(_er[18]) for _er in _sess_evts_map_r.get(_sk_r,[]) if any(k in str(_er[0] or "").lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
+        _mfs2 = _s_r["max_fin_s"]
+        if _mds2 and _mfs2 < _mds2: _mfs2 += 86400
+        if _mds2 and _mfs2 > _mds2 and prod_ref > 0 and _s_r["tot_equiv"] > 0:
+            _el2 = max(1.0, (_mfs2 - _mds2) - _ded2)
+            _trs_r = round(_s_r["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
+        _embedded_sessions_list.append({"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"nb_of":_s_r["nb_of"],"tot_equiv":round(_s_r["tot_equiv"],1),"trs":_trs_r})
+    _embedded_sessions_list.sort(key=lambda x: (lambda p: (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0))(x["date"].split('/')), reverse=True)
+    _embedded_sessions_list = _embedded_sessions_list[:60]
+    _embedded_reports_dict = {}
+    for _s_r in _embedded_sessions_list:
+        _sk3 = f"{_s_r['date']}||{_s_r['pilot']}||{_s_r['poste']}"
+        _pr3=[]; _er3=[]; _teq3=0.0; _ts3=0.0; _mfs3=0.0; _sts3=0.0; _ads3=[]; _afs3=[]
+        for _r3 in decl_rows:
+            _dk3 = str(_r3[39] if len(_r3)>39 else "").strip() or _row_date(_r3[2])
+            if _dk3 != _s_r["date"] or str(_r3[4] or "") != _s_r["pilot"] or str(_r3[3] or "") != _s_r["poste"]: continue
+            _rt3 = str(_r3[0] or "").strip().lower()
+            _dbs3 = hms2s(_r3[16]) if _r3[16] else -1; _fbs3 = hms2s(_r3[17]) if _r3[17] else -1
+            if _dbs3 >= 0: _ads3.append(_dbs3)
+            if _fbs3 >= 0: _afs3.append(_fbs3)
+            if _rt3 in ("production","prod",""):
+                try:
+                    _eq3 = float(str(_r3[21] or 0).replace(",","."))
+                    _ds3 = hms2s(_r3[16]); _fs3b = hms2s(_r3[17])
+                    _dur3 = _fs3b - _ds3 if _fs3b > _ds3 else hms2s(_r3[18])
+                    _trs3 = round(_eq3/(prod_ref*_dur3/28800)*100,1) if prod_ref>0 and _dur3>0 and _eq3>0 else -1
+                    _teq3 += _eq3; _ts3 += _dur3
+                    if _fs3b > _mfs3: _mfs3 = _fs3b
+                    _pr3.append({"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"kit":str(_r3[15] or ""),"qte_fab":str(_r3[19] or ""),"equiv":str(_r3[21] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"trs":_trs3,"comment":str(_r3[35] or "")})
+                except: pass
+            else:
+                try:
+                    _durs3 = hms2s(_r3[18]); _sts3 += _durs3
+                    _er3.append({"type":str(_r3[0] or ""),"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"comment":str(_r3[35] or "")})
+                except: pass
+        _acd3 = _sec_to_hm(min(_ads3)) if _ads3 else ""
+        _acf3 = _sec_to_hm(max(_afs3)) if _afs3 else ""
+        try:
+            _dp3 = _s_r["date"].split('/'); _dpo3 = datetime.date(int(_dp3[2]),int(_dp3[1]),int(_dp3[0]))
+        except: _dpo3 = None
+        _mdeb3, _mfin3 = _get_model_day_cfg(_s_r["poste"], _dpo3)
+        _mds3b = hms2s(_mdeb3) if _mdeb3 else None
+        _ded3 = sum(hms2s(_e3r.get("duree","")) for _e3r in _er3 if any(k in str(_e3r.get("type","")).lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
+        _mdur3 = get_shift_duration_s(_s_r["poste"], _dpo3)
+        _ecart3 = max(0.0, _mdur3 - (_ts3 + _sts3))
+        _trs_sh3 = -1.0
+        if _mds3b and _mfs3 > 0:
+            _mfs3b = _mfs3
+            if _mfs3b < _mds3b: _mfs3b += 86400
+            if _mfs3b > _mds3b and prod_ref > 0 and _teq3 > 0:
+                _el3 = max(1.0, (_mfs3b - _mds3b) - _ded3)
+                _trs_sh3 = round(_teq3/(prod_ref*_el3/28800)*100,1)
+        _trs_of3 = round(_teq3/(prod_ref*_ts3/28800)*100,1) if prod_ref>0 and _ts3>0 and _teq3>0 else -1
+        _rpt_key3 = f"{_s_r['date']}|{_s_r['pilot']}|{_s_r['poste']}"
+        _embedded_reports_dict[_rpt_key3] = {"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"prod_rows":_pr3,"evt_rows":_er3,"trs_shift":_trs_sh3,"trs":_trs_of3,"tot_equiv":round(_teq3,1),"tot_s":round(_ts3,0),"stop_s":round(_sts3,0),"nb_of":len(_pr3),"model_debut":_mdeb3 or "","model_fin":_mfin3 or "","actual_debut":_acd3,"actual_fin":_acf3,"ecart_s":round(_ecart3,0)}
+    _emb_sess_json = _json_rpt.dumps(_embedded_sessions_list, ensure_ascii=True, default=str)
+    _emb_rpt_json = _json_rpt.dumps(_embedded_reports_dict, ensure_ascii=True, default=str)
+
     # Inject rapports JS
-    _rapports_js = r"""
+    _rapports_js = """
 <script>
+var _EMBEDDED_SESSIONS=""" + _emb_sess_json + """;
+var _EMBEDDED_REPORTS=""" + _emb_rpt_json + """;
 function _dashEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-async function _dashFetch(url){try{var r=await fetch(url);return r.ok?await r.json():null;}catch(e){return null;}}
-function _dashFmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}
+function _dashFmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}""" + r"""
 function _dashDrawPie(svgId,segments){
   var svg=document.getElementById(svgId);if(!svg)return;
   var total=segments.reduce(function(a,s){return a+s.value;},0);
@@ -3003,12 +3103,11 @@ function _dashDrawGauge(arcId,pctId,trs){
   arc.setAttribute('stroke-dasharray',dash.toFixed(1)+','+pArc);arc.setAttribute('stroke',col);
   pct.textContent=_dashFmtTRS(trs);pct.setAttribute('fill',col);
 }
-async function loadRapports(){
+function loadRapports(){
   var listEl=document.getElementById('rpt-list');
   if(!listEl)return;
-  listEl.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Chargement…</div>';
-  var sessions=await _dashFetch('/api/past_sessions');
-  if(!sessions||!sessions.length){
+  var sessions=_EMBEDDED_SESSIONS||[];
+  if(!sessions.length){
     listEl.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Aucun poste disponible</div>';
     return;
   }
@@ -3018,14 +3117,14 @@ async function loadRapports(){
     return '<div class="rpt-item" id="rpt-item-'+i+'" onclick="loadSessionReport(\''+_dashEsc(s.date)+'\',\''+_dashEsc(s.pilot||\'\')+'\',\''+_dashEsc(s.poste||\'\')+'\',\'rpt-item-'+i+'\')" style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s"><div style="font-size:12px;font-weight:800;color:#1e3a8a">'+_dashEsc(s.date)+' — '+_dashEsc(s.poste||'')+'</div><div style="font-size:11px;color:#64748b;margin-top:2px">'+_dashEsc(s.pilot||'?')+' | '+s.nb_of+' OF | Éq. '+s.tot_equiv+'</div><div style="font-size:16px;font-weight:900;color:'+trsCol+';margin-top:2px">'+trsStr+'</div></div>';
   }).join('');
 }
-async function loadSessionReport(date,pilot,poste,itemId){
+function loadSessionReport(date,pilot,poste,itemId){
   document.querySelectorAll('.rpt-item').forEach(function(el){el.style.background='';});
   var sel=document.getElementById(itemId);if(sel)sel.style.background='#eff6ff';
   var detailEl=document.getElementById('rpt-detail');
   if(!detailEl)return;
-  detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#64748b">Chargement…</div>';
-  var d=await _dashFetch('/api/session_report?date='+encodeURIComponent(date)+'&pilot='+encodeURIComponent(pilot)+'&poste='+encodeURIComponent(poste));
-  if(!d){detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur chargement</div>';return;}
+  var key=date+'|'+pilot+'|'+poste;
+  var d=(_EMBEDDED_REPORTS||{})[key];
+  if(!d){detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Rapport introuvable</div>';return;}
   var trsS=d.trs_shift>=0?d.trs_shift:(d.trs>=0?d.trs:-1);
   var trsCol=trsS>=90?'#16a34a':trsS>=70?'#f59e0b':trsS>=0?'#dc2626':'#94a3b8';
   var stopMin=Math.round((d.stop_s||0)/60);
@@ -3131,6 +3230,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
         return html_path, None
     except Exception as e:
         return None, str(e)
+
 
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
@@ -3960,7 +4060,7 @@ select{cursor:default}
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
         <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-ecart-poste')">Annuler</button>
-        <button class="btn btn-sec" onclick="skipEcartPoste()">Valider et terminer</button>
+        <button id="ecart-valider-btn" class="btn btn-sec" onclick="skipEcartPoste()">Valider et terminer</button>
       </div>
     </div>
   </div>
@@ -6510,14 +6610,29 @@ function _showEcartModal(fpd){
   const overflow_min=Math.round(fpd.overflow_min||0);
   const gaps=fpd.gap_intervals||[];
   const hasGaps=gaps.length>0;
+  // Réinitialiser le panneau plage horaire au style normal avant d'appliquer la surcharge
+  const _pP=document.getElementById('ecart-plage-panel');
+  if(_pP){
+    _pP.style.cssText='margin-bottom:14px';
+    const _pD=_pP.querySelectorAll('div');
+    if(_pD[0]) _pD[0].style.color='#0369a1';
+    if(_pD[1]){_pD[1].style.background='#f0f9ff';_pD[1].style.borderColor='#bae6fd';}
+  }
   // Guide header — basé sur les gaps réels, pas sur ecart_min
   const guidEl=document.getElementById('ecart-guide');
   if(guidEl){
     if(overflow_min>0){
       guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#fef2f2;border:1px solid #fca5a5;line-height:1.5';
       guidEl.innerHTML='<span style="color:#dc2626;font-weight:800;font-size:13px">⚠ Dépassement de plage : +'+overflow_min+' min au-delà de '+esc(modelFin)+'</span><br>'+
-        '<span style="color:#7f1d1d">Un ou plusieurs OFs se terminent après la fin du modèle. Souhaitez-vous modifier la plage horaire ?</span> '+
-        '<button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:4px;border-color:#fca5a5;color:#dc2626" onclick="alert(\'Modifiez la plage dans Paramètres → Modèles horaires\')">Modifier la plage</button>';
+        '<span style="color:#7f1d1d">Un ou plusieurs OFs se terminent après la fin de la plage modèle. Modifiez la plage ci-dessous.</span>';
+      // Mettre le panneau de modification de plage en rouge pour signaler l'urgence
+      const plagePanel=document.getElementById('ecart-plage-panel');
+      if(plagePanel){
+        plagePanel.style.cssText='margin-bottom:14px;border-radius:10px;border:2px solid #dc2626;padding:10px;background:#fef2f2';
+        const divs=plagePanel.querySelectorAll('div');
+        if(divs[0]) divs[0].style.color='#dc2626'; // label titre
+        if(divs[1]){ divs[1].style.background='#fef2f2'; divs[1].style.borderColor='#fca5a5'; }
+      }
     } else if(!hasGaps){
       guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#f0fdf4;border:1px solid #bbf7d0;line-height:1.5';
       guidEl.innerHTML='<span style="color:#16a34a;font-weight:800;font-size:13px">✓ Toute la plage '+esc(modelDebut)+' → '+esc(modelFin)+' est couverte !</span>';
@@ -6546,7 +6661,9 @@ function _showEcartModal(fpd){
   const gapsEl=document.getElementById('ecart-gaps');
   if(gapsEl){
     if(!hasGaps){
-      gapsEl.innerHTML='<div style="color:#16a34a;font-size:12px;font-weight:700;padding:4px 0">✓ Aucune plage non couverte</div>';
+      // Ne pas afficher "Aucune plage non couverte" quand il y a un dépassement
+      gapsEl.innerHTML=overflow_min>0?''
+        :'<div style="color:#16a34a;font-size:12px;font-weight:700;padding:4px 0">✓ Aucune plage non couverte</div>';
     } else {
       gapsEl.innerHTML='';
       gaps.forEach((g,gi)=>{
@@ -6590,6 +6707,15 @@ function _showEcartModal(fpd){
       '</div>';
     list.appendChild(div);
   });
+  // Griser "Valider et terminer" tant que tout n'est pas résolu
+  const valBtn=document.getElementById('ecart-valider-btn');
+  if(valBtn){
+    const locked=hasGaps||overflow_min>0;
+    valBtn.disabled=locked;
+    valBtn.style.opacity=locked?'0.4':'1';
+    valBtn.style.cursor=locked?'not-allowed':'pointer';
+    valBtn.title=locked?(hasGaps?'Justifiez toutes les plages non couvertes avant de terminer':'Résolvez le dépassement de plage avant de terminer'):'';
+  }
   openM('m-ecart-poste');
 }
 
@@ -7248,28 +7374,69 @@ function showHistRowDetail(key){
   const r=window._rowMap&&window._rowMap[String(key)];
   if(!r) return;
   const isProd=r._rowType==='prod';
+  function _hm2s(hm){if(!hm)return 0;const[h,m]=(hm+':00').split(':').map(Number);return(h||0)*3600+(m||0)*60;}
+  const tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
+  const kitStr=(r.kit||'').toLowerCase();
+  const kitDisp=kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓ Oui</span>':'<span style="color:#94a3b8">Non</span>';
   const chips=[];
-  if(r.of)chips.push(['OF',r.of,'']);
-  if(r.date)chips.push(['Date',r.date,'']);
-  if(r.poste)chips.push(['Poste',r.poste,'']);
-  if(r.pilote)chips.push(['Pilote',r.pilote,'']);
-  if(r.debut)chips.push(['Début',r.debut,'']);
-  if(r.fin)chips.push(['Fin',r.fin,'']);
-  if(r.taille)chips.push(['Taille',r.taille,'']);
-  if(r.qte_fab)chips.push(['Qté fab.',r.qte_fab,'']);
-  if(r.equiv)chips.push(['Équiv.',r.equiv,'']);
-  if(r.trs>0)chips.push(['TRS',r.trs.toFixed(1)+'%','color:#16a34a;font-weight:900']);
-  if(r.type&&!isProd)chips.push(['Type arrêt',r.type,'color:#dc2626']);
-  if(r.duree)chips.push(['Durée',r.duree,'']);
-  if(r.kit)chips.push(['Kit',r.kit,'']);
-  const chipsHtml=chips.map(([lbl,val,sty])=>`<div style="background:#f8fafc;border:1px solid var(--border);border-radius:7px;padding:6px 10px;text-align:center">
-    <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;margin-bottom:2px">${lbl}</div>
-    <div style="font-size:13px;font-weight:700;${sty}">${esc(String(val))}</div>
+  if(isProd){
+    if(r.taille)chips.push(['Taille',r.taille,'']);
+    if(r.type)chips.push(['Type prod.',r.type,'']);
+    chips.push(['Kit',kitDisp,'raw']);
+    if(r.qte_fab)chips.push(['Qté fab.',r.qte_fab,'']);
+    if(r.equiv)chips.push(['Équiv.',r.equiv,'color:#0891b2;font-weight:800']);
+    chips.push(['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':'—',`color:${tc}`]);
+    if(r.debut)chips.push(['Début',r.debut,'']);
+    if(r.fin)chips.push(['Fin',r.fin,'']);
+    if(r.duree)chips.push(['Durée',r.duree,'']);
+    if(r.date)chips.push(['Date',r.date,'']);
+    if(r.poste)chips.push(['Poste',r.poste,'']);
+    if(r.pilote)chips.push(['Pilote',r.pilote,'']);
+    if(r.fibre)chips.push(['Fibre',r.fibre,'color:#6366f1']);
+  } else {
+    chips.push(['Type',r.type||r.type_arret||'—','color:#dc2626']);
+    if(r.debut)chips.push(['Début',r.debut,'']);
+    if(r.fin)chips.push(['Fin',r.fin,'']);
+    if(r.duree)chips.push(['Durée',r.duree,'']);
+    if(r.date)chips.push(['Date',r.date,'']);
+    if(r.poste)chips.push(['Poste',r.poste,'']);
+    if(r.pilote)chips.push(['Pilote',r.pilote,'']);
+  }
+  const chipsHtml=chips.map(([lbl,val,sty])=>`<div class="fp-card" style="padding:7px">
+    <div class="fp-lbl">${lbl}</div>
+    <div class="fp-big" style="font-size:14px;${sty&&sty!=='raw'?sty:''}">${sty==='raw'?val:esc(String(val))}</div>
   </div>`).join('');
+  // Arrêts pendant cet OF (si prod)
+  let evtsHtml='';
+  if(isProd){
+    const debS=_hm2s(r.debut), finS=_hm2s(r.fin)||86400;
+    const allEvts=window._histEvtsAll||[];
+    const ofEvts=allEvts.filter(e=>{
+      if(!e.date||e.date!==r.date) return false;
+      if(e.pilote&&e.pilote!==r.pilote) return false;
+      const t=_hm2s(e.debut);return t>=debS&&t<=finS;
+    });
+    evtsHtml='<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin:12px 0 6px">Arrêts pendant cet OF</div>'+
+      '<table style="width:100%;border-collapse:collapse">'+
+      '<thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">'+
+      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Type</th>'+
+      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Plage</th>'+
+      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Durée</th>'+
+      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Commentaire</th>'+
+      '</tr></thead><tbody>'+
+      (ofEvts.length?ofEvts.map(e=>`<tr>
+        <td style="padding:4px 8px;font-weight:600;font-size:11px">${esc(e.type||'')}</td>
+        <td style="padding:4px 8px;font-size:11px;white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</td>
+        <td style="padding:4px 8px;font-weight:700;font-size:11px">${esc(e.duree||'')}</td>
+        <td style="padding:4px 8px;font-size:10px;color:var(--gray)">${esc(e.comment||'')}</td>
+      </tr>`).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:var(--gray);font-size:11px">Aucun arrêt</td></tr>')+
+      '</tbody></table>';
+  }
   document.getElementById('of-detail-content').innerHTML=`
-    <div style="font-size:20px;font-weight:900;color:var(--navy);margin-bottom:12px;font-family:monospace">${isProd?'🏭 ':' ⛔ '}${esc(r.of||r.type||'Ligne')}</div>
+    <div style="font-size:22px;font-weight:900;color:var(--navy);margin-bottom:14px;font-family:monospace">${isProd?'🏭 OF ':'⛔ '}${esc(r.of||r.type||'—')}</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">${chipsHtml}</div>
-    ${r.comment?`<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;font-size:12px">💬 ${esc(r.comment)}</div>`:''}`;
+    ${r.comment?`<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px">💬 ${esc(r.comment)}</div>`:''}
+    ${evtsHtml}`;
   openM('m-of-detail');
 }
 
@@ -7370,6 +7537,7 @@ async function loadHist(){
   hd.innerHTML='<th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
   if(!allRows.length){bd.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
   window._rowMap=window._rowMap||{};
+  window._histEvtsAll=evtsFiltered; // pour showHistRowDetail
   bd.innerHTML=allRows.map(r=>{
     const key=r.row_num||r.debut;
     window._rowMap[String(key)]=r;
@@ -7766,7 +7934,24 @@ async function apiFetch(url,retries=2){
     return r.ok?await r.json():null;
   }catch(e){return null;}
 }
-function showFibre(name){if(!name)return;toast('Fibre : '+name,'ok');}
+function showFibre(name){
+  if(!name)return;
+  let m=document.getElementById('m-fibre-info');
+  if(!m){
+    m=document.createElement('div');
+    m.id='m-fibre-info';
+    m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;display:flex;align-items:center;justify-content:center';
+    m.innerHTML='<div style="background:#fff;border-radius:14px;padding:28px 32px;min-width:260px;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center">'+
+      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6366f1;letter-spacing:.6px;margin-bottom:8px">Fibre</div>'+
+      '<div id="m-fibre-name" style="font-size:18px;font-weight:800;color:#1e293b;word-break:break-all;margin-bottom:18px"></div>'+
+      '<button onclick="document.getElementById(\'m-fibre-info\').style.display=\'none\'" style="background:#6366f1;color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:13px;font-weight:700;cursor:pointer">Fermer</button>'+
+      '</div>';
+    m.onclick=e=>{if(e.target===m)m.style.display='none';};
+    document.body.appendChild(m);
+  }
+  document.getElementById('m-fibre-name').textContent=name;
+  m.style.display='flex';
+}
 function fmtDur2(s){if(!s||s<0)return'0:00';const m=Math.floor(s/60),sec=Math.floor(s%60);return m+':'+String(sec).padStart(2,'0');}
 function fmtTRSv(v){return(v===null||v===undefined||isNaN(v)||v<0)?'--%':parseFloat(v).toFixed(1)+'%';}
 function fmtDur(s){if(!s||s<0)return'00:00:00';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);return[h,m,sec].map(x=>String(x).padStart(2,'0')).join(':');}
@@ -7782,6 +7967,7 @@ function toast(msg,type){
 </script>
 </body>
 </html>"""
+
 
 def _session_autosave():
     while True:
@@ -7845,3 +8031,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
