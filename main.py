@@ -262,14 +262,21 @@ def get_prod_ref():
     return _prod_ref_cached
 
 def _get_model_day_cfg(poste, date_obj=None):
-    """Retourne (debut_str, fin_str) du modèle horaire pour le poste/jour donné."""
+    """Retourne (debut_str, fin_str) du modèle horaire pour le poste/jour donné.
+    Vérifie d'abord les surcharges de session (_S['model_overrides']) avant cfg."""
+    day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
+    day_key = day_map.get((date_obj or datetime.date.today()).weekday(), 'lun')
+    # Session override (temporary, never saved to disk)
+    overrides = _S.get("model_overrides", {})
+    if poste and poste in overrides and day_key in overrides[poste]:
+        ov = overrides[poste][day_key]
+        return ov.get("debut","05:00"), ov.get("fin","13:00")
     models = cfg.get("modeles_horaires", [])
     model = next((m for m in models if str(m.get("nom","")).strip().lower()==str(poste or "").strip().lower()), None)
     if not model: return None, None
     jours = model.get("jours", {})
     if date_obj and jours:
-        day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
-        day_cfg = jours.get(day_map.get(date_obj.weekday(),'lun'))
+        day_cfg = jours.get(day_key)
     else:
         day_cfg = next((v for k,v in jours.items() if v and v.get("debut") and v.get("fin")), None) if jours else None
     if not day_cfg:
@@ -1003,6 +1010,10 @@ def api_login():
             return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
     _S["pilot"] = pilot
     _S["poste"] = poste
+    _S["of_count_shift"] = 0
+    _S["last_of_end"] = None
+    _S["last_of_pilot"] = ""
+    _S["interposte_s"] = 0.0
     if not _S.get("shift_start"):
         _S["shift_start"] = datetime.datetime.now()
     save_session()
@@ -1082,26 +1093,18 @@ def api_start_prod():
                     model_debut_str = debut_str2
                 except: pass
             break
-    # Règle : si gap interposte > 7h, on l'oublie et on prend le gap depuis le début du modèle
     ip_debut_hms = ""
     ip_fin_hms = now.strftime("%H:%M")
-    if gap_s > 25200 and model_debut_dt:
+    pre_shift_gap_s = 0.0
+    shift_model_start_str = ""
+    shift_model_start_iso = ""
+    if is_first_of and model_debut_dt:
+        # Premier OF : écart depuis le début de la plage horaire uniquement
         gap_s = max(0.0, (now - model_debut_dt).total_seconds())
         _S["interposte_s"] = gap_s
         ip_debut_hms = model_debut_str
     elif _S["last_of_end"]:
         ip_debut_hms = _S["last_of_end"].strftime("%H:%M")
-    # Calcul du gap pré-poste (1er OF vs heure début modèle horaire)
-    pre_shift_gap_s = 0.0
-    shift_model_start_str = ""
-    shift_model_start_iso = ""
-    last_end_is_today = bool(_S["last_of_end"] and _S["last_of_end"].date() == now.date())
-    if is_first_of and model_debut_dt and not last_end_is_today:
-        diff = (now - model_debut_dt).total_seconds()
-        if 120 < diff < 7200:
-            pre_shift_gap_s = diff
-            shift_model_start_str = model_debut_str
-            shift_model_start_iso = model_debut_dt.isoformat()
     return jsonify({"ok":True,"gap_s":round(gap_s,0),
                     "pre_shift_gap_s":round(pre_shift_gap_s,0),
                     "shift_model_start":shift_model_start_str,
@@ -1149,6 +1152,21 @@ def api_inter_of_confirm():
         except: pass
     if _S["inter_of_s"] > 30 and start_dt and end_dt:
         write_changement_of(start_dt, end_dt, label=label or None, comment=comment)
+        # Mise à jour synchrone du cache pour éviter le race-condition fin-de-poste
+        # (write_changement_of écrit en background → _decl_cache pas encore rafraîchi)
+        global _decl_cache
+        shift_dt2 = _S.get("shift_start") or start_dt
+        _sd2 = shift_dt2.strftime("%d/%m/%Y")
+        _dur2_s = (end_dt - start_dt).total_seconds()
+        _cache_row = [
+            label or "Changement d'OF", "", start_dt.strftime("%d/%m/%Y"),
+            _S.get("poste",""), _S.get("pilot",""),
+            "","","","","","","","","","","",
+            start_dt.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"), fmt(_dur2_s),
+            "","","","","","","","","","","","","","","","",comment,
+            "","",_sd2,
+        ]
+        _decl_cache.append((-1, _cache_row))
     save_session()
     return jsonify({"ok":True})
 
@@ -1197,7 +1215,7 @@ def api_end_prod():
     end_dt = datetime.datetime.now()
     of_s_brut = (end_dt-_S["of_start"]).total_seconds()
     pause_max_s = int(cfg.get("pause_max_min",20))*60
-    of_s = max(1, of_s_brut + _S["inter_of_s"] - min(_S["pause_total_s"],pause_max_s))
+    of_s = max(1, of_s_brut - min(_S["pause_total_s"],pause_max_s))
     stop_s = t_wall_clock_stops()
     qte_fab = _n(v.get("qte_fab",0))
     nb_pers = max(1,_n(v.get("nb_pers",1)) or 1)
@@ -1512,6 +1530,27 @@ def api_events_list():
         except: pass
     return jsonify(list(reversed(rows)))
 
+def _apply_model_overrides(models):
+    """Retourne une copie des modèles horaires avec les surcharges de session appliquées."""
+    overrides = _S.get("model_overrides", {})
+    if not overrides:
+        return models
+    import copy
+    result = copy.deepcopy(models)
+    day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
+    dk = day_map.get(datetime.date.today().weekday(), 'lun')
+    for m in result:
+        nom = m.get("nom","")
+        if nom in overrides and dk in overrides[nom]:
+            ov = overrides[nom][dk]
+            if "jours" not in m:
+                m["jours"] = {}
+            if dk not in m["jours"]:
+                m["jours"][dk] = {}
+            m["jours"][dk]["debut"] = ov.get("debut","")
+            m["jours"][dk]["fin"] = ov.get("fin","")
+    return result
+
 @flask_app.route('/api/config')
 def api_config():
     arrets_prevus = {
@@ -1532,7 +1571,8 @@ def api_config():
         "arrets_prevus": arrets_prevus,
         "db_path": cfg.get("db_path",""),
         "db_name": os.path.basename(cfg.get("db_path","")) if cfg.get("db_path") else "",
-        "modeles_horaires": cfg.get("modeles_horaires",[]),
+        "modeles_horaires": _apply_model_overrides(cfg.get("modeles_horaires",[])),
+        "modeles_horaires_base": cfg.get("modeles_horaires",[]),
         "pilot_passwords": cfg.get("pilot_passwords",{}),
     })
 
@@ -1592,17 +1632,12 @@ def api_update_model_today():
     fin = data.get("fin","")
     if not nom or not day_key or not debut or not fin:
         return jsonify({"ok":False,"error":"Paramètre manquant"}),400
-    for m in cfg.get("modeles_horaires",[]):
-        if m.get("nom","") == nom:
-            if "jours" not in m:
-                m["jours"] = {}
-            if day_key not in m["jours"]:
-                m["jours"][day_key] = {}
-            m["jours"][day_key]["debut"] = debut
-            m["jours"][day_key]["fin"] = fin
-            break
-    # Do NOT save to disk — these are temporary session overrides only.
-    # Paramètres horaires are preserved; cfg reloads from disk on next logout.
+    # Stocker dans _S uniquement — cfg n'est jamais modifié, Paramètres reste intact
+    if "model_overrides" not in _S:
+        _S["model_overrides"] = {}
+    if nom not in _S["model_overrides"]:
+        _S["model_overrides"][nom] = {}
+    _S["model_overrides"][nom][day_key] = {"debut": debut, "fin": fin}
     return jsonify({"ok":True})
 
 @flask_app.route('/api/delete_row', methods=['POST'])
@@ -1753,13 +1788,9 @@ def api_fin_poste_data():
     model_dur_s = get_shift_duration_s(pilot_poste, datetime.date.today())
     ecart_s = max(0.0, model_dur_s - (tot_s + declared_stop_s))
     trs_poste_shift = -1.0
-    if model_debut_s is not None and max_fin_s > 0:
-        if max_fin_s < model_debut_s: max_fin_s += 86400  # poste de nuit
-        if max_fin_s > model_debut_s and prod_ref > 0:
-            elapsed_s = max(1.0, (max_fin_s - model_debut_s) - planned_ded)
-            trs_poste_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
-    if trs_poste_shift < 0 and prod_ref > 0 and tot_s > 0:
-        trs_poste_shift = round(tot_eq/(prod_ref*tot_s/28800)*100,1)
+    if model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
+        elapsed_s = max(1.0, model_dur_s - planned_ded)
+        trs_poste_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
     # Compute gap intervals (plages non justifiées)
     debut_str2, fin_str2 = _get_model_day_cfg(pilot_poste, datetime.date.today())
     gap_intervals = []
@@ -2638,9 +2669,9 @@ def generate_dashboard_html():
         _sess_key = f"{str(r[2] or '')[:10]}|{str(r[3] or '')}|{str(r[4] or '')}"
         if _sess_key != _prev_session_key:
             _prev_session_key = _sess_key
-            hist_html += (f'<tr style="background:#1e3a8a">'
-                f'<td colspan="12" style="padding:5px 10px;font-size:11px;font-weight:800;color:#fff;letter-spacing:.3px">'
-                f'📅 {str(r[2] or "")[:10]} — 🏭 {str(r[3] or "")} — 👤 {str(r[4] or "")}'
+            hist_html += (f'<tr style="background:#f0f4fa;border-top:2px solid #c7d2e8">'
+                f'<td colspan="12" style="padding:3px 10px;font-size:10px;font-weight:600;color:#334155;letter-spacing:.2px">'
+                f'📅 {str(r[2] or "")[:10]} &nbsp;·&nbsp; 🏭 {str(r[3] or "")} &nbsp;·&nbsp; 👤 {str(r[4] or "")}'
                 f'</td></tr>')
         _fibre_h = str(r[11] or "").strip()
         _fibre_short_h = _fibre_h[:9] + ('…' if len(_fibre_h) > 9 else '')
@@ -2899,14 +2930,11 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
           <button onclick="loadRapports()" style="font-size:11px;padding:3px 8px;background:none;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#64748b">↺</button>
         </div>
         <div id="rpt-list" style="flex:1;overflow-y:auto">
-          <div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Chargement…</div>
+          __RPT_LIST__
         </div>
       </div>
       <div id="rpt-detail" style="overflow-y:auto;flex:1;padding:0">
-        <div style="padding:60px;text-align:center;color:#94a3b8">
-          <div style="font-size:40px;margin-bottom:12px">📋</div>
-          <div style="font-size:14px;font-weight:600">Sélectionner un poste dans la liste</div>
-        </div>
+        __RPT_DET__
       </div>
     </div>
   </div><!-- /tab-rapports -->
@@ -2963,166 +2991,290 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
 </body>
 </html>"""
 
-    # Inject rapports JS
-    _rapports_js = r"""
-<script>
-function _dashEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-async function _dashFetch(url){try{var r=await fetch(url);return r.ok?await r.json():null;}catch(e){return null;}}
-function _dashFmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}
-function _dashDrawPie(svgId,segments){
-  var svg=document.getElementById(svgId);if(!svg)return;
-  var total=segments.reduce(function(a,s){return a+s.value;},0);
-  if(total<=0){svg.innerHTML='<text x="65" y="60" text-anchor="middle" font-size="9" fill="#94a3b8">Pas de données</text>';return;}
-  var cx=65,cy=57,r=44,ir=24,html='',startAngle=-Math.PI/2;
-  segments.forEach(function(seg){
-    if(seg.value<=0)return;
-    var angle=(seg.value/total)*2*Math.PI;if(angle<0.001)return;
-    var endAngle=startAngle+angle,large=angle>Math.PI?1:0;
-    var x1=(cx+r*Math.cos(startAngle)).toFixed(2),y1=(cy+r*Math.sin(startAngle)).toFixed(2);
-    var x2=(cx+r*Math.cos(endAngle)).toFixed(2),y2=(cy+r*Math.sin(endAngle)).toFixed(2);
-    var ix1=(cx+ir*Math.cos(startAngle)).toFixed(2),iy1=(cy+ir*Math.sin(startAngle)).toFixed(2);
-    var ix2=(cx+ir*Math.cos(endAngle)).toFixed(2),iy2=(cy+ir*Math.sin(endAngle)).toFixed(2);
-    html+='<path d="M'+x1+','+y1+' A'+r+','+r+' 0 '+large+',1 '+x2+','+y2+' L'+ix2+','+iy2+' A'+ir+','+ir+' 0 '+large+',0 '+ix1+','+iy1+' Z" fill="'+seg.color+'"/>';
-    startAngle=endAngle;
-  });
-  var m=segments[0],mp=total>0?Math.round(m.value/total*100):0;
-  html+='<text x="'+cx+'" y="'+(cy+5)+'" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e">'+mp+'%</text>';
-  html+='<text x="'+cx+'" y="'+(cy+15)+'" text-anchor="middle" font-size="7" fill="#64748b">'+_dashEsc(m.label)+'</text>';
-  var lx=0;segments.filter(function(s){return s.value>0;}).forEach(function(s){
-    var p=Math.round(s.value/total*100);
-    html+='<rect x="'+lx+'" y="108" width="7" height="7" fill="'+s.color+'" rx="1"/>';
-    html+='<text x="'+(lx+9)+'" y="115" font-size="7" fill="#475569">'+_dashEsc(s.label)+' '+p+'%</text>';
-    lx+=65;
-  });
-  svg.innerHTML=html;
-}
-function _dashDrawGauge(arcId,pctId,trs){
-  var arc=document.getElementById(arcId),pct=document.getElementById(pctId);if(!arc||!pct)return;
-  var pArc=132,v=Math.max(0,Math.min(100,trs||0)),dash=(v/100)*pArc;
-  var col=v>=90?'#16a34a':v>=75?'#d97706':'#dc2626';
-  arc.setAttribute('stroke-dasharray',dash.toFixed(1)+','+pArc);arc.setAttribute('stroke',col);
-  pct.textContent=_dashFmtTRS(trs);pct.setAttribute('fill',col);
-}
-async function loadRapports(){
-  var listEl=document.getElementById('rpt-list');
-  if(!listEl)return;
-  listEl.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Chargement…</div>';
-  var sessions=await _dashFetch('/api/past_sessions');
-  if(!sessions||!sessions.length){
-    listEl.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Aucun poste disponible</div>';
-    return;
-  }
-  listEl.innerHTML=sessions.map(function(s,i){
-    var trsStr=s.trs>=0?s.trs.toFixed(1)+'%':'—';
-    var trsCol=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
-    return '<div class="rpt-item" id="rpt-item-'+i+'" onclick="loadSessionReport(\''+_dashEsc(s.date)+'\',\''+_dashEsc(s.pilot||\'\')+'\',\''+_dashEsc(s.poste||\'\')+'\',\'rpt-item-'+i+'\')" style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s"><div style="font-size:12px;font-weight:800;color:#1e3a8a">'+_dashEsc(s.date)+' — '+_dashEsc(s.poste||'')+'</div><div style="font-size:11px;color:#64748b;margin-top:2px">'+_dashEsc(s.pilot||'?')+' | '+s.nb_of+' OF | Éq. '+s.tot_equiv+'</div><div style="font-size:16px;font-weight:900;color:'+trsCol+';margin-top:2px">'+trsStr+'</div></div>';
-  }).join('');
-}
-async function loadSessionReport(date,pilot,poste,itemId){
+    # ── Compute embedded sessions & reports (no fetch calls needed) ──
+    import json as _json_rpt
+    _sess_map_r = {}
+    _sess_evts_map_r = {}
+    for _r in decl_rows:
+        _dkey = str(_r[39] if len(_r) > 39 else "").strip() or _row_date(_r[2])
+        if not _dkey: continue
+        _pilot_r = str(_r[4] or ""); _poste_r = str(_r[3] or "")
+        _rtype_r = str(_r[0] or "").strip().lower()
+        _sk_r = f"{_dkey}||{_pilot_r}||{_poste_r}"
+        if _sk_r not in _sess_map_r:
+            _sess_map_r[_sk_r] = {"date":_dkey,"pilot":_pilot_r,"poste":_poste_r,"nb_of":0,"tot_equiv":0.0,"max_fin_s":0.0}
+            _sess_evts_map_r[_sk_r] = []
+        if _rtype_r in ("production","prod",""):
+            try:
+                _eq_r = float(str(_r[21] or 0).replace(",","."))
+                _fs_r = hms2s(_r[17])
+                _sess_map_r[_sk_r]["nb_of"] += 1
+                _sess_map_r[_sk_r]["tot_equiv"] += _eq_r
+                if _fs_r > _sess_map_r[_sk_r]["max_fin_s"]: _sess_map_r[_sk_r]["max_fin_s"] = _fs_r
+            except: pass
+        else:
+            _sess_evts_map_r[_sk_r].append(_r)
+    _embedded_sessions_list = []
+    for _sk_r, _s_r in _sess_map_r.items():
+        _trs_r = -1.0
+        try:
+            _p2 = _s_r["date"].split('/'); _do2 = datetime.date(int(_p2[2]),int(_p2[1]),int(_p2[0]))
+        except: _do2 = None
+        _deb2, _ = _get_model_day_cfg(_s_r["poste"], _do2)
+        _mds2 = hms2s(_deb2) if _deb2 else None
+        _ded2 = sum(hms2s(_er[18]) for _er in _sess_evts_map_r.get(_sk_r,[]) if any(k in str(_er[0] or "").lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
+        _mdur2 = get_shift_duration_s(_s_r["poste"], _do2)
+        if _mdur2 > 0 and prod_ref > 0 and _s_r["tot_equiv"] > 0:
+            _el2 = max(1.0, _mdur2 - _ded2)
+            _trs_r = round(_s_r["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
+        _embedded_sessions_list.append({"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"nb_of":_s_r["nb_of"],"tot_equiv":round(_s_r["tot_equiv"],1),"trs":_trs_r})
+    _embedded_sessions_list.sort(key=lambda x: (lambda p: (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0))(x["date"].split('/')), reverse=True)
+    _embedded_sessions_list = _embedded_sessions_list[:60]
+    _embedded_reports_dict = {}
+    for _s_r in _embedded_sessions_list:
+        _sk3 = f"{_s_r['date']}||{_s_r['pilot']}||{_s_r['poste']}"
+        _pr3=[]; _er3=[]; _teq3=0.0; _ts3=0.0; _mfs3=0.0; _sts3=0.0; _ads3=[]; _afs3=[]
+        for _r3 in decl_rows:
+            _dk3 = str(_r3[39] if len(_r3)>39 else "").strip() or _row_date(_r3[2])
+            if _dk3 != _s_r["date"] or str(_r3[4] or "") != _s_r["pilot"]: continue
+            if _s_r["poste"] and str(_r3[3] or "") != _s_r["poste"]: continue
+            _rt3 = str(_r3[0] or "").strip().lower()
+            _dbs3 = hms2s(_r3[16]) if _r3[16] else -1; _fbs3 = hms2s(_r3[17]) if _r3[17] else -1
+            if _dbs3 >= 0: _ads3.append(_dbs3)
+            if _fbs3 >= 0: _afs3.append(_fbs3)
+            if _rt3 in ("production","prod",""):
+                try:
+                    _eq3 = float(str(_r3[21] or 0).replace(",","."))
+                    _ds3 = hms2s(_r3[16]); _fs3b = hms2s(_r3[17])
+                    _dur3 = _fs3b - _ds3 if _fs3b > _ds3 else hms2s(_r3[18])
+                    _trs3 = round(_eq3/(prod_ref*_dur3/28800)*100,1) if prod_ref>0 and _dur3>0 and _eq3>0 else -1
+                    _teq3 += _eq3; _ts3 += _dur3
+                    if _fs3b > _mfs3: _mfs3 = _fs3b
+                    _pr3.append({"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"kit":str(_r3[15] or ""),"qte_fab":str(_r3[19] or ""),"equiv":str(_r3[21] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"trs":_trs3,"comment":str(_r3[35] or "")})
+                except: pass
+            else:
+                try:
+                    _durs3 = hms2s(_r3[18]); _sts3 += _durs3
+                    _er3.append({"type":str(_r3[0] or ""),"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"comment":str(_r3[35] or "")})
+                except: pass
+        _acd3 = _sec_to_hm(min(_ads3)) if _ads3 else ""
+        _acf3 = _sec_to_hm(max(_afs3)) if _afs3 else ""
+        try:
+            _dp3 = _s_r["date"].split('/'); _dpo3 = datetime.date(int(_dp3[2]),int(_dp3[1]),int(_dp3[0]))
+        except: _dpo3 = None
+        _mdeb3, _mfin3 = _get_model_day_cfg(_s_r["poste"], _dpo3)
+        _mds3b = hms2s(_mdeb3) if _mdeb3 else None
+        _ded3 = sum(hms2s(_e3r.get("duree","")) for _e3r in _er3 if any(k in str(_e3r.get("type","")).lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
+        _mdur3 = get_shift_duration_s(_s_r["poste"], _dpo3)
+        _ecart3 = max(0.0, _mdur3 - (_ts3 + _sts3))
+        _trs_sh3 = -1.0
+        if _mdur3 > 0 and prod_ref > 0 and _teq3 > 0:
+            _el3 = max(1.0, _mdur3 - _ded3)
+            _trs_sh3 = round(_teq3/(prod_ref*_el3/28800)*100,1)
+        _trs_of3 = round(_teq3/(prod_ref*_ts3/28800)*100,1) if prod_ref>0 and _ts3>0 and _teq3>0 else -1
+        _rpt_key3 = f"{_s_r['date']}|{_s_r['pilot']}|{_s_r['poste']}"
+        _embedded_reports_dict[_rpt_key3] = {"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"prod_rows":_pr3,"evt_rows":_er3,"trs_shift":_trs_sh3,"trs":_trs_of3,"tot_equiv":round(_teq3,1),"tot_s":round(_ts3,0),"stop_s":round(_sts3,0),"nb_of":len(_pr3),"model_debut":_mdeb3 or "","model_fin":_mfin3 or "","actual_debut":_acd3,"actual_fin":_acf3,"ecart_s":round(_ecart3,0)}
+    # --- STATIC RAPPORTS HTML GENERATION ---
+    def _resc(s):
+        return str(s or '').replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;')
+
+    def _svg_gauge_static(trs):
+        v = max(0.0, min(100.0, float(trs) if (trs is not None and trs >= 0) else 0.0))
+        dash = (v / 100.0) * 132
+        col = '#16a34a' if v >= 90 else '#d97706' if v >= 75 else '#dc2626'
+        trs_str = f'{trs:.1f}%' if (trs is not None and trs >= 0) else '--%'
+        return (
+            f'<svg width="110" height="72" viewBox="0 0 110 72">'
+            f'<circle cx="55" cy="54" r="38" fill="none" stroke="#e2e8f0" stroke-width="11"'
+            f' stroke-dasharray="119,200" stroke-linecap="round" transform="rotate(134 55 54)"/>'
+            f'<circle cx="55" cy="54" r="38" fill="none" stroke="{col}" stroke-width="11"'
+            f' stroke-dasharray="{dash:.1f},200" stroke-linecap="round" transform="rotate(134 55 54)"/>'
+            f'<text x="55" y="58" text-anchor="middle" font-size="14" font-weight="900" fill="{col}">{_resc(trs_str)}</text>'
+            f'<text x="55" y="69" text-anchor="middle" font-size="8" fill="#64748b">TRS</text>'
+            f'</svg>'
+        )
+
+    def _svg_pie_static(prod_min, stop_min, total_min):
+        autre = max(0.0, total_min - prod_min - stop_min)
+        segs = [(prod_min, '#16a34a', 'Prod'), (stop_min, '#dc2626', 'Arrêts'), (autre, '#94a3b8', 'Autre')]
+        total = sum(s[0] for s in segs)
+        if total <= 0:
+            return '<svg width="130" height="120" viewBox="0 0 130 120"><text x="65" y="60" text-anchor="middle" font-size="9" fill="#94a3b8">Pas de données</text></svg>'
+        cx, cy, r, ir = 65.0, 57.0, 44.0, 24.0
+        parts = []
+        start = -math.pi / 2
+        for val, color, label in segs:
+            if val <= 0: continue
+            angle = (val / total) * 2 * math.pi
+            if angle < 0.001: continue
+            end = start + angle
+            large = 1 if angle > math.pi else 0
+            x1 = cx + r * math.cos(start); y1 = cy + r * math.sin(start)
+            x2 = cx + r * math.cos(end);   y2 = cy + r * math.sin(end)
+            ix1 = cx + ir * math.cos(start); iy1 = cy + ir * math.sin(start)
+            ix2 = cx + ir * math.cos(end);   iy2 = cy + ir * math.sin(end)
+            parts.append(f'<path d="M{x1:.2f},{y1:.2f} A{r:.0f},{r:.0f} 0 {large},1 {x2:.2f},{y2:.2f} L{ix2:.2f},{iy2:.2f} A{ir:.0f},{ir:.0f} 0 {large},0 {ix1:.2f},{iy1:.2f} Z" fill="{color}"/>')
+            start = end
+        prod_pct = round(prod_min / total * 100) if total > 0 else 0
+        parts.append(f'<text x="65" y="62" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e">{prod_pct}%</text>')
+        parts.append(f'<text x="65" y="72" text-anchor="middle" font-size="7" fill="#64748b">Prod</text>')
+        lx = 0
+        for val, color, label in segs:
+            if val <= 0: continue
+            p = round(val / total * 100)
+            parts.append(f'<rect x="{lx}" y="108" width="7" height="7" fill="{color}" rx="1"/>')
+            parts.append(f'<text x="{lx+9}" y="115" font-size="7" fill="#475569">{_resc(label)} {p}%</text>')
+            lx += 65
+        return f'<svg width="130" height="120" viewBox="0 0 130 120">{"".join(parts)}</svg>'
+
+    def _render_rpt_panel(idx, d, visible=False):
+        trs_s = d.get('trs_shift', -1) if (d.get('trs_shift') is not None and d.get('trs_shift', -1) >= 0) else d.get('trs', -1)
+        trs_col = '#16a34a' if trs_s >= 90 else '#d97706' if trs_s >= 70 else '#dc2626' if trs_s >= 0 else '#94a3b8'
+        trs_str = f'{trs_s:.1f}%' if trs_s >= 0 else '—'
+        trs_of = d.get('trs', -1)
+        trs_of_str = f'{trs_of:.1f}%' if trs_of >= 0 else '--'
+        stop_min = round((d.get('stop_s', 0) or 0) / 60)
+        prod_min = round((d.get('tot_s', 0) or 0) / 60)
+        total_min = prod_min + stop_min
+        ecart_mn = round((d.get('ecart_s', 0) or 0) / 60)
+        stop_map = {}
+        for _er in (d.get('evt_rows') or []):
+            k = _er.get('type') or 'Inconnu'
+            _dur = (_er.get('duree') or '')
+            _p2 = (_dur + ':00:00').split(':')
+            try: _s2 = int(_p2[0] or 0)*3600 + int(_p2[1] or 0)*60 + int(_p2[2] or 0)
+            except: _s2 = 0
+            stop_map[k] = stop_map.get(k, 0) + _s2 / 60
+        stop_arr = sorted(stop_map.items(), key=lambda x: -x[1])
+        max_stop = stop_arr[0][1] if stop_arr else 1.0
+        pareto_h = ''.join(
+            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">'
+            f'<div style="font-size:10px;width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{_resc(e[0])}</div>'
+            f'<div style="flex:1;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden">'
+            f'<div style="height:100%;background:#dc2626;border-radius:4px;width:{round(e[1]/max_stop*100) if max_stop>0 else 0}%;opacity:.8"></div></div>'
+            f'<div style="font-size:10px;font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">{round(e[1])}mn</div></div>'
+            for e in stop_arr
+        ) if stop_arr else '<div style="color:#64748b;font-size:12px">Aucun arrêt</div>'
+        prod_h = ''
+        for _pr in (d.get('prod_rows') or []):
+            _to = _pr.get('trs', -1)
+            _tc = '#16a34a' if _to >= 90 else '#d97706' if _to >= 70 else '#dc2626' if _to >= 0 else '#94a3b8'
+            _ts = f'{_to:.1f}%' if _to >= 0 else '—'
+            prod_h += (
+                f'<tr style="border-bottom:1px solid #e2e8f0">'
+                f'<td style="padding:4px 6px;font-weight:700;color:#1e3a8a">{_resc(_pr.get("of",""))}</td>'
+                f'<td style="padding:4px 6px;font-size:11px">{_resc(_pr.get("taille",""))} {_resc(_pr.get("type_prod",""))}</td>'
+                f'<td style="padding:4px 6px;text-align:center">{"✓" if str(_pr.get("kit","")).lower()=="oui" else ""}</td>'
+                f'<td style="padding:4px 6px">{_resc(_pr.get("qte_fab",""))}</td>'
+                f'<td style="padding:4px 6px;color:#0891b2;font-weight:700">{_resc(_pr.get("equiv",""))}</td>'
+                f'<td style="padding:4px 6px;white-space:nowrap">{_resc(_pr.get("debut",""))} → {_resc(_pr.get("fin",""))}</td>'
+                f'<td style="padding:4px 6px;font-weight:800;color:{_tc}">{_ts}</td>'
+                f'<td style="padding:4px 6px;font-size:10px;color:#64748b">{_resc(_pr.get("comment",""))}</td>'
+                f'</tr>'
+            )
+        if not prod_h:
+            prod_h = '<tr><td colspan="8" style="padding:8px;text-align:center;color:#94a3b8">Aucune production</td></tr>'
+        evts_h = ''
+        for _ev in (d.get('evt_rows') or []):
+            evts_h += (
+                f'<tr style="border-bottom:1px solid #e2e8f0">'
+                f'<td style="padding:3px 5px;font-weight:600">{_resc(_ev.get("type",""))}</td>'
+                f'<td style="padding:3px 5px;color:#0369a1">{_resc(_ev.get("of","—"))}</td>'
+                f'<td style="padding:3px 5px;white-space:nowrap;color:#64748b">{_resc(_ev.get("debut",""))} → {_resc(_ev.get("fin",""))}</td>'
+                f'<td style="padding:3px 5px;font-weight:700">{_resc(_ev.get("duree",""))}</td>'
+                f'<td style="padding:3px 5px;color:#64748b">{_resc(_ev.get("comment","—"))}</td>'
+                f'</tr>'
+            )
+        evts_section = (
+            f'<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">'
+            f'<th style="padding:3px 5px;text-align:left;font-weight:700;color:#64748b">Arrêt</th>'
+            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">OF</th>'
+            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Plage</th>'
+            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Durée</th>'
+            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Commentaire</th>'
+            f'</tr></thead><tbody>{evts_h}</tbody></table>'
+        ) if evts_h else '<div style="color:#64748b;font-size:12px">Aucun arrêt</div>'
+        plage_str = ''
+        if d.get('actual_debut') and d.get('actual_fin'):
+            plage_str = f' · {_resc(d.get("actual_debut",""))} → {_resc(d.get("actual_fin",""))}'
+        elif d.get('model_debut') and d.get('model_fin'):
+            plage_str = f' · Modèle : {_resc(d.get("model_debut",""))} → {_resc(d.get("model_fin",""))}'
+        ecart_div = (
+            f'<div class="fp-card" style="padding:7px;border:1.5px solid #f59e0b">'
+            f'<div class="fp-big" style="font-size:16px;color:#d97706">{ecart_mn} min</div>'
+            f'<div class="fp-lbl">Non déclaré</div></div>'
+        ) if ecart_mn > 0 else ''
+        disp = 'flex' if visible else 'none'
+        g_svg = _svg_gauge_static(trs_s)
+        p_svg = _svg_pie_static(prod_min, stop_min, total_min)
+        return (
+            f'<div class="rpt-det-panel" id="rpt-det-{idx}" style="display:{disp};flex-direction:column;overflow-y:auto">'
+            f'<div style="background:#1e3a8a;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
+            f'<div><div style="font-size:15px;font-weight:800">📋 Rapport — {_resc(d.get("poste",""))}</div>'
+            f'<div style="font-size:11px;opacity:.8">{_resc(d.get("pilot",""))} · {_resc(d.get("date",""))}{plage_str}</div></div>'
+            f'<div style="text-align:right"><div style="font-size:26px;font-weight:900;color:{trs_col}">{trs_str}</div>'
+            f'<div style="font-size:11px;opacity:.7">TRS Shift</div></div></div>'
+            f'<div style="display:flex;gap:12px;padding:10px 14px;background:#fff;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap">'
+            f'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">TRS Poste</div>{g_svg}</div>'
+            f'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">Répartition</div>{p_svg}</div>'
+            f'<div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:5px">'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:{trs_col}">{trs_str}</div><div class="fp-lbl">TRS Shift</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px">{trs_of_str}</div><div class="fp-lbl">TRS Prod</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0891b2">{(d.get("tot_equiv",0) or 0):.1f}</div><div class="fp-lbl">Équivalence</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#7c3aed">{d.get("nb_of",0)}</div><div class="fp-lbl">Nb OF</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#16a34a">{prod_min} min</div><div class="fp-lbl">Prod</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#dc2626">{stop_min} min</div><div class="fp-lbl">Arrêts</div></div>'
+            f'{ecart_div}'
+            f'</div></div>'
+            f'<div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Productions</div>'
+            f'<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#f8fafc">'
+            f'<th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>'
+            f'<th style="padding:4px 6px">Kit</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>'
+            f'<th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th>'
+            f'</tr></thead><tbody>{prod_h}</tbody></table></div>'
+            f'<div style="display:flex;flex-direction:column;gap:8px">'
+            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px">Pareto arrêts</div>{pareto_h}</div>'
+            f'<div class="rpt-card" style="padding:10px;flex:1"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Détail arrêts</div>{evts_section}</div>'
+            f'</div></div></div>'
+        )
+
+    _rpt_list_html = ''
+    _rpt_det_html = ''
+    if not _embedded_sessions_list:
+        _rpt_list_html = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Aucun poste disponible</div>'
+        _rpt_det_html = '<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:40px;margin-bottom:12px">📋</div><div style="font-size:14px;font-weight:600">Aucun rapport disponible</div></div>'
+    else:
+        for _ri, _sr in enumerate(_embedded_sessions_list):
+            _tv = _sr.get('trs', -1)
+            _ts2 = f'{_tv:.1f}%' if _tv >= 0 else '—'
+            _tc2 = '#16a34a' if _tv >= 90 else '#f59e0b' if _tv >= 70 else '#dc2626' if _tv >= 0 else '#94a3b8'
+            _sel_st = ' style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s;background:#eff6ff"' if _ri == 0 else ' style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s"'
+            _rpt_list_html += (
+                f'<div class="rpt-item" id="rpt-item-{_ri}" onclick="showRptPanel({_ri})"{_sel_st}>'
+                f'<div style="font-size:12px;font-weight:800;color:#1e3a8a">{_resc(_sr.get("date",""))} — {_resc(_sr.get("poste",""))}</div>'
+                f'<div style="font-size:11px;color:#64748b;margin-top:2px">{_resc(_sr.get("pilot","?"))} | {_sr.get("nb_of",0)} OF | Éq. {_sr.get("tot_equiv",0)}</div>'
+                f'<div style="font-size:16px;font-weight:900;color:{_tc2};margin-top:2px">{_ts2}</div>'
+                f'</div>'
+            )
+            _rk = f"{_sr['date']}|{_sr['pilot']}|{_sr['poste']}"
+            _rd = _embedded_reports_dict.get(_rk, _sr)
+            _rpt_det_html += _render_rpt_panel(_ri, _rd, visible=(_ri == 0))
+
+    # Inject rapports JS (minimal – all content is pre-rendered)
+    _rapports_js = """<script>
+function showRptPanel(idx){
+  document.querySelectorAll('.rpt-det-panel').forEach(function(el){el.style.display='none';});
   document.querySelectorAll('.rpt-item').forEach(function(el){el.style.background='';});
-  var sel=document.getElementById(itemId);if(sel)sel.style.background='#eff6ff';
-  var detailEl=document.getElementById('rpt-detail');
-  if(!detailEl)return;
-  detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#64748b">Chargement…</div>';
-  var d=await _dashFetch('/api/session_report?date='+encodeURIComponent(date)+'&pilot='+encodeURIComponent(pilot)+'&poste='+encodeURIComponent(poste));
-  if(!d){detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur chargement</div>';return;}
-  var trsS=d.trs_shift>=0?d.trs_shift:(d.trs>=0?d.trs:-1);
-  var trsCol=trsS>=90?'#16a34a':trsS>=70?'#f59e0b':trsS>=0?'#dc2626':'#94a3b8';
-  var stopMin=Math.round((d.stop_s||0)/60);
-  var prodMin=Math.round((d.tot_s||0)/60);
-  var totalMin=prodMin+stopMin;
-  var stopMap={};
-  (d.evt_rows||[]).forEach(function(r){
-    var k=r.type||'Inconnu';
-    if(!stopMap[k])stopMap[k]=0;
-    var p=r.duree?r.duree.split(':'):[0,0,0];
-    stopMap[k]+=(parseInt(p[0]||0)*3600+parseInt(p[1]||0)*60+parseInt(p[2]||0))/60;
-  });
-  var stopArr=Object.entries(stopMap).sort(function(a,b){return b[1]-a[1];});
-  var maxStopMin=stopArr.length?stopArr[0][1]:1;
-  var paretoHtml=stopArr.length?stopArr.map(function(e){
-    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px"><div style="font-size:10px;width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_dashEsc(e[0])+'</div><div style="flex:1;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden"><div style="height:100%;background:#dc2626;border-radius:4px;width:'+Math.round(e[1]/maxStopMin*100)+'%;opacity:.8"></div></div><div style="font-size:10px;font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">'+Math.round(e[1])+'mn</div></div>';
-  }).join(''):'<div style="color:#64748b;font-size:12px">Aucun arrêt</div>';
-  var tlContent=(function(prodRows,evtRows,dateStr,modelDebut,modelFin){
-    var W=800,Y=4,H2=28,H=40;
-    var parts=dateStr.split('/');
-    var baseMs=parts.length===3?new Date(parts[2]+'-'+parts[1]+'-'+parts[0]).getTime():Date.now();
-    function hm2ms(hm){if(!hm)return null;var a=(hm+':00').split(':').map(Number);return baseMs+a[0]*3600000+a[1]*60000;}
-    var mdMs=hm2ms(modelDebut),mfMs=hm2ms(modelFin);
-    var allMs=[];
-    prodRows.forEach(function(r){if(r.debut)allMs.push(hm2ms(r.debut));if(r.fin)allMs.push(hm2ms(r.fin));});
-    evtRows.forEach(function(r){if(r.debut)allMs.push(hm2ms(r.debut));if(r.fin)allMs.push(hm2ms(r.fin));});
-    var validMs=allMs.filter(Boolean);
-    var tS=mdMs||(validMs.length?Math.min.apply(null,validMs):null);
-    var tE=mfMs||(validMs.length?Math.max.apply(null,validMs):null);
-    if(!tS||!tE||tE<=tS)return '<rect x="0" y="'+Y+'" width="'+W+'" height="'+H2+'" fill="#e2e8f0" rx="4"/>';
-    var span=tE-tS;
-    function toX(t){return Math.max(0,Math.min(W,(t-tS)/span*W));}
-    var html='<rect x="0" y="'+Y+'" width="'+W+'" height="'+H2+'" fill="#e2e8f0" rx="4"/>';
-    prodRows.forEach(function(r){
-      var t1=hm2ms(r.debut),t2=hm2ms(r.fin);if(!t1)return;
-      var x1=toX(t1),x2=toX(t2||tE);
-      if(x2>x1)html+='<rect x="'+x1+'" y="'+Y+'" width="'+(x2-x1)+'" height="'+H2+'" fill="#bbf7d0" rx="3"/>';
-    });
-    evtRows.forEach(function(r){
-      var t1=hm2ms(r.debut),t2=hm2ms(r.fin);if(!t1)return;
-      var x1=toX(t1),x2=toX(t2||t1+1800000);
-      if(x2>x1)html+='<rect x="'+x1+'" y="'+Y+'" width="'+(x2-x1)+'" height="'+H2+'" fill="#dc2626" rx="2" opacity=".75"/>';
-    });
-    function fmt(ms){var dd=new Date(ms);return String(dd.getHours()).padStart(2,'0')+':'+String(dd.getMinutes()).padStart(2,'0');}
-    var tickT=Math.ceil(tS/3600000)*3600000;
-    while(tickT<tE){
-      var tx=toX(tickT);var hr=new Date(tickT).getHours();
-      html+='<line x1="'+tx+'" y1="'+Y+'" x2="'+tx+'" y2="'+(Y+H2)+'" stroke="rgba(255,255,255,.4)" stroke-width="1"/>';
-      html+='<text x="'+(tx+2)+'" y="'+(Y+H2-3)+'" font-size="7" fill="rgba(255,255,255,.85)">'+String(hr).padStart(2,'0')+'h</text>';
-      tickT+=3600000;
-    }
-    html+='<text x="2" y="'+(H-1)+'" font-size="8" fill="#fff">'+fmt(tS)+'</text>';
-    html+='<text x="'+(W-30)+'" y="'+(H-1)+'" font-size="8" fill="#fff">'+fmt(tE)+'</text>';
-    return html;
-  })(d.prod_rows||[],d.evt_rows||[],date,d.actual_debut||d.model_debut,d.actual_fin||d.model_fin);
-  var prodsHtml=(d.prod_rows||[]).map(function(r){
-    var tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
-    var kitDisp=(r.kit||'').toLowerCase()==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
-    return '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:5px 8px;font-weight:700;color:#1e3a8a">'+_dashEsc(r.of||'')+'</td><td style="padding:5px 8px;font-size:11px">'+_dashEsc(r.taille||'')+' '+_dashEsc(r.type_prod||'')+'</td><td style="padding:5px 8px;text-align:center">'+kitDisp+'</td><td style="padding:5px 8px">'+_dashEsc(r.qte_fab||'')+'</td><td style="padding:5px 8px;color:#0891b2;font-weight:700">'+_dashEsc(r.equiv||'')+'</td><td style="padding:5px 8px">'+_dashEsc(r.debut||'')+' → '+_dashEsc(r.fin||'')+'</td><td style="padding:5px 8px;font-weight:800;color:'+tc+'">'+(r.trs>=0?r.trs.toFixed(1)+'%':'—')+'</td><td style="padding:5px 8px;font-size:10px;color:#64748b">'+_dashEsc(r.comment||'')+'</td></tr>';
-  }).join('');
-  var evtsRows=d.evt_rows||[];
-  var evtsHtml=evtsRows.length?('<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0"><th style="padding:3px 5px;text-align:left;font-weight:700;color:#64748b">Arrêt</th><th style="padding:3px 5px;font-weight:700;color:#64748b">OF</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Format</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Type</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Plage</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Durée</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Commentaire</th></tr></thead><tbody>'+evtsRows.map(function(r){return '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:4px 5px;font-weight:600">'+_dashEsc(r.type||'')+'</td><td style="padding:4px 5px;color:#0369a1;font-weight:700">'+_dashEsc(r.of||'—')+'</td><td style="padding:4px 5px">'+_dashEsc(r.taille||'—')+'</td><td style="padding:4px 5px">'+_dashEsc(r.type_prod||'—')+'</td><td style="padding:4px 5px;white-space:nowrap;color:#64748b">'+_dashEsc(r.debut||'')+' → '+_dashEsc(r.fin||'')+'</td><td style="padding:4px 5px;font-weight:700">'+_dashEsc(r.duree||'')+'</td><td style="padding:4px 5px;color:#64748b">'+_dashEsc(r.comment||'—')+'</td></tr>';}).join('')+'</tbody></table>'):'<div style="color:#64748b;font-size:12px">Aucun arrêt</div>';
-  detailEl.innerHTML=
-    '<div style="background:#1e3a8a;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
-    +'<div><div style="font-size:15px;font-weight:800">📋 Rapport — '+_dashEsc(poste)+'</div><div style="font-size:11px;opacity:.8">'+_dashEsc(pilot)+' · '+_dashEsc(date)+((d.actual_debut&&d.actual_fin)?' · Plage déclarée : '+_dashEsc(d.actual_debut)+' → '+_dashEsc(d.actual_fin):(d.model_debut&&d.model_fin?' · Plage modèle : '+_dashEsc(d.model_debut)+' → '+_dashEsc(d.model_fin):''))+'</div></div>'
-    +'<div style="text-align:right"><div style="font-size:26px;font-weight:900;color:'+trsCol+'">'+_dashFmtTRS(trsS)+'</div><div style="font-size:11px;opacity:.7">TRS Shift</div></div></div>'
-    +'<div style="display:flex;gap:12px;padding:10px 14px;background:#fff;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap">'
-    +'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">TRS Poste</div>'
-    +'<svg id="rpt-gauge" viewBox="0 0 100 58" style="width:180px;display:block;margin:0 auto"><path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/><path id="rpt-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/><text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="rpt-gauge-pct">--%</text></svg></div>'
-    +'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">Répartition</div><svg id="rpt-pie" viewBox="0 0 130 115" style="width:170px;height:150px;display:block;margin:0 auto"></svg></div>'
-    +'<div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:5px">'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:'+trsCol+'">'+_dashFmtTRS(trsS)+'</div><div class="fp-lbl">TRS Shift</div></div>'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px">'+_dashFmtTRS(d.trs)+'</div><div class="fp-lbl">TRS Prod</div></div>'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0891b2">'+((d.tot_equiv||0).toFixed(1))+'</div><div class="fp-lbl">Équivalence</div></div>'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#7c3aed">'+(d.nb_of||0)+'</div><div class="fp-lbl">Nb OF</div></div>'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#16a34a">'+prodMin+' min</div><div class="fp-lbl">Prod</div></div>'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#dc2626">'+stopMin+' min</div><div class="fp-lbl">Arrêts</div></div>'
-    +((d.ecart_s||0)>0?'<div class="fp-card" style="padding:7px;border:1.5px solid #f59e0b"><div class="fp-big" style="font-size:16px;color:#d97706">'+Math.round((d.ecart_s||0)/60)+' min</div><div class="fp-lbl">Non déclaré</div></div>':'')
-    +'</div></div>'
-    +'<div style="padding:5px 12px;background:#fff;border-bottom:1px solid #e2e8f0">'
-    +'<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:3px">Timeline du poste</div>'
-    +'<svg viewBox="0 0 800 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block">'+tlContent+'</svg>'
-    +'<div style="display:flex;gap:10px;font-size:9px;color:#64748b;margin-top:4px"><span><i style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#dc2626;margin-right:3px"></i>Arrêt</span><span><i style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#bbf7d0;border:1px solid #86efac;margin-right:3px"></i>Prod</span></div></div>'
-    +'<div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
-    +'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Productions</div>'
-    +'<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#f8fafc"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th><th style="padding:4px 6px">Kit</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th><th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th></tr></thead><tbody>'
-    +(prodsHtml||'<tr><td colspan="8" style="padding:8px;text-align:center;color:#64748b">Aucune production</td></tr>')+'</tbody></table></div>'
-    +'<div style="display:flex;flex-direction:column;gap:8px">'
-    +'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px">Pareto des arrêts</div>'+paretoHtml+'</div>'
-    +'<div class="rpt-card" style="padding:10px;flex:1"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Détail arrêts</div>'+evtsHtml+'</div>'
-    +'</div></div>';
-  setTimeout(function(){
-    _dashDrawGauge('rpt-gauge-arc','rpt-gauge-pct',trsS>=0?trsS:0);
-    _dashDrawPie('rpt-pie',[{label:'Prod',value:prodMin,color:'#16a34a'},{label:'Arrêts',value:stopMin,color:'#dc2626'},{label:'Autre',value:Math.max(0,totalMin-prodMin-stopMin),color:'#94a3b8'}]);
-  },50);
+  var panel=document.getElementById('rpt-det-'+idx);
+  if(panel){panel.style.display='flex';}
+  var item=document.getElementById('rpt-item-'+idx);
+  if(item){item.style.background='#eff6ff';}
 }
+function loadRapports(){}
 </script>"""
+    html = html.replace('__RPT_LIST__', _rpt_list_html, 1)
+    html = html.replace('__RPT_DET__', _rpt_det_html, 1)
     html = html.replace('</body>', _rapports_js + '\n</body>', 1)
 
     try:
@@ -3521,16 +3673,8 @@ select{cursor:default}
             <svg id="pie-poste-acc" viewBox="0 0 130 115" style="width:160px;height:auto;display:block;margin:0 auto"></svg>
           </div>
         </div>
-        <!-- Modèle horaire -->
-        <div style="border-top:1px solid #bae6fd;padding-top:5px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">
-          <span style="font-size:10px;font-weight:700;color:#0369a1">Modèle :</span>
-          <span style="font-size:12px;font-weight:800;color:#0c4a6e" id="main-model-times">—</span>
-          <input type="time" id="main-model-debut" style="padding:2px 5px;border:1px solid #bae6fd;border-radius:4px;font-size:11px;color:#0c4a6e">
-          <span style="font-size:11px;color:#0369a1">→</span>
-          <input type="time" id="main-model-fin" style="padding:2px 5px;border:1px solid #bae6fd;border-radius:4px;font-size:11px;color:#0c4a6e">
-          <button onclick="saveMainModelHours()" style="font-size:10px;padding:2px 7px;background:#0369a1;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">✓ Valider</button>
-          <span style="font-size:10px;color:#64748b" id="main-ref-calc"></span>
-        </div>
+        <!-- Horaire temporaire -->
+        <div id="acc-model-info" style="display:none;border-top:1px solid #bae6fd;padding-top:5px;margin-top:2px;font-size:11px;color:#0369a1"></div>
       </div>
 
       <!-- Poste précédent -->
@@ -3582,13 +3726,6 @@ select{cursor:default}
         <div class="pob-lbl">Poste</div>
         <div class="pob-val" style="font-size:16px" id="pob-poste">—</div>
       </div>
-      <div class="pob-item" style="flex-direction:column;align-items:flex-start;gap:2px">
-        <div class="pob-lbl">Modèle / Horaires</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <div class="pob-val" style="font-size:14px" id="pob-model">—</div>
-          <button onclick="openPobModelEdit()" style="font-size:10px;padding:2px 6px;background:none;border:1px solid #94a3b8;border-radius:4px;cursor:pointer;color:#64748b">✏</button>
-        </div>
-      </div>
       <div class="pob-item">
         <div class="pob-lbl">Départ OF</div>
         <div class="pob-val" style="font-size:16px;color:#fbbf24" id="pob-of-start">—</div>
@@ -3604,21 +3741,6 @@ select{cursor:default}
       <div class="pob-item trs">
         <div class="pob-lbl">TRS estimé</div>
         <div class="pob-val" id="pob-trs">—</div>
-      </div>
-    </div>
-    <!-- Modal edit horaires depuis bandeau prod -->
-    <div id="m-pobmodel" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;align-items:center;justify-content:center">
-      <div class="mbox" style="max-width:340px;padding:20px">
-        <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0"><h2>✏ Modifier horaires du poste</h2></div>
-        <p id="pobm-info" style="font-size:12px;color:#64748b;margin-bottom:8px"></p>
-        <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
-          <label style="font-size:12px;font-weight:600">Début <input type="time" id="pobm-debut" style="padding:3px 6px;border:1.5px solid #cbd5e1;border-radius:5px;font-size:13px"></label>
-          <label style="font-size:12px;font-weight:600">Fin <input type="time" id="pobm-fin" style="padding:3px 6px;border:1.5px solid #cbd5e1;border-radius:5px;font-size:13px"></label>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-prim" onclick="savePobModelHours()">Enregistrer</button>
-          <button class="btn btn-sec" onclick="closeM('m-pobmodel')">Annuler</button>
-        </div>
       </div>
     </div>
     <!-- Status bar -->
@@ -3785,7 +3907,7 @@ select{cursor:default}
       <div class="card" style="padding:8px">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:5px">Productions</div>
         <table class="fp-tbl" style="font-size:10px">
-          <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Qté</th><th>Éq</th><th>Durée</th><th>TRS%</th></tr></thead>
+          <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Taille</th><th>Qté</th><th>Éq</th><th>Durée</th><th>TRS%</th></tr></thead>
           <tbody id="fp-prods"></tbody>
         </table>
       </div>
@@ -3960,7 +4082,7 @@ select{cursor:default}
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
         <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-ecart-poste')">Annuler</button>
-        <button class="btn btn-sec" onclick="skipEcartPoste()">Valider et terminer</button>
+        <button id="ecart-valider-btn" class="btn btn-sec" onclick="skipEcartPoste()">Valider et terminer</button>
       </div>
     </div>
   </div>
@@ -4081,15 +4203,25 @@ select{cursor:default}
     </div>
     <!-- Corps principal -->
     <div style="flex:1;overflow:hidden;display:grid;grid-template-columns:1fr 210px;min-height:0">
-      <!-- Gauche : cadence chart + sessions -->
+      <!-- Gauche : cadence + 3 évolutions -->
       <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #e2e8f0;min-height:0">
-        <div style="flex:1;min-height:0;padding:8px 12px;overflow:hidden;display:flex;flex-direction:column;background:#fff">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:4px;flex-shrink:0">⚡ Évolution cadence (unités/h)</div>
+        <div style="flex-shrink:0;height:140px;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⚡ Évolution cadence (unités/h &amp; éq./h)</div>
           <div id="kpi-cad-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
-        <div style="flex-shrink:0;border-top:1px solid #e2e8f0;background:#f8fafc;max-height:190px;overflow-y:auto">
-          <div style="padding:5px 12px;font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;background:#fff;position:sticky;top:0">📋 Derniers postes enregistrés</div>
-          <div id="kpi-sess-list"></div>
+        <div style="flex:1;overflow-y:auto;min-height:0">
+          <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#8b5cf6;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">🧵 Changements de fibre par poste</div>
+            <div id="kpi-fibre-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+          </div>
+          <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#f8fafc;border-bottom:1px solid #f1f5f9">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#0891b2;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⏱ Répartition prod / arrêts (%)</div>
+            <div id="kpi-ratio-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+          </div>
+          <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#fff">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Pièces fab. / équivalence</div>
+            <div id="kpi-qte-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+          </div>
         </div>
       </div>
       <!-- Droite : donut + pareto -->
@@ -4475,12 +4607,16 @@ let _curStopElap = 0;
 let _ofElapAtPoll = 0;
 let _stopWallAtPoll = 0;
 let _pauseTotalAtPoll = 0;
+let _pauseElapAtPoll = 0;
+let _pauseBaseS = 0;
+let _pauseStartMs = 0;
 let _lastPoll = Date.now();
 let _ticker = null;
 let _autoSaveTimer = null;
 let _curTab = 'main';
 let _cfgPwds = {};
 let _cfgModels = [];
+let _cfgModelsBase = [];
 let _settingsUnlocked = false;
 let _adminPw = '';
 window._evMap = {};
@@ -4543,6 +4679,7 @@ async function loadModelsForLogin() {
   const d = await apiFetch('/api/config');
   if (!d) return;
   _cfgModels = d.modeles_horaires||[];
+  _cfgModelsBase = d.modeles_horaires_base||JSON.parse(JSON.stringify(_cfgModels));
   _cfgPwds = d.pilot_passwords||{};
   const sel = document.getElementById('ln-model');
   while (sel.options.length>1) sel.remove(1);
@@ -4575,7 +4712,7 @@ function onLoginModelChange(){
   if(!nom){if(info)info.style.display='none';return;}
   const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
   const todayKey=DAY_KEYS[new Date().getDay()];
-  const model=_cfgModels.find(m=>m.nom===nom);
+  const model=_cfgModelsBase.find(m=>m.nom===nom);
   let debut='',fin='';
   if(model&&model.jours&&model.jours[todayKey]){
     debut=model.jours[todayKey].debut||'';
@@ -4826,6 +4963,9 @@ async function pollState() {
   _ofElapAtPoll = s.of_elapsed_s||0;
   _stopWallAtPoll = s.stop_wall_s||0;
   _pauseTotalAtPoll = s.pause_total_s||0;
+  _pauseBaseS = _pauseTotalAtPoll;
+  _pauseStartMs = (s.is_paused && s.pause_start_iso) ? new Date(s.pause_start_iso).getTime() : 0;
+  _pauseElapAtPoll = _pauseBaseS + (_pauseStartMs > 0 ? (Date.now()-_pauseStartMs)/1000 : 0);
   _lastPoll = Date.now();
 
   if(s.is_paused) {
@@ -4954,6 +5094,7 @@ function applyState(s) {
 
   // TRS gauge
   updateGauge(s);
+  updateAccModelInfo();
 }
 
 function getEvtLabel(key) {
@@ -5024,9 +5165,9 @@ function startTicker() {
     const ts=document.getElementById('sc-stops');
     if(ts) ts.textContent=fmtDur(sw);
     // Pause total
-    const pt=_pauseTotalAtPoll+(_curStopKey==='_pause'?dt:0);
+    const pauseNow=_pauseStartMs>0?_pauseBaseS+(Date.now()-_pauseStartMs)/1000:_pauseBaseS;
     const tp=document.getElementById('sc-pause');
-    if(tp) tp.textContent=fmtDur(pt);
+    if(tp) tp.textContent=fmtDur(pauseNow);
     // Pièces théoriques : prod_ref / coef * (elapsed/28800)
     const thEl=document.getElementById('sc-theo');
     if(thEl&&ST.prod_ref){
@@ -5053,7 +5194,7 @@ function startTicker() {
     }
     if(ST.is_paused){
       const cel=document.getElementById('chip-t-_pause');
-      if(cel) cel.textContent=fmtDur2(_pauseTotalAtPoll+dt);
+      if(cel) cel.textContent=fmtDur2(_pauseStartMs>0?_pauseBaseS+(Date.now()-_pauseStartMs)/1000:_pauseBaseS);
     }
   },1000);
 }
@@ -6510,14 +6651,29 @@ function _showEcartModal(fpd){
   const overflow_min=Math.round(fpd.overflow_min||0);
   const gaps=fpd.gap_intervals||[];
   const hasGaps=gaps.length>0;
+  // Réinitialiser le panneau plage horaire au style normal avant d'appliquer la surcharge
+  const _pP=document.getElementById('ecart-plage-panel');
+  if(_pP){
+    _pP.style.cssText='margin-bottom:14px';
+    const _pD=_pP.querySelectorAll('div');
+    if(_pD[0]) _pD[0].style.color='#0369a1';
+    if(_pD[1]){_pD[1].style.background='#f0f9ff';_pD[1].style.borderColor='#bae6fd';}
+  }
   // Guide header — basé sur les gaps réels, pas sur ecart_min
   const guidEl=document.getElementById('ecart-guide');
   if(guidEl){
     if(overflow_min>0){
       guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#fef2f2;border:1px solid #fca5a5;line-height:1.5';
       guidEl.innerHTML='<span style="color:#dc2626;font-weight:800;font-size:13px">⚠ Dépassement de plage : +'+overflow_min+' min au-delà de '+esc(modelFin)+'</span><br>'+
-        '<span style="color:#7f1d1d">Un ou plusieurs OFs se terminent après la fin du modèle. Souhaitez-vous modifier la plage horaire ?</span> '+
-        '<button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;margin-top:4px;border-color:#fca5a5;color:#dc2626" onclick="alert(\'Modifiez la plage dans Paramètres → Modèles horaires\')">Modifier la plage</button>';
+        '<span style="color:#7f1d1d">Un ou plusieurs OFs se terminent après la fin de la plage modèle. Modifiez la plage ci-dessous.</span>';
+      // Mettre le panneau de modification de plage en rouge pour signaler l'urgence
+      const plagePanel=document.getElementById('ecart-plage-panel');
+      if(plagePanel){
+        plagePanel.style.cssText='margin-bottom:14px;border-radius:10px;border:2px solid #dc2626;padding:10px;background:#fef2f2';
+        const divs=plagePanel.querySelectorAll('div');
+        if(divs[0]) divs[0].style.color='#dc2626'; // label titre
+        if(divs[1]){ divs[1].style.background='#fef2f2'; divs[1].style.borderColor='#fca5a5'; }
+      }
     } else if(!hasGaps){
       guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#f0fdf4;border:1px solid #bbf7d0;line-height:1.5';
       guidEl.innerHTML='<span style="color:#16a34a;font-weight:800;font-size:13px">✓ Toute la plage '+esc(modelDebut)+' → '+esc(modelFin)+' est couverte !</span>';
@@ -6546,7 +6702,9 @@ function _showEcartModal(fpd){
   const gapsEl=document.getElementById('ecart-gaps');
   if(gapsEl){
     if(!hasGaps){
-      gapsEl.innerHTML='<div style="color:#16a34a;font-size:12px;font-weight:700;padding:4px 0">✓ Aucune plage non couverte</div>';
+      // Ne pas afficher "Aucune plage non couverte" quand il y a un dépassement
+      gapsEl.innerHTML=overflow_min>0?''
+        :'<div style="color:#16a34a;font-size:12px;font-weight:700;padding:4px 0">✓ Aucune plage non couverte</div>';
     } else {
       gapsEl.innerHTML='';
       gaps.forEach((g,gi)=>{
@@ -6590,6 +6748,15 @@ function _showEcartModal(fpd){
       '</div>';
     list.appendChild(div);
   });
+  // Griser "Valider et terminer" tant que tout n'est pas résolu
+  const valBtn=document.getElementById('ecart-valider-btn');
+  if(valBtn){
+    const locked=hasGaps||overflow_min>0;
+    valBtn.disabled=locked;
+    valBtn.style.opacity=locked?'0.4':'1';
+    valBtn.style.cursor=locked?'not-allowed':'pointer';
+    valBtn.title=locked?(hasGaps?'Justifiez toutes les plages non couvertes avant de terminer':'Résolvez le dépassement de plage avant de terminer'):'';
+  }
   openM('m-ecart-poste');
 }
 
@@ -6838,7 +7005,9 @@ function applyFPHoraires(){
   if(d){
     const totEquiv=d.tot_equiv||0;
     const prodRef=d.prod_ref||ST.prod_ref||200;
-    const trs=shiftS>0&&prodRef>0?Math.round(totEquiv/(prodRef*shiftS/28800)*1000)/10:0;
+    const dedS=d.planned_ded_s||0;
+    const netS=Math.max(1,shiftS-dedS);
+    const trs=netS>0&&prodRef>0?Math.round(totEquiv/(prodRef*netS/28800)*1000)/10:0;
     document.getElementById('fp-trs').textContent=fmtTRS(trs);
   }
   // Redraw timeline with custom range
@@ -6875,7 +7044,9 @@ function recalcFPTRS(){
     const d=window._fpData;
     const totEquiv=d.tot_equiv||0;
     const prodRef=d.prod_ref||ST.prod_ref||200;
-    const trs=shiftS>0&&prodRef>0?Math.round(totEquiv/(prodRef*shiftS/28800)*1000)/10:0;
+    const dedS=d.planned_ded_s||0;
+    const netS=Math.max(1,shiftS-dedS);
+    const trs=netS>0&&prodRef>0?Math.round(totEquiv/(prodRef*netS/28800)*1000)/10:0;
     document.getElementById('fp-trs').textContent=fmtTRS(trs);
   }
 }
@@ -7018,7 +7189,7 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
   const vals=items.map(it=>it[valueKey]||0);
   const minV=yMin!==undefined?yMin:Math.max(0,Math.min(...vals)-5);
   const maxV=yMax!==undefined?yMax:Math.max(...vals,1)+2;
-  const padL=30,padR=8,padT=10,padB=52;
+  const padL=30,padR=8,padT=10,padB=62;
   const gW=W-padL-padR,gH=H-padT-padB;
   const toX=i=>padL+i/(Math.max(items.length-1,1))*gW;
   const toY=v=>padT+gH*(1-(v-minV)/(maxV-minV||1));
@@ -7048,9 +7219,10 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
     svg+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${col}" stroke="#fff" stroke-width="1.5"/>`;
     const v=it[valueKey]||0;
     svg+=`<text x="${x.toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${col}">${v%1?v.toFixed(1):v}</text>`;
-    // X label — date\nposte\npilote en biais
-    const lbl=(it._xLabel||'');
-    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+4).toFixed(1)}) rotate(40)" font-size="7" fill="#64748b" dominant-baseline="hanging">${esc(lbl)}</text>`;
+    // X labels: date (line1) + poste (line2) — bigger, black
+    const lblParts=(it._xLabel||'').split('\n');
+    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="9" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
+    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="8" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
   });
   svg+='</svg>';
   el.innerHTML=svg;
@@ -7089,6 +7261,52 @@ function _kpiBarChart(containerId,items,valueKey,colorFn,unit){
   el.innerHTML=svg;
 }
 
+function _kpiDualLineChart(containerId,items,series){
+  const el=document.getElementById(containerId);if(!el)return;
+  const rect=el.getBoundingClientRect();
+  const W=Math.max(rect.width||400,200);
+  const H=Math.max(rect.height||100,60);
+  if(!items.length){el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%"><text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="10" fill="#94a3b8">Aucune donnée</text></svg>`;return;}
+  const allVals=series.flatMap(s=>items.map(it=>parseFloat(it[s.key]||0)));
+  const minV=Math.max(0,Math.min(...allVals)-2);
+  const maxV=Math.max(...allVals,1)+2;
+  const padL=32,padR=8,padT=8,padB=62;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  const toX=i=>padL+i/(Math.max(items.length-1,1))*gW;
+  const toY=v=>padT+gH*(1-(v-minV)/(maxV-minV||1));
+  let svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%">`;
+  [0,0.25,0.5,0.75,1].forEach(t=>{
+    const v=minV+(maxV-minV)*t;const y=toY(v);
+    svg+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1"/>`;
+    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="8" fill="#94a3b8">${v.toFixed(0)}</text>`;
+  });
+  series.forEach(ser=>{
+    let lineD='';
+    items.forEach((it,i)=>{lineD+=(i===0?'M':'L')+toX(i).toFixed(1)+','+toY(parseFloat(it[ser.key]||0)).toFixed(1)+' ';});
+    svg+=`<path d="${lineD}" fill="none" stroke="${ser.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" ${ser.dash?`stroke-dasharray="${ser.dash}"`:''}/>`;
+    items.forEach((it,i)=>{
+      const x=toX(i),y=toY(parseFloat(it[ser.key]||0));
+      const v=parseFloat(it[ser.key]||0);
+      svg+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="${ser.color}" stroke="#fff" stroke-width="1.2"/>`;
+      svg+=`<text x="${x.toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" font-size="7" fill="${ser.color}" font-weight="700">${v%1?v.toFixed(1):v}</text>`;
+    });
+  });
+  items.forEach((it,i)=>{
+    const x=toX(i);
+    const lblParts=(it._xLabel||'').split('\n');
+    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="9" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
+    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="8" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
+  });
+  let lx=padL;
+  series.forEach(ser=>{
+    svg+=`<line x1="${lx}" y1="${H-7}" x2="${lx+14}" y2="${H-7}" stroke="${ser.color}" stroke-width="2" ${ser.dash?`stroke-dasharray="${ser.dash}"`:''}/>`;
+    svg+=`<text x="${lx+16}" y="${H-3}" font-size="8" fill="#475569">${esc(ser.label||ser.key)}</text>`;
+    lx+=90;
+  });
+  svg+='</svg>';
+  el.innerHTML=svg;
+}
+
 function _kpiInitDates(){
   const fi=document.getElementById('kpi-from'),ti=document.getElementById('kpi-to');
   if(!fi||!ti)return;
@@ -7114,27 +7332,40 @@ async function loadKPI(){
 
   // Build sessions (one per pilot+date+poste)
   const sessMap={};
+  const sessRowsMap={};
   prodRows.forEach(r=>{
     const key=(r.pilote||'')+'||'+(r.date||'')+'||'+(r.poste||'');
     if(!sessMap[key]) sessMap[key]={pilot:r.pilote||'',date:r.date||'',poste:r.poste||'',nb_of:0,tot_equiv:0,tot_s:0,tot_qte:0,trs_vals:[]};
+    if(!sessRowsMap[key]) sessRowsMap[key]=[];
     const s=sessMap[key];
     s.nb_of++;
     const eq=parseFloat(r.equiv||0)||0; s.tot_equiv+=eq;
     const qte=parseFloat(r.qte_fab||0)||0; s.tot_qte+=qte;
     const ds=pSec(r.debut||'0:0:0'),fs=pSec(r.fin||'0:0:0'),dur=Math.max(0,fs-ds); s.tot_s+=dur;
     const t=parseFloat(r.trs||0);if(t>0)s.trs_vals.push(t);
+    sessRowsMap[key].push(r);
   });
   // Order chronologically
   const sessArr=Object.values(sessMap).sort((a,b)=>{const da=_kpiParseFR(a.date)||0,db=_kpiParseFR(b.date)||0;return da-db;});
   sessArr.forEach(s=>{
     s.trs=s.trs_vals.length?Math.round(s.trs_vals.reduce((a,v)=>a+v,0)/s.trs_vals.length*10)/10:-1;
     s.cad=s.tot_s>60?Math.round(s.tot_equiv/(s.tot_s/3600)*10)/10:0;
+    s.cad_qte=s.tot_s>60&&s.tot_qte>0?Math.round(s.tot_qte/(s.tot_s/3600)*10)/10:0;
     const evtKey=s.pilot+'||'+s.date+'||'+s.poste;
     s.stop_min=Math.round((evts.filter(e=>(e.pilote||'')+'||'+(e.date||'')+'||'+(e.poste||'')==evtKey).reduce((a,e)=>a+Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0')),0))/60);
+    // Fibre changes: count transitions between different fibre values
+    const sRows=(sessRowsMap[evtKey]||[]).sort((a,b)=>pSec(a.debut||'0:0')-pSec(b.debut||'0:0'));
+    let fibChg=0;
+    for(let i=1;i<sRows.length;i++){const fa=(sRows[i-1].fibre||'').trim(),fb=(sRows[i].fibre||'').trim();if(fa&&fb&&fa!==fb)fibChg++;}
+    s.nb_fibre_chg=fibChg;
+    // Prod/arrêt ratio
+    const tot_dur=s.tot_s+s.stop_min*60;
+    s.prod_pct=tot_dur>0?Math.round(s.tot_s/tot_dur*100):0;
+    s.stop_pct=100-s.prod_pct;
     // Label X axis
     const dParts=(s.date||'').split('/');
     const dateShort=dParts.length===3?dParts[0]+'/'+dParts[1]:s.date;
-    s._xLabel=dateShort+'\n'+s.poste+'\n'+s.pilot;
+    s._xLabel=dateShort+'\n'+s.poste;
   });
 
   const nbSess=sessArr.length;
@@ -7176,30 +7407,26 @@ async function loadKPI(){
   _kpiLineChart('kpi-arr-chart',sessArr,'stop_min',()=>'#dc2626','min');
   _kpiLineChart('kpi-of-chart',sessArr,'nb_of',()=>'#6366f1','');
 
-  // ── Cadence bar chart ──
-  _kpiBarChart('kpi-cad-chart',sessArr,'cad',()=>'#f59e0b','/h');
+  // ── Cadence dual-line chart (éq./h + pièces/h) ──
+  _kpiDualLineChart('kpi-cad-chart',sessArr,[
+    {key:'cad',color:'#f59e0b',label:'Éq./h'},
+    {key:'cad_qte',color:'#0891b2',label:'Pièces/h',dash:'4,3'}
+  ]);
 
-  // ── Sessions list ──
-  const sessEl=document.getElementById('kpi-sess-list');
-  if(sessEl){
-    const recent=sessArr.slice().reverse().slice(0,15);
-    if(!recent.length){
-      sessEl.innerHTML='<div style="padding:8px 12px;color:#94a3b8;font-size:11px">Aucune session dans cette période</div>';
-    } else {
-      sessEl.innerHTML=recent.map(s=>{
-        const tc=_kpiTrsColor(s.trs);
-        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 12px;border-bottom:1px solid #f1f5f9;font-size:11px">
-          <span style="font-weight:700;color:#1e293b;min-width:70px">${esc(s.date)}</span>
-          <span style="color:#475569;min-width:65px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.poste)}</span>
-          <span style="color:#94a3b8;min-width:65px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.pilot)}</span>
-          <span style="color:${tc};font-weight:800;min-width:44px;text-align:right">${s.trs>=0?s.trs.toFixed(1)+'%':'—'}</span>
-          <span style="color:#6366f1;min-width:32px;text-align:right">${s.nb_of} OF</span>
-          <span style="color:#f59e0b;font-weight:700;min-width:46px;text-align:right">${s.cad>0?s.cad+'/h':'—'}</span>
-          <span style="color:#dc2626;min-width:36px;text-align:right">${s.stop_min}m⛔</span>
-        </div>`;
-      }).join('');
-    }
-  }
+  // ── Évolution changements de fibre par poste ──
+  _kpiLineChart('kpi-fibre-chart',sessArr,'nb_fibre_chg',()=>'#8b5cf6','');
+
+  // ── Évolution répartition prod/arrêts ──
+  _kpiDualLineChart('kpi-ratio-chart',sessArr,[
+    {key:'prod_pct',color:'#16a34a',label:'Prod %'},
+    {key:'stop_pct',color:'#dc2626',label:'Arrêts %',dash:'4,3'}
+  ]);
+
+  // ── Évolution pièces / équivalence ──
+  _kpiDualLineChart('kpi-qte-chart',sessArr,[
+    {key:'tot_qte',color:'#7c3aed',label:'Pièces'},
+    {key:'tot_equiv',color:'#16a34a',label:'Équivalence',dash:'4,3'}
+  ]);
 
   // ── Donut Prod/Arrêts ──
   _kpiDrawDonut('kpi-donut','kpi-donut-legend',[
@@ -7248,28 +7475,69 @@ function showHistRowDetail(key){
   const r=window._rowMap&&window._rowMap[String(key)];
   if(!r) return;
   const isProd=r._rowType==='prod';
+  function _hm2s(hm){if(!hm)return 0;const[h,m]=(hm+':00').split(':').map(Number);return(h||0)*3600+(m||0)*60;}
+  const tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
+  const kitStr=(r.kit||'').toLowerCase();
+  const kitDisp=kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓ Oui</span>':'<span style="color:#94a3b8">Non</span>';
   const chips=[];
-  if(r.of)chips.push(['OF',r.of,'']);
-  if(r.date)chips.push(['Date',r.date,'']);
-  if(r.poste)chips.push(['Poste',r.poste,'']);
-  if(r.pilote)chips.push(['Pilote',r.pilote,'']);
-  if(r.debut)chips.push(['Début',r.debut,'']);
-  if(r.fin)chips.push(['Fin',r.fin,'']);
-  if(r.taille)chips.push(['Taille',r.taille,'']);
-  if(r.qte_fab)chips.push(['Qté fab.',r.qte_fab,'']);
-  if(r.equiv)chips.push(['Équiv.',r.equiv,'']);
-  if(r.trs>0)chips.push(['TRS',r.trs.toFixed(1)+'%','color:#16a34a;font-weight:900']);
-  if(r.type&&!isProd)chips.push(['Type arrêt',r.type,'color:#dc2626']);
-  if(r.duree)chips.push(['Durée',r.duree,'']);
-  if(r.kit)chips.push(['Kit',r.kit,'']);
-  const chipsHtml=chips.map(([lbl,val,sty])=>`<div style="background:#f8fafc;border:1px solid var(--border);border-radius:7px;padding:6px 10px;text-align:center">
-    <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;margin-bottom:2px">${lbl}</div>
-    <div style="font-size:13px;font-weight:700;${sty}">${esc(String(val))}</div>
+  if(isProd){
+    if(r.taille)chips.push(['Taille',r.taille,'']);
+    if(r.type)chips.push(['Type prod.',r.type,'']);
+    chips.push(['Kit',kitDisp,'raw']);
+    if(r.qte_fab)chips.push(['Qté fab.',r.qte_fab,'']);
+    if(r.equiv)chips.push(['Équiv.',r.equiv,'color:#0891b2;font-weight:800']);
+    chips.push(['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':'—',`color:${tc}`]);
+    if(r.debut)chips.push(['Début',r.debut,'']);
+    if(r.fin)chips.push(['Fin',r.fin,'']);
+    if(r.duree)chips.push(['Durée',r.duree,'']);
+    if(r.date)chips.push(['Date',r.date,'']);
+    if(r.poste)chips.push(['Poste',r.poste,'']);
+    if(r.pilote)chips.push(['Pilote',r.pilote,'']);
+    if(r.fibre)chips.push(['Fibre',r.fibre,'color:#6366f1']);
+  } else {
+    chips.push(['Type',r.type||r.type_arret||'—','color:#dc2626']);
+    if(r.debut)chips.push(['Début',r.debut,'']);
+    if(r.fin)chips.push(['Fin',r.fin,'']);
+    if(r.duree)chips.push(['Durée',r.duree,'']);
+    if(r.date)chips.push(['Date',r.date,'']);
+    if(r.poste)chips.push(['Poste',r.poste,'']);
+    if(r.pilote)chips.push(['Pilote',r.pilote,'']);
+  }
+  const chipsHtml=chips.map(([lbl,val,sty])=>`<div class="fp-card" style="padding:7px">
+    <div class="fp-lbl">${lbl}</div>
+    <div class="fp-big" style="font-size:14px;${sty&&sty!=='raw'?sty:''}">${sty==='raw'?val:esc(String(val))}</div>
   </div>`).join('');
+  // Arrêts pendant cet OF (si prod)
+  let evtsHtml='';
+  if(isProd){
+    const debS=_hm2s(r.debut), finS=_hm2s(r.fin)||86400;
+    const allEvts=window._histEvtsAll||[];
+    const ofEvts=allEvts.filter(e=>{
+      if(!e.date||e.date!==r.date) return false;
+      if(e.pilote&&e.pilote!==r.pilote) return false;
+      const t=_hm2s(e.debut);return t>=debS&&t<=finS;
+    });
+    evtsHtml='<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin:12px 0 6px">Arrêts pendant cet OF</div>'+
+      '<table style="width:100%;border-collapse:collapse">'+
+      '<thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">'+
+      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Type</th>'+
+      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Plage</th>'+
+      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Durée</th>'+
+      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Commentaire</th>'+
+      '</tr></thead><tbody>'+
+      (ofEvts.length?ofEvts.map(e=>`<tr>
+        <td style="padding:4px 8px;font-weight:600;font-size:11px">${esc(e.type||'')}</td>
+        <td style="padding:4px 8px;font-size:11px;white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</td>
+        <td style="padding:4px 8px;font-weight:700;font-size:11px">${esc(e.duree||'')}</td>
+        <td style="padding:4px 8px;font-size:10px;color:var(--gray)">${esc(e.comment||'')}</td>
+      </tr>`).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:var(--gray);font-size:11px">Aucun arrêt</td></tr>')+
+      '</tbody></table>';
+  }
   document.getElementById('of-detail-content').innerHTML=`
-    <div style="font-size:20px;font-weight:900;color:var(--navy);margin-bottom:12px;font-family:monospace">${isProd?'🏭 ':' ⛔ '}${esc(r.of||r.type||'Ligne')}</div>
+    <div style="font-size:22px;font-weight:900;color:var(--navy);margin-bottom:14px;font-family:monospace">${isProd?'🏭 OF ':'⛔ '}${esc(r.of||r.type||'—')}</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">${chipsHtml}</div>
-    ${r.comment?`<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;font-size:12px">💬 ${esc(r.comment)}</div>`:''}`;
+    ${r.comment?`<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px">💬 ${esc(r.comment)}</div>`:''}
+    ${evtsHtml}`;
   openM('m-of-detail');
 }
 
@@ -7370,6 +7638,7 @@ async function loadHist(){
   hd.innerHTML='<th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
   if(!allRows.length){bd.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
   window._rowMap=window._rowMap||{};
+  window._histEvtsAll=evtsFiltered; // pour showHistRowDetail
   bd.innerHTML=allRows.map(r=>{
     const key=r.row_num||r.debut;
     window._rowMap[String(key)]=r;
@@ -7632,6 +7901,7 @@ async function loadCfg(){
   if(!d) return;
   _cfgPwds=d.pilot_passwords||{};
   _cfgModels=d.modeles_horaires||[];
+  _cfgModelsBase=d.modeles_horaires_base||JSON.parse(JSON.stringify(_cfgModels));
   _cfgArretsPrevus=d.arrets_prevus||{};
   const prEl=document.getElementById('cfg-pr');
   if(prEl) prEl.value=d.prod_ref||200;
@@ -7652,6 +7922,28 @@ async function loadCfg(){
   if(sel){
     while(sel.options.length>1) sel.remove(1);
     _cfgModels.forEach(m=>{const o=document.createElement('option');o.value=m.nom||'';o.textContent=m.nom||'';sel.appendChild(o);});
+  }
+  updateAccModelInfo();
+}
+
+function updateAccModelInfo(){
+  const el=document.getElementById('acc-model-info');
+  if(!el) return;
+  const poste=ST&&ST.poste;
+  if(!poste){el.style.display='none';return;}
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=DAY_KEYS[new Date().getDay()];
+  const mEff=_cfgModels.find(m=>m.nom===poste);
+  const mBase=_cfgModelsBase.find(m=>m.nom===poste);
+  const jEff=mEff&&mEff.jours&&mEff.jours[dk]||{};
+  const jBase=mBase&&mBase.jours&&mBase.jours[dk]||{};
+  if(!jEff.debut&&!jEff.fin){el.style.display='none';return;}
+  const isOverridden=(jEff.debut!==jBase.debut)||(jEff.fin!==jBase.fin);
+  el.style.display='block';
+  if(isOverridden){
+    el.innerHTML=`⏰ <b>${esc(poste)}</b> : <b style="color:#d97706">${esc(jEff.debut)} → ${esc(jEff.fin)}</b> <span style="background:#fef3c7;color:#92400e;font-size:10px;padding:1px 5px;border-radius:4px;font-weight:700">⚠ temporaire</span>`;
+  } else {
+    el.innerHTML=`⏰ <b>${esc(poste)}</b> : ${esc(jEff.debut)} → ${esc(jEff.fin)}`;
   }
 }
 
@@ -7699,12 +7991,12 @@ const DAYS=[{k:'lun',l:'Lun'},{k:'mar',l:'Mar'},{k:'mer',l:'Mer'},{k:'jeu',l:'Je
 function renderModelList(){
   const c=document.getElementById('models-list');
   if(!c) return;
-  c.innerHTML=_cfgModels.map((m,mi)=>{
+  c.innerHTML=_cfgModelsBase.map((m,mi)=>{
     const j=m.jours||{};
     return `<div class="model-card">
       <div class="mch">
-        <input value="${esc(m.nom||'Poste '+(mi+1))}" onchange="_cfgModels[${mi}].nom=this.value" placeholder="Nom du poste">
-        <button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="_cfgModels.splice(${mi},1);renderModelList()">✕</button>
+        <input value="${esc(m.nom||'Poste '+(mi+1))}" onchange="_cfgModelsBase[${mi}].nom=this.value" placeholder="Nom du poste">
+        <button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="_cfgModelsBase.splice(${mi},1);renderModelList()">✕</button>
       </div>
       <div class="day-grid">${DAYS.map(d=>{const dc=j[d.k]||{};
         return `<div class="day-box"><div class="day-lbl">${d.l}</div>
@@ -7716,10 +8008,10 @@ function renderModelList(){
   }).join('')||'<div style="color:var(--gray);font-size:11px">Aucun modèle horaire</div>';
 }
 
-function setDay(mi,day,field,val){if(!_cfgModels[mi])return;if(!_cfgModels[mi].jours)_cfgModels[mi].jours={};if(!_cfgModels[mi].jours[day])_cfgModels[mi].jours[day]={};_cfgModels[mi].jours[day][field]=val;}
-function addModel(){_cfgModels.push({nom:'Nouveau poste',jours:{lun:{debut:'05:00',fin:'13:00'},mar:{debut:'05:00',fin:'13:00'},mer:{debut:'05:00',fin:'13:00'},jeu:{debut:'05:00',fin:'13:00'},ven:{debut:'05:00',fin:'13:00'},sam:{debut:'',fin:''},dim:{debut:'',fin:''}}});renderModelList();}
+function setDay(mi,day,field,val){if(!_cfgModelsBase[mi])return;if(!_cfgModelsBase[mi].jours)_cfgModelsBase[mi].jours={};if(!_cfgModelsBase[mi].jours[day])_cfgModelsBase[mi].jours[day]={};_cfgModelsBase[mi].jours[day][field]=val;}
+function addModel(){_cfgModelsBase.push({nom:'Nouveau poste',jours:{lun:{debut:'05:00',fin:'13:00'},mar:{debut:'05:00',fin:'13:00'},mer:{debut:'05:00',fin:'13:00'},jeu:{debut:'05:00',fin:'13:00'},ven:{debut:'05:00',fin:'13:00'},sam:{debut:'',fin:''},dim:{debut:'',fin:''}}});renderModelList();}
 async function saveModels(){
-  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,modeles_horaires:_cfgModels})});
+  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,modeles_horaires:_cfgModelsBase})});
   const d=r?await r.json():{};
   if(d&&d.ok){toast('Modèles enregistrés','ok');loadCfg();}else toast(d&&d.error||'Erreur','err');
 }
@@ -7766,7 +8058,24 @@ async function apiFetch(url,retries=2){
     return r.ok?await r.json():null;
   }catch(e){return null;}
 }
-function showFibre(name){if(!name)return;toast('Fibre : '+name,'ok');}
+function showFibre(name){
+  if(!name)return;
+  let m=document.getElementById('m-fibre-info');
+  if(!m){
+    m=document.createElement('div');
+    m.id='m-fibre-info';
+    m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;display:flex;align-items:center;justify-content:center';
+    m.innerHTML='<div style="background:#fff;border-radius:14px;padding:28px 32px;min-width:260px;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center">'+
+      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6366f1;letter-spacing:.6px;margin-bottom:8px">Fibre</div>'+
+      '<div id="m-fibre-name" style="font-size:18px;font-weight:800;color:#1e293b;word-break:break-all;margin-bottom:18px"></div>'+
+      '<button onclick="document.getElementById(\'m-fibre-info\').style.display=\'none\'" style="background:#6366f1;color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:13px;font-weight:700;cursor:pointer">Fermer</button>'+
+      '</div>';
+    m.onclick=e=>{if(e.target===m)m.style.display='none';};
+    document.body.appendChild(m);
+  }
+  document.getElementById('m-fibre-name').textContent=name;
+  m.style.display='flex';
+}
 function fmtDur2(s){if(!s||s<0)return'0:00';const m=Math.floor(s/60),sec=Math.floor(s%60);return m+':'+String(sec).padStart(2,'0');}
 function fmtTRSv(v){return(v===null||v===undefined||isNaN(v)||v<0)?'--%':parseFloat(v).toFixed(1)+'%';}
 function fmtDur(s){if(!s||s<0)return'00:00:00';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);return[h,m,sec].map(x=>String(x).padStart(2,'0')).join(':');}
