@@ -1178,6 +1178,12 @@ def api_update_shift_horaires():
     try:
         debut_dt = datetime.datetime.fromisoformat(debut_iso)
         fin_dt = datetime.datetime.fromisoformat(fin_iso)
+        # Convertir en local tz-naive si le JS envoie de l'UTC (".toISOString()")
+        # pour éviter TypeError lors des soustractions avec datetime.now() (tz-naive)
+        if debut_dt.tzinfo is not None:
+            debut_dt = datetime.datetime.fromtimestamp(debut_dt.timestamp())
+        if fin_dt.tzinfo is not None:
+            fin_dt = datetime.datetime.fromtimestamp(fin_dt.timestamp())
     except:
         return jsonify({"ok":False,"error":"Format invalide"}),400
     if fin_dt <= debut_dt:
