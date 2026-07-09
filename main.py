@@ -165,6 +165,9 @@ _S = {
     "pause_total_s": 0.0, "pause_periods": [],
     "of_count_shift": 0,
     "shift_start": None,
+    "postes_row_num": None,
+    "shift_debut_dt": None,
+    "shift_fin_dt": None,
 }
 _excel_lock = threading.Lock()
 _lists = {}
@@ -441,6 +444,9 @@ def save_session():
             "of_count_shift": _S["of_count_shift"],
             "form": _S["form"],
             "shift_start": _dt_str(_S.get("shift_start")),
+            "postes_row_num": _S.get("postes_row_num"),
+            "shift_debut_dt": _dt_str(_S.get("shift_debut_dt")),
+            "shift_fin_dt": _dt_str(_S.get("shift_fin_dt")),
         }
         with open(SESSION_FILE,"w",encoding="utf-8") as f: json.dump(d,f,default=str)
     except: pass
@@ -463,6 +469,9 @@ def load_session():
         _S["of_count_shift"]= d.get("of_count_shift",0)
         _S["form"]          = d.get("form",{})
         _S["shift_start"]   = _str_dt(d.get("shift_start"))
+        _S["postes_row_num"] = d.get("postes_row_num")
+        _S["shift_debut_dt"] = _str_dt(d.get("shift_debut_dt"))
+        _S["shift_fin_dt"]   = _str_dt(d.get("shift_fin_dt"))
         raw_timers = d.get("timers",{})
         _S["timers"] = {}
         for k,t in raw_timers.items():
@@ -809,7 +818,7 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
 
-POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Total Arrets (min)","Total Pauses (min)","Nettoyage (min)","Durée Prod Totale (min)","Durée Prod Sans Arrêt (min)","Durée poste théorique (min)","Commentaire"]
+POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Total Arrets (min)","Total Pauses (min)","Nettoyage (min)","Durée Prod Totale (min)","Durée Prod Sans Arrêt (min)","Durée poste théorique (min)","Commentaire","Début Poste","Fin Poste"]
 
 def write_pilots_to_excel(pilot_passwords):
     """Écrit la liste pilote+MDP dans l'onglet Listes col A+B."""
@@ -842,8 +851,59 @@ def write_pilots_to_excel(pilot_passwords):
     threading.Thread(target=_bg,daemon=True).start()
     return True
 
-def write_poste_row(data):
-    """Écrit une ligne dans l'onglet Postes à la fin de chaque poste."""
+def _ensure_postes_sheet(wb):
+    if "Postes" not in wb.sheetnames:
+        ws = wb.create_sheet("Postes")
+        for i, h in enumerate(POSTES_HEADERS, start=1): ws.cell(1, i).value = h
+        _format_row(ws, 1)
+        from openpyxl.styles import PatternFill, Font
+        fill = PatternFill("solid", fgColor="1a1f5e")
+        for cell in ws[1]:
+            cell.fill = fill
+            cell.font = Font(color="FFFFFF", bold=True, size=10)
+    else:
+        ws = wb["Postes"]
+        for i, h in enumerate(POSTES_HEADERS, start=1):
+            if ws.cell(1, i).value is None: ws.cell(1, i).value = h
+    return wb["Postes"]
+
+def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path): return None
+    try:
+        with _excel_lock:
+            wb = _get_wb(path)
+            if wb is None: return None
+            ws = _ensure_postes_sheet(wb)
+            new_row = ws.max_row + 1
+            ws.cell(new_row, 2).value = pilot
+            ws.cell(new_row, 4).value = poste
+            ws.cell(new_row, 16).value = debut_dt.isoformat() if debut_dt else None
+            ws.cell(new_row, 17).value = fin_dt.isoformat() if fin_dt else None
+            _format_row(ws, new_row)
+            _safe_excel_save(wb, path)
+            return new_row
+    except: return None
+
+def update_poste_horaires(row_num, debut_dt, fin_dt):
+    if not row_num or row_num <= 1: return
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path): return
+    def _bg():
+        try:
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None: return
+                if "Postes" not in wb.sheetnames: return
+                ws = wb["Postes"]
+                ws.cell(row_num, 16).value = debut_dt.isoformat() if debut_dt else None
+                ws.cell(row_num, 17).value = fin_dt.isoformat() if fin_dt else None
+                _safe_excel_save(wb, path)
+        except: pass
+    threading.Thread(target=_bg, daemon=True).start()
+
+def write_poste_row(data, row_num=None):
+    """Écrit ou met à jour une ligne dans l'onglet Postes à la fin de chaque poste."""
     path = cfg.get("db_path","")
     if not path: return
     def _bg():
@@ -851,18 +911,8 @@ def write_poste_row(data):
             with _excel_lock:
                 wb = _get_wb(path)
                 if wb is None: return
-                if "Postes" not in wb.sheetnames:
-                    ws = wb.create_sheet("Postes")
-                    for i,h in enumerate(POSTES_HEADERS,start=1): ws.cell(1,i).value=h
-                    _format_row(ws,1)
-                    from openpyxl.styles import PatternFill, Font
-                    fill=PatternFill("solid",fgColor="1a1f5e")
-                    for cell in ws[1]:
-                        cell.fill=fill
-                        cell.font=Font(color="FFFFFF",bold=True,size=10)
-                else:
-                    ws = wb["Postes"]
-                row = [
+                ws = _ensure_postes_sheet(wb)
+                vals = [
                     data.get("date",""),
                     data.get("pilot",""),
                     data.get("copilote",""),
@@ -879,11 +929,49 @@ def write_poste_row(data):
                     round(float(data.get("dur_poste_theorique_min",0) or 0),1),
                     data.get("comment",""),
                 ]
-                ws.append(row)
-                _format_row(ws,ws.max_row)
-                _safe_excel_save(wb,path)
+                if row_num and row_num > 1:
+                    for ci, v in enumerate(vals, start=1):
+                        ws.cell(row_num, ci).value = v
+                    _format_row(ws, row_num)
+                else:
+                    ws.append(vals)
+                    _format_row(ws, ws.max_row)
+                _safe_excel_save(wb, path)
         except: pass
-    threading.Thread(target=_bg,daemon=True).start()
+    threading.Thread(target=_bg, daemon=True).start()
+
+def get_current_shift_duration_s():
+    sd = _S.get("shift_debut_dt")
+    sf = _S.get("shift_fin_dt")
+    if sd and sf:
+        return (sf - sd).total_seconds()
+    return get_shift_duration_s(_S.get("poste",""))
+
+def load_postes_shift_map():
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path): return {}
+    result = {}
+    try:
+        with _excel_lock:
+            wb = _get_wb(path)
+            if wb is None: return {}
+            if "Postes" not in wb.sheetnames:
+                wb.close(); return {}
+            ws = wb["Postes"]
+            for ri in range(2, ws.max_row + 1):
+                pilot_v = ws.cell(ri, 2).value
+                deb_v = ws.cell(ri, 16).value
+                fin_v = ws.cell(ri, 17).value
+                if not pilot_v or not deb_v or not fin_v: continue
+                try:
+                    deb_dt = datetime.datetime.fromisoformat(str(deb_v)) if not hasattr(deb_v, 'hour') else datetime.datetime.combine(datetime.date.today(), deb_v)
+                    fin_dt = datetime.datetime.fromisoformat(str(fin_v)) if not hasattr(fin_v, 'hour') else datetime.datetime.combine(datetime.date.today(), fin_v)
+                    pk = (str(pilot_v).strip().lower(), deb_dt.strftime("%d/%m/%Y"))
+                    result[pk] = (deb_dt, fin_dt)
+                except: pass
+            wb.close()
+    except: pass
+    return result
 
 def _start_periodic_excel_sync():
     """Recharge les listes Excel toutes les 5 minutes pour éviter la perte de données."""
@@ -950,6 +1038,8 @@ def _state_json():
         "shift_start_iso": _dt_str(_S.get("shift_start")),
         "excel_busy": _excel_busy,
         "pause_periods": [[_dt_str(a), _dt_str(b)] for a, b in _S.get("pause_periods", [])],
+        "shift_debut_iso": _dt_str(_S.get("shift_debut_dt")),
+        "shift_fin_iso": _dt_str(_S.get("shift_fin_dt")),
     }
 
 @flask_app.route('/')
@@ -1014,8 +1104,28 @@ def api_login():
     _S["last_of_end"] = None
     _S["last_of_pilot"] = ""
     _S["interposte_s"] = 0.0
+    _S["postes_row_num"] = None
     if not _S.get("shift_start"):
         _S["shift_start"] = datetime.datetime.now()
+    now = datetime.datetime.now()
+    debut_str, fin_str = _get_model_day_cfg(poste)
+    shift_debut_dt = None
+    shift_fin_dt = None
+    if debut_str and fin_str:
+        try:
+            h, m = map(int, debut_str.split(':'))
+            sd = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if sd > now: sd -= datetime.timedelta(days=1)
+            fh, fm = map(int, fin_str.split(':'))
+            sf = sd.replace(hour=fh, minute=fm, second=0, microsecond=0)
+            if sf <= sd: sf += datetime.timedelta(days=1)
+            shift_debut_dt = sd
+            shift_fin_dt = sf
+        except: pass
+    _S["shift_debut_dt"] = shift_debut_dt
+    _S["shift_fin_dt"] = shift_fin_dt
+    row_num = write_poste_login_row(pilot, poste, shift_debut_dt, shift_fin_dt)
+    _S["postes_row_num"] = row_num
     save_session()
     return jsonify({"ok":True})
 
@@ -1026,6 +1136,7 @@ def api_logout():
     _S["pilot"] = None
     _S["poste"] = None
     _S["shift_start"] = None
+    _S["postes_row_num"] = None
     save_session()
     # Reload cfg from disk so temporary session horaire overrides are cleared
     # (login screen will show original Paramètres values again)
@@ -1033,6 +1144,25 @@ def api_logout():
     cfg.clear()
     cfg.update(load_cfg())
     return jsonify({"ok":True})
+
+@flask_app.route('/api/update_shift_horaires', methods=['POST'])
+def api_update_shift_horaires():
+    data = request.json or {}
+    debut_iso = data.get("debut_iso","")
+    fin_iso = data.get("fin_iso","")
+    try:
+        debut_dt = datetime.datetime.fromisoformat(debut_iso)
+        fin_dt = datetime.datetime.fromisoformat(fin_iso)
+    except:
+        return jsonify({"ok":False,"error":"Format invalide"}),400
+    if fin_dt <= debut_dt:
+        return jsonify({"ok":False,"error":"Fin doit être après début"}),400
+    _S["shift_debut_dt"] = debut_dt
+    _S["shift_fin_dt"] = fin_dt
+    update_poste_horaires(_S.get("postes_row_num"), debut_dt, fin_dt)
+    save_session()
+    dur_s = (fin_dt - debut_dt).total_seconds()
+    return jsonify({"ok":True,"shift_dur_s":round(dur_s,0)})
 
 @flask_app.route('/api/force_reset_prod', methods=['POST'])
 def api_force_reset_prod():
@@ -1785,7 +1915,7 @@ def api_fin_poste_data():
                 shift_evt_rows.append((rn, r))
             except: pass
     planned_ded = _compute_planned_deduction_s(shift_evt_rows)
-    model_dur_s = get_shift_duration_s(pilot_poste, datetime.date.today())
+    model_dur_s = get_current_shift_duration_s()
     ecart_s = max(0.0, model_dur_s - (tot_s + declared_stop_s))
     trs_poste_shift = -1.0
     if model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
@@ -1911,6 +2041,7 @@ def api_past_sessions():
         if key2 not in session_evts: session_evts[key2] = []
         if row_type2 not in ("production","prod",""):
             session_evts[key2].append((rn, r))
+    postes_map = load_postes_shift_map()
     result = []
     for key, s in sessions.items():
         trs = -1.0
@@ -1918,14 +2049,16 @@ def api_past_sessions():
             try:
                 parts = s["date"].split('/'); date_obj = datetime.date(int(parts[2]), int(parts[1]), int(parts[0]))
             except: date_obj = None
-            debut_str, _ = _get_model_day_cfg(s["poste"], date_obj)
-            model_debut_s = _hms_to_sec(debut_str) if debut_str else None
             planned_ded = _compute_planned_deduction_s(session_evts.get(key, []))
-            mfs = s["max_fin_s"]
-            if model_debut_s and mfs < model_debut_s: mfs += 86400  # poste de nuit
-            if model_debut_s and mfs > model_debut_s:
-                elapsed_s = max(1.0, (mfs - model_debut_s) - planned_ded)
-                trs = round(s["tot_equiv"] / (prod_ref * elapsed_s / 28800) * 100, 1)
+            _pk = (s["pilot"].lower(), s["date"])
+            if _pk in postes_map:
+                _pdeb, _pfin = postes_map[_pk]
+                _mdur2 = max(0.0, (_pfin - _pdeb).total_seconds())
+            else:
+                _mdur2 = get_shift_duration_s(s["poste"], date_obj)
+            if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
+                _el2 = max(1.0, _mdur2 - planned_ded)
+                trs = round(s["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
         result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs,"_rn":s["max_rn"]})
     def _date_sort_key(x):
         d = x["date"]
@@ -1975,16 +2108,19 @@ def api_session_report():
     actual_debut = _sec_to_hm(min(all_debut_s)) if all_debut_s else ""
     actual_fin = _sec_to_hm(max(all_fin_s)) if all_fin_s else ""
     debut_str, fin_str = _get_model_day_cfg(poste)
-    model_debut_s = _hms_to_sec(debut_str) if debut_str else None
     planned_ded = _compute_planned_deduction_s(evt_rows)
-    model_dur_s = get_shift_duration_s(poste)
+    _postes_map2 = load_postes_shift_map()
+    _pk2 = (pilot.lower(), date_str)
+    if _pk2 in _postes_map2:
+        _pdeb2, _pfin2 = _postes_map2[_pk2]
+        model_dur_s = max(0.0, (_pfin2 - _pdeb2).total_seconds())
+    else:
+        model_dur_s = get_shift_duration_s(poste)
     ecart_s = max(0.0, model_dur_s - (tot_s + stop_s))
     trs_shift = -1.0
-    if model_debut_s and max_fin_s > 0:
-        if max_fin_s < model_debut_s: max_fin_s += 86400  # poste de nuit
-        if max_fin_s > model_debut_s and prod_ref > 0 and tot_eq > 0:
-            elapsed_s = max(1.0, (max_fin_s - model_debut_s) - planned_ded)
-            trs_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
+    if model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
+        elapsed_s = max(1.0, model_dur_s - planned_ded)
+        trs_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
     trs_of = round(tot_eq/(prod_ref*tot_s/28800)*100,1) if prod_ref>0 and tot_s>0 and tot_eq>0 else -1
     return jsonify({"date":date_str,"pilot":pilot,"poste":poste,"prod_rows":prod_rows,"evt_rows":evt_rows,
                     "trs_shift":trs_shift,"trs":trs_of,"tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
@@ -2145,8 +2281,8 @@ def api_reload():
 def api_save_poste():
     data = request.json or {}
     if not data.get("dur_poste_theorique_min"):
-        data["dur_poste_theorique_min"] = round(get_shift_duration_s(_S.get("poste","")) / 60, 1)
-    write_poste_row(data)
+        data["dur_poste_theorique_min"] = round(get_current_shift_duration_s() / 60, 1)
+    write_poste_row(data, row_num=_S.get("postes_row_num"))
     return jsonify({"ok":True})
 
 @flask_app.route('/api/pilot_passwords_excel', methods=['POST'])
@@ -6109,18 +6245,22 @@ function updateGauge(s){
   const arcPosteAcc=document.getElementById('gauge-poste-acc-arc');
   const pctPosteAcc=document.getElementById('gauge-poste-acc-pct');
   const lblPosteAcc=document.getElementById('gauge-poste-acc-lbl');
-  // TRS Poste: use model horaire debut as reference (not shift_start_iso which may include pre-shift time)
-  const _dayKeysG=['dim','lun','mar','mer','jeu','ven','sam'];
-  const _dkG=_dayKeysG[new Date().getDay()];
-  const _modelG=_cfgModels&&_cfgModels.find(m=>m.nom===(s.poste||ST.poste||''));
-  const _jourG=_modelG&&_modelG.jours&&_modelG.jours[_dkG];
-  // Update global _shiftRefDt (shared with loadMainKPI / loadKPI)
-  if(_jourG&&_jourG.debut){const[_hG,_mG]=_jourG.debut.split(':').map(Number);_shiftRefDt=new Date();_shiftRefDt.setHours(_hG,_mG,0,0);}
-  else if(s.shift_start_iso){_shiftRefDt=new Date(s.shift_start_iso);}
-  else{_shiftRefDt=null;}
+  // TRS Poste: prefer shift_debut_iso (set at login from model), fall back to model config
+  if(s.shift_debut_iso){_shiftRefDt=new Date(s.shift_debut_iso);}
+  else{
+    const _dayKeysG=['dim','lun','mar','mer','jeu','ven','sam'];
+    const _dkG=_dayKeysG[new Date().getDay()];
+    const _modelG=_cfgModels&&_cfgModels.find(m=>m.nom===(s.poste||ST.poste||''));
+    const _jourG=_modelG&&_modelG.jours&&_modelG.jours[_dkG];
+    if(_jourG&&_jourG.debut){const[_hG,_mG]=_jourG.debut.split(':').map(Number);_shiftRefDt=new Date();_shiftRefDt.setHours(_hG,_mG,0,0);}
+    else if(s.shift_start_iso){_shiftRefDt=new Date(s.shift_start_iso);}
+    else{_shiftRefDt=null;}
+  }
+  // When shift_fin_iso is set, use full shift duration for TRS denominator instead of elapsed
+  const _shiftFinDt=s.shift_fin_iso?new Date(s.shift_fin_iso):null;
   if(_shiftRefDt&&s.prod_ref>0){
-    const calcRef=_lastProdDeclTime||new Date();  // pour le calc TRS : fallback now si aucune décl
-    const shiftElap=(calcRef.getTime()-_shiftRefDt.getTime())/1000;
+    const calcRef=_lastProdDeclTime||new Date();
+    const shiftElap=_shiftFinDt?(_shiftFinDt.getTime()-_shiftRefDt.getTime())/1000:(calcRef.getTime()-_shiftRefDt.getTime())/1000;
     const todayEquiv=_todayEquivAccum||0;
     const trsPoste=shiftElap>0&&todayEquiv>0?Math.round(todayEquiv/(s.prod_ref*shiftElap/28800)*100*10)/10:-1;
     // Label : "Entre Xh et Yh" (Y = heure fin de la dernière déclaration, pas l'heure actuelle)
@@ -6989,7 +7129,7 @@ async function loadFPData(){
   const fpL=document.getElementById('fp-trs-lbl2');if(fpL) fpL.textContent=fmtTRSv(trsS);
 }
 
-function applyFPHoraires(){
+async function applyFPHoraires(){
   const debStr=document.getElementById('fp-debut-dt').value;
   const finStr=document.getElementById('fp-fin-dt').value;
   if(!debStr||!finStr){toast('Renseigner début et fin','err');return;}
@@ -7000,6 +7140,7 @@ function applyFPHoraires(){
   const pad=n=>String(n).padStart(2,'0');
   const fmt=d=>pad(d.getHours())+':'+pad(d.getMinutes());
   if(shiftInfo) shiftInfo.textContent=fmt(deb)+'→'+fmt(fin);
+  await fetch('/api/update_shift_horaires',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({debut_iso:deb.toISOString(),fin_iso:fin.toISOString()})});
   // Recalc TRS
   const d=window._fpData;
   if(d){
@@ -7016,7 +7157,7 @@ function applyFPHoraires(){
   toast('Horaires appliqués','ok');
 }
 
-function recalcFPTRS(){
+async function recalcFPTRS(){
   const sel=document.getElementById('fp-model-sel');
   if(!sel||!window._fpData) return;
   const modelNom=sel.value;
@@ -7041,6 +7182,12 @@ function recalcFPTRS(){
     const p=s=>{const[h,m]=s.split(':').map(Number);return h*3600+m*60;};
     let shiftS=p(jour.fin)-p(jour.debut);
     if(shiftS<0) shiftS+=86400;
+    // Build debut datetime and call server
+    const[dH,dM]=jour.debut.split(':').map(Number);
+    const debDt=new Date(now);debDt.setHours(dH,dM,0,0);
+    if(debDt>now) debDt.setDate(debDt.getDate()-1);
+    const finDt=new Date(debDt.getTime()+shiftS*1000);
+    await fetch('/api/update_shift_horaires',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({debut_iso:debDt.toISOString(),fin_iso:finDt.toISOString()})});
     const d=window._fpData;
     const totEquiv=d.tot_equiv||0;
     const prodRef=d.prod_ref||ST.prod_ref||200;
@@ -7081,20 +7228,7 @@ async function confirmFinPoste(){
     nett_min:Math.round(nett_s/60),
     dur_prod_total_min:Math.round(dur_prod_total_s/60),
     dur_prod_sans_arret_min:Math.round(dur_prod_sans_arret_s/60),
-    dur_poste_theorique_min:(()=>{
-      const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
-      const dk=DAY_KEYS[new Date().getDay()];
-      const model=_cfgModels.find(m=>m.nom===(ST.poste||''));
-      if(model&&model.jours&&model.jours[dk]){
-        const j=model.jours[dk];
-        if(j.debut&&j.fin){
-          const toS=s=>{const[h,m2]=s.split(':').map(Number);return h*3600+m2*60;};
-          let s=toS(j.fin)-toS(j.debut);if(s<0)s+=86400;
-          return Math.round(s/60);
-        }
-      }
-      return 0;
-    })(),
+    dur_poste_theorique_min:fpData&&fpData.model_dur_s?Math.round(fpData.model_dur_s/60):0,
     comment:''
   };
   await fetch('/api/save_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posteRow)});
