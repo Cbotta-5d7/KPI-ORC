@@ -2136,6 +2136,19 @@ def api_generate_dashboard():
     if err: return jsonify({"ok":False,"error":err})
     return jsonify({"ok":True,"path":html_path})
 
+@flask_app.route('/dashboard')
+def dashboard_view():
+    """Serve the dashboard HTML via Flask so JS fetch() is same-origin (no CORS block)."""
+    html_path, err = generate_dashboard_html()
+    if err:
+        return f"<html><body style='font-family:sans-serif;padding:40px;color:#dc2626'><h2>Erreur Dashboard</h2><p>{err}</p></body></html>", 500
+    try:
+        with open(html_path, encoding='utf-8') as f:
+            content = f.read()
+        return content, 200, {'Content-Type': 'text/html; charset=utf-8'}
+    except Exception as e:
+        return f"<html><body>Erreur lecture fichier: {e}</body></html>", 500
+
 # ── Dashboard HTML superviseur ─────────────────────────────────────────────────
 def generate_dashboard_html():
     path = cfg.get("db_path","")
@@ -2477,8 +2490,11 @@ def generate_dashboard_html():
         else: kit_disp = kit_val
         cad_val = str(r[22] or "").strip()
         cmt_val = str(r[35] or "").strip()
+        fibre_val = str(r[11] or "").strip()
+        fibre_short = fibre_val[:9]+('…' if len(fibre_val)>9 else '')
         prod_rows_html += f'''<tr>
           <td style="font-weight:800;font-size:15px;color:#1e293b">{r[1] or ""}</td>
+          <td style="color:#6366f1;font-weight:700;font-size:13px;cursor:pointer" title="{fibre_val}" onclick="if(this.title)alert('Fibre : '+this.title)">{fibre_short}</td>
           <td style="color:#475569;font-size:14px">{r[9] or ""}</td>
           <td style="color:#475569;font-size:14px">{r[7] or ""}</td>
           <td style="text-align:center">{kit_disp}</td>
@@ -2561,6 +2577,7 @@ def generate_dashboard_html():
     import json as _json
     _dash_of_list = []
     hist_html = ""
+    _prev_session_key = None
     for _hidx, r in enumerate(hist_rows):
         tc_hist = ""
         try:
@@ -2618,9 +2635,19 @@ def generate_dashboard_html():
             "comment":str(r[35] or "") if len(r)>35 else "",
             "stops":_of_stops
         })
+        _sess_key = f"{str(r[2] or '')[:10]}|{str(r[3] or '')}|{str(r[4] or '')}"
+        if _sess_key != _prev_session_key:
+            _prev_session_key = _sess_key
+            hist_html += (f'<tr style="background:#1e3a8a">'
+                f'<td colspan="12" style="padding:5px 10px;font-size:11px;font-weight:800;color:#fff;letter-spacing:.3px">'
+                f'📅 {str(r[2] or "")[:10]} — 🏭 {str(r[3] or "")} — 👤 {str(r[4] or "")}'
+                f'</td></tr>')
+        _fibre_h = str(r[11] or "").strip()
+        _fibre_short_h = _fibre_h[:9] + ('…' if len(_fibre_h) > 9 else '')
         hist_html += (f'<tr style="cursor:pointer" onclick="showDashOf({_hidx})" title="Voir détail OF">'
             f'<td style="font-weight:800">{str(r[2] or "")[:10]}</td>'
             f'<td style="font-weight:800;color:#1e3a8a;text-decoration:underline">{r[1] or ""}</td>'
+            f'<td style="color:#6366f1;font-weight:700;font-size:12px;cursor:pointer" title="{_fibre_h}" onclick="event.stopPropagation();if(this.title)alert(\'Fibre : \'+this.title)">{_fibre_short_h}</td>'
             f'<td>{r[9] or ""}</td>'
             f'<td>{str(r[3] or "")}</td>'
             f'<td>{str(r[4] or "")}</td>'
@@ -2631,7 +2658,7 @@ def generate_dashboard_html():
             f'<td>{tc_hist}</td>'
             f'</tr>')
     if not hist_html:
-        hist_html = '<tr><td colspan="11" style="text-align:center;color:#94a3b8;padding:12px">Aucune production</td></tr>'
+        hist_html = '<tr><td colspan="12" style="text-align:center;color:#94a3b8;padding:12px">Aucune production</td></tr>'
     _dash_of_json = _json.dumps(_dash_of_list, ensure_ascii=True, default=str)
 
     # ── Rapports: groupé par type_prod ──
@@ -2804,7 +2831,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
         <div class="panel-hdr" style="background:#14532d;color:#fff">Productions déclarées sur ce poste</div>
         <div class="panel-body" style="padding:0">
           <table class="ktbl" style="font-size:14px">
-            <thead><tr><th>OF</th><th>Type</th><th>Format</th><th>Kit</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cadence/h</th><th>Éq.</th><th>TRS</th><th>Commentaire</th></tr></thead>
+            <thead><tr><th>OF</th><th>Fibre</th><th>Type</th><th>Format</th><th>Kit</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cadence/h</th><th>Éq.</th><th>TRS</th><th>Commentaire</th></tr></thead>
             <tbody>{prod_rows_html}</tbody>
           </table>
         </div>
@@ -2854,7 +2881,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
       <div class="panel-body" style="padding:0">
         <table class="ktbl">
           <thead><tr>
-            <th>Date</th><th>OF</th><th>Type</th><th>Poste</th><th>Pilote</th>
+            <th>Date</th><th>OF</th><th>Fibre</th><th>Type</th><th>Poste</th><th>Pilote</th>
             <th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Éq.</th><th>TRS</th>
           </tr></thead>
           <tbody>{hist_html}</tbody>
@@ -2940,7 +2967,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
     _rapports_js = r"""
 <script>
 function _dashEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-async function _dashFetch(url){try{var r=await fetch('http://127.0.0.1:5001'+url);return r.ok?await r.json():null;}catch(e){return null;}}
+async function _dashFetch(url){try{var r=await fetch(url);return r.ok?await r.json():null;}catch(e){return null;}}
 function _dashFmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}
 function _dashDrawPie(svgId,segments){
   var svg=document.getElementById(svgId);if(!svg)return;
@@ -3531,7 +3558,7 @@ select{cursor:default}
     <div class="table-wrap">
       <table class="ktbl">
         <thead><tr>
-          <th>Type</th><th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th>
+          <th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th>
           <th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>
         </tr></thead>
         <tbody id="main-body"></tbody>
@@ -3779,7 +3806,7 @@ select{cursor:default}
     <!-- Boutons -->
     <div style="padding:8px 12px;background:var(--card);border-top:1px solid var(--border);flex-shrink:0;display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-sec" onclick="goTab('main')">← Retour</button>
-      <button class="btn btn-danger btn-lg" onclick="confirmFinPoste()">⏹ Confirmer fin de poste &amp; Déconnexion</button>
+      <button onclick="confirmFinPoste()" style="background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:18px;font-weight:900;padding:18px 40px;cursor:pointer;box-shadow:0 4px 18px rgba(22,163,74,.4);letter-spacing:.3px;transition:all .15s" onmouseover="this.style.filter='brightness(.9)'" onmouseout="this.style.filter=''">✅ Confirmer fin de poste &amp; Déconnexion</button>
     </div>
   </div>
 
@@ -3911,14 +3938,41 @@ select{cursor:default}
       <div id="ecart-info" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px"></div>
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Plages non justifiées</div>
       <div id="ecart-gaps" style="margin-bottom:14px"></div>
-      <div id="ecart-of-panel" style="margin-bottom:14px">
+      <div id="ecart-of-panel" style="margin-bottom:10px">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Modifier les horaires des OFs</div>
         <div id="ecart-of-list" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
-      <datalist id="ecart-stop-opts"></datalist>
+      <!-- Modifier la plage horaire du poste -->
+      <div id="ecart-plage-panel" style="margin-bottom:14px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#0369a1;letter-spacing:.06em;margin-bottom:6px">Modifier la plage horaire de mon poste</div>
+        <div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:10px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div>
+            <label style="font-size:10px;color:var(--gray);font-weight:600;display:block;margin-bottom:3px">Heure de début</label>
+            <input type="time" id="ecart-plage-debut" style="padding:5px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:13px;font-weight:700;width:110px">
+          </div>
+          <div>
+            <label style="font-size:10px;color:var(--gray);font-weight:600;display:block;margin-bottom:3px">Heure de fin</label>
+            <input type="time" id="ecart-plage-fin" style="padding:5px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:13px;font-weight:700;width:110px">
+          </div>
+          <button class="btn btn-prim" style="font-size:12px;padding:6px 16px;background:#0369a1;border-color:#0369a1" onclick="saveEcartPlageHoraire()">✓ Appliquer</button>
+          <span style="font-size:10px;color:#64748b;align-self:center">Modifie uniquement pour ce poste aujourd'hui</span>
+        </div>
+      </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
         <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-ecart-poste')">Annuler</button>
         <button class="btn btn-sec" onclick="skipEcartPoste()">Valider et terminer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ MODAL : "Autre" type d'arrêt ════ -->
+  <div id="m-ecart-autre" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:700;align-items:center;justify-content:center">
+    <div class="card" style="width:340px;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #64748b">
+      <div style="font-size:14px;font-weight:800;color:var(--navy);margin-bottom:10px">✏ Saisir le type d'arrêt</div>
+      <input id="ecart-autre-label" placeholder="Ex : Changement outillage, Défaut matière…" style="width:100%;padding:9px 11px;border:2px solid #e5e7eb;border-radius:7px;font-size:13px;outline:none;margin-bottom:14px" onkeydown="if(event.key==='Enter')confirmEcartAutre()">
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sec" onclick="closeM('m-ecart-autre')">Annuler</button>
+        <button class="btn btn-prim" onclick="confirmEcartAutre()">✓ Valider</button>
       </div>
     </div>
   </div>
@@ -3940,8 +3994,8 @@ select{cursor:default}
 </div>
 
 <!-- Modal détail OF -->
-<div id="m-of-detail" class="modal" onclick="if(event.target===this)closeM('m-of-detail')">
-  <div class="mbox" style="max-width:700px;max-height:80vh;overflow-y:auto">
+<div id="m-of-detail" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:650;align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-of-detail')">
+  <div class="mbox" style="max-width:700px;max-height:80vh;overflow-y:auto;background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:90%">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-shrink:0">
       <span style="font-size:14px;font-weight:800;color:var(--navy)">📋 Détail OF</span>
       <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-of-detail')">✕</button>
@@ -3997,52 +4051,58 @@ select{cursor:default}
 
   <!-- ════ KPI VIEW ════ -->
   <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden;background:#f1f5f9">
-    <!-- Barre titre + filtres -->
-    <div style="background:#1e3a8a;color:#fff;padding:7px 14px;flex-shrink:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <div style="font-size:14px;font-weight:800;letter-spacing:.5px">📊 KPI Performance</div>
-      <div style="display:flex;align-items:center;gap:5px;margin-left:auto;flex-wrap:wrap">
-        <label style="font-size:11px;opacity:.8">Du</label>
-        <input type="date" id="kpi-from" style="padding:3px 7px;border:1px solid rgba(255,255,255,.3);border-radius:5px;font-size:11px;background:rgba(255,255,255,.15);color:#fff;outline:none">
-        <label style="font-size:11px;opacity:.8">au</label>
-        <input type="date" id="kpi-to" style="padding:3px 7px;border:1px solid rgba(255,255,255,.3);border-radius:5px;font-size:11px;background:rgba(255,255,255,.15);color:#fff;outline:none">
-        <button onclick="loadKPI()" style="padding:4px 12px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);border-radius:6px;color:#fff;font-size:11px;font-weight:700;cursor:pointer">↺</button>
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#1e3a8a,#1e40af);color:#fff;padding:9px 16px;flex-shrink:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-size:18px;font-weight:900;letter-spacing:.4px;text-shadow:0 1px 4px rgba(0,0,0,.2)">📊 Tableau de Bord Performance</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap">
+        <label style="font-size:12px;opacity:.85;font-weight:600">Du</label>
+        <input type="date" id="kpi-from" style="padding:4px 8px;border:1px solid rgba(255,255,255,.35);border-radius:6px;font-size:12px;background:rgba(255,255,255,.18);color:#fff;outline:none;font-weight:600">
+        <label style="font-size:12px;opacity:.85;font-weight:600">au</label>
+        <input type="date" id="kpi-to" style="padding:4px 8px;border:1px solid rgba(255,255,255,.35);border-radius:6px;font-size:12px;background:rgba(255,255,255,.18);color:#fff;outline:none;font-weight:600">
+        <button onclick="loadKPI()" style="padding:5px 14px;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.45);border-radius:7px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">↺ Actualiser</button>
       </div>
     </div>
-    <!-- KPI Cards row — défilement horizontal si petite fenêtre -->
-    <div id="kpi-cards" style="display:flex;flex-shrink:0;border-bottom:1px solid #e2e8f0;background:#fff;overflow-x:auto"></div>
-    <!-- Corps principal sans scroll : grille fixe -->
-    <div style="flex:1;overflow:hidden;display:grid;grid-template-columns:1fr 240px;grid-template-rows:1fr;gap:0;min-height:0">
-      <!-- Colonne gauche : 3 courbes + pareto -->
-      <div style="display:grid;grid-template-rows:1fr 1fr 1fr;gap:0;overflow:hidden;border-right:1px solid #e2e8f0;min-height:0">
-        <!-- Courbe TRS -->
-        <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px;border-bottom:1px solid #f1f5f9;background:#fff">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.6px;margin-bottom:3px;flex-shrink:0">Évolution TRS (%)</div>
-          <div id="kpi-trs-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+    <!-- KPI Cards row -->
+    <div id="kpi-cards" style="display:flex;flex-shrink:0;border-bottom:2px solid #e2e8f0;background:#fff;overflow-x:auto;min-height:68px"></div>
+    <!-- 3 courbes côte à côte (compact) -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;height:128px;flex-shrink:0;background:#fff;border-bottom:1px solid #e2e8f0">
+      <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px;border-right:1px solid #f1f5f9">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📈 TRS par poste (%)</div>
+        <div id="kpi-trs-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px;border-right:1px solid #f1f5f9;background:#fafafa">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#dc2626;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">🛑 Arrêts cumulés (min)</div>
+        <div id="kpi-arr-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6366f1;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📦 Nombre d'OF par poste</div>
+        <div id="kpi-of-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+      </div>
+    </div>
+    <!-- Corps principal -->
+    <div style="flex:1;overflow:hidden;display:grid;grid-template-columns:1fr 210px;min-height:0">
+      <!-- Gauche : cadence chart + sessions -->
+      <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #e2e8f0;min-height:0">
+        <div style="flex:1;min-height:0;padding:8px 12px;overflow:hidden;display:flex;flex-direction:column;background:#fff">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:4px;flex-shrink:0">⚡ Évolution cadence (unités/h)</div>
+          <div id="kpi-cad-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
-        <!-- Courbe Arrêts -->
-        <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px;border-bottom:1px solid #f1f5f9;background:#fafafa">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.6px;margin-bottom:3px;flex-shrink:0">Évolution Arrêts (min)</div>
-          <div id="kpi-arr-chart" style="flex:1;min-height:0;overflow:hidden"></div>
-        </div>
-        <!-- Courbe Nb OF -->
-        <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px;background:#fff">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.6px;margin-bottom:3px;flex-shrink:0">Évolution Nb OF</div>
-          <div id="kpi-of-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+        <div style="flex-shrink:0;border-top:1px solid #e2e8f0;background:#f8fafc;max-height:190px;overflow-y:auto">
+          <div style="padding:5px 12px;font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;background:#fff;position:sticky;top:0">📋 Derniers postes enregistrés</div>
+          <div id="kpi-sess-list"></div>
         </div>
       </div>
-      <!-- Colonne droite : donut + pareto + sessions -->
+      <!-- Droite : donut + pareto -->
       <div style="display:flex;flex-direction:column;overflow:hidden;background:#fff;min-height:0">
-        <!-- Donut -->
-        <div style="padding:8px 10px;border-bottom:1px solid #f1f5f9;flex-shrink:0;display:flex;flex-direction:column;align-items:center">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.6px;margin-bottom:4px;align-self:flex-start">Prod vs Arrêts</div>
+        <div style="padding:7px 10px;border-bottom:1px solid #f1f5f9;flex-shrink:0;display:flex;flex-direction:column;align-items:center">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.5px;margin-bottom:3px;align-self:flex-start">Prod vs Arrêts</div>
           <div style="display:flex;align-items:center;gap:8px">
-            <svg id="kpi-donut" viewBox="0 0 100 100" style="width:90px;height:90px;flex-shrink:0"></svg>
+            <svg id="kpi-donut" viewBox="0 0 100 100" style="width:78px;height:78px;flex-shrink:0"></svg>
             <div id="kpi-donut-legend" style="display:flex;flex-direction:column;gap:3px;font-size:10px"></div>
           </div>
         </div>
-        <!-- Pareto -->
-        <div style="flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:0;min-height:0">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.6px;margin-bottom:6px;flex-shrink:0">Pareto arrêts</div>
+        <div style="flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;min-height:0">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.5px;margin-bottom:6px;flex-shrink:0">Pareto arrêts</div>
           <div id="kpi-pareto-new" style="display:flex;flex-direction:column;gap:5px"></div>
         </div>
       </div>
@@ -5051,8 +5111,10 @@ async function loadMainDecl() {
     const qty=isProd?esc(String(r.qte_fab||'')):esc(r.duree||'');
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
     const cmt=esc(r.comment||'');
+    const fibre=r.fibre||'';const fibreShort=esc(fibre.slice(0,9));
     return `<tr class="${isProd?'row-prod':'row-evt'}">
       <td>${tag}</td><td style="font-weight:600">${esc(r.of||'')}</td>
+      <td style="font-size:10px;color:#6366f1;font-weight:600;cursor:${fibre?'pointer':''}" title="${esc(fibre)}" onclick="${fibre?'showFibre(\''+esc(fibre)+'\')':''}">${fibreShort}${fibre.length>9?'…':''}</td>
       <td style="font-size:10px">${esc(r.date||'')}</td><td style="font-size:10px">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
       <td style="font-size:11px">${details}</td><td style="font-size:11px">${qty}</td><td>${info}</td>
@@ -5423,7 +5485,7 @@ async function psConfirmModifyModel(){
     if(!_cfgModels[modelIdx].jours[todayKey])_cfgModels[modelIdx].jours[todayKey]={};
     _cfgModels[modelIdx].jours[todayKey].debut=newDebut;
     _cfgModels[modelIdx].jours[todayKey].fin=newFin;
-    await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,modeles_horaires:_cfgModels})});
+    await fetch('/api/update_model_today',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:poste,day_key:todayKey,debut:newDebut,fin:newFin})});
   }
   // Rétrodater l'OF au nouvel horaire de début
   const today=new Date();
@@ -5459,7 +5521,7 @@ async function ipConfirmModifyModel(){
     if(!_cfgModels[mi].jours[dk])_cfgModels[mi].jours[dk]={};
     _cfgModels[mi].jours[dk].debut=newDebut;
     _cfgModels[mi].jours[dk].fin=newFin;
-    await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,modeles_horaires:_cfgModels})});
+    await fetch('/api/update_model_today',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:ST.poste||'',day_key:dk,debut:newDebut,fin:newFin})});
   }
   document.getElementById('ip-model-form').style.display='none';
   // Recalculer le gap selon le contexte (fin de poste ou inter-OF)
@@ -6475,9 +6537,11 @@ function _showEcartModal(fpd){
     '<span style="color:var(--gray)">Arrêts déclarés :</span><b>'+stop_min+' min</b>'+
     '<span style="color:#dc2626;font-weight:700">Écart :</span><b style="color:#dc2626;font-weight:900">'+ecart_min+' min</b>'+
     '</div>';
-  // Datalist for stop types
-  const dl=document.getElementById('ecart-stop-opts');
-  if(dl){dl.innerHTML=(_interposteLbls||[]).map(l=>`<option value="${esc(l)}">`).join('');}
+  // Prefill plage horaire du poste
+  const pdebut=document.getElementById('ecart-plage-debut');
+  const pfin=document.getElementById('ecart-plage-fin');
+  if(pdebut)pdebut.value=fpd.model_debut||'';
+  if(pfin)pfin.value=fpd.model_fin||'';
   // Gap intervals
   const gapsEl=document.getElementById('ecart-gaps');
   if(gapsEl){
@@ -6500,8 +6564,8 @@ function _showEcartModal(fpd){
                 '<input type="time" id="ecart-gap-debut-'+gi+'" value="'+esc(g.debut)+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;width:90px"></div>'+
               '<div><label style="font-size:10px;color:var(--gray);display:block;margin-bottom:2px">Fin</label>'+
                 '<input type="time" id="ecart-gap-fin-'+gi+'" value="'+esc(g.fin)+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;width:90px"></div>'+
-              '<div style="flex:1;min-width:140px"><label style="font-size:10px;color:var(--gray);display:block;margin-bottom:2px">Type d\'arrêt</label>'+
-                '<input id="ecart-gap-type-'+gi+'" placeholder="Ex : Pause, Nettoyage…" list="ecart-stop-opts" style="width:100%;padding:4px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px"></div>'+
+              '<div style="flex:1;min-width:160px"><label style="font-size:10px;color:var(--gray);display:block;margin-bottom:2px">Type d\'arrêt</label>'+
+                _buildEcartStopSelect(gi)+'</div>'+
               '<button class="btn btn-prim" style="font-size:11px;padding:5px 12px" onclick="saveEcartGapStop('+gi+')">✓ Ajouter</button>'+
             '</div>'+
           '</div>';
@@ -6549,6 +6613,80 @@ async function saveEcartGapStop(gi){
   } else {
     toast('Erreur : '+(d.error||'?'),'err');
   }
+}
+
+function _buildEcartStopSelect(gi){
+  // Rassemble tous les types d'arrêt depuis paramètres
+  const pauses=new Set(['Pause']);
+  const nettoyage=new Set(['Nettoyage court','Nettoyage long','Nettoyage très long']);
+  const pannes=new Set();
+  const organisation=new Set();
+  const interof=new Set();
+  (_evtsList||[]).forEach(e=>{
+    const lbl=e.label||'';if(!lbl)return;
+    if(e.cat==='pb'||e.cat==='ratt')pannes.add(lbl);
+    else if(e.cat==='nettoyage')nettoyage.add(lbl);
+    else if(e.cat==='organisation')organisation.add(lbl);
+    else if(e.cat==='autre')organisation.add(lbl);
+  });
+  (_interposteLbls||[]).forEach(lbl=>{if(lbl)interof.add(lbl);});
+  const mkGrp=(name,items)=>{
+    const arr=[...items];if(!arr.length)return'';
+    return`<optgroup label="${esc(name)}">`+arr.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`).join('')+'</optgroup>';
+  };
+  const html='<option value="">-- Choisir un type d\'arrêt --</option>'+
+    mkGrp('⏸ Pauses',pauses)+
+    mkGrp('🧹 Nettoyage',nettoyage)+
+    mkGrp('🔴 Pannes / Rattrapages',pannes)+
+    mkGrp('🔵 Organisation',organisation)+
+    mkGrp('🔄 Entre 2 OFs',interof)+
+    '<optgroup label="⚫ Autre"><option value="Autre (à justifier)">Autre (à justifier)</option></optgroup>';
+  return`<select id="ecart-gap-type-${gi}" onchange="ecartCheckAutreType(this,${gi})" style="width:100%;padding:4px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;background:#fff">${html}</select>`;
+}
+
+let _ecartGapAutreIdx=-1;
+function ecartCheckAutreType(sel,gi){
+  if(sel.value==='Autre (à justifier)'){
+    _ecartGapAutreIdx=gi;
+    const inp=document.getElementById('ecart-autre-label');if(inp)inp.value='';
+    sel.value='';
+    openM('m-ecart-autre');
+  }
+}
+
+function confirmEcartAutre(){
+  const inp=document.getElementById('ecart-autre-label');
+  const lbl=(inp&&inp.value||'').trim();
+  if(!lbl){toast('Saisir un libellé','err');return;}
+  const gi=_ecartGapAutreIdx;
+  const sel=document.getElementById('ecart-gap-type-'+gi);
+  if(sel){
+    let opt=[...sel.options].find(o=>o.value===lbl);
+    if(!opt){opt=document.createElement('option');opt.value=lbl;opt.textContent=lbl;sel.appendChild(opt);}
+    sel.value=lbl;
+  }
+  closeM('m-ecart-autre');
+}
+
+async function saveEcartPlageHoraire(){
+  const debut=(document.getElementById('ecart-plage-debut')||{}).value||'';
+  const fin=(document.getElementById('ecart-plage-fin')||{}).value||'';
+  if(!debut||!fin){toast('Renseigner début et fin','err');return;}
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=DAY_KEYS[new Date().getDay()];
+  const poste=ST.poste||'';
+  if(!poste){toast('Poste non défini','err');return;}
+  const mi=_cfgModels.findIndex(m=>m.nom===poste);
+  if(mi>=0){
+    if(!_cfgModels[mi].jours)_cfgModels[mi].jours={};
+    if(!_cfgModels[mi].jours[dk])_cfgModels[mi].jours[dk]={};
+    _cfgModels[mi].jours[dk].debut=debut;
+    _cfgModels[mi].jours[dk].fin=fin;
+  }
+  await fetch('/api/update_model_today',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:poste,day_key:dk,debut,fin})});
+  toast('Plage mise à jour','ok');
+  const fpd=await apiFetch('/api/fin_poste_data');
+  if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
 }
 
 async function skipEcartPoste(){
@@ -6918,6 +7056,39 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
   el.innerHTML=svg;
 }
 
+function _kpiBarChart(containerId,items,valueKey,colorFn,unit){
+  const el=document.getElementById(containerId);if(!el)return;
+  const rect=el.getBoundingClientRect();
+  const W=Math.max(rect.width||400,200);
+  const H=Math.max(rect.height||100,60);
+  if(!items.length){el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%"><text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="10" fill="#94a3b8">Aucune donnée</text></svg>`;return;}
+  const vals=items.map(it=>it[valueKey]||0);
+  const maxV=Math.max(...vals,1);
+  const padL=30,padR=8,padT=8,padB=46;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  const n=items.length;
+  const barW=Math.max(3,Math.min(30,gW/n-4));
+  let svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%">`;
+  [0,0.5,1].forEach(t=>{
+    const v=maxV*t;const y=padT+gH*(1-t);
+    svg+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1"/>`;
+    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="8" fill="#94a3b8">${Math.round(v)}${t>0&&unit?unit:''}</text>`;
+  });
+  items.forEach((it,i)=>{
+    const v=it[valueKey]||0;
+    const x=padL+(i/n)*gW+(gW/n-barW)/2;
+    const bH=v>0?(v/maxV)*gH:0;
+    const y=padT+gH-bH;
+    const col=colorFn?colorFn(it):'#f59e0b';
+    svg+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW}" height="${Math.max(0,bH).toFixed(1)}" fill="${col}" rx="2" opacity=".85"/>`;
+    if(v>0)svg+=`<text x="${(x+barW/2).toFixed(1)}" y="${(y-2).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${col}">${v%1?v.toFixed(1):v}</text>`;
+    const lbl=(it._xLabel||'').split('\n')[0];
+    svg+=`<text transform="translate(${(x+barW/2).toFixed(1)},${(H-padB+4).toFixed(1)}) rotate(35)" font-size="7" fill="#64748b" dominant-baseline="hanging">${esc(lbl)}</text>`;
+  });
+  svg+='</svg>';
+  el.innerHTML=svg;
+}
+
 function _kpiInitDates(){
   const fi=document.getElementById('kpi-from'),ti=document.getElementById('kpi-to');
   if(!fi||!ti)return;
@@ -6982,29 +7153,53 @@ async function loadKPI(){
   // ── KPI Cards ──
   const cards=document.getElementById('kpi-cards');
   if(cards){
-    const mkCard=(lbl,val,col)=>`<div style="padding:8px 10px;border-right:1px solid #f1f5f9;text-align:center;min-width:90px;flex-shrink:0">
-      <div style="font-size:17px;font-weight:900;color:${col};line-height:1">${val}</div>
-      <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;margin-top:3px;line-height:1.2">${lbl}</div>
+    const avgStopMin=nbSess?Math.round(totalStopMin/nbSess):0;
+    const mkCard=(lbl,val,col,sub)=>`<div style="padding:10px 14px;border-right:1px solid #f1f5f9;text-align:center;min-width:100px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center">
+      <div style="font-size:22px;font-weight:900;color:${col};line-height:1;letter-spacing:-.5px">${val}</div>
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;margin-top:4px;line-height:1.3">${lbl}</div>
+      ${sub?`<div style="font-size:9px;color:#64748b;margin-top:2px">${sub}</div>`:''}
     </div>`;
     cards.innerHTML=
-      mkCard('TRS moyen',avgTRS>=0?avgTRS.toFixed(1)+'%':'—',_kpiTrsColor(avgTRS))+
-      mkCard('Nb OF total',totalOF,'#6366f1')+
-      mkCard('OF moy/poste',avgOFperSess,'#818cf8')+
-      mkCard('Nb postes',nbSess,'#0891b2')+
-      mkCard('Pièces fab.',Math.round(totalQte),'#7c3aed')+
-      mkCard('Pièces moy/poste',avgQtePerSess,'#a78bfa')+
-      mkCard('Équiv. totale',totalEquiv.toFixed(1),'#16a34a')+
-      mkCard('Équiv. moy/poste',avgEquivPerSess.toFixed(1),'#4ade80')+
-      mkCard('Cadence moy.',avgCadH>0?avgCadH+'/h':'—','#f59e0b');
+      mkCard('TRS moyen',avgTRS>=0?avgTRS.toFixed(1)+'%':'—',_kpiTrsColor(avgTRS),nbSess?nbSess+' postes':'')+
+      mkCard('Nb OF total',totalOF,'#6366f1','moy '+avgOFperSess+'/poste')+
+      mkCard('Nb postes',nbSess,'#0891b2','')+
+      mkCard('Pièces fabriquées',Math.round(totalQte),'#7c3aed',avgQtePerSess+'/poste')+
+      mkCard('Équiv. totale',totalEquiv.toFixed(1),'#16a34a',avgEquivPerSess.toFixed(1)+'/poste')+
+      mkCard('Cadence moy.',avgCadH>0?avgCadH+'/h':'—','#f59e0b','')+
+      mkCard('Arrêts totaux',totalStopMin+'min','#dc2626',avgStopMin+'min/poste')+
+      mkCard('Prod totale',Math.round(totalProdS/60)+'min','#0891b2','');
   }
 
-  // ── 3 courbes ──
+  // ── 3 courbes (compact, côte à côte) ──
   const trsItems=sessArr.filter(s=>s.trs>=0);
   _kpiLineChart('kpi-trs-chart',trsItems,'trs',it=>_kpiTrsColor(it.trs),'%',0,100);
-  const arrItems=sessArr;
-  _kpiLineChart('kpi-arr-chart',arrItems,'stop_min',()=>'#dc2626','min');
-  const ofItems=sessArr;
-  _kpiLineChart('kpi-of-chart',ofItems,'nb_of',()=>'#6366f1','');
+  _kpiLineChart('kpi-arr-chart',sessArr,'stop_min',()=>'#dc2626','min');
+  _kpiLineChart('kpi-of-chart',sessArr,'nb_of',()=>'#6366f1','');
+
+  // ── Cadence bar chart ──
+  _kpiBarChart('kpi-cad-chart',sessArr,'cad',()=>'#f59e0b','/h');
+
+  // ── Sessions list ──
+  const sessEl=document.getElementById('kpi-sess-list');
+  if(sessEl){
+    const recent=sessArr.slice().reverse().slice(0,15);
+    if(!recent.length){
+      sessEl.innerHTML='<div style="padding:8px 12px;color:#94a3b8;font-size:11px">Aucune session dans cette période</div>';
+    } else {
+      sessEl.innerHTML=recent.map(s=>{
+        const tc=_kpiTrsColor(s.trs);
+        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 12px;border-bottom:1px solid #f1f5f9;font-size:11px">
+          <span style="font-weight:700;color:#1e293b;min-width:70px">${esc(s.date)}</span>
+          <span style="color:#475569;min-width:65px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.poste)}</span>
+          <span style="color:#94a3b8;min-width:65px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.pilot)}</span>
+          <span style="color:${tc};font-weight:800;min-width:44px;text-align:right">${s.trs>=0?s.trs.toFixed(1)+'%':'—'}</span>
+          <span style="color:#6366f1;min-width:32px;text-align:right">${s.nb_of} OF</span>
+          <span style="color:#f59e0b;font-weight:700;min-width:46px;text-align:right">${s.cad>0?s.cad+'/h':'—'}</span>
+          <span style="color:#dc2626;min-width:36px;text-align:right">${s.stop_min}m⛔</span>
+        </div>`;
+      }).join('');
+    }
+  }
 
   // ── Donut Prod/Arrêts ──
   _kpiDrawDonut('kpi-donut','kpi-donut-legend',[
@@ -7028,7 +7223,7 @@ async function loadKPI(){
     else{
       const maxP=paretoArr[0][1];
       let cumul=0;
-      parEl.innerHTML=paretoArr.slice(0,10).map(([type,s])=>{
+      parEl.innerHTML=paretoArr.slice(0,12).map(([type,s])=>{
         const pct=Math.round(s/maxP*100);
         const min=Math.round(s/60);
         const pctTot=paretoTotal>0?Math.round(s/paretoTotal*100):0;
@@ -7036,16 +7231,46 @@ async function loadKPI(){
         const col=STOP_COL[stopCat[type]]||'#94a3b8';
         return `<div>
           <div style="display:flex;justify-content:space-between;font-size:10px;color:#374151;margin-bottom:2px">
-            <div style="display:flex;align-items:center;gap:3px;min-width:0"><div style="width:7px;height:7px;border-radius:1px;background:${col};flex-shrink:0"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">${esc(type)}</span></div>
+            <div style="display:flex;align-items:center;gap:3px;min-width:0"><div style="width:7px;height:7px;border-radius:1px;background:${col};flex-shrink:0"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px">${esc(type)}</span></div>
             <span style="white-space:nowrap;color:#6b7280;flex-shrink:0">${min}m <b style="color:#1e293b">${pctTot}%</b></span>
           </div>
-          <div style="background:#f1f5f9;border-radius:3px;height:10px;overflow:hidden">
+          <div style="background:#f1f5f9;border-radius:3px;height:9px;overflow:hidden">
             <div style="width:${pct}%;background:${col};height:100%;border-radius:3px"></div>
           </div>
         </div>`;
       }).join('');
     }
   }
+}
+
+// ── HISTORY ROW DETAIL ──
+function showHistRowDetail(key){
+  const r=window._rowMap&&window._rowMap[String(key)];
+  if(!r) return;
+  const isProd=r._rowType==='prod';
+  const chips=[];
+  if(r.of)chips.push(['OF',r.of,'']);
+  if(r.date)chips.push(['Date',r.date,'']);
+  if(r.poste)chips.push(['Poste',r.poste,'']);
+  if(r.pilote)chips.push(['Pilote',r.pilote,'']);
+  if(r.debut)chips.push(['Début',r.debut,'']);
+  if(r.fin)chips.push(['Fin',r.fin,'']);
+  if(r.taille)chips.push(['Taille',r.taille,'']);
+  if(r.qte_fab)chips.push(['Qté fab.',r.qte_fab,'']);
+  if(r.equiv)chips.push(['Équiv.',r.equiv,'']);
+  if(r.trs>0)chips.push(['TRS',r.trs.toFixed(1)+'%','color:#16a34a;font-weight:900']);
+  if(r.type&&!isProd)chips.push(['Type arrêt',r.type,'color:#dc2626']);
+  if(r.duree)chips.push(['Durée',r.duree,'']);
+  if(r.kit)chips.push(['Kit',r.kit,'']);
+  const chipsHtml=chips.map(([lbl,val,sty])=>`<div style="background:#f8fafc;border:1px solid var(--border);border-radius:7px;padding:6px 10px;text-align:center">
+    <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;margin-bottom:2px">${lbl}</div>
+    <div style="font-size:13px;font-weight:700;${sty}">${esc(String(val))}</div>
+  </div>`).join('');
+  document.getElementById('of-detail-content').innerHTML=`
+    <div style="font-size:20px;font-weight:900;color:var(--navy);margin-bottom:12px;font-family:monospace">${isProd?'🏭 ':' ⛔ '}${esc(r.of||r.type||'Ligne')}</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">${chipsHtml}</div>
+    ${r.comment?`<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;font-size:12px">💬 ${esc(r.comment)}</div>`:''}`;
+  openM('m-of-detail');
 }
 
 // ── HISTORY ──
@@ -7142,7 +7367,7 @@ async function loadHist(){
     if(da!==db) return db.localeCompare(da);
     return (b.debut||'').localeCompare(a.debut||'');
   });
-  hd.innerHTML='<th>Type</th><th>OF</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
+  hd.innerHTML='<th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
   if(!allRows.length){bd.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
   window._rowMap=window._rowMap||{};
   bd.innerHTML=allRows.map(r=>{
@@ -7157,8 +7382,10 @@ async function loadHist(){
     const qty=isProd?esc(String(r.qte_fab||'')):esc(r.duree||'');
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
     const cmt=esc(r.comment||'');
+    const fbrH=r.fibre||'';const fbrShH=esc(fbrH.slice(0,9));
     return `<tr class="${isProd?'row-prod':'row-evt'}" data-hftype="${esc(hftype)}">
-      <td>${tag}</td><td style="font-weight:600">${esc(r.of||'')}</td>
+      <td>${tag}</td><td style="font-weight:700;color:#1e3a8a;text-decoration:underline;cursor:pointer" onclick="showHistRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||r.type||'—')}</td>
+      <td style="font-size:10px;color:#6366f1;font-weight:600;cursor:${fbrH?'pointer':''}" title="${esc(fbrH)}" onclick="${fbrH?'showFibre(\''+esc(fbrH)+'\')':''}">${fbrShH}${fbrH.length>9?'…':''}</td>
       <td style="font-size:10px">${esc(r.date||'')}</td><td style="font-size:10px">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
       <td style="font-size:11px">${details}</td><td style="font-size:11px">${qty}</td><td>${info}</td>
@@ -7512,8 +7739,10 @@ async function generateDashboard(){
     if(r&&r.ok) d=await r.json();
   }catch(e){}
   if(d&&d.ok){
-    if(st){st.textContent='✓ Dashboard généré : '+esc(d.path||'');st.style.color='var(--green)';}
+    if(st){st.textContent='✓ Dashboard prêt — cliquez pour ouvrir';st.style.color='var(--green)';}
     toast('Dashboard généré !','ok');
+    // Ouvrir via Flask (même origine, pas de CORS)
+    window.open('http://127.0.0.1:5001/dashboard','_blank');
   } else {
     const errMsg=d&&d.error?d.error:'Erreur inconnue — vérifiez que le fichier Excel est configuré dans les paramètres';
     if(st){st.textContent='✗ '+errMsg;st.style.color='var(--red)';}
@@ -7537,6 +7766,7 @@ async function apiFetch(url,retries=2){
     return r.ok?await r.json():null;
   }catch(e){return null;}
 }
+function showFibre(name){if(!name)return;toast('Fibre : '+name,'ok');}
 function fmtDur2(s){if(!s||s<0)return'0:00';const m=Math.floor(s/60),sec=Math.floor(s%60);return m+':'+String(sec).padStart(2,'0');}
 function fmtTRSv(v){return(v===null||v===undefined||isNaN(v)||v<0)?'--%':parseFloat(v).toFixed(1)+'%';}
 function fmtDur(s){if(!s||s<0)return'00:00:00';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);return[h,m,sec].map(x=>String(x).padStart(2,'0')).join(':');}
