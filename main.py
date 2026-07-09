@@ -4,12 +4,6 @@ from flask import Flask, request, jsonify, render_template_string
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Border, Side, PatternFill
 
-"""KPI-ORC v6.3 - Flask + pywebview"""
-import json, os, sys, datetime, threading, math, shutil, time, atexit, signal
-from flask import Flask, request, jsonify, render_template_string
-from openpyxl import load_workbook
-from openpyxl.styles import Alignment, Border, Side, PatternFill
-
 CONFIG_FILE  = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
 SESSION_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_session.json")
 PENDING_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_pending.json")
@@ -916,7 +910,6 @@ def toggle_hors_trs_excel(row_num, new_val):
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
 
-
 # ── Flask helpers ─────────────────────────────────────────────────────────────
 def _check_pw(pw):
     return str(pw or "") == str(cfg.get("supervisor_pw","1234"))
@@ -1163,6 +1156,21 @@ def api_inter_of_confirm():
         except: pass
     if _S["inter_of_s"] > 30 and start_dt and end_dt:
         write_changement_of(start_dt, end_dt, label=label or None, comment=comment)
+        # Mise à jour synchrone du cache pour éviter le race-condition fin-de-poste
+        # (write_changement_of écrit en background → _decl_cache pas encore rafraîchi)
+        global _decl_cache
+        shift_dt2 = _S.get("shift_start") or start_dt
+        _sd2 = shift_dt2.strftime("%d/%m/%Y")
+        _dur2_s = (end_dt - start_dt).total_seconds()
+        _cache_row = [
+            label or "Changement d'OF", "", start_dt.strftime("%d/%m/%Y"),
+            _S.get("poste",""), _S.get("last_of_pilot") or _S.get("pilot",""),
+            "","","","","","","","","","","",
+            start_dt.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"), fmt(_dur2_s),
+            "","","","","","","","","","","","","","","","",comment,
+            "","",_sd2,
+        ]
+        _decl_cache.append((-1, _cache_row))
     save_session()
     return jsonify({"ok":True})
 
@@ -1526,6 +1534,27 @@ def api_events_list():
         except: pass
     return jsonify(list(reversed(rows)))
 
+def _apply_model_overrides(models):
+    """Retourne une copie des modèles horaires avec les surcharges de session appliquées."""
+    overrides = _S.get("model_overrides", {})
+    if not overrides:
+        return models
+    import copy
+    result = copy.deepcopy(models)
+    day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
+    dk = day_map.get(datetime.date.today().weekday(), 'lun')
+    for m in result:
+        nom = m.get("nom","")
+        if nom in overrides and dk in overrides[nom]:
+            ov = overrides[nom][dk]
+            if "jours" not in m:
+                m["jours"] = {}
+            if dk not in m["jours"]:
+                m["jours"][dk] = {}
+            m["jours"][dk]["debut"] = ov.get("debut","")
+            m["jours"][dk]["fin"] = ov.get("fin","")
+    return result
+
 @flask_app.route('/api/config')
 def api_config():
     arrets_prevus = {
@@ -1546,7 +1575,7 @@ def api_config():
         "arrets_prevus": arrets_prevus,
         "db_path": cfg.get("db_path",""),
         "db_name": os.path.basename(cfg.get("db_path","")) if cfg.get("db_path") else "",
-        "modeles_horaires": cfg.get("modeles_horaires",[]),
+        "modeles_horaires": _apply_model_overrides(cfg.get("modeles_horaires",[])),
         "pilot_passwords": cfg.get("pilot_passwords",{}),
     })
 
@@ -2157,7 +2186,6 @@ def dashboard_view():
         return content, 200, {'Content-Type': 'text/html; charset=utf-8'}
     except Exception as e:
         return f"<html><body>Erreur lecture fichier: {e}</body></html>", 500
-
 
 # ── Dashboard HTML superviseur ─────────────────────────────────────────────────
 def generate_dashboard_html():
@@ -2909,14 +2937,11 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
           <button onclick="loadRapports()" style="font-size:11px;padding:3px 8px;background:none;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#64748b">↺</button>
         </div>
         <div id="rpt-list" style="flex:1;overflow-y:auto">
-          <div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Chargement…</div>
+          __RPT_LIST__
         </div>
       </div>
       <div id="rpt-detail" style="overflow-y:auto;flex:1;padding:0">
-        <div style="padding:60px;text-align:center;color:#94a3b8">
-          <div style="font-size:40px;margin-bottom:12px">📋</div>
-          <div style="font-size:14px;font-weight:600">Sélectionner un poste dans la liste</div>
-        </div>
+        __RPT_DET__
       </div>
     </div>
   </div><!-- /tab-rapports -->
@@ -3059,169 +3084,207 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         _trs_of3 = round(_teq3/(prod_ref*_ts3/28800)*100,1) if prod_ref>0 and _ts3>0 and _teq3>0 else -1
         _rpt_key3 = f"{_s_r['date']}|{_s_r['pilot']}|{_s_r['poste']}"
         _embedded_reports_dict[_rpt_key3] = {"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"prod_rows":_pr3,"evt_rows":_er3,"trs_shift":_trs_sh3,"trs":_trs_of3,"tot_equiv":round(_teq3,1),"tot_s":round(_ts3,0),"stop_s":round(_sts3,0),"nb_of":len(_pr3),"model_debut":_mdeb3 or "","model_fin":_mfin3 or "","actual_debut":_acd3,"actual_fin":_acf3,"ecart_s":round(_ecart3,0)}
-    _emb_sess_json = _json_rpt.dumps(_embedded_sessions_list, ensure_ascii=True, default=str)
-    _emb_rpt_json = _json_rpt.dumps(_embedded_reports_dict, ensure_ascii=True, default=str)
+    # --- STATIC RAPPORTS HTML GENERATION ---
+    def _resc(s):
+        return str(s or '').replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;')
 
-    # Inject rapports JS
-    _rapports_js = """
-<script>
-var _EMBEDDED_SESSIONS=""" + _emb_sess_json + """;
-var _EMBEDDED_REPORTS=""" + _emb_rpt_json + """;
-function _dashEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function _dashFmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}""" + r"""
-function _dashDrawPie(svgId,segments){
-  var svg=document.getElementById(svgId);if(!svg)return;
-  var total=segments.reduce(function(a,s){return a+s.value;},0);
-  if(total<=0){svg.innerHTML='<text x="65" y="60" text-anchor="middle" font-size="9" fill="#94a3b8">Pas de données</text>';return;}
-  var cx=65,cy=57,r=44,ir=24,html='',startAngle=-Math.PI/2;
-  segments.forEach(function(seg){
-    if(seg.value<=0)return;
-    var angle=(seg.value/total)*2*Math.PI;if(angle<0.001)return;
-    var endAngle=startAngle+angle,large=angle>Math.PI?1:0;
-    var x1=(cx+r*Math.cos(startAngle)).toFixed(2),y1=(cy+r*Math.sin(startAngle)).toFixed(2);
-    var x2=(cx+r*Math.cos(endAngle)).toFixed(2),y2=(cy+r*Math.sin(endAngle)).toFixed(2);
-    var ix1=(cx+ir*Math.cos(startAngle)).toFixed(2),iy1=(cy+ir*Math.sin(startAngle)).toFixed(2);
-    var ix2=(cx+ir*Math.cos(endAngle)).toFixed(2),iy2=(cy+ir*Math.sin(endAngle)).toFixed(2);
-    html+='<path d="M'+x1+','+y1+' A'+r+','+r+' 0 '+large+',1 '+x2+','+y2+' L'+ix2+','+iy2+' A'+ir+','+ir+' 0 '+large+',0 '+ix1+','+iy1+' Z" fill="'+seg.color+'"/>';
-    startAngle=endAngle;
-  });
-  var m=segments[0],mp=total>0?Math.round(m.value/total*100):0;
-  html+='<text x="'+cx+'" y="'+(cy+5)+'" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e">'+mp+'%</text>';
-  html+='<text x="'+cx+'" y="'+(cy+15)+'" text-anchor="middle" font-size="7" fill="#64748b">'+_dashEsc(m.label)+'</text>';
-  var lx=0;segments.filter(function(s){return s.value>0;}).forEach(function(s){
-    var p=Math.round(s.value/total*100);
-    html+='<rect x="'+lx+'" y="108" width="7" height="7" fill="'+s.color+'" rx="1"/>';
-    html+='<text x="'+(lx+9)+'" y="115" font-size="7" fill="#475569">'+_dashEsc(s.label)+' '+p+'%</text>';
-    lx+=65;
-  });
-  svg.innerHTML=html;
-}
-function _dashDrawGauge(arcId,pctId,trs){
-  var arc=document.getElementById(arcId),pct=document.getElementById(pctId);if(!arc||!pct)return;
-  var pArc=132,v=Math.max(0,Math.min(100,trs||0)),dash=(v/100)*pArc;
-  var col=v>=90?'#16a34a':v>=75?'#d97706':'#dc2626';
-  arc.setAttribute('stroke-dasharray',dash.toFixed(1)+','+pArc);arc.setAttribute('stroke',col);
-  pct.textContent=_dashFmtTRS(trs);pct.setAttribute('fill',col);
-}
-function loadRapports(){
-  var listEl=document.getElementById('rpt-list');
-  if(!listEl)return;
-  var sessions=_EMBEDDED_SESSIONS||[];
-  if(!sessions.length){
-    listEl.innerHTML='<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Aucun poste disponible</div>';
-    return;
-  }
-  listEl.innerHTML=sessions.map(function(s,i){
-    var trsStr=s.trs>=0?s.trs.toFixed(1)+'%':'—';
-    var trsCol=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
-    return '<div class="rpt-item" id="rpt-item-'+i+'" onclick="loadSessionReport(\''+_dashEsc(s.date)+'\',\''+_dashEsc(s.pilot||\'\')+'\',\''+_dashEsc(s.poste||\'\')+'\',\'rpt-item-'+i+'\')" style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s"><div style="font-size:12px;font-weight:800;color:#1e3a8a">'+_dashEsc(s.date)+' — '+_dashEsc(s.poste||'')+'</div><div style="font-size:11px;color:#64748b;margin-top:2px">'+_dashEsc(s.pilot||'?')+' | '+s.nb_of+' OF | Éq. '+s.tot_equiv+'</div><div style="font-size:16px;font-weight:900;color:'+trsCol+';margin-top:2px">'+trsStr+'</div></div>';
-  }).join('');
-}
-function loadSessionReport(date,pilot,poste,itemId){
+    def _svg_gauge_static(trs):
+        v = max(0.0, min(100.0, float(trs) if (trs is not None and trs >= 0) else 0.0))
+        dash = (v / 100.0) * 132
+        col = '#16a34a' if v >= 90 else '#d97706' if v >= 75 else '#dc2626'
+        trs_str = f'{trs:.1f}%' if (trs is not None and trs >= 0) else '--%'
+        return (
+            f'<svg width="110" height="72" viewBox="0 0 110 72">'
+            f'<circle cx="55" cy="54" r="38" fill="none" stroke="#e2e8f0" stroke-width="11"'
+            f' stroke-dasharray="119,200" stroke-linecap="round" transform="rotate(134 55 54)"/>'
+            f'<circle cx="55" cy="54" r="38" fill="none" stroke="{col}" stroke-width="11"'
+            f' stroke-dasharray="{dash:.1f},200" stroke-linecap="round" transform="rotate(134 55 54)"/>'
+            f'<text x="55" y="58" text-anchor="middle" font-size="14" font-weight="900" fill="{col}">{_resc(trs_str)}</text>'
+            f'<text x="55" y="69" text-anchor="middle" font-size="8" fill="#64748b">TRS</text>'
+            f'</svg>'
+        )
+
+    def _svg_pie_static(prod_min, stop_min, total_min):
+        autre = max(0.0, total_min - prod_min - stop_min)
+        segs = [(prod_min, '#16a34a', 'Prod'), (stop_min, '#dc2626', 'Arrêts'), (autre, '#94a3b8', 'Autre')]
+        total = sum(s[0] for s in segs)
+        if total <= 0:
+            return '<svg width="130" height="120" viewBox="0 0 130 120"><text x="65" y="60" text-anchor="middle" font-size="9" fill="#94a3b8">Pas de données</text></svg>'
+        cx, cy, r, ir = 65.0, 57.0, 44.0, 24.0
+        parts = []
+        start = -math.pi / 2
+        for val, color, label in segs:
+            if val <= 0: continue
+            angle = (val / total) * 2 * math.pi
+            if angle < 0.001: continue
+            end = start + angle
+            large = 1 if angle > math.pi else 0
+            x1 = cx + r * math.cos(start); y1 = cy + r * math.sin(start)
+            x2 = cx + r * math.cos(end);   y2 = cy + r * math.sin(end)
+            ix1 = cx + ir * math.cos(start); iy1 = cy + ir * math.sin(start)
+            ix2 = cx + ir * math.cos(end);   iy2 = cy + ir * math.sin(end)
+            parts.append(f'<path d="M{x1:.2f},{y1:.2f} A{r:.0f},{r:.0f} 0 {large},1 {x2:.2f},{y2:.2f} L{ix2:.2f},{iy2:.2f} A{ir:.0f},{ir:.0f} 0 {large},0 {ix1:.2f},{iy1:.2f} Z" fill="{color}"/>')
+            start = end
+        prod_pct = round(prod_min / total * 100) if total > 0 else 0
+        parts.append(f'<text x="65" y="62" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e">{prod_pct}%</text>')
+        parts.append(f'<text x="65" y="72" text-anchor="middle" font-size="7" fill="#64748b">Prod</text>')
+        lx = 0
+        for val, color, label in segs:
+            if val <= 0: continue
+            p = round(val / total * 100)
+            parts.append(f'<rect x="{lx}" y="108" width="7" height="7" fill="{color}" rx="1"/>')
+            parts.append(f'<text x="{lx+9}" y="115" font-size="7" fill="#475569">{_resc(label)} {p}%</text>')
+            lx += 65
+        return f'<svg width="130" height="120" viewBox="0 0 130 120">{"".join(parts)}</svg>'
+
+    def _render_rpt_panel(idx, d, visible=False):
+        trs_s = d.get('trs_shift', -1) if (d.get('trs_shift') is not None and d.get('trs_shift', -1) >= 0) else d.get('trs', -1)
+        trs_col = '#16a34a' if trs_s >= 90 else '#d97706' if trs_s >= 70 else '#dc2626' if trs_s >= 0 else '#94a3b8'
+        trs_str = f'{trs_s:.1f}%' if trs_s >= 0 else '—'
+        trs_of = d.get('trs', -1)
+        trs_of_str = f'{trs_of:.1f}%' if trs_of >= 0 else '--'
+        stop_min = round((d.get('stop_s', 0) or 0) / 60)
+        prod_min = round((d.get('tot_s', 0) or 0) / 60)
+        total_min = prod_min + stop_min
+        ecart_mn = round((d.get('ecart_s', 0) or 0) / 60)
+        stop_map = {}
+        for _er in (d.get('evt_rows') or []):
+            k = _er.get('type') or 'Inconnu'
+            _dur = (_er.get('duree') or '')
+            _p2 = (_dur + ':00:00').split(':')
+            try: _s2 = int(_p2[0] or 0)*3600 + int(_p2[1] or 0)*60 + int(_p2[2] or 0)
+            except: _s2 = 0
+            stop_map[k] = stop_map.get(k, 0) + _s2 / 60
+        stop_arr = sorted(stop_map.items(), key=lambda x: -x[1])
+        max_stop = stop_arr[0][1] if stop_arr else 1.0
+        pareto_h = ''.join(
+            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">'
+            f'<div style="font-size:10px;width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{_resc(e[0])}</div>'
+            f'<div style="flex:1;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden">'
+            f'<div style="height:100%;background:#dc2626;border-radius:4px;width:{round(e[1]/max_stop*100) if max_stop>0 else 0}%;opacity:.8"></div></div>'
+            f'<div style="font-size:10px;font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">{round(e[1])}mn</div></div>'
+            for e in stop_arr
+        ) if stop_arr else '<div style="color:#64748b;font-size:12px">Aucun arrêt</div>'
+        prod_h = ''
+        for _pr in (d.get('prod_rows') or []):
+            _to = _pr.get('trs', -1)
+            _tc = '#16a34a' if _to >= 90 else '#d97706' if _to >= 70 else '#dc2626' if _to >= 0 else '#94a3b8'
+            _ts = f'{_to:.1f}%' if _to >= 0 else '—'
+            prod_h += (
+                f'<tr style="border-bottom:1px solid #e2e8f0">'
+                f'<td style="padding:4px 6px;font-weight:700;color:#1e3a8a">{_resc(_pr.get("of",""))}</td>'
+                f'<td style="padding:4px 6px;font-size:11px">{_resc(_pr.get("taille",""))} {_resc(_pr.get("type_prod",""))}</td>'
+                f'<td style="padding:4px 6px;text-align:center">{"✓" if str(_pr.get("kit","")).lower()=="oui" else ""}</td>'
+                f'<td style="padding:4px 6px">{_resc(_pr.get("qte_fab",""))}</td>'
+                f'<td style="padding:4px 6px;color:#0891b2;font-weight:700">{_resc(_pr.get("equiv",""))}</td>'
+                f'<td style="padding:4px 6px;white-space:nowrap">{_resc(_pr.get("debut",""))} → {_resc(_pr.get("fin",""))}</td>'
+                f'<td style="padding:4px 6px;font-weight:800;color:{_tc}">{_ts}</td>'
+                f'<td style="padding:4px 6px;font-size:10px;color:#64748b">{_resc(_pr.get("comment",""))}</td>'
+                f'</tr>'
+            )
+        if not prod_h:
+            prod_h = '<tr><td colspan="8" style="padding:8px;text-align:center;color:#94a3b8">Aucune production</td></tr>'
+        evts_h = ''
+        for _ev in (d.get('evt_rows') or []):
+            evts_h += (
+                f'<tr style="border-bottom:1px solid #e2e8f0">'
+                f'<td style="padding:3px 5px;font-weight:600">{_resc(_ev.get("type",""))}</td>'
+                f'<td style="padding:3px 5px;color:#0369a1">{_resc(_ev.get("of","—"))}</td>'
+                f'<td style="padding:3px 5px;white-space:nowrap;color:#64748b">{_resc(_ev.get("debut",""))} → {_resc(_ev.get("fin",""))}</td>'
+                f'<td style="padding:3px 5px;font-weight:700">{_resc(_ev.get("duree",""))}</td>'
+                f'<td style="padding:3px 5px;color:#64748b">{_resc(_ev.get("comment","—"))}</td>'
+                f'</tr>'
+            )
+        evts_section = (
+            f'<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">'
+            f'<th style="padding:3px 5px;text-align:left;font-weight:700;color:#64748b">Arrêt</th>'
+            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">OF</th>'
+            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Plage</th>'
+            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Durée</th>'
+            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Commentaire</th>'
+            f'</tr></thead><tbody>{evts_h}</tbody></table>'
+        ) if evts_h else '<div style="color:#64748b;font-size:12px">Aucun arrêt</div>'
+        plage_str = ''
+        if d.get('actual_debut') and d.get('actual_fin'):
+            plage_str = f' · {_resc(d.get("actual_debut",""))} → {_resc(d.get("actual_fin",""))}'
+        elif d.get('model_debut') and d.get('model_fin'):
+            plage_str = f' · Modèle : {_resc(d.get("model_debut",""))} → {_resc(d.get("model_fin",""))}'
+        ecart_div = (
+            f'<div class="fp-card" style="padding:7px;border:1.5px solid #f59e0b">'
+            f'<div class="fp-big" style="font-size:16px;color:#d97706">{ecart_mn} min</div>'
+            f'<div class="fp-lbl">Non déclaré</div></div>'
+        ) if ecart_mn > 0 else ''
+        disp = 'flex' if visible else 'none'
+        g_svg = _svg_gauge_static(trs_s)
+        p_svg = _svg_pie_static(prod_min, stop_min, total_min)
+        return (
+            f'<div class="rpt-det-panel" id="rpt-det-{idx}" style="display:{disp};flex-direction:column;overflow-y:auto">'
+            f'<div style="background:#1e3a8a;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
+            f'<div><div style="font-size:15px;font-weight:800">📋 Rapport — {_resc(d.get("poste",""))}</div>'
+            f'<div style="font-size:11px;opacity:.8">{_resc(d.get("pilot",""))} · {_resc(d.get("date",""))}{plage_str}</div></div>'
+            f'<div style="text-align:right"><div style="font-size:26px;font-weight:900;color:{trs_col}">{trs_str}</div>'
+            f'<div style="font-size:11px;opacity:.7">TRS Shift</div></div></div>'
+            f'<div style="display:flex;gap:12px;padding:10px 14px;background:#fff;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap">'
+            f'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">TRS Poste</div>{g_svg}</div>'
+            f'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">Répartition</div>{p_svg}</div>'
+            f'<div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:5px">'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:{trs_col}">{trs_str}</div><div class="fp-lbl">TRS Shift</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px">{trs_of_str}</div><div class="fp-lbl">TRS Prod</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0891b2">{(d.get("tot_equiv",0) or 0):.1f}</div><div class="fp-lbl">Équivalence</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#7c3aed">{d.get("nb_of",0)}</div><div class="fp-lbl">Nb OF</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#16a34a">{prod_min} min</div><div class="fp-lbl">Prod</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#dc2626">{stop_min} min</div><div class="fp-lbl">Arrêts</div></div>'
+            f'{ecart_div}'
+            f'</div></div>'
+            f'<div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Productions</div>'
+            f'<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#f8fafc">'
+            f'<th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>'
+            f'<th style="padding:4px 6px">Kit</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>'
+            f'<th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th>'
+            f'</tr></thead><tbody>{prod_h}</tbody></table></div>'
+            f'<div style="display:flex;flex-direction:column;gap:8px">'
+            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px">Pareto arrêts</div>{pareto_h}</div>'
+            f'<div class="rpt-card" style="padding:10px;flex:1"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Détail arrêts</div>{evts_section}</div>'
+            f'</div></div></div>'
+        )
+
+    _rpt_list_html = ''
+    _rpt_det_html = ''
+    if not _embedded_sessions_list:
+        _rpt_list_html = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Aucun poste disponible</div>'
+        _rpt_det_html = '<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:40px;margin-bottom:12px">📋</div><div style="font-size:14px;font-weight:600">Aucun rapport disponible</div></div>'
+    else:
+        for _ri, _sr in enumerate(_embedded_sessions_list):
+            _tv = _sr.get('trs', -1)
+            _ts2 = f'{_tv:.1f}%' if _tv >= 0 else '—'
+            _tc2 = '#16a34a' if _tv >= 90 else '#f59e0b' if _tv >= 70 else '#dc2626' if _tv >= 0 else '#94a3b8'
+            _sel_st = ' style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s;background:#eff6ff"' if _ri == 0 else ' style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s"'
+            _rpt_list_html += (
+                f'<div class="rpt-item" id="rpt-item-{_ri}" onclick="showRptPanel({_ri})"{_sel_st}>'
+                f'<div style="font-size:12px;font-weight:800;color:#1e3a8a">{_resc(_sr.get("date",""))} — {_resc(_sr.get("poste",""))}</div>'
+                f'<div style="font-size:11px;color:#64748b;margin-top:2px">{_resc(_sr.get("pilot","?"))} | {_sr.get("nb_of",0)} OF | Éq. {_sr.get("tot_equiv",0)}</div>'
+                f'<div style="font-size:16px;font-weight:900;color:{_tc2};margin-top:2px">{_ts2}</div>'
+                f'</div>'
+            )
+            _rk = f"{_sr['date']}|{_sr['pilot']}|{_sr['poste']}"
+            _rd = _embedded_reports_dict.get(_rk, _sr)
+            _rpt_det_html += _render_rpt_panel(_ri, _rd, visible=(_ri == 0))
+
+    # Inject rapports JS (minimal – all content is pre-rendered)
+    _rapports_js = """<script>
+function showRptPanel(idx){
+  document.querySelectorAll('.rpt-det-panel').forEach(function(el){el.style.display='none';});
   document.querySelectorAll('.rpt-item').forEach(function(el){el.style.background='';});
-  var sel=document.getElementById(itemId);if(sel)sel.style.background='#eff6ff';
-  var detailEl=document.getElementById('rpt-detail');
-  if(!detailEl)return;
-  var key=date+'|'+pilot+'|'+poste;
-  var d=(_EMBEDDED_REPORTS||{})[key];
-  if(!d){detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Rapport introuvable</div>';return;}
-  var trsS=d.trs_shift>=0?d.trs_shift:(d.trs>=0?d.trs:-1);
-  var trsCol=trsS>=90?'#16a34a':trsS>=70?'#f59e0b':trsS>=0?'#dc2626':'#94a3b8';
-  var stopMin=Math.round((d.stop_s||0)/60);
-  var prodMin=Math.round((d.tot_s||0)/60);
-  var totalMin=prodMin+stopMin;
-  var stopMap={};
-  (d.evt_rows||[]).forEach(function(r){
-    var k=r.type||'Inconnu';
-    if(!stopMap[k])stopMap[k]=0;
-    var p=r.duree?r.duree.split(':'):[0,0,0];
-    stopMap[k]+=(parseInt(p[0]||0)*3600+parseInt(p[1]||0)*60+parseInt(p[2]||0))/60;
-  });
-  var stopArr=Object.entries(stopMap).sort(function(a,b){return b[1]-a[1];});
-  var maxStopMin=stopArr.length?stopArr[0][1]:1;
-  var paretoHtml=stopArr.length?stopArr.map(function(e){
-    return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px"><div style="font-size:10px;width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_dashEsc(e[0])+'</div><div style="flex:1;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden"><div style="height:100%;background:#dc2626;border-radius:4px;width:'+Math.round(e[1]/maxStopMin*100)+'%;opacity:.8"></div></div><div style="font-size:10px;font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">'+Math.round(e[1])+'mn</div></div>';
-  }).join(''):'<div style="color:#64748b;font-size:12px">Aucun arrêt</div>';
-  var tlContent=(function(prodRows,evtRows,dateStr,modelDebut,modelFin){
-    var W=800,Y=4,H2=28,H=40;
-    var parts=dateStr.split('/');
-    var baseMs=parts.length===3?new Date(parts[2]+'-'+parts[1]+'-'+parts[0]).getTime():Date.now();
-    function hm2ms(hm){if(!hm)return null;var a=(hm+':00').split(':').map(Number);return baseMs+a[0]*3600000+a[1]*60000;}
-    var mdMs=hm2ms(modelDebut),mfMs=hm2ms(modelFin);
-    var allMs=[];
-    prodRows.forEach(function(r){if(r.debut)allMs.push(hm2ms(r.debut));if(r.fin)allMs.push(hm2ms(r.fin));});
-    evtRows.forEach(function(r){if(r.debut)allMs.push(hm2ms(r.debut));if(r.fin)allMs.push(hm2ms(r.fin));});
-    var validMs=allMs.filter(Boolean);
-    var tS=mdMs||(validMs.length?Math.min.apply(null,validMs):null);
-    var tE=mfMs||(validMs.length?Math.max.apply(null,validMs):null);
-    if(!tS||!tE||tE<=tS)return '<rect x="0" y="'+Y+'" width="'+W+'" height="'+H2+'" fill="#e2e8f0" rx="4"/>';
-    var span=tE-tS;
-    function toX(t){return Math.max(0,Math.min(W,(t-tS)/span*W));}
-    var html='<rect x="0" y="'+Y+'" width="'+W+'" height="'+H2+'" fill="#e2e8f0" rx="4"/>';
-    prodRows.forEach(function(r){
-      var t1=hm2ms(r.debut),t2=hm2ms(r.fin);if(!t1)return;
-      var x1=toX(t1),x2=toX(t2||tE);
-      if(x2>x1)html+='<rect x="'+x1+'" y="'+Y+'" width="'+(x2-x1)+'" height="'+H2+'" fill="#bbf7d0" rx="3"/>';
-    });
-    evtRows.forEach(function(r){
-      var t1=hm2ms(r.debut),t2=hm2ms(r.fin);if(!t1)return;
-      var x1=toX(t1),x2=toX(t2||t1+1800000);
-      if(x2>x1)html+='<rect x="'+x1+'" y="'+Y+'" width="'+(x2-x1)+'" height="'+H2+'" fill="#dc2626" rx="2" opacity=".75"/>';
-    });
-    function fmt(ms){var dd=new Date(ms);return String(dd.getHours()).padStart(2,'0')+':'+String(dd.getMinutes()).padStart(2,'0');}
-    var tickT=Math.ceil(tS/3600000)*3600000;
-    while(tickT<tE){
-      var tx=toX(tickT);var hr=new Date(tickT).getHours();
-      html+='<line x1="'+tx+'" y1="'+Y+'" x2="'+tx+'" y2="'+(Y+H2)+'" stroke="rgba(255,255,255,.4)" stroke-width="1"/>';
-      html+='<text x="'+(tx+2)+'" y="'+(Y+H2-3)+'" font-size="7" fill="rgba(255,255,255,.85)">'+String(hr).padStart(2,'0')+'h</text>';
-      tickT+=3600000;
-    }
-    html+='<text x="2" y="'+(H-1)+'" font-size="8" fill="#fff">'+fmt(tS)+'</text>';
-    html+='<text x="'+(W-30)+'" y="'+(H-1)+'" font-size="8" fill="#fff">'+fmt(tE)+'</text>';
-    return html;
-  })(d.prod_rows||[],d.evt_rows||[],date,d.actual_debut||d.model_debut,d.actual_fin||d.model_fin);
-  var prodsHtml=(d.prod_rows||[]).map(function(r){
-    var tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
-    var kitDisp=(r.kit||'').toLowerCase()==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
-    return '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:5px 8px;font-weight:700;color:#1e3a8a">'+_dashEsc(r.of||'')+'</td><td style="padding:5px 8px;font-size:11px">'+_dashEsc(r.taille||'')+' '+_dashEsc(r.type_prod||'')+'</td><td style="padding:5px 8px;text-align:center">'+kitDisp+'</td><td style="padding:5px 8px">'+_dashEsc(r.qte_fab||'')+'</td><td style="padding:5px 8px;color:#0891b2;font-weight:700">'+_dashEsc(r.equiv||'')+'</td><td style="padding:5px 8px">'+_dashEsc(r.debut||'')+' → '+_dashEsc(r.fin||'')+'</td><td style="padding:5px 8px;font-weight:800;color:'+tc+'">'+(r.trs>=0?r.trs.toFixed(1)+'%':'—')+'</td><td style="padding:5px 8px;font-size:10px;color:#64748b">'+_dashEsc(r.comment||'')+'</td></tr>';
-  }).join('');
-  var evtsRows=d.evt_rows||[];
-  var evtsHtml=evtsRows.length?('<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0"><th style="padding:3px 5px;text-align:left;font-weight:700;color:#64748b">Arrêt</th><th style="padding:3px 5px;font-weight:700;color:#64748b">OF</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Format</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Type</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Plage</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Durée</th><th style="padding:3px 5px;font-weight:700;color:#64748b">Commentaire</th></tr></thead><tbody>'+evtsRows.map(function(r){return '<tr style="border-bottom:1px solid #e2e8f0"><td style="padding:4px 5px;font-weight:600">'+_dashEsc(r.type||'')+'</td><td style="padding:4px 5px;color:#0369a1;font-weight:700">'+_dashEsc(r.of||'—')+'</td><td style="padding:4px 5px">'+_dashEsc(r.taille||'—')+'</td><td style="padding:4px 5px">'+_dashEsc(r.type_prod||'—')+'</td><td style="padding:4px 5px;white-space:nowrap;color:#64748b">'+_dashEsc(r.debut||'')+' → '+_dashEsc(r.fin||'')+'</td><td style="padding:4px 5px;font-weight:700">'+_dashEsc(r.duree||'')+'</td><td style="padding:4px 5px;color:#64748b">'+_dashEsc(r.comment||'—')+'</td></tr>';}).join('')+'</tbody></table>'):'<div style="color:#64748b;font-size:12px">Aucun arrêt</div>';
-  detailEl.innerHTML=
-    '<div style="background:#1e3a8a;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
-    +'<div><div style="font-size:15px;font-weight:800">📋 Rapport — '+_dashEsc(poste)+'</div><div style="font-size:11px;opacity:.8">'+_dashEsc(pilot)+' · '+_dashEsc(date)+((d.actual_debut&&d.actual_fin)?' · Plage déclarée : '+_dashEsc(d.actual_debut)+' → '+_dashEsc(d.actual_fin):(d.model_debut&&d.model_fin?' · Plage modèle : '+_dashEsc(d.model_debut)+' → '+_dashEsc(d.model_fin):''))+'</div></div>'
-    +'<div style="text-align:right"><div style="font-size:26px;font-weight:900;color:'+trsCol+'">'+_dashFmtTRS(trsS)+'</div><div style="font-size:11px;opacity:.7">TRS Shift</div></div></div>'
-    +'<div style="display:flex;gap:12px;padding:10px 14px;background:#fff;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap">'
-    +'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">TRS Poste</div>'
-    +'<svg id="rpt-gauge" viewBox="0 0 100 58" style="width:180px;display:block;margin:0 auto"><path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/><path id="rpt-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/><text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="rpt-gauge-pct">--%</text></svg></div>'
-    +'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">Répartition</div><svg id="rpt-pie" viewBox="0 0 130 115" style="width:170px;height:150px;display:block;margin:0 auto"></svg></div>'
-    +'<div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:5px">'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:'+trsCol+'">'+_dashFmtTRS(trsS)+'</div><div class="fp-lbl">TRS Shift</div></div>'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px">'+_dashFmtTRS(d.trs)+'</div><div class="fp-lbl">TRS Prod</div></div>'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0891b2">'+((d.tot_equiv||0).toFixed(1))+'</div><div class="fp-lbl">Équivalence</div></div>'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#7c3aed">'+(d.nb_of||0)+'</div><div class="fp-lbl">Nb OF</div></div>'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#16a34a">'+prodMin+' min</div><div class="fp-lbl">Prod</div></div>'
-    +'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#dc2626">'+stopMin+' min</div><div class="fp-lbl">Arrêts</div></div>'
-    +((d.ecart_s||0)>0?'<div class="fp-card" style="padding:7px;border:1.5px solid #f59e0b"><div class="fp-big" style="font-size:16px;color:#d97706">'+Math.round((d.ecart_s||0)/60)+' min</div><div class="fp-lbl">Non déclaré</div></div>':'')
-    +'</div></div>'
-    +'<div style="padding:5px 12px;background:#fff;border-bottom:1px solid #e2e8f0">'
-    +'<div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:3px">Timeline du poste</div>'
-    +'<svg viewBox="0 0 800 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block">'+tlContent+'</svg>'
-    +'<div style="display:flex;gap:10px;font-size:9px;color:#64748b;margin-top:4px"><span><i style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#dc2626;margin-right:3px"></i>Arrêt</span><span><i style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#bbf7d0;border:1px solid #86efac;margin-right:3px"></i>Prod</span></div></div>'
-    +'<div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
-    +'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Productions</div>'
-    +'<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#f8fafc"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th><th style="padding:4px 6px">Kit</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th><th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th></tr></thead><tbody>'
-    +(prodsHtml||'<tr><td colspan="8" style="padding:8px;text-align:center;color:#64748b">Aucune production</td></tr>')+'</tbody></table></div>'
-    +'<div style="display:flex;flex-direction:column;gap:8px">'
-    +'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px">Pareto des arrêts</div>'+paretoHtml+'</div>'
-    +'<div class="rpt-card" style="padding:10px;flex:1"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Détail arrêts</div>'+evtsHtml+'</div>'
-    +'</div></div>';
-  setTimeout(function(){
-    _dashDrawGauge('rpt-gauge-arc','rpt-gauge-pct',trsS>=0?trsS:0);
-    _dashDrawPie('rpt-pie',[{label:'Prod',value:prodMin,color:'#16a34a'},{label:'Arrêts',value:stopMin,color:'#dc2626'},{label:'Autre',value:Math.max(0,totalMin-prodMin-stopMin),color:'#94a3b8'}]);
-  },50);
+  var panel=document.getElementById('rpt-det-'+idx);
+  if(panel){panel.style.display='flex';}
+  var item=document.getElementById('rpt-item-'+idx);
+  if(item){item.style.background='#eff6ff';}
 }
+function loadRapports(){}
 </script>"""
+    html = html.replace('__RPT_LIST__', _rpt_list_html, 1)
+    html = html.replace('__RPT_DET__', _rpt_det_html, 1)
     html = html.replace('</body>', _rapports_js + '\n</body>', 1)
 
     try:
@@ -3230,7 +3293,6 @@ function loadSessionReport(date,pilot,poste,itemId){
         return html_path, None
     except Exception as e:
         return None, str(e)
-
 
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
@@ -3621,16 +3683,6 @@ select{cursor:default}
             <svg id="pie-poste-acc" viewBox="0 0 130 115" style="width:160px;height:auto;display:block;margin:0 auto"></svg>
           </div>
         </div>
-        <!-- Modèle horaire -->
-        <div style="border-top:1px solid #bae6fd;padding-top:5px;display:flex;align-items:center;gap:5px;flex-wrap:wrap">
-          <span style="font-size:10px;font-weight:700;color:#0369a1">Modèle :</span>
-          <span style="font-size:12px;font-weight:800;color:#0c4a6e" id="main-model-times">—</span>
-          <input type="time" id="main-model-debut" style="padding:2px 5px;border:1px solid #bae6fd;border-radius:4px;font-size:11px;color:#0c4a6e">
-          <span style="font-size:11px;color:#0369a1">→</span>
-          <input type="time" id="main-model-fin" style="padding:2px 5px;border:1px solid #bae6fd;border-radius:4px;font-size:11px;color:#0c4a6e">
-          <button onclick="saveMainModelHours()" style="font-size:10px;padding:2px 7px;background:#0369a1;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700">✓ Valider</button>
-          <span style="font-size:10px;color:#64748b" id="main-ref-calc"></span>
-        </div>
       </div>
 
       <!-- Poste précédent -->
@@ -3682,13 +3734,6 @@ select{cursor:default}
         <div class="pob-lbl">Poste</div>
         <div class="pob-val" style="font-size:16px" id="pob-poste">—</div>
       </div>
-      <div class="pob-item" style="flex-direction:column;align-items:flex-start;gap:2px">
-        <div class="pob-lbl">Modèle / Horaires</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <div class="pob-val" style="font-size:14px" id="pob-model">—</div>
-          <button onclick="openPobModelEdit()" style="font-size:10px;padding:2px 6px;background:none;border:1px solid #94a3b8;border-radius:4px;cursor:pointer;color:#64748b">✏</button>
-        </div>
-      </div>
       <div class="pob-item">
         <div class="pob-lbl">Départ OF</div>
         <div class="pob-val" style="font-size:16px;color:#fbbf24" id="pob-of-start">—</div>
@@ -3704,21 +3749,6 @@ select{cursor:default}
       <div class="pob-item trs">
         <div class="pob-lbl">TRS estimé</div>
         <div class="pob-val" id="pob-trs">—</div>
-      </div>
-    </div>
-    <!-- Modal edit horaires depuis bandeau prod -->
-    <div id="m-pobmodel" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;align-items:center;justify-content:center">
-      <div class="mbox" style="max-width:340px;padding:20px">
-        <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0"><h2>✏ Modifier horaires du poste</h2></div>
-        <p id="pobm-info" style="font-size:12px;color:#64748b;margin-bottom:8px"></p>
-        <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
-          <label style="font-size:12px;font-weight:600">Début <input type="time" id="pobm-debut" style="padding:3px 6px;border:1.5px solid #cbd5e1;border-radius:5px;font-size:13px"></label>
-          <label style="font-size:12px;font-weight:600">Fin <input type="time" id="pobm-fin" style="padding:3px 6px;border:1.5px solid #cbd5e1;border-radius:5px;font-size:13px"></label>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-prim" onclick="savePobModelHours()">Enregistrer</button>
-          <button class="btn btn-sec" onclick="closeM('m-pobmodel')">Annuler</button>
-        </div>
       </div>
     </div>
     <!-- Status bar -->
@@ -4181,15 +4211,25 @@ select{cursor:default}
     </div>
     <!-- Corps principal -->
     <div style="flex:1;overflow:hidden;display:grid;grid-template-columns:1fr 210px;min-height:0">
-      <!-- Gauche : cadence chart + sessions -->
+      <!-- Gauche : cadence + 3 évolutions -->
       <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #e2e8f0;min-height:0">
-        <div style="flex:1;min-height:0;padding:8px 12px;overflow:hidden;display:flex;flex-direction:column;background:#fff">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:4px;flex-shrink:0">⚡ Évolution cadence (unités/h)</div>
+        <div style="flex-shrink:0;height:140px;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⚡ Évolution cadence (unités/h &amp; éq./h)</div>
           <div id="kpi-cad-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
-        <div style="flex-shrink:0;border-top:1px solid #e2e8f0;background:#f8fafc;max-height:190px;overflow-y:auto">
-          <div style="padding:5px 12px;font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.5px;border-bottom:1px solid #e2e8f0;background:#fff;position:sticky;top:0">📋 Derniers postes enregistrés</div>
-          <div id="kpi-sess-list"></div>
+        <div style="flex:1;overflow-y:auto;min-height:0">
+          <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#8b5cf6;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">🧵 Changements de fibre par poste</div>
+            <div id="kpi-fibre-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+          </div>
+          <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#f8fafc;border-bottom:1px solid #f1f5f9">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#0891b2;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⏱ Répartition prod / arrêts (%)</div>
+            <div id="kpi-ratio-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+          </div>
+          <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#fff">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Pièces fab. / équivalence</div>
+            <div id="kpi-qte-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+          </div>
         </div>
       </div>
       <!-- Droite : donut + pareto -->
@@ -7144,7 +7184,7 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
   const vals=items.map(it=>it[valueKey]||0);
   const minV=yMin!==undefined?yMin:Math.max(0,Math.min(...vals)-5);
   const maxV=yMax!==undefined?yMax:Math.max(...vals,1)+2;
-  const padL=30,padR=8,padT=10,padB=52;
+  const padL=30,padR=8,padT=10,padB=62;
   const gW=W-padL-padR,gH=H-padT-padB;
   const toX=i=>padL+i/(Math.max(items.length-1,1))*gW;
   const toY=v=>padT+gH*(1-(v-minV)/(maxV-minV||1));
@@ -7174,9 +7214,10 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
     svg+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${col}" stroke="#fff" stroke-width="1.5"/>`;
     const v=it[valueKey]||0;
     svg+=`<text x="${x.toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${col}">${v%1?v.toFixed(1):v}</text>`;
-    // X label — date\nposte\npilote en biais
-    const lbl=(it._xLabel||'');
-    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+4).toFixed(1)}) rotate(40)" font-size="7" fill="#64748b" dominant-baseline="hanging">${esc(lbl)}</text>`;
+    // X labels: date (line1) + poste (line2) — bigger, black
+    const lblParts=(it._xLabel||'').split('\n');
+    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="9" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
+    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="8" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
   });
   svg+='</svg>';
   el.innerHTML=svg;
@@ -7215,6 +7256,52 @@ function _kpiBarChart(containerId,items,valueKey,colorFn,unit){
   el.innerHTML=svg;
 }
 
+function _kpiDualLineChart(containerId,items,series){
+  const el=document.getElementById(containerId);if(!el)return;
+  const rect=el.getBoundingClientRect();
+  const W=Math.max(rect.width||400,200);
+  const H=Math.max(rect.height||100,60);
+  if(!items.length){el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%"><text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="10" fill="#94a3b8">Aucune donnée</text></svg>`;return;}
+  const allVals=series.flatMap(s=>items.map(it=>parseFloat(it[s.key]||0)));
+  const minV=Math.max(0,Math.min(...allVals)-2);
+  const maxV=Math.max(...allVals,1)+2;
+  const padL=32,padR=8,padT=8,padB=62;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  const toX=i=>padL+i/(Math.max(items.length-1,1))*gW;
+  const toY=v=>padT+gH*(1-(v-minV)/(maxV-minV||1));
+  let svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%">`;
+  [0,0.25,0.5,0.75,1].forEach(t=>{
+    const v=minV+(maxV-minV)*t;const y=toY(v);
+    svg+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1"/>`;
+    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="8" fill="#94a3b8">${v.toFixed(0)}</text>`;
+  });
+  series.forEach(ser=>{
+    let lineD='';
+    items.forEach((it,i)=>{lineD+=(i===0?'M':'L')+toX(i).toFixed(1)+','+toY(parseFloat(it[ser.key]||0)).toFixed(1)+' ';});
+    svg+=`<path d="${lineD}" fill="none" stroke="${ser.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" ${ser.dash?`stroke-dasharray="${ser.dash}"`:''}/>`;
+    items.forEach((it,i)=>{
+      const x=toX(i),y=toY(parseFloat(it[ser.key]||0));
+      const v=parseFloat(it[ser.key]||0);
+      svg+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="${ser.color}" stroke="#fff" stroke-width="1.2"/>`;
+      svg+=`<text x="${x.toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" font-size="7" fill="${ser.color}" font-weight="700">${v%1?v.toFixed(1):v}</text>`;
+    });
+  });
+  items.forEach((it,i)=>{
+    const x=toX(i);
+    const lblParts=(it._xLabel||'').split('\n');
+    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="9" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
+    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="8" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
+  });
+  let lx=padL;
+  series.forEach(ser=>{
+    svg+=`<line x1="${lx}" y1="${H-7}" x2="${lx+14}" y2="${H-7}" stroke="${ser.color}" stroke-width="2" ${ser.dash?`stroke-dasharray="${ser.dash}"`:''}/>`;
+    svg+=`<text x="${lx+16}" y="${H-3}" font-size="8" fill="#475569">${esc(ser.label||ser.key)}</text>`;
+    lx+=90;
+  });
+  svg+='</svg>';
+  el.innerHTML=svg;
+}
+
 function _kpiInitDates(){
   const fi=document.getElementById('kpi-from'),ti=document.getElementById('kpi-to');
   if(!fi||!ti)return;
@@ -7240,27 +7327,40 @@ async function loadKPI(){
 
   // Build sessions (one per pilot+date+poste)
   const sessMap={};
+  const sessRowsMap={};
   prodRows.forEach(r=>{
     const key=(r.pilote||'')+'||'+(r.date||'')+'||'+(r.poste||'');
     if(!sessMap[key]) sessMap[key]={pilot:r.pilote||'',date:r.date||'',poste:r.poste||'',nb_of:0,tot_equiv:0,tot_s:0,tot_qte:0,trs_vals:[]};
+    if(!sessRowsMap[key]) sessRowsMap[key]=[];
     const s=sessMap[key];
     s.nb_of++;
     const eq=parseFloat(r.equiv||0)||0; s.tot_equiv+=eq;
     const qte=parseFloat(r.qte_fab||0)||0; s.tot_qte+=qte;
     const ds=pSec(r.debut||'0:0:0'),fs=pSec(r.fin||'0:0:0'),dur=Math.max(0,fs-ds); s.tot_s+=dur;
     const t=parseFloat(r.trs||0);if(t>0)s.trs_vals.push(t);
+    sessRowsMap[key].push(r);
   });
   // Order chronologically
   const sessArr=Object.values(sessMap).sort((a,b)=>{const da=_kpiParseFR(a.date)||0,db=_kpiParseFR(b.date)||0;return da-db;});
   sessArr.forEach(s=>{
     s.trs=s.trs_vals.length?Math.round(s.trs_vals.reduce((a,v)=>a+v,0)/s.trs_vals.length*10)/10:-1;
     s.cad=s.tot_s>60?Math.round(s.tot_equiv/(s.tot_s/3600)*10)/10:0;
+    s.cad_qte=s.tot_s>60&&s.tot_qte>0?Math.round(s.tot_qte/(s.tot_s/3600)*10)/10:0;
     const evtKey=s.pilot+'||'+s.date+'||'+s.poste;
     s.stop_min=Math.round((evts.filter(e=>(e.pilote||'')+'||'+(e.date||'')+'||'+(e.poste||'')==evtKey).reduce((a,e)=>a+Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0')),0))/60);
+    // Fibre changes: count transitions between different fibre values
+    const sRows=(sessRowsMap[evtKey]||[]).sort((a,b)=>pSec(a.debut||'0:0')-pSec(b.debut||'0:0'));
+    let fibChg=0;
+    for(let i=1;i<sRows.length;i++){const fa=(sRows[i-1].fibre||'').trim(),fb=(sRows[i].fibre||'').trim();if(fa&&fb&&fa!==fb)fibChg++;}
+    s.nb_fibre_chg=fibChg;
+    // Prod/arrêt ratio
+    const tot_dur=s.tot_s+s.stop_min*60;
+    s.prod_pct=tot_dur>0?Math.round(s.tot_s/tot_dur*100):0;
+    s.stop_pct=100-s.prod_pct;
     // Label X axis
     const dParts=(s.date||'').split('/');
     const dateShort=dParts.length===3?dParts[0]+'/'+dParts[1]:s.date;
-    s._xLabel=dateShort+'\n'+s.poste+'\n'+s.pilot;
+    s._xLabel=dateShort+'\n'+s.poste;
   });
 
   const nbSess=sessArr.length;
@@ -7302,30 +7402,26 @@ async function loadKPI(){
   _kpiLineChart('kpi-arr-chart',sessArr,'stop_min',()=>'#dc2626','min');
   _kpiLineChart('kpi-of-chart',sessArr,'nb_of',()=>'#6366f1','');
 
-  // ── Cadence bar chart ──
-  _kpiBarChart('kpi-cad-chart',sessArr,'cad',()=>'#f59e0b','/h');
+  // ── Cadence dual-line chart (éq./h + pièces/h) ──
+  _kpiDualLineChart('kpi-cad-chart',sessArr,[
+    {key:'cad',color:'#f59e0b',label:'Éq./h'},
+    {key:'cad_qte',color:'#0891b2',label:'Pièces/h',dash:'4,3'}
+  ]);
 
-  // ── Sessions list ──
-  const sessEl=document.getElementById('kpi-sess-list');
-  if(sessEl){
-    const recent=sessArr.slice().reverse().slice(0,15);
-    if(!recent.length){
-      sessEl.innerHTML='<div style="padding:8px 12px;color:#94a3b8;font-size:11px">Aucune session dans cette période</div>';
-    } else {
-      sessEl.innerHTML=recent.map(s=>{
-        const tc=_kpiTrsColor(s.trs);
-        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 12px;border-bottom:1px solid #f1f5f9;font-size:11px">
-          <span style="font-weight:700;color:#1e293b;min-width:70px">${esc(s.date)}</span>
-          <span style="color:#475569;min-width:65px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.poste)}</span>
-          <span style="color:#94a3b8;min-width:65px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.pilot)}</span>
-          <span style="color:${tc};font-weight:800;min-width:44px;text-align:right">${s.trs>=0?s.trs.toFixed(1)+'%':'—'}</span>
-          <span style="color:#6366f1;min-width:32px;text-align:right">${s.nb_of} OF</span>
-          <span style="color:#f59e0b;font-weight:700;min-width:46px;text-align:right">${s.cad>0?s.cad+'/h':'—'}</span>
-          <span style="color:#dc2626;min-width:36px;text-align:right">${s.stop_min}m⛔</span>
-        </div>`;
-      }).join('');
-    }
-  }
+  // ── Évolution changements de fibre par poste ──
+  _kpiLineChart('kpi-fibre-chart',sessArr,'nb_fibre_chg',()=>'#8b5cf6','');
+
+  // ── Évolution répartition prod/arrêts ──
+  _kpiDualLineChart('kpi-ratio-chart',sessArr,[
+    {key:'prod_pct',color:'#16a34a',label:'Prod %'},
+    {key:'stop_pct',color:'#dc2626',label:'Arrêts %',dash:'4,3'}
+  ]);
+
+  // ── Évolution pièces / équivalence ──
+  _kpiDualLineChart('kpi-qte-chart',sessArr,[
+    {key:'tot_qte',color:'#7c3aed',label:'Pièces'},
+    {key:'tot_equiv',color:'#16a34a',label:'Équivalence',dash:'4,3'}
+  ]);
 
   // ── Donut Prod/Arrêts ──
   _kpiDrawDonut('kpi-donut','kpi-donut-legend',[
@@ -7968,7 +8064,6 @@ function toast(msg,type){
 </body>
 </html>"""
 
-
 def _session_autosave():
     while True:
         time.sleep(30)
@@ -8031,4 +8126,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
