@@ -1185,9 +1185,13 @@ def api_update_shift_horaires():
     old_debut = _S.get("shift_debut_dt") or debut_dt  # capturer AVANT écrasement
     _S["shift_debut_dt"] = debut_dt
     _S["shift_fin_dt"] = fin_dt
-    row_num = find_postes_row_num(_S.get("pilot",""), old_debut)
-    update_poste_horaires(row_num, debut_dt, fin_dt)
+    pilot_snap = _S.get("pilot","")
     save_session()
+    # Mise à jour Excel en arrière-plan pour ne pas bloquer (find_postes_row_num acquiert _excel_lock)
+    def _bg():
+        row_num = find_postes_row_num(pilot_snap, old_debut)
+        update_poste_horaires(row_num, debut_dt, fin_dt)
+    threading.Thread(target=_bg, daemon=True).start()
     dur_s = (fin_dt - debut_dt).total_seconds()
     return jsonify({"ok":True,"shift_dur_s":round(dur_s,0)})
 
@@ -1244,7 +1248,7 @@ def api_start_prod():
         _S["interposte_s"] = gap_s
         ip_debut_hms = model_debut_str
         # Alimenter pre_shift_gap_s pour que le JS ouvre m-preshift (dialogue 1er OF)
-        if gap_s > 120:
+        if gap_s > 30:
             pre_shift_gap_s = gap_s
             shift_model_start_str = model_debut_str
             shift_model_start_iso = model_debut_dt.isoformat()
