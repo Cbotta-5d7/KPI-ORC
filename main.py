@@ -1089,26 +1089,24 @@ def api_start_prod():
                     model_debut_str = debut_str2
                 except: pass
             break
-    # Règle : si gap interposte > 7h, on l'oublie et on prend le gap depuis le début du modèle
+    # Premier OF du poste sans session aujourd'hui : référence = début plage horaire
+    last_end_is_today = bool(_S["last_of_end"] and _S["last_of_end"].date() == now.date())
     ip_debut_hms = ""
     ip_fin_hms = now.strftime("%H:%M")
-    if gap_s > 25200 and model_debut_dt:
+    pre_shift_gap_s = 0.0
+    shift_model_start_str = ""
+    shift_model_start_iso = ""
+    if is_first_of and not last_end_is_today and model_debut_dt:
+        # Uniquement l'écart depuis le début de ma plage horaire
+        gap_s = max(0.0, (now - model_debut_dt).total_seconds())
+        _S["interposte_s"] = gap_s
+        ip_debut_hms = model_debut_str
+    elif gap_s > 25200 and model_debut_dt:
         gap_s = max(0.0, (now - model_debut_dt).total_seconds())
         _S["interposte_s"] = gap_s
         ip_debut_hms = model_debut_str
     elif _S["last_of_end"]:
         ip_debut_hms = _S["last_of_end"].strftime("%H:%M")
-    # Calcul du gap pré-poste (1er OF vs heure début modèle horaire)
-    pre_shift_gap_s = 0.0
-    shift_model_start_str = ""
-    shift_model_start_iso = ""
-    last_end_is_today = bool(_S["last_of_end"] and _S["last_of_end"].date() == now.date())
-    if is_first_of and model_debut_dt and not last_end_is_today:
-        diff = (now - model_debut_dt).total_seconds()
-        if 120 < diff < 7200:
-            pre_shift_gap_s = diff
-            shift_model_start_str = model_debut_str
-            shift_model_start_iso = model_debut_dt.isoformat()
     return jsonify({"ok":True,"gap_s":round(gap_s,0),
                     "pre_shift_gap_s":round(pre_shift_gap_s,0),
                     "shift_model_start":shift_model_start_str,
@@ -1219,7 +1217,7 @@ def api_end_prod():
     end_dt = datetime.datetime.now()
     of_s_brut = (end_dt-_S["of_start"]).total_seconds()
     pause_max_s = int(cfg.get("pause_max_min",20))*60
-    of_s = max(1, of_s_brut + _S["inter_of_s"] - min(_S["pause_total_s"],pause_max_s))
+    of_s = max(1, of_s_brut - min(_S["pause_total_s"],pause_max_s))
     stop_s = t_wall_clock_stops()
     qte_fab = _n(v.get("qte_fab",0))
     nb_pers = max(1,_n(v.get("nb_pers",1)) or 1)
@@ -1792,13 +1790,9 @@ def api_fin_poste_data():
     model_dur_s = get_shift_duration_s(pilot_poste, datetime.date.today())
     ecart_s = max(0.0, model_dur_s - (tot_s + declared_stop_s))
     trs_poste_shift = -1.0
-    if model_debut_s is not None and max_fin_s > 0:
-        if max_fin_s < model_debut_s: max_fin_s += 86400  # poste de nuit
-        if max_fin_s > model_debut_s and prod_ref > 0:
-            elapsed_s = max(1.0, (max_fin_s - model_debut_s) - planned_ded)
-            trs_poste_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
-    if trs_poste_shift < 0 and prod_ref > 0 and tot_s > 0:
-        trs_poste_shift = round(tot_eq/(prod_ref*tot_s/28800)*100,1)
+    if model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
+        elapsed_s = max(1.0, model_dur_s - planned_ded)
+        trs_poste_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
     # Compute gap intervals (plages non justifiées)
     debut_str2, fin_str2 = _get_model_day_cfg(pilot_poste, datetime.date.today())
     gap_intervals = []
@@ -3031,10 +3025,9 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         _deb2, _ = _get_model_day_cfg(_s_r["poste"], _do2)
         _mds2 = hms2s(_deb2) if _deb2 else None
         _ded2 = sum(hms2s(_er[18]) for _er in _sess_evts_map_r.get(_sk_r,[]) if any(k in str(_er[0] or "").lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
-        _mfs2 = _s_r["max_fin_s"]
-        if _mds2 and _mfs2 < _mds2: _mfs2 += 86400
-        if _mds2 and _mfs2 > _mds2 and prod_ref > 0 and _s_r["tot_equiv"] > 0:
-            _el2 = max(1.0, (_mfs2 - _mds2) - _ded2)
+        _mdur2 = get_shift_duration_s(_s_r["poste"], _do2)
+        if _mdur2 > 0 and prod_ref > 0 and _s_r["tot_equiv"] > 0:
+            _el2 = max(1.0, _mdur2 - _ded2)
             _trs_r = round(_s_r["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
         _embedded_sessions_list.append({"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"nb_of":_s_r["nb_of"],"tot_equiv":round(_s_r["tot_equiv"],1),"trs":_trs_r})
     _embedded_sessions_list.sort(key=lambda x: (lambda p: (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0))(x["date"].split('/')), reverse=True)
@@ -3045,7 +3038,8 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         _pr3=[]; _er3=[]; _teq3=0.0; _ts3=0.0; _mfs3=0.0; _sts3=0.0; _ads3=[]; _afs3=[]
         for _r3 in decl_rows:
             _dk3 = str(_r3[39] if len(_r3)>39 else "").strip() or _row_date(_r3[2])
-            if _dk3 != _s_r["date"] or str(_r3[4] or "") != _s_r["pilot"] or str(_r3[3] or "") != _s_r["poste"]: continue
+            if _dk3 != _s_r["date"] or str(_r3[4] or "") != _s_r["pilot"]: continue
+            if _s_r["poste"] and str(_r3[3] or "") != _s_r["poste"]: continue
             _rt3 = str(_r3[0] or "").strip().lower()
             _dbs3 = hms2s(_r3[16]) if _r3[16] else -1; _fbs3 = hms2s(_r3[17]) if _r3[17] else -1
             if _dbs3 >= 0: _ads3.append(_dbs3)
@@ -3076,12 +3070,9 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         _mdur3 = get_shift_duration_s(_s_r["poste"], _dpo3)
         _ecart3 = max(0.0, _mdur3 - (_ts3 + _sts3))
         _trs_sh3 = -1.0
-        if _mds3b and _mfs3 > 0:
-            _mfs3b = _mfs3
-            if _mfs3b < _mds3b: _mfs3b += 86400
-            if _mfs3b > _mds3b and prod_ref > 0 and _teq3 > 0:
-                _el3 = max(1.0, (_mfs3b - _mds3b) - _ded3)
-                _trs_sh3 = round(_teq3/(prod_ref*_el3/28800)*100,1)
+        if _mdur3 > 0 and prod_ref > 0 and _teq3 > 0:
+            _el3 = max(1.0, _mdur3 - _ded3)
+            _trs_sh3 = round(_teq3/(prod_ref*_el3/28800)*100,1)
         _trs_of3 = round(_teq3/(prod_ref*_ts3/28800)*100,1) if prod_ref>0 and _ts3>0 and _teq3>0 else -1
         _rpt_key3 = f"{_s_r['date']}|{_s_r['pilot']}|{_s_r['poste']}"
         _embedded_reports_dict[_rpt_key3] = {"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"prod_rows":_pr3,"evt_rows":_er3,"trs_shift":_trs_sh3,"trs":_trs_of3,"tot_equiv":round(_teq3,1),"tot_s":round(_ts3,0),"stop_s":round(_sts3,0),"nb_of":len(_pr3),"model_debut":_mdeb3 or "","model_fin":_mfin3 or "","actual_debut":_acd3,"actual_fin":_acf3,"ecart_s":round(_ecart3,0)}
@@ -3918,7 +3909,7 @@ select{cursor:default}
       <div class="card" style="padding:8px">
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:5px">Productions</div>
         <table class="fp-tbl" style="font-size:10px">
-          <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Qté</th><th>Éq</th><th>Durée</th><th>TRS%</th></tr></thead>
+          <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Taille</th><th>Qté</th><th>Éq</th><th>Durée</th><th>TRS%</th></tr></thead>
           <tbody id="fp-prods"></tbody>
         </table>
       </div>
@@ -4618,6 +4609,7 @@ let _curStopElap = 0;
 let _ofElapAtPoll = 0;
 let _stopWallAtPoll = 0;
 let _pauseTotalAtPoll = 0;
+let _pauseElapAtPoll = 0;
 let _lastPoll = Date.now();
 let _ticker = null;
 let _autoSaveTimer = null;
@@ -4720,7 +4712,7 @@ function onLoginModelChange(){
   if(!nom){if(info)info.style.display='none';return;}
   const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
   const todayKey=DAY_KEYS[new Date().getDay()];
-  const model=_cfgModels.find(m=>m.nom===nom);
+  const model=_cfgModelsBase.find(m=>m.nom===nom);
   let debut='',fin='';
   if(model&&model.jours&&model.jours[todayKey]){
     debut=model.jours[todayKey].debut||'';
@@ -4971,6 +4963,7 @@ async function pollState() {
   _ofElapAtPoll = s.of_elapsed_s||0;
   _stopWallAtPoll = s.stop_wall_s||0;
   _pauseTotalAtPoll = s.pause_total_s||0;
+  _pauseElapAtPoll = _pauseTotalAtPoll + (s.is_paused && s.pause_start_iso ? (Date.now()-new Date(s.pause_start_iso).getTime())/1000 : 0);
   _lastPoll = Date.now();
 
   if(s.is_paused) {
@@ -5170,7 +5163,7 @@ function startTicker() {
     const ts=document.getElementById('sc-stops');
     if(ts) ts.textContent=fmtDur(sw);
     // Pause total
-    const pt=_pauseTotalAtPoll+(_curStopKey==='_pause'?dt:0);
+    const pt=_curStopKey==='_pause'?_pauseElapAtPoll+dt:_pauseTotalAtPoll;
     const tp=document.getElementById('sc-pause');
     if(tp) tp.textContent=fmtDur(pt);
     // Pièces théoriques : prod_ref / coef * (elapsed/28800)
@@ -5199,7 +5192,7 @@ function startTicker() {
     }
     if(ST.is_paused){
       const cel=document.getElementById('chip-t-_pause');
-      if(cel) cel.textContent=fmtDur2(_pauseTotalAtPoll+dt);
+      if(cel) cel.textContent=fmtDur2(_pauseElapAtPoll+dt);
     }
   },1000);
 }
@@ -7010,7 +7003,9 @@ function applyFPHoraires(){
   if(d){
     const totEquiv=d.tot_equiv||0;
     const prodRef=d.prod_ref||ST.prod_ref||200;
-    const trs=shiftS>0&&prodRef>0?Math.round(totEquiv/(prodRef*shiftS/28800)*1000)/10:0;
+    const dedS=d.planned_ded_s||0;
+    const netS=Math.max(1,shiftS-dedS);
+    const trs=netS>0&&prodRef>0?Math.round(totEquiv/(prodRef*netS/28800)*1000)/10:0;
     document.getElementById('fp-trs').textContent=fmtTRS(trs);
   }
   // Redraw timeline with custom range
@@ -7047,7 +7042,9 @@ function recalcFPTRS(){
     const d=window._fpData;
     const totEquiv=d.tot_equiv||0;
     const prodRef=d.prod_ref||ST.prod_ref||200;
-    const trs=shiftS>0&&prodRef>0?Math.round(totEquiv/(prodRef*shiftS/28800)*1000)/10:0;
+    const dedS=d.planned_ded_s||0;
+    const netS=Math.max(1,shiftS-dedS);
+    const trs=netS>0&&prodRef>0?Math.round(totEquiv/(prodRef*netS/28800)*1000)/10:0;
     document.getElementById('fp-trs').textContent=fmtTRS(trs);
   }
 }
