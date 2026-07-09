@@ -1204,32 +1204,15 @@ def api_start_prod():
         _S["shift_start"] = now
     t_reset()
     save_session()
-    # Calcul du modèle horaire pour ce poste/jour (toujours, pas seulement 1er OF)
-    poste = _S.get("poste","")
-    day_keys = ["lun","mar","mer","jeu","ven","sam","dim"]
-    dk = day_keys[now.weekday()]
-    model_debut_dt = None
-    model_debut_str = ""
-    for m in cfg.get("modeles_horaires",[]):
-        if m.get("nom","") == poste:
-            jour = m.get("jours",{}).get(dk,{})
-            debut_str2 = jour.get("debut","")
-            if debut_str2:
-                try:
-                    h, mi = map(int, debut_str2.split(":"))
-                    sd = now.replace(hour=h, minute=mi, second=0, microsecond=0)
-                    if sd > now: sd -= datetime.timedelta(days=1)
-                    model_debut_dt = sd
-                    model_debut_str = debut_str2
-                except: pass
-            break
+    # Début de plage = shift_debut_dt en session (inclut modification login/réconciliation)
+    model_debut_dt = _S.get("shift_debut_dt")
+    model_debut_str = model_debut_dt.strftime("%H:%M") if model_debut_dt else ""
     ip_debut_hms = ""
     ip_fin_hms = now.strftime("%H:%M")
     pre_shift_gap_s = 0.0
     shift_model_start_str = ""
     shift_model_start_iso = ""
     if is_first_of and model_debut_dt:
-        # Premier OF : écart depuis le début de la plage horaire uniquement
         gap_s = max(0.0, (now - model_debut_dt).total_seconds())
         _S["interposte_s"] = gap_s
         ip_debut_hms = model_debut_str
