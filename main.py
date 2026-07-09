@@ -4878,6 +4878,14 @@ async function doLogin() {
           _cfgModels[mi].jours[todayKey].fin=newFin;
           await fetch('/api/update_model_today',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:poste,day_key:todayKey,debut:newDebut,fin:newFin})});
         }
+        // Mettre à jour shift_debut_dt / shift_fin_dt et POSTES P/Q avec les horaires modifiés
+        const today2=new Date();
+        const [dH,dM]=newDebut.split(':').map(Number);
+        const debDt=new Date(today2.getFullYear(),today2.getMonth(),today2.getDate(),dH,dM,0);
+        const [fH,fM]=newFin.split(':').map(Number);
+        const finDt2=new Date(today2.getFullYear(),today2.getMonth(),today2.getDate(),fH,fM,0);
+        if(finDt2<=debDt) finDt2.setDate(finDt2.getDate()+1);
+        await fetch('/api/update_shift_horaires',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({debut_iso:debDt.toISOString(),fin_iso:finDt2.toISOString()})});
       }
     }
     const s = await apiFetch('/api/state');
