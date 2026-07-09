@@ -168,6 +168,7 @@ _S = {
     "postes_row_num": None,
     "shift_debut_dt": None,
     "shift_fin_dt": None,
+    "tot_prod_s": 0.0,
 }
 _excel_lock = threading.Lock()
 _lists = {}
@@ -447,6 +448,7 @@ def save_session():
             "postes_row_num": _S.get("postes_row_num"),
             "shift_debut_dt": _dt_str(_S.get("shift_debut_dt")),
             "shift_fin_dt": _dt_str(_S.get("shift_fin_dt")),
+            "tot_prod_s": _S.get("tot_prod_s", 0.0),
         }
         with open(SESSION_FILE,"w",encoding="utf-8") as f: json.dump(d,f,default=str)
     except: pass
@@ -472,6 +474,7 @@ def load_session():
         _S["postes_row_num"] = d.get("postes_row_num")
         _S["shift_debut_dt"] = _str_dt(d.get("shift_debut_dt"))
         _S["shift_fin_dt"]   = _str_dt(d.get("shift_fin_dt"))
+        _S["tot_prod_s"]     = float(d.get("tot_prod_s", 0))
         raw_timers = d.get("timers",{})
         _S["timers"] = {}
         for k,t in raw_timers.items():
@@ -803,7 +806,7 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
         _S.get("poste",""),pilot,"","","","","","","","","","","",
         start_dt.strftime("%H:%M:%S"),end_dt.strftime("%H:%M:%S"),fmt(dur_s),
         "","","","","","","","","","","","","","","","",comment,
-        "","",shift_date_str,
+        "","","",shift_date_str,
     ]
     def _bg():
         try:
@@ -868,7 +871,7 @@ def _ensure_postes_sheet(wb):
     return wb["Postes"]
 
 def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
-    """Écrit en arrière-plan (non bloquant). La ligne est retrouvée au fin de poste via find_postes_row_num."""
+    """Écrit en arrière-plan. Stocke postes_row_num dans _S pour que update_poste_horaires le retrouve directement."""
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return
     def _bg():
@@ -884,6 +887,8 @@ def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
                 ws.cell(new_row, 17).value = fin_dt.isoformat() if fin_dt else None
                 _format_row(ws, new_row)
                 _safe_excel_save(wb, path)
+                _S["postes_row_num"] = new_row
+                save_session()
         except: pass
     threading.Thread(target=_bg, daemon=True).start()
 
@@ -1131,6 +1136,7 @@ def api_login():
     _S["last_of_pilot"] = ""
     _S["interposte_s"] = 0.0
     _S["postes_row_num"] = None
+    _S["tot_prod_s"] = 0.0
     if not _S.get("shift_start"):
         _S["shift_start"] = datetime.datetime.now()
     now = datetime.datetime.now()
@@ -1192,11 +1198,14 @@ def api_update_shift_horaires():
     _S["shift_debut_dt"] = debut_dt
     _S["shift_fin_dt"] = fin_dt
     pilot_snap = _S.get("pilot","")
+    row_num_snap = _S.get("postes_row_num")
     save_session()
-    # Mise à jour Excel en arrière-plan pour ne pas bloquer (find_postes_row_num acquiert _excel_lock)
+    # Mise à jour Excel en arrière-plan pour ne pas bloquer
     def _bg():
-        row_num = find_postes_row_num(pilot_snap, old_debut)
-        update_poste_horaires(row_num, debut_dt, fin_dt)
+        rn = row_num_snap or find_postes_row_num(pilot_snap, old_debut)
+        if rn and not row_num_snap:
+            _S["postes_row_num"] = rn
+        update_poste_horaires(rn, debut_dt, fin_dt)
     threading.Thread(target=_bg, daemon=True).start()
     dur_s = (fin_dt - debut_dt).total_seconds()
     return jsonify({"ok":True,"shift_dur_s":round(dur_s,0)})
@@ -1246,6 +1255,7 @@ def api_start_prod():
     model_debut_str = model_debut_dt.strftime("%H:%M") if model_debut_dt else ""
     ip_debut_hms = ""
     ip_fin_hms = now.strftime("%H:%M")
+    ip_debut_iso = ""
     pre_shift_gap_s = 0.0
     shift_model_start_str = ""
     shift_model_start_iso = ""
@@ -1253,19 +1263,22 @@ def api_start_prod():
         gap_s = max(0.0, (now - model_debut_dt).total_seconds())
         _S["interposte_s"] = gap_s
         ip_debut_hms = model_debut_str
+        ip_debut_iso = model_debut_dt.isoformat()
         # Alimenter pre_shift_gap_s pour que le JS ouvre m-preshift (dialogue 1er OF)
-        if gap_s > 30:
+        if gap_s >= 60:
             pre_shift_gap_s = gap_s
             shift_model_start_str = model_debut_str
             shift_model_start_iso = model_debut_dt.isoformat()
     elif _S["last_of_end"]:
         ip_debut_hms = _S["last_of_end"].strftime("%H:%M")
+        ip_debut_iso = _S["last_of_end"].isoformat()
     return jsonify({"ok":True,"gap_s":round(gap_s,0),
                     "pre_shift_gap_s":round(pre_shift_gap_s,0),
                     "shift_model_start":shift_model_start_str,
                     "shift_model_start_iso":shift_model_start_iso,
                     "ip_debut_hms":ip_debut_hms,
-                    "ip_fin_hms":ip_fin_hms})
+                    "ip_fin_hms":ip_fin_hms,
+                    "ip_debut_iso":ip_debut_iso})
 
 @flask_app.route('/api/set_of_start', methods=['POST'])
 def api_set_of_start():
@@ -1305,7 +1318,7 @@ def api_inter_of_confirm():
             end_dt = datetime.datetime.combine(today, datetime.time(h, mi))
             if end_dt < start_dt: end_dt += datetime.timedelta(days=1)
         except: pass
-    if _S["inter_of_s"] > 30 and start_dt and end_dt:
+    if _S["inter_of_s"] >= 60 and start_dt and end_dt:
         write_changement_of(start_dt, end_dt, label=label or None, comment=comment)
         # Mise à jour synchrone du cache pour éviter le race-condition fin-de-poste
         # (write_changement_of écrit en background → _decl_cache pas encore rafraîchi)
@@ -2307,8 +2320,8 @@ def api_save_poste():
     data = request.json or {}
     if not data.get("dur_poste_theorique_min"):
         data["dur_poste_theorique_min"] = round(get_current_shift_duration_s() / 60, 1)
-    # Cherche la ligne POSTES créée au login (pilot + date début poste)
-    row_num = find_postes_row_num(_S.get("pilot",""), _S.get("shift_debut_dt"))
+    # Utiliser postes_row_num stocké au login (évite find_postes_row_num qui peut rater)
+    row_num = _S.get("postes_row_num") or find_postes_row_num(_S.get("pilot",""), _S.get("shift_debut_dt"))
     write_poste_row(data, row_num=row_num)
     return jsonify({"ok":True})
 
@@ -5493,11 +5506,12 @@ async function loadMainKPI() {
   const elHeure=document.getElementById('kpi0-heure');
   if(elHeure) elHeure.textContent=heure;
   if(d){
-    // TRS poste actuel : même formule que la jauge accueil (equiv / (ref * elapsed/28800))
+    // TRS poste actuel : utiliser la durée du modèle horaire choisi (P→Q) si dispo
     let trs=-1;
     if(_todayEquivAccum>0&&_shiftRefDt&&ST.prod_ref>0){
+      const _sfDt=ST.shift_fin_iso?new Date(ST.shift_fin_iso):null;
       const refTime=_lastProdDeclTime||new Date();
-      const shiftElap=(refTime.getTime()-_shiftRefDt.getTime())/1000;
+      const shiftElap=_sfDt?(_sfDt.getTime()-_shiftRefDt.getTime())/1000:(refTime.getTime()-_shiftRefDt.getTime())/1000;
       if(shiftElap>0) trs=Math.round(_todayEquivAccum/(ST.prod_ref*shiftElap/28800)*100*10)/10;
     }
     const el0t=document.getElementById('kpi0-trs'),el0s=document.getElementById('kpi0-sub'),el0d=document.getElementById('kpi0-date');
@@ -5666,7 +5680,7 @@ async function doStartProd() {
   _pendingGapS=d.gap_s||0;
 
   // 1er OF du poste : gap vs modèle horaire
-  if((d.pre_shift_gap_s||0)>30 && d.shift_model_start){
+  if((d.pre_shift_gap_s||0)>=60 && d.shift_model_start){
     const m=_fmtMin(d.pre_shift_gap_s);
     document.getElementById('ps-text').textContent=
       `${m} non déclarées depuis le début de poste (${d.shift_model_start})`;
@@ -5679,29 +5693,23 @@ async function doStartProd() {
     return;
   }
 
-  // OF suivant : gap interposte classique
-  if(_pendingGapS>30){
-    const bc=document.getElementById('ip-btns');bc.innerHTML='';
-    document.getElementById('ip-duration').textContent=`Durée : ${_fmtMin(_pendingGapS)}`;
-    document.getElementById('ip-custom').value='';
-    document.getElementById('ip-comment').value='';
-    if(d.ip_debut_hms) document.getElementById('ip-debut').value=d.ip_debut_hms;
-    if(d.ip_fin_hms) document.getElementById('ip-fin').value=d.ip_fin_hms;
-    _fillIpArretsPrevus();
-    _interposteLbls.forEach(lbl=>{
-      const b=document.createElement('button');
-      b.className='btn btn-ghost';
-      b.style.cssText='font-size:12px;transition:all .15s;border:2px solid var(--border)';
-      b.textContent=lbl;
-      b.onclick=()=>{
-        document.getElementById('ip-custom').value=lbl;
-        document.querySelectorAll('#ip-btns .btn, #ip-arrprev-group .btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
-        b.style.background='var(--navy)';b.style.color='#fff';b.style.borderColor='var(--navy)';
-        b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
-      };
-      bc.appendChild(b);
-    });
-    openM('m-interposte');
+  // OF suivant : même vue que 1er OF (m-preshift unifiée)
+  if(_pendingGapS>=60){
+    const m=_fmtMin(_pendingGapS);
+    document.getElementById('ps-text').textContent=
+      `${m} non déclarées depuis la fin du dernier OF`;
+    const ipIso=d.ip_debut_iso||'';
+    document.getElementById('ps-start-iso').value=ipIso;
+    document.getElementById('ps-gap-s').value=_pendingGapS;
+    const bt=document.getElementById('ps-backdate-time');
+    if(bt && ipIso){
+      const t=new Date(ipIso);
+      bt.textContent=String(t.getHours()).padStart(2,'0')+'h'+String(t.getMinutes()).padStart(2,'0');
+    } else if(bt){
+      bt.textContent=d.ip_debut_hms?d.ip_debut_hms.replace(':','h'):'--h--';
+    }
+    psFillStopBtns();
+    openM('m-preshift');
     return;
   }
 
