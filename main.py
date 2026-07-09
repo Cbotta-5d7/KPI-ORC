@@ -868,22 +868,48 @@ def _ensure_postes_sheet(wb):
     return wb["Postes"]
 
 def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
+    """Écrit en arrière-plan (non bloquant). La ligne est retrouvée au fin de poste via find_postes_row_num."""
     path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return None
+    if not path or not os.path.exists(path): return
+    def _bg():
+        try:
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None: return
+                ws = _ensure_postes_sheet(wb)
+                new_row = ws.max_row + 1
+                ws.cell(new_row, 2).value = pilot
+                ws.cell(new_row, 4).value = poste
+                ws.cell(new_row, 16).value = debut_dt.isoformat() if debut_dt else None
+                ws.cell(new_row, 17).value = fin_dt.isoformat() if fin_dt else None
+                _format_row(ws, new_row)
+                _safe_excel_save(wb, path)
+        except: pass
+    threading.Thread(target=_bg, daemon=True).start()
+
+def find_postes_row_num(pilot, debut_dt):
+    """Cherche dans POSTES la ligne correspondant à ce pilote + date debut. Retourne row_num ou None."""
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path) or not debut_dt: return None
     try:
         with _excel_lock:
             wb = _get_wb(path)
             if wb is None: return None
-            ws = _ensure_postes_sheet(wb)
-            new_row = ws.max_row + 1
-            ws.cell(new_row, 2).value = pilot
-            ws.cell(new_row, 4).value = poste
-            ws.cell(new_row, 16).value = debut_dt.isoformat() if debut_dt else None
-            ws.cell(new_row, 17).value = fin_dt.isoformat() if fin_dt else None
-            _format_row(ws, new_row)
-            _safe_excel_save(wb, path)
-            return new_row
-    except: return None
+            if "Postes" not in wb.sheetnames: return None
+            ws = wb["Postes"]
+            target_date = debut_dt.date()
+            for row in ws.iter_rows(min_row=2, values_only=False):
+                try:
+                    b = row[1].value if len(row) > 1 else None  # col B pilot
+                    p = row[15].value if len(row) > 15 else None  # col P debut
+                    if str(b or "").strip().lower() != pilot.lower(): continue
+                    if p is None: continue
+                    p_dt = datetime.datetime.fromisoformat(str(p)) if isinstance(p, str) else p
+                    if hasattr(p_dt, 'date') and p_dt.date() == target_date:
+                        return row[0].row
+                except: continue
+    except: pass
+    return None
 
 def update_poste_horaires(row_num, debut_dt, fin_dt):
     if not row_num or row_num <= 1: return
@@ -1124,8 +1150,7 @@ def api_login():
         except: pass
     _S["shift_debut_dt"] = shift_debut_dt
     _S["shift_fin_dt"] = shift_fin_dt
-    row_num = write_poste_login_row(pilot, poste, shift_debut_dt, shift_fin_dt)
-    _S["postes_row_num"] = row_num
+    write_poste_login_row(pilot, poste, shift_debut_dt, shift_fin_dt)  # async, non bloquant
     save_session()
     return jsonify({"ok":True})
 
@@ -1157,9 +1182,11 @@ def api_update_shift_horaires():
         return jsonify({"ok":False,"error":"Format invalide"}),400
     if fin_dt <= debut_dt:
         return jsonify({"ok":False,"error":"Fin doit être après début"}),400
+    old_debut = _S.get("shift_debut_dt") or debut_dt  # capturer AVANT écrasement
     _S["shift_debut_dt"] = debut_dt
     _S["shift_fin_dt"] = fin_dt
-    update_poste_horaires(_S.get("postes_row_num"), debut_dt, fin_dt)
+    row_num = find_postes_row_num(_S.get("pilot",""), old_debut)
+    update_poste_horaires(row_num, debut_dt, fin_dt)
     save_session()
     dur_s = (fin_dt - debut_dt).total_seconds()
     return jsonify({"ok":True,"shift_dur_s":round(dur_s,0)})
@@ -2270,7 +2297,9 @@ def api_save_poste():
     data = request.json or {}
     if not data.get("dur_poste_theorique_min"):
         data["dur_poste_theorique_min"] = round(get_current_shift_duration_s() / 60, 1)
-    write_poste_row(data, row_num=_S.get("postes_row_num"))
+    # Cherche la ligne POSTES créée au login (pilot + date début poste)
+    row_num = find_postes_row_num(_S.get("pilot",""), _S.get("shift_debut_dt"))
+    write_poste_row(data, row_num=row_num)
     return jsonify({"ok":True})
 
 @flask_app.route('/api/pilot_passwords_excel', methods=['POST'])
