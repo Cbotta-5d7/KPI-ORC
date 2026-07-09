@@ -1576,6 +1576,7 @@ def api_config():
         "db_path": cfg.get("db_path",""),
         "db_name": os.path.basename(cfg.get("db_path","")) if cfg.get("db_path") else "",
         "modeles_horaires": _apply_model_overrides(cfg.get("modeles_horaires",[])),
+        "modeles_horaires_base": cfg.get("modeles_horaires",[]),
         "pilot_passwords": cfg.get("pilot_passwords",{}),
     })
 
@@ -3683,6 +3684,8 @@ select{cursor:default}
             <svg id="pie-poste-acc" viewBox="0 0 130 115" style="width:160px;height:auto;display:block;margin:0 auto"></svg>
           </div>
         </div>
+        <!-- Horaire temporaire -->
+        <div id="acc-model-info" style="display:none;border-top:1px solid #bae6fd;padding-top:5px;margin-top:2px;font-size:11px;color:#0369a1"></div>
       </div>
 
       <!-- Poste précédent -->
@@ -4621,6 +4624,7 @@ let _autoSaveTimer = null;
 let _curTab = 'main';
 let _cfgPwds = {};
 let _cfgModels = [];
+let _cfgModelsBase = [];
 let _settingsUnlocked = false;
 let _adminPw = '';
 window._evMap = {};
@@ -4683,6 +4687,7 @@ async function loadModelsForLogin() {
   const d = await apiFetch('/api/config');
   if (!d) return;
   _cfgModels = d.modeles_horaires||[];
+  _cfgModelsBase = d.modeles_horaires_base||JSON.parse(JSON.stringify(_cfgModels));
   _cfgPwds = d.pilot_passwords||{};
   const sel = document.getElementById('ln-model');
   while (sel.options.length>1) sel.remove(1);
@@ -5094,6 +5099,7 @@ function applyState(s) {
 
   // TRS gauge
   updateGauge(s);
+  updateAccModelInfo();
 }
 
 function getEvtLabel(key) {
@@ -7896,6 +7902,7 @@ async function loadCfg(){
   if(!d) return;
   _cfgPwds=d.pilot_passwords||{};
   _cfgModels=d.modeles_horaires||[];
+  _cfgModelsBase=d.modeles_horaires_base||JSON.parse(JSON.stringify(_cfgModels));
   _cfgArretsPrevus=d.arrets_prevus||{};
   const prEl=document.getElementById('cfg-pr');
   if(prEl) prEl.value=d.prod_ref||200;
@@ -7916,6 +7923,28 @@ async function loadCfg(){
   if(sel){
     while(sel.options.length>1) sel.remove(1);
     _cfgModels.forEach(m=>{const o=document.createElement('option');o.value=m.nom||'';o.textContent=m.nom||'';sel.appendChild(o);});
+  }
+  updateAccModelInfo();
+}
+
+function updateAccModelInfo(){
+  const el=document.getElementById('acc-model-info');
+  if(!el) return;
+  const poste=ST&&ST.poste;
+  if(!poste){el.style.display='none';return;}
+  const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
+  const dk=DAY_KEYS[new Date().getDay()];
+  const mEff=_cfgModels.find(m=>m.nom===poste);
+  const mBase=_cfgModelsBase.find(m=>m.nom===poste);
+  const jEff=mEff&&mEff.jours&&mEff.jours[dk]||{};
+  const jBase=mBase&&mBase.jours&&mBase.jours[dk]||{};
+  if(!jEff.debut&&!jEff.fin){el.style.display='none';return;}
+  const isOverridden=(jEff.debut!==jBase.debut)||(jEff.fin!==jBase.fin);
+  el.style.display='block';
+  if(isOverridden){
+    el.innerHTML=`⏰ <b>${esc(poste)}</b> : <b style="color:#d97706">${esc(jEff.debut)} → ${esc(jEff.fin)}</b> <span style="background:#fef3c7;color:#92400e;font-size:10px;padding:1px 5px;border-radius:4px;font-weight:700">⚠ temporaire</span>`;
+  } else {
+    el.innerHTML=`⏰ <b>${esc(poste)}</b> : ${esc(jEff.debut)} → ${esc(jEff.fin)}`;
   }
 }
 
@@ -7963,12 +7992,12 @@ const DAYS=[{k:'lun',l:'Lun'},{k:'mar',l:'Mar'},{k:'mer',l:'Mer'},{k:'jeu',l:'Je
 function renderModelList(){
   const c=document.getElementById('models-list');
   if(!c) return;
-  c.innerHTML=_cfgModels.map((m,mi)=>{
+  c.innerHTML=_cfgModelsBase.map((m,mi)=>{
     const j=m.jours||{};
     return `<div class="model-card">
       <div class="mch">
-        <input value="${esc(m.nom||'Poste '+(mi+1))}" onchange="_cfgModels[${mi}].nom=this.value" placeholder="Nom du poste">
-        <button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="_cfgModels.splice(${mi},1);renderModelList()">✕</button>
+        <input value="${esc(m.nom||'Poste '+(mi+1))}" onchange="_cfgModelsBase[${mi}].nom=this.value" placeholder="Nom du poste">
+        <button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="_cfgModelsBase.splice(${mi},1);renderModelList()">✕</button>
       </div>
       <div class="day-grid">${DAYS.map(d=>{const dc=j[d.k]||{};
         return `<div class="day-box"><div class="day-lbl">${d.l}</div>
@@ -7980,10 +8009,10 @@ function renderModelList(){
   }).join('')||'<div style="color:var(--gray);font-size:11px">Aucun modèle horaire</div>';
 }
 
-function setDay(mi,day,field,val){if(!_cfgModels[mi])return;if(!_cfgModels[mi].jours)_cfgModels[mi].jours={};if(!_cfgModels[mi].jours[day])_cfgModels[mi].jours[day]={};_cfgModels[mi].jours[day][field]=val;}
-function addModel(){_cfgModels.push({nom:'Nouveau poste',jours:{lun:{debut:'05:00',fin:'13:00'},mar:{debut:'05:00',fin:'13:00'},mer:{debut:'05:00',fin:'13:00'},jeu:{debut:'05:00',fin:'13:00'},ven:{debut:'05:00',fin:'13:00'},sam:{debut:'',fin:''},dim:{debut:'',fin:''}}});renderModelList();}
+function setDay(mi,day,field,val){if(!_cfgModelsBase[mi])return;if(!_cfgModelsBase[mi].jours)_cfgModelsBase[mi].jours={};if(!_cfgModelsBase[mi].jours[day])_cfgModelsBase[mi].jours[day]={};_cfgModelsBase[mi].jours[day][field]=val;}
+function addModel(){_cfgModelsBase.push({nom:'Nouveau poste',jours:{lun:{debut:'05:00',fin:'13:00'},mar:{debut:'05:00',fin:'13:00'},mer:{debut:'05:00',fin:'13:00'},jeu:{debut:'05:00',fin:'13:00'},ven:{debut:'05:00',fin:'13:00'},sam:{debut:'',fin:''},dim:{debut:'',fin:''}}});renderModelList();}
 async function saveModels(){
-  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,modeles_horaires:_cfgModels})});
+  const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,modeles_horaires:_cfgModelsBase})});
   const d=r?await r.json():{};
   if(d&&d.ok){toast('Modèles enregistrés','ok');loadCfg();}else toast(d&&d.error||'Erreur','err');
 }
