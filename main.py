@@ -1716,7 +1716,7 @@ def api_history():
         return None
     d_from = _parse_date(date_from) if date_from else None
     d_to = _parse_date(date_to) if date_to else None
-    all_rows = [(rn,r) for rn,r in _decl_cache]
+    all_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() in ("production","prod","")]
     for rn, r in all_rows[-500:]:
         try:
             row_d = _parse_date(_row_date(r[2])) if r[2] else None
@@ -4143,7 +4143,12 @@ select{cursor:default}
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
       <div class="recap-col" style="width:310px">
         <div class="recap-hdr">Arrêts / pauses</div>
-        <div class="recap-body" id="recap-list"></div>
+        <div class="recap-body" id="recap-list" style="max-height:120px;flex:none"></div>
+        <!-- Budget arrêts prévus -->
+        <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;background:#fffbeb">
+          <div style="font-size:9px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">⏱ Arrêts prévus</div>
+          <div id="budget-bars-prod"></div>
+        </div>
         <!-- TRS OF gauge -->
         <div class="gauge-box" style="padding:8px 4px 4px;border-top:1px solid var(--border);flex-shrink:0">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;align-items:center">
@@ -4289,7 +4294,7 @@ select{cursor:default}
       <input type="hidden" id="ps-start-iso">
       <input type="hidden" id="ps-gap-s">
       <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Déclarer comme :</div>
-      <div id="ps-stop-btns" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px"></div>
+      <div id="ps-stop-btns" style="margin-bottom:10px"></div>
       <div style="margin-bottom:10px">
         <input id="ps-custom" placeholder="Ou saisir librement…" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
       </div>
@@ -5877,28 +5882,54 @@ function psFillStopBtns(){
   const bc=document.getElementById('ps-stop-btns');
   if(!bc) return;
   bc.innerHTML='';
+
+  const PREVUS=['Pause','Réunion','Nettoyage court','Nettoyage long','Nettoyage très long'];
+  const PREVUS_SET=new Set(PREVUS);
+
+  // Identifier les labels "Réunion" depuis _evtsList (correspondance par keyword)
+  const reunionKeys=new Set();
+  _evtsList.forEach(e=>{if(/réunion|reunion|meeting/i.test(e.label||'')) reunionKeys.add(e.label);});
+
+  // Arrêts standards depuis paramètres — exclure ceux déjà dans section Prévus
   const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
-  const seen=new Set();
-  const allLabels=[];
-  // Toutes sections : arrêts événements + interposte + pause + nettoyage (tous types)
-  evts.forEach(e=>{if(e.label&&!seen.has(e.label)){seen.add(e.label);allLabels.push(e.label);}});
-  _interposteLbls.forEach(lbl=>{if(lbl&&!seen.has(lbl)){seen.add(lbl);allLabels.push(lbl);}});
-  ['Pause','Nettoyage court','Nettoyage long','Nettoyage très long'].forEach(lbl=>{
-    if(!seen.has(lbl)){seen.add(lbl);allLabels.push(lbl);}
+  const arretLabels=[];
+  const seenArret=new Set([...PREVUS_SET,...reunionKeys]);
+  evts.forEach(e=>{
+    if(e.label&&!seenArret.has(e.label)){seenArret.add(e.label);arretLabels.push(e.label);}
   });
-  allLabels.forEach(lbl=>{
+
+  const _makeBtn=(lbl,accent)=>{
     const b=document.createElement('button');
     b.className='btn btn-ghost';
-    b.style.cssText='font-size:12px;transition:all .15s;border:2px solid var(--border)';
+    b.style.cssText=`font-size:12px;transition:all .15s;border:2px solid ${accent||'var(--border)'};color:${accent||'var(--text)'};margin-bottom:3px`;
     b.textContent=lbl;
     b.onclick=()=>{
       document.getElementById('ps-custom').value=lbl;
-      bc.querySelectorAll('.btn').forEach(x=>{x.style.background='';x.style.color='';x.style.borderColor='var(--border)';x.style.transform='';});
+      bc.querySelectorAll('.btn').forEach(x=>{x.style.background='';x.style.borderColor='var(--border)';x.style.color='var(--text)';x.style.transform='';});
       b.style.background='var(--navy)';b.style.color='#fff';b.style.borderColor='var(--navy)';
       b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
     };
-    bc.appendChild(b);
-  });
+    return b;
+  };
+
+  const _makeSection=(title,labels,accent)=>{
+    if(!labels.length) return;
+    const hdr=document.createElement('div');
+    hdr.style.cssText='font-size:10px;font-weight:800;text-transform:uppercase;color:'+accent+';letter-spacing:.4px;margin:6px 0 4px;border-bottom:1px solid #e5e7eb;padding-bottom:2px';
+    hdr.textContent=title;
+    bc.appendChild(hdr);
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
+    labels.forEach(lbl=>row.appendChild(_makeBtn(lbl,accent)));
+    bc.appendChild(row);
+  };
+
+  _makeSection('⏱ Arrêts prévus',PREVUS,'#d97706');
+  _makeSection('⛔ Arrêts',arretLabels,'#dc2626');
+  if(_interposteLbls.length){
+    _makeSection('🔄 Interposte',_interposteLbls,'#0891b2');
+  }
+
   document.getElementById('ps-custom').value='';
 }
 
@@ -6431,8 +6462,9 @@ function updateGauge(s){
   if(ofS>0&&prodRef>0&&equiv>0){
     trs=Math.round(equiv/(prodRef*effOfS/28800)*100*10)/10;
   }
-  // Mise à jour barres budget accueil
+  // Mise à jour barres budget accueil + prod en cours
   renderBudgetBars('budget-bars-acc',bs);
+  renderBudgetBars('budget-bars-prod',bs);
   const trsStr=trs>=0?fmtTRS(trs):'—';
   pct.textContent=trsStr;
   if(pobTrs) pobTrs.textContent=trsStr;
