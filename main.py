@@ -2273,7 +2273,16 @@ def api_session_report():
         elapsed_s = max(1.0, model_dur_s - planned_ded)
         trs_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
     trs_of = round(tot_eq/(prod_ref*tot_s/28800)*100,1) if prod_ref>0 and tot_s>0 and tot_eq>0 else -1
-    return jsonify({"date":date_str,"pilot":pilot,"poste":poste,"prod_rows":prod_rows,"evt_rows":evt_rows,
+    _budget_labels = {"pause_min":"Pause","meeting_tol_min":"Réunion","clean_short_min":"Nettoyage court","clean_long_min":"Nettoyage long","clean_grand_min":"Nettoyage très long"}
+    budget_data = {bk:{"label":bl,"budget_min":float(cfg.get(bk,0) or 0),"used_min":0.0} for bk,bl in _budget_labels.items()}
+    for _er in evt_rows:
+        _bk = _get_arret_budget_key(_er.get('type','') or _er.get('comment',''))
+        if _bk and _bk in budget_data:
+            _dp = (_er.get('duree') or ''); _pp = (_dp+':00:00').split(':')
+            try: _bs = int(_pp[0] or 0)*3600+int(_pp[1] or 0)*60+int(_pp[2] or 0)
+            except: _bs = 0
+            budget_data[_bk]['used_min'] += _bs/60
+    return jsonify({"date":date_str,"pilot":pilot,"poste":poste,"prod_rows":prod_rows,"evt_rows":evt_rows,"budget_data":budget_data,
                     "trs_shift":trs_shift,"trs":trs_of,"tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
                     "stop_s":round(stop_s,0),"nb_of":len(prod_rows),
                     "model_debut":debut_str or "","model_fin":fin_str or "",
@@ -3614,6 +3623,39 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Commentaire</th>'
             f'</tr></thead><tbody>{evts_h}</tbody></table>'
         ) if evts_h else '<div style="color:#64748b;font-size:12px">Aucun arrêt</div>'
+        _bgt_labels = {"pause_min":"Pause","meeting_tol_min":"Réunion","clean_short_min":"Nettoyage court","clean_long_min":"Nettoyage long","clean_grand_min":"Nettoyage très long"}
+        _bgt_used = {bk:0.0 for bk in _bgt_labels}
+        for _er in (d.get('evt_rows') or []):
+            _bk2 = None
+            _rl = str(_er.get('type','') or '').lower()
+            if 'nettoyage' in _rl or 'nett' in _rl:
+                if 'très long' in _rl or 'tres long' in _rl or 'grand' in _rl: _bk2='clean_grand_min'
+                elif 'long' in _rl: _bk2='clean_long_min'
+                elif 'court' in _rl: _bk2='clean_short_min'
+            elif 'réunion' in _rl or 'reunion' in _rl or 'meeting' in _rl: _bk2='meeting_tol_min'
+            elif 'pause' in _rl: _bk2='pause_min'
+            if _bk2:
+                _dp2=str(_er.get('duree') or ''); _pp2=(_dp2+':00:00').split(':')
+                try: _bs2=int(_pp2[0] or 0)*3600+int(_pp2[1] or 0)*60+int(_pp2[2] or 0)
+                except: _bs2=0
+                _bgt_used[_bk2]+=_bs2/60
+        _budget_bars_h=''
+        for _bk3,_bl3 in [('clean_short_min','Nettoyage court'),('clean_long_min','Nettoyage long'),('clean_grand_min','Nettoyage très long'),('meeting_tol_min','Réunion'),('pause_min','Pause')]:
+            _bm=float(cfg.get(_bk3,0) or 0); _bu=_bgt_used.get(_bk3,0.0)
+            if _bm<=0: continue
+            _pct=min(100,round(_bu/_bm*100)) if _bm>0 else 0
+            _bc='#dc2626' if _bu>_bm else '#d97706' if _bu/_bm>=0.8 else '#16a34a'
+            _budget_bars_h+=(
+                f'<div style="margin-bottom:7px">'
+                f'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">'
+                f'<span>{_resc(_bl3)}</span>'
+                f'<span style="font-weight:700;color:{_bc}">{round(_bu)}/{round(_bm)} min</span>'
+                f'</div>'
+                f'<div style="background:#f1f5f9;border-radius:4px;height:12px;overflow:hidden">'
+                f'<div style="height:100%;background:{_bc};border-radius:4px;width:{_pct}%;opacity:.85"></div>'
+                f'</div></div>'
+            )
+        if not _budget_bars_h: _budget_bars_h='<div style="color:#94a3b8;font-size:12px">Aucun budget configuré</div>'
         plage_str = ''
         if d.get('actual_debut') and d.get('actual_fin'):
             plage_str = f' · {_resc(d.get("actual_debut",""))} → {_resc(d.get("actual_fin",""))}'
@@ -3655,7 +3697,8 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             f'</tr></thead><tbody>{prod_h}</tbody></table></div>'
             f'<div style="display:flex;flex-direction:column;gap:8px">'
             f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px">Pareto arrêts</div>{pareto_h}</div>'
-            f'<div class="rpt-card" style="padding:10px;flex:1"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Détail arrêts</div>{evts_section}</div>'
+            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Détail arrêts</div>{evts_section}</div>'
+            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>{_budget_bars_h}</div>'
             f'</div></div></div>'
         )
 
@@ -8347,7 +8390,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Pareto des arrêts</div>
           ${paretoHtml}
         </div>
-        <div class="card" style="padding:10px;flex:1">
+        <div class="card" style="padding:10px">
           <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Détail arrêts</div>
           ${(d.evt_rows||[]).length?`<table style="width:100%;border-collapse:collapse;font-size:10px">
             <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
@@ -8369,6 +8412,27 @@ async function loadSessionReport(date,pilot,poste,itemId){
               <td style="padding:4px 5px;color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.comment||'')}">${esc(r.comment||'—')}</td>
             </tr>`).join('')}</tbody>
           </table>`:'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>'}
+        </div>
+        <div class="card" style="padding:10px">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>
+          ${(()=>{
+            const bd=d.budget_data||{};
+            const bKeys=['clean_short_min','clean_long_min','clean_grand_min','meeting_tol_min','pause_min'];
+            const rows=bKeys.map(bk=>{
+              const b=bd[bk];if(!b||b.budget_min<=0)return '';
+              const pct=Math.min(100,Math.round(b.used_min/b.budget_min*100));
+              const col=b.used_min>b.budget_min?'#dc2626':b.used_min/b.budget_min>=0.8?'#d97706':'#16a34a';
+              return '<div style="margin-bottom:7px">'
+                +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">'
+                +'<span style="color:var(--text)">'+esc(b.label)+'</span>'
+                +'<span style="font-weight:700;color:'+col+'">'+Math.round(b.used_min)+'/'+Math.round(b.budget_min)+' min</span>'
+                +'</div>'
+                +'<div style="background:#f1f5f9;border-radius:4px;height:12px;overflow:hidden">'
+                +'<div style="height:100%;background:'+col+';border-radius:4px;width:'+pct+'%;opacity:.85"></div>'
+                +'</div></div>';
+            }).filter(Boolean).join('');
+            return rows||'<div style="color:var(--gray);font-size:12px">Aucun budget configuré</div>';
+          })()}
         </div>
       </div>
     </div>`;
