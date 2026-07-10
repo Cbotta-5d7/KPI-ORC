@@ -6693,18 +6693,6 @@ let _todayEquivAccum=0, _todayStopAccum=0, _lastProdDeclTime=null, _shiftRefDt=n
 // ── EDIT ROW (accueil) ──
 function openEditRow(key) {
   const row=window._rowMap[String(key)];if(!row) return;
-  if(!_adminPw){
-    _showPwAction('🔒 Accès modification (MDP Admin)',function(pw){
-      if(!pw){toast('Mot de passe requis','err');return;}
-      _adminPw=pw;
-      _doOpenEditRow(key);
-    });
-    return;
-  }
-  _doOpenEditRow(key);
-}
-function _doOpenEditRow(key) {
-  const row=window._rowMap[String(key)];if(!row) return;
   const isProd=row._rowType==='prod';
   document.getElementById('er-rownum').value=row.row_num||'';
   document.getElementById('er-rowtype').value=row._rowType||'';
