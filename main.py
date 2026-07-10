@@ -2966,7 +2966,7 @@ def generate_dashboard_html():
         _form_detail_chips = ""
         _form_detail_fields = [
             ("Taille", taille_now, "#1e293b"), ("Type", type_prod_now, "#1e293b"),
-            ("Code prod.", code_prod_now, "#374151"), ("Kit", kit_now if prod_active else "", kit_col),
+            ("Code prod.", code_prod_now, "#374151"), ("Lots de 2", kit_now if prod_active else "", kit_col),
             ("Fibre", fibre_now, "#6366f1"), ("Poids (g)", poids_now, "#1e293b"),
             ("Co-pilote", copilote_now, "#1e293b"), ("Nb pers.", nb_pers_now, "#1e293b"),
             ("OF Taie", of_taie_now, "#374151"), ("Traca", traca_now, "#374151"),
@@ -3274,7 +3274,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
         <div class="panel-hdr" style="background:#14532d;color:#fff">Productions déclarées sur ce poste</div>
         <div class="panel-body" style="padding:0">
           <table class="ktbl" style="font-size:14px">
-            <thead><tr><th>OF</th><th>Fibre</th><th>Type</th><th>Format</th><th>Kit</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cadence/h</th><th>Éq.</th><th>TRS</th><th>Commentaire</th></tr></thead>
+            <thead><tr><th>OF</th><th>Fibre</th><th>Type</th><th>Format</th><th>Lots de 2</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cadence/h</th><th>Éq.</th><th>TRS</th><th>Commentaire</th></tr></thead>
             <tbody>{prod_rows_html}</tbody>
           </table>
         </div>
@@ -3372,7 +3372,7 @@ function _renderDashOf(r){{
   var kit=(r.kit||'').toLowerCase()==='oui'?'<span style="color:#16a34a;font-weight:800">✓ Oui</span>':'Non';
   var chips=[
     ['Date',r.date],['Poste',r.poste],['Pilote',r.pilot||r.pilote||''],['Co-Pilote',r.copilote||''],
-    ['Taille',r.taille||''],['Type',r.type_prod||''],['Kit',kit,'raw'],
+    ['Taille',r.taille||''],['Type',r.type_prod||''],['Lots de 2',kit,'raw'],
     ['Nb Pers.',r.nb_pers||''],['Code Produit',r.code_prod||''],
     ['Début',r.debut||''],['Fin',r.fin||''],['Durée',r.duree||''],
     ['Qté Fab.',r.qte_fab||''],['Qté Emb.',r.qte_emb||''],['Équivalence',r.equiv||''],
@@ -3502,7 +3502,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             _trs_sh3 = round(_teq3/(prod_ref*_el3/28800)*100,1)
         _trs_of3 = round(_teq3/(prod_ref*_ts3/28800)*100,1) if prod_ref>0 and _ts3>0 and _teq3>0 else -1
         _rpt_key3 = f"{_s_r['date']}|{_s_r['pilot']}|{_s_r['poste']}"
-        _embedded_reports_dict[_rpt_key3] = {"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"prod_rows":_pr3,"evt_rows":_er3,"trs_shift":_trs_sh3,"trs":_trs_of3,"tot_equiv":round(_teq3,1),"tot_s":round(_ts3,0),"stop_s":round(_sts3,0),"nb_of":len(_pr3),"model_debut":_mdeb3 or "","model_fin":_mfin3 or "","actual_debut":_acd3,"actual_fin":_acf3,"ecart_s":round(_ecart3,0)}
+        _embedded_reports_dict[_rpt_key3] = {"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"prod_rows":_pr3,"evt_rows":_er3,"trs_shift":_trs_sh3,"trs":_trs_of3,"tot_equiv":round(_teq3,1),"tot_s":round(_ts3,0),"stop_s":round(_sts3,0),"nb_of":len(_pr3),"model_debut":_mdeb3 or "","model_fin":_mfin3 or "","actual_debut":_acd3,"actual_fin":_acf3,"ecart_s":round(_ecart3,0),"model_dur_s":round(_mdur3,0),"planned_ded_s":round(_ded3,0)}
     # --- STATIC RAPPORTS HTML GENERATION ---
     def _resc(s):
         return str(s or '').replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;')
@@ -3656,6 +3656,11 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
                 f'</div></div>'
             )
         if not _budget_bars_h: _budget_bars_h='<div style="color:#94a3b8;font-size:12px">Aucun budget configuré</div>'
+        _tot_qte_fab = sum(float(str(pr.get("qte_fab","") or 0).replace(",",".")) for pr in (d.get("prod_rows") or []))
+        _eff_s = max(1.0, float(d.get("model_dur_s",0) or 0) - float(d.get("planned_ded_s",0) or 0))
+        _cad_h = round(_tot_qte_fab / _eff_s * 3600) if _eff_s > 0 and _tot_qte_fab > 0 else 0
+        _sorted_f = sorted([pr for pr in (d.get("prod_rows") or []) if pr.get("fibre")], key=lambda x: x.get("debut",""))
+        _nb_chg_f = sum(1 for _i in range(1, len(_sorted_f)) if _sorted_f[_i]["fibre"] != _sorted_f[_i-1]["fibre"])
         plage_str = ''
         if d.get('actual_debut') and d.get('actual_fin'):
             plage_str = f' · {_resc(d.get("actual_debut",""))} → {_resc(d.get("actual_fin",""))}'
@@ -3682,8 +3687,11 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             f'<div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:5px">'
             f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:{trs_col}">{trs_str}</div><div class="fp-lbl">TRS Shift</div></div>'
             f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px">{trs_of_str}</div><div class="fp-lbl">TRS Prod</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0369a1;font-weight:900">{_cad_h}</div><div class="fp-lbl">Cadence/h</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#059669;font-weight:900">{round(_tot_qte_fab)}</div><div class="fp-lbl">Nb pièces</div></div>'
             f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0891b2">{(d.get("tot_equiv",0) or 0):.1f}</div><div class="fp-lbl">Équivalence</div></div>'
             f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#7c3aed">{d.get("nb_of",0)}</div><div class="fp-lbl">Nb OF</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#8b5cf6">{_nb_chg_f}</div><div class="fp-lbl">Chg. fibre</div></div>'
             f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#16a34a">{prod_min} min</div><div class="fp-lbl">Prod</div></div>'
             f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#dc2626">{stop_min} min</div><div class="fp-lbl">Arrêts</div></div>'
             f'{ecart_div}'
@@ -4093,6 +4101,7 @@ select{cursor:default}
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0" id="main-action-btns">
         <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:14px;padding:10px 18px;font-weight:800">▶ Démarrer production</button>
+        <button class="btn btn-danger" onclick="openStopModal()" style="font-size:14px;padding:10px 18px;font-weight:800">⛔ Déclarer un arrêt</button>
         <button class="btn btn-amber" onclick="doFinPoste()" style="font-size:14px;padding:10px 18px;font-weight:800">🏁 Fin de poste</button>
         <button class="btn btn-sec" onclick="loadMainDecl()" style="font-size:12px;padding:8px 14px">↺ Actualiser</button>
       </div>
@@ -4236,7 +4245,7 @@ select{cursor:default}
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Code Produit</label><input id="f-code_prod" oninput="scheduleAutoSave()" onfocus="openCodeInput('code_prod','Code Produit')"></div>
             <div class="fr"><label>Type Produit</label><select id="f-type_prod" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>Kit</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
+            <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
           </div>
           <!-- Zone Production -->
           <div class="fzone zp">
@@ -4245,16 +4254,16 @@ select{cursor:default}
             <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>OF Taie</label><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Traca Fibre</label><input type="text" id="f-traca" oninput="scheduleAutoSave()" placeholder="n° de traca"></div>
             <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()" onfocus="openCodeInput('ref_taie','Code Taie')"></div>
-            <div class="fr"><label>Mq MP (min)</label><input id="f-duree_mq_mp" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Mq Personnel (min)</label><input id="f-manquant_pers" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr" style="display:none"><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
+            <div class="fr" style="display:none"><input id="f-duree_mq_mp" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>MQ PERSONNEL (Seulement si arrêt d'une partie de la ligne) (min)</label><input id="f-manquant_pers" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
           </div>
           <!-- Zone Qualité -->
           <div class="fzone zq">
             <h4>✅ Qualité</h4>
-            <div class="fr"><label>Qté Init Taie</label><input id="f-qte_init_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr" style="display:none"><input id="f-qte_init_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Nb Taie 2nd Choix</label><input id="f-nb_taie2_choix" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Nb Défaut Couture</label><input id="f-nb_def_cout" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Mq Taie</label><input id="f-mq_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
@@ -4284,7 +4293,7 @@ select{cursor:default}
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
       <div class="recap-col" style="width:310px">
         <div class="recap-hdr">Arrêts / pauses</div>
-        <div class="recap-body" id="recap-list" style="max-height:120px;flex:none"></div>
+        <div class="recap-body" id="recap-list" style="max-height:120px;flex:none;overflow-y:auto"></div>
         <!-- Budget arrêts prévus -->
         <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;background:#fffbeb">
           <div style="font-size:9px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">⏱ Arrêts prévus</div>
@@ -4617,6 +4626,8 @@ select{cursor:default}
       <label style="font-size:11px;font-weight:600;color:var(--gray)">Au <input type="date" id="hist-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;margin-left:4px"></label>
       <button class="btn btn-primary" onclick="loadHist()" style="padding:5px 12px;font-size:12px">Charger</button>
       <div style="width:1px;height:22px;background:var(--border);flex-shrink:0"></div>
+      <input id="hist-search" type="text" placeholder="🔍 Rechercher N° OF…" style="padding:4px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;min-width:160px" oninput="filterHistBySearch()">
+      <div style="width:1px;height:22px;background:var(--border);flex-shrink:0"></div>
       <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
         <span style="font-size:10px;font-weight:700;color:var(--gray);text-transform:uppercase">Filtrer :</span>
         <button class="hf-btn" data-hf="production" onclick="toggleHistFilter(this)" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1.5px solid #16a34a;color:#16a34a;background:none;cursor:pointer;font-weight:700;transition:all .15s">🏭 Production</button>
@@ -4773,16 +4784,7 @@ select{cursor:default}
         </div>
         <button class="btn btn-prim" style="margin-top:8px;font-size:12px" onclick="saveEvtList()">💾 Enregistrer la liste</button>
       </div>
-      <div class="ss">
-        <h3>🔄 Labels "Entre 2 OFs" (Interposte/InterOF)</h3>
-        <div style="font-size:11px;color:var(--gray);margin-bottom:8px">Boutons de choix affichés dans la fenêtre "Temps entre 2 OFs". Configurez ici vos motifs Interposte/InterOF.</div>
-        <div id="interposte-list-ui" style="margin-bottom:10px"></div>
-        <div style="display:flex;gap:6px;align-items:center;background:#f8fafc;padding:8px;border-radius:7px;border:1px solid var(--border)">
-          <input id="ip-new-label" placeholder="Nouveau label interposte" style="flex:1;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
-          <button class="btn btn-green" style="font-size:11px;padding:5px 12px" onclick="addInterposteLbl()">+ Ajouter</button>
-        </div>
-        <button class="btn btn-prim" style="margin-top:8px;font-size:12px" onclick="saveInterposteCfg()">💾 Enregistrer</button>
-      </div>
+      <div class="ss" style="display:none"><div id="interposte-list-ui"></div></div>
       <div class="ss">
         <h3>⏱ Arrêts prévus (budget planifié)</h3>
         <div style="font-size:11px;color:var(--gray);margin-bottom:10px">Les durées planifiées sont <b>déduites du temps de référence TRS</b> si le pilote les a réellement déclarées. Tout dépassement reste impactant. Mettre 0 pour désactiver.</div>
@@ -4849,6 +4851,14 @@ select{cursor:default}
       <button style="background:none;border:none;cursor:pointer;color:#fff;font-size:16px" onclick="closeM('m-stop')">✕</button>
     </div>
     <div class="mbody">
+      <div class="stop-section-lbl" style="color:#92400e">⏱ Arrêts prévus</div>
+      <div class="stops-grid" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px">
+        <button style="background:#64748b;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="closeM('m-stop');doPause()">⏸ Pause</button>
+        <button style="background:#64748b;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="closeM('m-stop');doReunion()">👥 Réunion</button>
+        <button style="background:#78350f;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('court')">🧹 Nettoyage court</button>
+        <button style="background:#92400e;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('long')">🧹 Nettoyage long</button>
+        <button style="background:#a16207;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('grand')">🧹 Nettoyage très long</button>
+      </div>
       <div class="stop-section-lbl">🔄 Rattrapage</div>
       <div class="stops-grid ratt" id="sgrid-ratt"></div>
       <div class="stop-section-lbl">🔧 PB Technique</div>
@@ -4971,7 +4981,7 @@ select{cursor:default}
           <div class="fr"><label>OF Taie</label><input id="er-oftaie"></div>
           <div class="fr"><label>Traca Fibre</label><select id="er-traca"><option value="">--</option></select></div>
           <div class="fr"><label>Réf Taie</label><input id="er-reftaie"></div>
-          <div class="fr"><label>Kit</label><select id="er-kit"><option value="">Non</option><option value="oui">Oui</option></select></div>
+          <div class="fr"><label>Lots de 2</label><select id="er-kit"><option value="">Non</option><option value="oui">Oui</option></select></div>
           <div class="fr"><label>Qté Init Taie</label><input type="number" id="er-qteinit"></div>
           <div class="fr"><label>Nb Taie 2nd Choix</label><input type="number" id="er-nbtaie2"></div>
           <div class="fr"><label>Nb Défaut Couture</label><input type="number" id="er-nbdef"></div>
@@ -5572,6 +5582,14 @@ function getEvtLabel(key) {
   const ev=EVENTS.find(e=>e[1]===key);
   if(ev) return (ev[2]==='ratt'?'Rattrapage: ':ev[2]==='pb'?'PB: ':'')+ev[0];
   if(key==='nettoyage') return 'Nettoyage';
+  // Fallback par mot-clé (clés non normalisées ou issues d'une ancienne version)
+  const kl=(key||'').toLowerCase();
+  if(kl.includes('reunion')||kl.includes('union')||kl.includes('meeting')) return 'Réunion';
+  if(kl.includes('pause')) return 'Pause';
+  if(kl.includes('nettoyage')||kl.includes('nett')) return 'Nettoyage';
+  // Recherche fuzzy dans _evtsList
+  const fuzzy=_evtsList.find(e=>(e.label||'').toLowerCase().split(' ').some(w=>w.length>3&&kl.includes(w)));
+  if(fuzzy) return fuzzy.label;
   return key||'Arrêt';
 }
 
@@ -6675,6 +6693,18 @@ let _todayEquivAccum=0, _todayStopAccum=0, _lastProdDeclTime=null, _shiftRefDt=n
 // ── EDIT ROW (accueil) ──
 function openEditRow(key) {
   const row=window._rowMap[String(key)];if(!row) return;
+  if(!_adminPw){
+    _showPwAction('🔒 Accès modification (MDP Admin)',function(pw){
+      if(!pw){toast('Mot de passe requis','err');return;}
+      _adminPw=pw;
+      _doOpenEditRow(key);
+    });
+    return;
+  }
+  _doOpenEditRow(key);
+}
+function _doOpenEditRow(key) {
+  const row=window._rowMap[String(key)];if(!row) return;
   const isProd=row._rowType==='prod';
   document.getElementById('er-rownum').value=row.row_num||'';
   document.getElementById('er-rowtype').value=row._rowType||'';
@@ -7017,7 +7047,7 @@ function showOfDetail(ri) {
     <td style="padding:4px 8px;font-size:10px;color:var(--gray)">${esc(e.comment||'')}</td>
   </tr>`).join('') : '<tr><td colspan="4" style="padding:8px;text-align:center;color:var(--gray);font-size:11px">Aucun arrêt</td></tr>';
   const chips = [
-    ['Taille',r.taille||'—',''],['Type',r.type_prod||'—',''],['Kit',kitDisp,'raw'],
+    ['Taille',r.taille||'—',''],['Type',r.type_prod||'—',''],['Lots de 2',kitDisp,'raw'],
     ['Qté fab.',r.qte_fab||'—',''],['Équivalence',r.equiv||'—','color:#0891b2;font-weight:800'],
     ['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':'—',`color:${tc}`],
     ['Heure début',r.debut||'—',''],['Heure fin',r.fin||'—',''],['Durée',r.duree||'—',''],
@@ -8018,7 +8048,7 @@ function showHistRowDetail(key){
     if(r.code_prod)chips.push(['Code prod.',r.code_prod,'font-family:monospace']);
     if(r.poids)chips.push(['Poids',r.poids,'']);
     if(r.fibre)chips.push(['Fibre',r.fibre,'color:#6366f1']);
-    chips.push(['Kit',kitDisp,'raw']);
+    chips.push(['Lots de 2',kitDisp,'raw']);
     if(r.qte_fab)chips.push(['Qté fab.',r.qte_fab,'']);
     if(r.qte_emb)chips.push(['Qté emb.',r.qte_emb,'']);
     if(r.equiv)chips.push(['Équiv.',r.equiv,'color:#0891b2;font-weight:800']);
@@ -8119,9 +8149,20 @@ function _histMatchFilter(r){
   return false;
 }
 
+function filterHistBySearch(){
+  const q=(document.getElementById('hist-search')?.value||'').toLowerCase().trim();
+  document.querySelectorAll('#hist-bd tr[data-hftype]').forEach(tr=>{
+    if(!q){tr.dataset.searchHidden='';return;}
+    const ofTxt=(tr.cells[1]?.textContent||'').toLowerCase();
+    tr.dataset.searchHidden=ofTxt.includes(q)?'':'1';
+  });
+  _applyHistFilter();
+}
+
 function _applyHistFilter(){
   const rows=document.querySelectorAll('#hist-bd tr[data-hftype]');
   rows.forEach(tr=>{
+    if(tr.dataset.searchHidden==='1'){tr.style.display='none';return;}
     const t=tr.dataset.hftype||'';
     const isProd=t==='prod';
     const isNett=t.includes('nettoyage')||t.includes('nett');
@@ -8332,6 +8373,12 @@ async function loadSessionReport(date,pilot,poste,itemId){
     html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#fff">${fmt(tE)}</text>`;
     return html;
   }
+  // Métriques supplémentaires
+  const totQteFab=(d.prod_rows||[]).reduce((s,r)=>s+parseFloat(r.qte_fab||0),0);
+  const elapsedEffS=Math.max(1,(d.model_dur_s||0)-(d.planned_ded_s||0));
+  const cadenceH=elapsedEffS>0?Math.round(totQteFab/elapsedEffS*3600):0;
+  const sortedProdF=(d.prod_rows||[]).filter(r=>r.fibre).sort((a,b)=>(a.debut||'').localeCompare(b.debut||''));
+  let nbChangFibre=0;for(let i=1;i<sortedProdF.length;i++){if(sortedProdF[i].fibre!==sortedProdF[i-1].fibre)nbChangFibre++;}
   const tlDebut=d.actual_debut||d.model_debut;
   const tlFin=d.actual_fin||d.model_fin;
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
@@ -8358,8 +8405,11 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:5px">
         <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:${trsCol}">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div><div class="fp-lbl">TRS Shift</div></div>
         <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px">${d.trs>=0?d.trs.toFixed(1)+'%':'—'}</div><div class="fp-lbl">TRS Prod</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl">Cadence/h</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl">Nb pièces</div></div>
         <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0891b2">${(d.tot_equiv||0).toFixed(1)}</div><div class="fp-lbl">Équivalence</div></div>
         <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#7c3aed">${d.nb_of||0}</div><div class="fp-lbl">Nb OF</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#8b5cf6">${nbChangFibre}</div><div class="fp-lbl">Chg. fibre</div></div>
         <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#16a34a">${prodMin} min</div><div class="fp-lbl">Prod</div></div>
         <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#dc2626">${stopMin} min</div><div class="fp-lbl">Arrêts</div></div>
         ${(d.ecart_s||0)>0?`<div class="fp-card" style="padding:7px;border:1.5px solid #f59e0b"><div class="fp-big" style="font-size:16px;color:#d97706">${Math.round((d.ecart_s||0)/60)} min</div><div class="fp-lbl">Non déclaré</div></div>`:''}
@@ -8379,7 +8429,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
         <table style="width:100%;border-collapse:collapse;font-size:11px">
           <thead><tr style="background:#f8fafc">
             <th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>
-            <th style="padding:4px 6px">Kit</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>
+            <th style="padding:4px 6px">Lots de 2</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>
             <th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th>
           </tr></thead>
           <tbody>${prodsHtml||'<tr><td colspan="8" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
