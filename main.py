@@ -917,21 +917,20 @@ def find_postes_row_num(pilot, debut_dt):
     return None
 
 def update_poste_horaires(row_num, debut_dt, fin_dt):
+    """Écrit P et Q directement (pas de thread interne — à appeler depuis un thread background)."""
     if not row_num or row_num <= 1: return
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return
-    def _bg():
-        try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                if "Postes" not in wb.sheetnames: return
-                ws = wb["Postes"]
-                ws.cell(row_num, 16).value = debut_dt.isoformat() if debut_dt else None
-                ws.cell(row_num, 17).value = fin_dt.isoformat() if fin_dt else None
-                _safe_excel_save(wb, path)
-        except: pass
-    threading.Thread(target=_bg, daemon=True).start()
+    try:
+        with _excel_lock:
+            wb = _get_wb(path)
+            if wb is None: return
+            if "Postes" not in wb.sheetnames: return
+            ws = wb["Postes"]
+            ws.cell(row_num, 16).value = debut_dt.isoformat() if debut_dt else None
+            ws.cell(row_num, 17).value = fin_dt.isoformat() if fin_dt else None
+            _safe_excel_save(wb, path)
+    except: pass
 
 def write_poste_row(data, row_num=None):
     """Écrit ou met à jour une ligne dans l'onglet Postes à la fin de chaque poste."""
@@ -5745,12 +5744,9 @@ function psFillStopBtns(){
 async function confirmPsAsStop(){
   const lbl=(document.getElementById('ps-custom').value||'').trim()||'Interposte';
   const gapS=parseFloat(document.getElementById('ps-gap-s').value)||0;
-  const startIso=document.getElementById('ps-start-iso').value;
   closeM('m-preshift');
+  // Déclarer le gap comme arrêt — NE PAS rétrodater le début de l'OF
   await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inter_of_s:gapS,label:lbl,comment:''})});
-  if(startIso){
-    await fetch('/api/set_of_start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({iso:startIso})});
-  }
   await pollState();
   await pollEvts();
   loadMainDecl();
@@ -5763,8 +5759,10 @@ async function psChooseBackdate(){
   if(startIso){
     await fetch('/api/set_of_start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({iso:startIso})});
     await pollState();
+    const bt=document.getElementById('ps-backdate-time');
+    const tStr=bt?bt.textContent:'';
+    toast('OF rétro-daté à '+(tStr||'l\'heure indiquée'),'ok');
   }
-  toast('OF rétro-daté au début de poste','ok');
   goTab('prod');
 }
 
