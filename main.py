@@ -340,6 +340,102 @@ def _compute_planned_deduction_s(evt_rows):
             actual[key] = actual.get(key, 0.0) + dur_s
     return sum(min(actual.get(k, 0.0), b) for k, b in budgets.items())
 
+def _compute_budget_state_now():
+    """Calcule l'état des budgets arrêts prévus pour le poste en cours.
+    Retourne per_type (consumed_s, budget_s, of_consumed_s, of/shift_deductible_s)
+    + total_shift_deductible_s + total_of_deductible_s.
+    """
+    BUDGET_KEYS = {
+        "pause_min":       "Pause",
+        "meeting_tol_min": "Réunion",
+        "clean_short_min": "Nettoyage court",
+        "clean_long_min":  "Nettoyage long",
+        "clean_grand_min": "Nettoyage très long",
+    }
+    budgets_s = {lbl: float(cfg.get(k, 0) or 0) * 60 for k, lbl in BUDGET_KEYS.items()}
+    shift_consumed = {lbl: 0.0 for lbl in BUDGET_KEYS.values()}
+    of_consumed    = {lbl: 0.0 for lbl in BUDGET_KEYS.values()}
+
+    pilot = _S.get("pilot", "")
+    shift_start = _S.get("shift_start")
+    today_str = datetime.date.today().strftime("%d/%m/%Y")
+    shift_date_str = (shift_start.date() if shift_start else datetime.date.today()).strftime("%d/%m/%Y")
+
+    # Key → label mapping pour les arrêts configurés
+    try:
+        _evts_cfg = get_events_list()
+        _key_lbl = {e.get("key",""): e.get("label","") for e in _evts_cfg}
+    except:
+        _key_lbl = {}
+
+    def _planned_lbl_from_raw(raw_lbl):
+        bk = _get_arret_budget_key(raw_lbl)
+        return BUDGET_KEYS.get(bk)
+
+    def _planned_lbl_from_tl(ev):
+        cat = ev.get("cat","")
+        if cat == "nettoyage":
+            ntype = ev.get("nettoyage_type","court")
+            bk = {"court":"clean_short_min","long":"clean_long_min","grand":"clean_grand_min"}.get(ntype,"clean_short_min")
+            return BUDGET_KEYS.get(bk)
+        lbl = _key_lbl.get(ev.get("key",""), ev.get("key",""))
+        bk = _get_arret_budget_key(lbl)
+        return BUDGET_KEYS.get(bk)
+
+    # 1. Événements des OFs passés (déjà écrits dans Excel)
+    for rn, r in _decl_cache:
+        rd = _row_date(r[2])
+        if rd != shift_date_str and rd != today_str: continue
+        if str(r[4] or "") != pilot: continue
+        if str(r[0] or "").strip().lower() in ("production","prod",""): continue
+        pl = _planned_lbl_from_raw(str(r[0] or "").strip())
+        if pl:
+            shift_consumed[pl] = shift_consumed.get(pl, 0.0) + _hms_to_sec(str(r[18] or "00:00:00"))
+
+    # 2. OF en cours : tl_events (terminés et actifs)
+    for ev in _S.get("tl_events", []):
+        if not ev.get("start"): continue
+        pl = _planned_lbl_from_tl(ev)
+        if pl:
+            end = ev.get("end") or datetime.datetime.now()
+            dur = (end - ev["start"]).total_seconds()
+            of_consumed[pl] = of_consumed.get(pl, 0.0) + dur
+            shift_consumed[pl] = shift_consumed.get(pl, 0.0) + dur
+
+    # 3. Pause OF en cours (hors tl_events)
+    pause_s = _S.get("pause_total_s", 0.0)
+    if _S.get("is_paused") and _S.get("pause_start"):
+        pause_s += (datetime.datetime.now() - _S["pause_start"]).total_seconds()
+    of_consumed["Pause"] = of_consumed.get("Pause", 0.0) + pause_s
+    shift_consumed["Pause"] = shift_consumed.get("Pause", 0.0) + pause_s
+
+    # 4. Calcul des déductibles
+    per_type = {}
+    total_shift_ded = 0.0
+    total_of_ded = 0.0
+    for lbl in BUDGET_KEYS.values():
+        budget = budgets_s.get(lbl, 0.0)
+        s_cons = shift_consumed.get(lbl, 0.0)
+        of_cons = of_consumed.get(lbl, 0.0)
+        past = s_cons - of_cons
+        remaining = max(0.0, budget - past)
+        of_ded = min(of_cons, remaining)
+        shift_ded = min(s_cons, budget)
+        total_of_ded += of_ded
+        total_shift_ded += shift_ded
+        per_type[lbl] = {
+            "consumed_s": round(s_cons, 1),
+            "budget_s": round(budget, 0),
+            "of_consumed_s": round(of_cons, 1),
+            "of_deductible_s": round(of_ded, 1),
+            "shift_deductible_s": round(shift_ded, 1),
+        }
+    return {
+        "per_type": per_type,
+        "total_shift_deductible_s": round(total_shift_ded, 1),
+        "total_of_deductible_s": round(total_of_ded, 1),
+    }
+
 # ── Timers ────────────────────────────────────────────────────────────────────
 def t_start(key):
     t = _S["timers"].setdefault(key,{"elapsed":0.0,"running":False,"start":None})
@@ -1070,6 +1166,7 @@ def _state_json():
         "pause_periods": [[_dt_str(a), _dt_str(b)] for a, b in _S.get("pause_periods", [])],
         "shift_debut_iso": _dt_str(_S.get("shift_debut_dt")),
         "shift_fin_iso": _dt_str(_S.get("shift_fin_dt")),
+        "budget_state": _compute_budget_state_now(),
     }
 
 @flask_app.route('/')
@@ -1384,6 +1481,9 @@ def api_end_prod():
     tl_close_all()
     end_dt = datetime.datetime.now()
     of_s_brut = (end_dt-_S["of_start"]).total_seconds()
+    # Budget arrêts prévus — calculé après tl_close_all (tous les événements sont terminés)
+    _of_budget = _compute_budget_state_now()
+    _of_planned_ded_s = _of_budget["total_of_deductible_s"]
     pause_max_s = int(cfg.get("pause_max_min",20))*60
     of_s = max(1, of_s_brut - min(_S["pause_total_s"],pause_max_s))
     stop_s = t_wall_clock_stops()
@@ -1402,7 +1502,8 @@ def api_end_prod():
     trs = -1.0
     trs_str = ""
     if prod_ref>0 and of_s_brut>0:
-        trs = round(equiv/(prod_ref*of_s_brut/28800)*100,1)
+        effective_of_s = max(1.0, of_s_brut - _of_planned_ded_s)
+        trs = round(equiv/(prod_ref*effective_of_s/28800)*100,1)
         trs_str = str(trs)
 
     # Ligne Production (40 cols, format unifié)
@@ -1515,7 +1616,9 @@ def api_preview_end_prod():
     prod_ref = get_prod_ref()
     trs=-1.0
     if prod_ref>0 and of_s_brut>0:
-        trs=round(equiv/(prod_ref*of_s_brut/28800)*100,1)
+        _prev_ded = _compute_budget_state_now()["total_of_deductible_s"]
+        _eff_s = max(1.0, of_s_brut - _prev_ded)
+        trs=round(equiv/(prod_ref*_eff_s/28800)*100,1)
     return jsonify({
         "ok":True,
         "of_s":round(of_s,0),"of_s_brut":round(of_s_brut,0),
@@ -2358,6 +2461,42 @@ def dashboard_view():
     except Exception as e:
         return f"<html><body>Erreur lecture fichier: {e}</body></html>", 500
 
+def _dash_budget_bars_html():
+    """Génère les barres de budget arrêts prévus pour le dashboard (rendu serveur)."""
+    try:
+        bs = _compute_budget_state_now()
+    except:
+        return ''
+    LABELS = ["Pause","Réunion","Nettoyage court","Nettoyage long","Nettoyage très long"]
+    def _fmt_dur_s(s):
+        s = int(round(s))
+        m, sec = divmod(s, 60)
+        return f"{m}m {sec:02d}s" if m else f"{sec}s"
+    rows = ""
+    any_budget = False
+    for lbl in LABELS:
+        d = bs["per_type"].get(lbl, {})
+        budget = d.get("budget_s", 0)
+        if budget <= 0: continue
+        any_budget = True
+        consumed = d.get("consumed_s", 0)
+        pct = min(100, consumed / budget * 100) if budget > 0 else 0
+        over = max(0, consumed - budget)
+        color = "#dc2626" if pct >= 100 else ("#d97706" if pct >= 70 else "#16a34a")
+        val_str = f"<b>+{_fmt_dur_s(over)}</b>" if over > 0 else f"{_fmt_dur_s(consumed)} / {_fmt_dur_s(budget)}"
+        rows += (f'<div style="margin-bottom:6px">'
+            f'<div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:2px">'
+            f'<span style="color:#374151">{lbl}</span>'
+            f'<span style="color:{color}">{val_str}</span></div>'
+            f'<div style="background:#e5e7eb;border-radius:4px;height:7px">'
+            f'<div style="background:{color};width:{min(100,pct):.0f}%;height:7px;border-radius:4px"></div>'
+            f'</div></div>')
+    if not any_budget:
+        return ''
+    return (f'<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;min-width:170px">'
+        f'<div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400e;letter-spacing:.5px;margin-bottom:8px">⏱ Arrêts prévus</div>'
+        f'{rows}</div>')
+
 # ── Dashboard HTML superviseur ─────────────────────────────────────────────────
 def generate_dashboard_html():
     path = cfg.get("db_path","")
@@ -2508,7 +2647,10 @@ def generate_dashboard_html():
     if ref_start_dt and last_fin_dt and prod_ref > 0:
         elapsed_for_trs = (last_fin_dt - ref_start_dt).total_seconds()
         if elapsed_for_trs > 0:
-            trs_poste = round(tot_equiv / (prod_ref * elapsed_for_trs / 28800) * 100, 1)
+            _bgt = _compute_budget_state_now()
+            _shift_ded = _bgt["total_shift_deductible_s"]
+            _adj_elapsed = max(1.0, elapsed_for_trs - _shift_ded)
+            trs_poste = round(tot_equiv / (prod_ref * _adj_elapsed / 28800) * 100, 1)
 
     evt_dur = defaultdict(float)
     for r in in_shift_evts:
@@ -2761,8 +2903,11 @@ def generate_dashboard_html():
             _poste_chips += (f'<div style="text-align:center;flex:1;padding:0 4px;{_bl}">'
                              f'<div style="font-size:20px;font-weight:900;color:{_col};line-height:1">{_val}</div>'
                              f'<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:1px">{_lbl}</div></div>')
+        _budget_bars = _dash_budget_bars_html()
+        _budget_col = f'  {_budget_bars}' if _budget_bars else ''
+        _grid_cols = '1fr 1fr auto' if _budget_bars else '1fr 1fr'
         alert_html = f'''
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;flex-shrink:0">
+<div style="display:grid;grid-template-columns:{_grid_cols};gap:6px;flex-shrink:0;align-items:stretch">
   <div style="background:#f0fdf4;border:2px solid {of_border_col};border-radius:8px;padding:5px 12px;display:flex;align-items:center;gap:14px">
     <div style="flex-shrink:0">
       <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:{prod_status_col};letter-spacing:1px">{prod_status_label}</div>
@@ -2775,6 +2920,7 @@ def generate_dashboard_html():
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#1e3a8a;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:1px;flex-shrink:0;margin-right:10px">Poste entier</div>
     {_poste_chips}
   </div>
+{_budget_col}
 </div>'''
 
     tl_svg = timeline_svg()
@@ -3853,6 +3999,12 @@ select{cursor:default}
         <div id="acc-model-info" style="display:none;border-top:1px solid #bae6fd;padding-top:5px;margin-top:2px;font-size:11px;color:#0369a1"></div>
       </div>
 
+      <!-- Arrêts prévus — barres budget -->
+      <div style="flex:1;min-width:170px;max-width:220px;background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:8px 12px;display:flex;flex-direction:column">
+        <div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">⏱ Arrêts prévus</div>
+        <div id="budget-bars-acc" style="flex:1"></div>
+      </div>
+
       <!-- Poste précédent -->
       <div class="skpi" style="flex:1;min-width:100px">
         <div class="sk-lbl" id="kpi1-lbl">Poste précédent</div>
@@ -3983,6 +4135,7 @@ select{cursor:default}
           <button class="act-btn act-stop" onclick="openStopModal()">⛔ Déclarer un arrêt</button>
           <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
           <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
+          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:var(--card);border:1.5px solid #8b5cf6;color:#7c3aed;font-size:12px;padding:6px 12px;border-radius:7px;font-weight:700;cursor:pointer">👥 Réunion</button>
           <button class="act-btn act-cancel" onclick="doCancelProd()">✖ Annuler prod</button>
           <button class="act-btn act-endprod" onclick="doEndProdPreview()">🏁 Fin d'OF/prod</button>
         </div>
@@ -5339,12 +5492,14 @@ function startTicker() {
     const pauseNow=_pauseStartMs>0?_pauseBaseS+(Date.now()-_pauseStartMs)/1000:_pauseBaseS;
     const tp=document.getElementById('sc-pause');
     if(tp) tp.textContent=fmtDur(pauseNow);
-    // Pièces théoriques : prod_ref / coef * (elapsed/28800)
+    // Pièces théoriques : avec déduction budget arrêts prévus
     const thEl=document.getElementById('sc-theo');
     if(thEl&&ST.prod_ref){
       const typeProd=document.getElementById('f-type_prod')?.value||ST.form?.type_prod||'';
       const coef=(window._equivCoefs&&window._equivCoefs[typeProd])||1;
-      const theo=Math.round(ST.prod_ref*(_ofElapAtPoll+dt)/28800/coef);
+      const _ofDedT=(ST.budget_state&&ST.budget_state.total_of_deductible_s)||0;
+      const effOfElT=Math.max(1,_ofElapAtPoll+dt-_ofDedT);
+      const theo=Math.round(ST.prod_ref*effOfElT/28800/coef);
       thEl.textContent=theo>0?theo+' pièces':'—';
     }
     // Mise à jour bannière accueil (durée OF et arrêts)
@@ -5506,12 +5661,14 @@ async function loadMainKPI() {
   const elHeure=document.getElementById('kpi0-heure');
   if(elHeure) elHeure.textContent=heure;
   if(d){
-    // TRS Actuel : début de plage → fin de la dernière déclaration de prod (même formule que jauge)
+    // TRS Actuel : début de plage → fin de la dernière déclaration de prod, avec déduction budget
     let trs=-1;
     if(_todayEquivAccum>0&&_shiftRefDt&&ST.prod_ref>0){
       const refTime=_lastProdDeclTime||new Date();
       const shiftElap=(refTime.getTime()-_shiftRefDt.getTime())/1000;
-      if(shiftElap>0) trs=Math.round(_todayEquivAccum/(ST.prod_ref*shiftElap/28800)*100*10)/10;
+      const _shDed=(ST.budget_state&&ST.budget_state.total_shift_deductible_s)||0;
+      const effElap=Math.max(1,shiftElap-_shDed);
+      if(effElap>0) trs=Math.round(_todayEquivAccum/(ST.prod_ref*effElap/28800)*100*10)/10;
     }
     const el0t=document.getElementById('kpi0-trs'),el0s=document.getElementById('kpi0-sub'),el0d=document.getElementById('kpi0-date');
     if(el0t) el0t.textContent=fmtTRSv(trs);
@@ -5974,6 +6131,25 @@ async function doPause(){
   await pollState();
 }
 
+async function doReunion(){
+  // Trouver la clé arrêt de type réunion depuis _evtsList
+  const reunionEvt=_evtsList.find(e=>/réunion|reunion|meeting/i.test(e.label||''));
+  if(!reunionEvt){toast('Type Réunion non trouvé dans paramètres','err');return;}
+  const key=reunionEvt.key, cat=reunionEvt.cat||'ratt';
+  // Si déjà actif : terminer, sinon démarrer
+  const isActive=ST.active_stops&&ST.active_stops.includes(key);
+  if(isActive){
+    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,comment:''})});
+    toast('Réunion terminée','ok');
+  } else {
+    await fetch('/api/start_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,cat,comment:''})});
+    toast('Réunion commencée','ok');
+  }
+  await pollState();
+  const btn=document.getElementById('btn-reunion');
+  if(btn) btn.textContent=(!isActive)?'✓ Fin réunion':'👥 Réunion';
+}
+
 function doNettoyage(){
   // Populate budget labels from config
   const ap=_cfgArretsPrevus||{};
@@ -6206,22 +6382,57 @@ function drawGauge(arcId,pctId,trs) {
 }
 
 // ── GAUGE (prod view) ──
+function renderBudgetBars(containerId,bs){
+  const el=document.getElementById(containerId);
+  if(!el||!bs||!bs.per_type) return;
+  const TYPES=['Pause','Réunion','Nettoyage court','Nettoyage long','Nettoyage très long'];
+  const ap=_cfgArretsPrevus||{};
+  let html='';
+  let anyBar=false;
+  TYPES.forEach(lbl=>{
+    const d=bs.per_type[lbl]||{};
+    const budget=d.budget_s||0;
+    if(budget<=0) return;
+    anyBar=true;
+    const consumed=d.consumed_s||0;
+    const pct=budget>0?Math.min(100,consumed/budget*100):0;
+    const over=Math.max(0,consumed-budget);
+    const color=pct>=100?'#dc2626':pct>=70?'#d97706':'#16a34a';
+    const valStr=over>0?`<b>+${fmtDurShort(over)}</b>`:`${fmtDurShort(consumed)} / ${fmtDurShort(budget)}`;
+    html+=`<div style="margin-bottom:5px">
+      <div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;margin-bottom:2px">
+        <span style="color:#374151">${esc(lbl)}</span>
+        <span style="color:${color}">${valStr}</span></div>
+      <div style="background:#e5e7eb;border-radius:4px;height:6px">
+        <div style="background:${color};width:${Math.min(100,pct).toFixed(0)}%;height:6px;border-radius:4px"></div>
+      </div></div>`;
+  });
+  el.innerHTML=anyBar?html:'<div style="color:#92400e;font-size:10px;opacity:.7">Aucun budget configuré</div>';
+}
+
 function updateGauge(s){
   const arc=document.getElementById('gauge-arc');
   const pct=document.getElementById('gauge-pct');
   const pobTrs=document.getElementById('pob-trs');
   if(!arc||!pct) return;
+  // Budget arrêts prévus — déduction pour TRS OF et TRS Poste
+  const bs=s.budget_state||{};
+  const ofDed=(bs.total_of_deductible_s)||0;
+  const shiftDed=(bs.total_shift_deductible_s)||0;
   // Estimate live TRS using coefficient
   const prodRef=s.prod_ref||200;
   const ofS=s.of_elapsed_s||0;
+  const effOfS=Math.max(1,ofS-ofDed);
   const qFab=s.form?parseFloat(s.form.qte_fab||0):0;
   const typeProd=s.form?s.form.type_prod||'':'';
   const coef=(window._equivCoefs&&typeProd&&window._equivCoefs[typeProd])||1;
   const equiv=qFab*coef;
   let trs=-1;
   if(ofS>0&&prodRef>0&&equiv>0){
-    trs=Math.round(equiv/(prodRef*ofS/28800)*100*10)/10;
+    trs=Math.round(equiv/(prodRef*effOfS/28800)*100*10)/10;
   }
+  // Mise à jour barres budget accueil
+  renderBudgetBars('budget-bars-acc',bs);
   const trsStr=trs>=0?fmtTRS(trs):'—';
   pct.textContent=trsStr;
   if(pobTrs) pobTrs.textContent=trsStr;
@@ -6250,12 +6461,13 @@ function updateGauge(s){
     else if(s.shift_start_iso){_shiftRefDt=new Date(s.shift_start_iso);}
     else{_shiftRefDt=null;}
   }
-  // TRS Accueil : début de plage → fin de la dernière déclaration de prod (pas la durée totale du modèle)
+  // TRS Accueil : début de plage → fin de la dernière déclaration de prod, avec déduction budget
   if(_shiftRefDt&&s.prod_ref>0){
     const calcRef=_lastProdDeclTime||new Date();
     const shiftElap=(calcRef.getTime()-_shiftRefDt.getTime())/1000;
+    const effShiftElap=Math.max(1,shiftElap-shiftDed);
     const todayEquiv=_todayEquivAccum||0;
-    const trsPoste=shiftElap>0&&todayEquiv>0?Math.round(todayEquiv/(s.prod_ref*shiftElap/28800)*100*10)/10:-1;
+    const trsPoste=effShiftElap>0&&todayEquiv>0?Math.round(todayEquiv/(s.prod_ref*effShiftElap/28800)*100*10)/10:-1;
     // Label : "Entre Xh et Yh" (Y = heure fin de la dernière déclaration, pas l'heure actuelle)
     let lbl;
     if(_lastProdDeclTime&&_shiftRefDt){
@@ -7054,7 +7266,7 @@ async function loadFPData(){
     try{const p=s=>s.split(':').reduce((acc,v,i)=>acc+(i===0?+v*3600:i===1?+v*60:+v),0);
     return a+Math.max(0,p(e.fin||'00:00:00')-p(e.debut||'00:00:00'));}catch(ex){return a;}
   },0);
-  document.getElementById('fp-stop-t').textContent=Math.round(stopTotal/60)+' min';
+  document.getElementById('fp-stop-t').textContent=fmtDurMS(stopTotal);
 
   // Timeline — refresh events first, then combine historical + live
   await pollEvts();
@@ -7114,7 +7326,7 @@ async function loadFPData(){
     fsl.innerHTML=Object.entries(stopsByType).map(([t,s])=>`
       <div class="flex" style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
         <span style="flex:1;font-weight:600">${esc(t)}</span>
-        <span style="color:var(--gray)">${Math.round(s/60)} min</span>
+        <span style="color:var(--gray)">${fmtDurMS(s)}</span>
       </div>`).join('')||'<span style="color:var(--gray);font-size:11px">Aucun arrêt</span>';
   }
 
@@ -8215,6 +8427,8 @@ function fmtDur2(s){if(!s||s<0)return'0:00';const m=Math.floor(s/60),sec=Math.fl
 function fmtTRSv(v){return(v===null||v===undefined||isNaN(v)||v<0)?'--%':parseFloat(v).toFixed(1)+'%';}
 function fmtDur(s){if(!s||s<0)return'00:00:00';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);return[h,m,sec].map(x=>String(x).padStart(2,'0')).join(':');}
 function fmtD2(s){if(!s||s<0)return'0 min';const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?h+'h'+String(m).padStart(2,'0'):m+' min';}
+function fmtDurMS(s){s=Math.round(s||0);const m=Math.floor(s/60),sec=s%60;return m>0?m+' min'+(sec?' '+sec+'s':''):sec+'s';}
+function fmtDurShort(s){s=Math.round(s||0);const m=Math.floor(s/60),sec=s%60;return m>0?m+'m'+(sec?' '+String(sec).padStart(2,'0')+'s':''):sec+'s';}
 function fmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function toast(msg,type){
