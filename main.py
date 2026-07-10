@@ -1,1128 +1,3 @@
-"""KPI-ORC v6.3 - Flask + pywebview"""
-import json, os, sys, datetime, threading, math, shutil, time, atexit, signal
-from flask import Flask, request, jsonify, render_template_string
-from openpyxl import load_workbook
-from openpyxl.styles import Alignment, Border, Side, PatternFill
-
-CONFIG_FILE  = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
-SESSION_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_session.json")
-PENDING_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_pending.json")
-
-EVENTS = [
-    ("Pochon / Fibre",       "ratt_pochon",      "ratt"),
-    ("Couture",              "ratt_couture",     "ratt"),
-    ("Emballage",            "ratt_emb",         "ratt"),
-    ("Presse Souder",        "ratt_presse_soud", "ratt"),
-    ("Presse ZIP",           "ratt_presse_zip",  "ratt"),
-    ("Nettoyage",            "nettoyage",        "nettoyage"),
-    ("Chargeuse",            "pb_chargeuse",     "pb"),
-    ("Carde",                "pb_carde",         "pb"),
-    ("Etaleur / Tour",       "pb_etaleur",       "pb"),
-    ("Coupe / Circ.",        "pb_coupe",         "pb"),
-    ("Tapis Bascule",        "pb_tapis1",        "pb"),
-    ("Enrouleur Pochon",     "pb_enrouleur",     "pb"),
-    ("Pesee / Tapis 2",      "pb_pesee",         "pb"),
-    ("Deviation / Table",    "pb_deviation",     "pb"),
-    ("Enfileur Pochon",      "pb_enfileur",      "pb"),
-    ("Kinna / Stroebel",     "pb_kinna",         "pb"),
-    ("Tapeuse",              "pb_tapeuse",       "pb"),
-    ("Table Rot. / Twin",    "pb_table_rot",     "pb"),
-    ("Enfileuse H100",       "pb_h100",          "pb"),
-    ("Enfileuse Traversin",  "pb_traversin",     "pb"),
-    ("Presse ORC",           "pb_presse_orc",    "pb"),
-    ("Presse Housse ZIP",    "pb_presse_zip2",   "pb"),
-    ("Cercleuse",            "pb_cercleuse",     "pb"),
-    ("Enrouleuse Traversin", "pb_enrouleuse",    "pb"),
-    ("Matiere premiere",     "arret_mp",         "pb"),
-    ("Reunion",              "arret_reunion",    "ratt"),
-]
-
-# Nouveau schéma unifié - 40 colonnes
-DECL_HEADERS = [
-    "Type","OF","Date","Poste","Pilote","Co-Pilote","Nb Personnes",
-    "Taille","Code Produit","Type Produit","Poids Garnissage","Fibre",
-    "OF Taie","Traca Fibre","Ref Taie","Kit",
-    "Heure Debut","Heure Fin","Duree",
-    "Qte Fabriquee","Qte Emballee","Equivalence","Cadence/h","Cadence/h/pers","TRS%",
-    "Qte Init Taie","Nb Taie 2nd Choix","Nb Defaut Couture",
-    "Mq Taie","Mq Housse/Encart","Nb PP Cousue",
-    "","Manquant MP","Manquant Personnel/Reunion",
-    "","Commentaire","Prevu/Hors TRS",
-    "Duree Arrets","Duree Prod Pure","Date_poste",
-]
-
-POSTES = ["Matin","Midi","Nuit","Jour"]
-
-# Catégories interposte prédéfinies
-INTERPOSTE_CATS = [
-    ("Changement de série", "changement_serie", "interposte"),
-    ("Réglage / Setup machine", "reglage_setup", "interposte"),
-    ("Attente matière première", "attente_mp", "interposte"),
-    ("Réunion / Formation", "reunion", "interposte"),
-    ("Nettoyage interposte", "nettoyage_inter", "interposte"),
-    ("Pause pilote interposte", "pause_inter", "interposte"),
-    ("Autre (interposte)", "autre_inter", "interposte"),
-]
-
-def get_events_list():
-    """Retourne la liste des arrêts configurés (Excel col K > cfg > EVENTS défaut)."""
-    excel_evts = _lists.get("arrêts_k", [])
-    if excel_evts:
-        return excel_evts
-    custom = cfg.get("events_list", [])
-    if custom:
-        return custom
-    return [{"label": e[0], "key": e[1], "cat": e[2]} for e in EVENTS]
-
-def _get_or_create_listes_ws(wb):
-    if "Listes" not in wb.sheetnames:
-        wb.create_sheet("Listes")
-    return wb["Listes"]
-
-def write_events_to_excel(ev_list):
-    """Écrit la liste des arrêts dans l'onglet Listes col K=label, L=cat."""
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return
-    def _bg():
-        try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _get_or_create_listes_ws(wb)
-                ws.cell(1, 11).value = "Arrêts"
-                ws.cell(1, 12).value = "Type arrêt"
-                max_r = max(ws.max_row, len(ev_list) + 2)
-                for ri in range(2, max_r + 2):
-                    ws.cell(ri, 11).value = None
-                    ws.cell(ri, 12).value = None
-                for ri, ev in enumerate(ev_list, start=2):
-                    ws.cell(ri, 11).value = ev.get("label","")
-                    ws.cell(ri, 12).value = ev.get("cat","pb")
-                _safe_excel_save(wb, path)
-            threading.Thread(target=load_lists, daemon=True).start()
-        except: pass
-    threading.Thread(target=_bg, daemon=True).start()
-
-def write_interposte_to_excel(labels):
-    """Écrit les labels interposte dans l'onglet Listes col M."""
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return
-    def _bg():
-        try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _get_or_create_listes_ws(wb)
-                ws.cell(1, 13).value = "Interposte"
-                max_r = max(ws.max_row, len(labels) + 2)
-                for ri in range(2, max_r + 2):
-                    ws.cell(ri, 13).value = None
-                for ri, lbl in enumerate(labels, start=2):
-                    ws.cell(ri, 13).value = lbl
-                _safe_excel_save(wb, path)
-        except: pass
-    threading.Thread(target=_bg, daemon=True).start()
-
-_ARRETS_PREVUS_KEYS = ["clean_short_min","clean_long_min","clean_grand_min","meeting_tol_min","pause_min"]
-
-def write_arrets_prevus_to_excel():
-    """Écrit les budgets arrêts prévus dans l'onglet Listes col N (clé=valeur)."""
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return
-    def _bg():
-        try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _get_or_create_listes_ws(wb)
-                ws.cell(1, 14).value = "Arrêts prévus"
-                for ri in range(2, len(_ARRETS_PREVUS_KEYS) + 3):
-                    ws.cell(ri, 14).value = None
-                for ri, k in enumerate(_ARRETS_PREVUS_KEYS, start=2):
-                    ws.cell(ri, 14).value = f"{k}={cfg.get(k, 0)}"
-                _safe_excel_save(wb, path)
-        except: pass
-    threading.Thread(target=_bg, daemon=True).start()
-
-def save_events_list(ev_list):
-    cfg["events_list"] = ev_list
-    save_cfg_data()
-    write_events_to_excel(ev_list)
-
-# ── État global ────────────────────────────────────────────────────────────────
-_S = {
-    "pilot": None, "poste": None,
-    "prod_active": False,
-    "of_start": None,
-    "last_of_end": None,
-    "last_of_pilot": "",
-    "inter_of_s": 0.0, "interposte_s": 0.0,
-    "timers": {},
-    "tl_events": [],
-    "of_periods": [], "of_changes": [],
-    "form": {},
-    "is_paused": False, "pause_start": None,
-    "pause_total_s": 0.0, "pause_periods": [],
-    "of_count_shift": 0,
-    "shift_start": None,
-    "postes_row_num": None,
-    "shift_debut_dt": None,
-    "shift_fin_dt": None,
-    "tot_prod_s": 0.0,
-}
-_excel_lock = threading.Lock()
-_lists = {}
-_decl_cache = []   # liste de (row_num, row_data) - toutes déclarations (prod + events)
-_prod_ref_cached = 0.0
-_excel_busy = False  # True quand le fichier Excel est verrouillé (ouvert par Excel)
-cfg = {}
-
-flask_app = Flask(__name__)
-
-@flask_app.after_request
-def _add_cors(response):
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-    return response
-
-# ── Utilitaires ────────────────────────────────────────────────────────────────
-def fmt(seconds):
-    s = max(0, int(seconds or 0))
-    return f"{s//3600:02d}:{(s%3600)//60:02d}:{s%60:02d}"
-
-def _hms_to_sec(s):
-    try:
-        if hasattr(s,'hour'): return s.hour*3600+s.minute*60+getattr(s,'second',0)
-        parts = str(s).strip().split(":")
-        if len(parts)==3: return int(parts[0])*3600+int(parts[1])*60+float(parts[2])
-        if len(parts)==2: return int(parts[0])*3600+float(parts[1])*60  # HH:MM
-    except: pass
-    return 0.0
-
-def _sec_to_hm(s):
-    """Convert seconds to HH:MM string."""
-    s = int(max(0, s)) % 86400
-    return f"{s//3600:02d}:{(s%3600)//60:02d}"
-
-def _row_date(v):
-    if not v: return ""
-    s = str(v)
-    if len(s)>=10 and s[2]=="/" and s[5]=="/": return s[:10]
-    try:
-        if hasattr(v,"strftime"): return v.strftime("%d/%m/%Y")
-    except: pass
-    return s[:10]
-
-def _row_time(v):
-    if not v: return ""
-    s = str(v)
-    if ":" in s: return s[:8]
-    try:
-        if hasattr(v,"strftime"): return v.strftime("%H:%M:%S")
-    except: pass
-    return s
-
-def _min_str_to_hms(val):
-    try:
-        mins = float(str(val).replace(",","."))
-        if mins<=0: return ""
-        return fmt(mins*60)
-    except: return ""
-
-def _n(v):
-    try: return float(str(v).replace(",",".")) or 0
-    except: return 0
-
-def _dt_str(dt):
-    return dt.isoformat() if dt else None
-
-def _str_dt(s):
-    if not s: return None
-    try: return datetime.datetime.fromisoformat(s)
-    except: return None
-
-def load_cfg():
-    try:
-        with open(CONFIG_FILE) as f:
-            d = json.load(f)
-            d.setdefault("modeles_horaires", [])
-            d.setdefault("pilot_passwords", {})
-            return d
-    except:
-        return {"db_path":"","supervisor_pw":"1234","prod_ref":0,
-                "pause_max_min":20,"clean_short_min":10,"clean_long_min":30,
-                "clean_grand_min":60,"meeting_tol_min":5,
-                "modeles_horaires":[],"pilot_passwords":{}}
-
-def save_cfg_data():
-    with open(CONFIG_FILE,"w") as f: json.dump(cfg,f)
-
-def get_prod_ref():
-    v = cfg.get("prod_ref",0)
-    try:
-        fv = float(v)
-        if fv>0: return fv
-    except: pass
-    return _prod_ref_cached
-
-def _get_model_day_cfg(poste, date_obj=None):
-    """Retourne (debut_str, fin_str) du modèle horaire pour le poste/jour donné.
-    Vérifie d'abord les surcharges de session (_S['model_overrides']) avant cfg."""
-    day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
-    day_key = day_map.get((date_obj or datetime.date.today()).weekday(), 'lun')
-    # Session override (temporary, never saved to disk)
-    overrides = _S.get("model_overrides", {})
-    if poste and poste in overrides and day_key in overrides[poste]:
-        ov = overrides[poste][day_key]
-        return ov.get("debut","05:00"), ov.get("fin","13:00")
-    models = cfg.get("modeles_horaires", [])
-    model = next((m for m in models if str(m.get("nom","")).strip().lower()==str(poste or "").strip().lower()), None)
-    if not model: return None, None
-    jours = model.get("jours", {})
-    if date_obj and jours:
-        day_cfg = jours.get(day_key)
-    else:
-        day_cfg = next((v for k,v in jours.items() if v and v.get("debut") and v.get("fin")), None) if jours else None
-    if not day_cfg:
-        return model.get("debut","05:00"), model.get("fin","13:00")
-    return day_cfg.get("debut","05:00"), day_cfg.get("fin","13:00")
-
-def get_shift_duration_s(poste, date_obj=None):
-    """Durée nominale du poste en secondes selon le modèle horaire."""
-    debut_str, fin_str = _get_model_day_cfg(poste, date_obj)
-    if debut_str is None: return 28800
-    def to_min(t):
-        try:
-            p=str(t).split(":"); return int(p[0])*60+int(p[1])
-        except: return 0
-    d=to_min(debut_str); f=to_min(fin_str)
-    if f<=d: f+=1440
-    return (f-d)*60
-
-def _get_arret_budget_key(label):
-    """Associe un libellé d'arrêt à une clé de budget plannifié."""
-    l = str(label or "").lower()
-    if "nettoyage" in l or "nett" in l:
-        if "très long" in l or "tres long" in l or "grand" in l: return "clean_grand_min"
-        if "long" in l: return "clean_long_min"
-        if "court" in l: return "clean_short_min"
-    if "réunion" in l or "reunion" in l or "meeting" in l: return "meeting_tol_min"
-    if "pause" in l: return "pause_min"
-    return None
-
-def _compute_planned_deduction_s(evt_rows):
-    """Calcule les secondes à déduire de l'elapsed TRS pour les arrêts planifiés.
-    evt_rows : liste de tuples (rn, r) issus de _decl_cache OU liste de dicts {"type","duree"}.
-    """
-    budgets = {
-        "clean_short_min": float(cfg.get("clean_short_min", 0)) * 60,
-        "clean_long_min":  float(cfg.get("clean_long_min",  0)) * 60,
-        "clean_grand_min": float(cfg.get("clean_grand_min", 0)) * 60,
-        "meeting_tol_min": float(cfg.get("meeting_tol_min", 0)) * 60,
-        "pause_min":       float(cfg.get("pause_min",       0)) * 60,
-    }
-    if all(v == 0 for v in budgets.values()):
-        return 0.0
-    actual = {}
-    for row in evt_rows:
-        if isinstance(row, dict):
-            lbl  = str(row.get("type","") or "")
-            dur_s = _hms_to_sec(str(row.get("duree","00:00:00") or "00:00:00"))
-        elif isinstance(row, (list, tuple)):
-            # format: (rn, r) or just r
-            r = row[1] if len(row) == 2 and isinstance(row[0], int) else row
-            lbl  = str(r[0] or "")
-            dur_s = _hms_to_sec(str(r[18] or "00:00:00"))
-        else:
-            continue
-        key = _get_arret_budget_key(lbl)
-        if key:
-            actual[key] = actual.get(key, 0.0) + dur_s
-    return sum(min(actual.get(k, 0.0), b) for k, b in budgets.items())
-
-def _compute_budget_state_now():
-    """Calcule l'état des budgets arrêts prévus pour le poste en cours.
-    Retourne per_type (consumed_s, budget_s, of_consumed_s, of/shift_deductible_s)
-    + total_shift_deductible_s + total_of_deductible_s.
-    """
-    BUDGET_KEYS = {
-        "pause_min":       "Pause",
-        "meeting_tol_min": "Réunion",
-        "clean_short_min": "Nettoyage court",
-        "clean_long_min":  "Nettoyage long",
-        "clean_grand_min": "Nettoyage très long",
-    }
-    budgets_s = {lbl: float(cfg.get(k, 0) or 0) * 60 for k, lbl in BUDGET_KEYS.items()}
-    shift_consumed = {lbl: 0.0 for lbl in BUDGET_KEYS.values()}
-    of_consumed    = {lbl: 0.0 for lbl in BUDGET_KEYS.values()}
-
-    pilot = _S.get("pilot", "")
-    shift_start = _S.get("shift_start")
-    today_str = datetime.date.today().strftime("%d/%m/%Y")
-    shift_date_str = (shift_start.date() if shift_start else datetime.date.today()).strftime("%d/%m/%Y")
-
-    # Key → label mapping pour les arrêts configurés
-    try:
-        _evts_cfg = get_events_list()
-        _key_lbl = {e.get("key",""): e.get("label","") for e in _evts_cfg}
-    except:
-        _key_lbl = {}
-
-    def _planned_lbl_from_raw(raw_lbl):
-        bk = _get_arret_budget_key(raw_lbl)
-        return BUDGET_KEYS.get(bk)
-
-    def _planned_lbl_from_tl(ev):
-        cat = ev.get("cat","")
-        if cat == "nettoyage":
-            ntype = ev.get("nettoyage_type","court")
-            bk = {"court":"clean_short_min","long":"clean_long_min","grand":"clean_grand_min"}.get(ntype,"clean_short_min")
-            return BUDGET_KEYS.get(bk)
-        lbl = _key_lbl.get(ev.get("key",""), ev.get("key",""))
-        bk = _get_arret_budget_key(lbl)
-        return BUDGET_KEYS.get(bk)
-
-    # 1. Événements des OFs passés (déjà écrits dans Excel)
-    for rn, r in _decl_cache:
-        rd = _row_date(r[2])
-        if rd != shift_date_str and rd != today_str: continue
-        if str(r[4] or "") != pilot: continue
-        if str(r[0] or "").strip().lower() in ("production","prod",""): continue
-        pl = _planned_lbl_from_raw(str(r[0] or "").strip())
-        if pl:
-            shift_consumed[pl] = shift_consumed.get(pl, 0.0) + _hms_to_sec(str(r[18] or "00:00:00"))
-
-    # 2. OF en cours : tl_events (terminés et actifs)
-    for ev in _S.get("tl_events", []):
-        if not ev.get("start"): continue
-        pl = _planned_lbl_from_tl(ev)
-        if pl:
-            end = ev.get("end") or datetime.datetime.now()
-            dur = (end - ev["start"]).total_seconds()
-            of_consumed[pl] = of_consumed.get(pl, 0.0) + dur
-            shift_consumed[pl] = shift_consumed.get(pl, 0.0) + dur
-
-    # 3. Pause OF en cours (hors tl_events)
-    pause_s = _S.get("pause_total_s", 0.0)
-    if _S.get("is_paused") and _S.get("pause_start"):
-        pause_s += (datetime.datetime.now() - _S["pause_start"]).total_seconds()
-    of_consumed["Pause"] = of_consumed.get("Pause", 0.0) + pause_s
-    shift_consumed["Pause"] = shift_consumed.get("Pause", 0.0) + pause_s
-
-    # 4. Calcul des déductibles
-    per_type = {}
-    total_shift_ded = 0.0
-    total_of_ded = 0.0
-    for lbl in BUDGET_KEYS.values():
-        budget = budgets_s.get(lbl, 0.0)
-        s_cons = shift_consumed.get(lbl, 0.0)
-        of_cons = of_consumed.get(lbl, 0.0)
-        past = s_cons - of_cons
-        remaining = max(0.0, budget - past)
-        of_ded = min(of_cons, remaining)
-        shift_ded = min(s_cons, budget)
-        total_of_ded += of_ded
-        total_shift_ded += shift_ded
-        per_type[lbl] = {
-            "consumed_s": round(s_cons, 1),
-            "budget_s": round(budget, 0),
-            "of_consumed_s": round(of_cons, 1),
-            "of_deductible_s": round(of_ded, 1),
-            "shift_deductible_s": round(shift_ded, 1),
-        }
-    return {
-        "per_type": per_type,
-        "total_shift_deductible_s": round(total_shift_ded, 1),
-        "total_of_deductible_s": round(total_of_ded, 1),
-    }
-
-# ── Timers ────────────────────────────────────────────────────────────────────
-def t_start(key):
-    t = _S["timers"].setdefault(key,{"elapsed":0.0,"running":False,"start":None})
-    if not t["running"]:
-        t["start"] = datetime.datetime.now()
-        t["running"] = True
-    save_session()
-
-def t_stop(key, end_time=None):
-    t = _S["timers"].get(key)
-    if t and t["running"]:
-        end = end_time or datetime.datetime.now()
-        t["elapsed"] += (end - t["start"]).total_seconds()
-        t["running"] = False
-        t["start"] = None
-    save_session()
-
-def t_get(key):
-    t = _S["timers"].get(key)
-    if not t: return 0.0
-    el = t["elapsed"]
-    if t["running"] and t["start"]:
-        el += (datetime.datetime.now() - t["start"]).total_seconds()
-    return el
-
-def t_running(key):
-    t = _S["timers"].get(key)
-    return t and t["running"]
-
-def t_stop_all():
-    for key in list(_S["timers"].keys()):
-        t_stop(key)
-
-def t_reset():
-    _S["timers"] = {}
-
-def t_wall_clock_stops():
-    total = 0.0
-    for key, t in _S["timers"].items():
-        if key.startswith("_"): continue
-        total += t["elapsed"]
-        if t["running"] and t["start"]:
-            total += (datetime.datetime.now()-t["start"]).total_seconds()
-    return total
-
-# ── Timeline events ───────────────────────────────────────────────────────────
-def tl_open(key, cat):
-    existing = next((e for e in _S["tl_events"] if e["key"]==key and not e.get("end")), None)
-    if not existing:
-        _S["tl_events"].append({"key":key,"cat":cat,"start":datetime.datetime.now(),"end":None,"comment":"","hors_trs":False})
-    save_session()
-
-def tl_close(key, comment="", end_time=None):
-    for ev in _S["tl_events"]:
-        if ev["key"]==key and not ev.get("end"):
-            ev["end"] = end_time or datetime.datetime.now()
-            ev["comment"] = comment
-            break
-    save_session()
-
-def tl_close_all():
-    now = datetime.datetime.now()
-    for ev in _S["tl_events"]:
-        if not ev.get("end"):
-            ev["end"] = now
-    save_session()
-
-def serialize_event(ev):
-    return {
-        "key": ev["key"], "cat": ev["cat"],
-        "start": _dt_str(ev["start"]),
-        "end": _dt_str(ev.get("end")),
-        "comment": ev.get("comment",""),
-        "nettoyage_type": ev.get("nettoyage_type",""),
-        "hors_trs": ev.get("hors_trs",False),
-    }
-
-# ── Session ───────────────────────────────────────────────────────────────────
-def save_session():
-    try:
-        timers_s = {}
-        for k,t in _S["timers"].items():
-            timers_s[k] = {
-                "elapsed": t["elapsed"],
-                "running": t["running"],
-                "start": _dt_str(t["start"]),
-            }
-        d = {
-            "pilot": _S["pilot"],
-            "poste": _S["poste"],
-            "prod_active": _S["prod_active"],
-            "of_start": _dt_str(_S["of_start"]),
-            "last_of_end": _dt_str(_S["last_of_end"]),
-            "last_of_pilot": _S["last_of_pilot"],
-            "inter_of_s": _S["inter_of_s"],
-            "interposte_s": _S["interposte_s"],
-            "timers": timers_s,
-            "tl_events": [serialize_event(e) for e in _S["tl_events"]],
-            "is_paused": _S["is_paused"],
-            "pause_start": _dt_str(_S["pause_start"]),
-            "pause_total_s": _S["pause_total_s"],
-            "pause_periods": [[_dt_str(a),_dt_str(b)] for a,b in _S["pause_periods"]],
-            "of_count_shift": _S["of_count_shift"],
-            "form": _S["form"],
-            "shift_start": _dt_str(_S.get("shift_start")),
-            "postes_row_num": _S.get("postes_row_num"),
-            "shift_debut_dt": _dt_str(_S.get("shift_debut_dt")),
-            "shift_fin_dt": _dt_str(_S.get("shift_fin_dt")),
-            "tot_prod_s": _S.get("tot_prod_s", 0.0),
-        }
-        with open(SESSION_FILE,"w",encoding="utf-8") as f: json.dump(d,f,default=str)
-    except: pass
-
-def load_session():
-    try:
-        with open(SESSION_FILE,encoding="utf-8") as f: d = json.load(f)
-        _S["pilot"]         = d.get("pilot")
-        _S["poste"]         = d.get("poste")
-        _S["prod_active"]   = d.get("prod_active",False)
-        _S["of_start"]      = _str_dt(d.get("of_start"))
-        _S["last_of_end"]   = _str_dt(d.get("last_of_end"))
-        _S["last_of_pilot"] = d.get("last_of_pilot","")
-        _S["inter_of_s"]    = float(d.get("inter_of_s",0))
-        _S["interposte_s"]  = float(d.get("interposte_s",0))
-        _S["is_paused"]     = d.get("is_paused",False)
-        _S["pause_start"]   = _str_dt(d.get("pause_start"))
-        _S["pause_total_s"] = float(d.get("pause_total_s",0))
-        _S["pause_periods"] = [[_str_dt(a),_str_dt(b)] for a,b in d.get("pause_periods",[])]
-        _S["of_count_shift"]= d.get("of_count_shift",0)
-        _S["form"]          = d.get("form",{})
-        _S["shift_start"]   = _str_dt(d.get("shift_start"))
-        _S["postes_row_num"] = d.get("postes_row_num")
-        _S["shift_debut_dt"] = _str_dt(d.get("shift_debut_dt"))
-        _S["shift_fin_dt"]   = _str_dt(d.get("shift_fin_dt"))
-        _S["tot_prod_s"]     = float(d.get("tot_prod_s", 0))
-        raw_timers = d.get("timers",{})
-        _S["timers"] = {}
-        for k,t in raw_timers.items():
-            _S["timers"][k] = {
-                "elapsed": float(t.get("elapsed",0)),
-                "running": t.get("running",False),
-                "start": _str_dt(t.get("start")),
-            }
-        raw_tl = d.get("tl_events",[])
-        _S["tl_events"] = []
-        for ev in raw_tl:
-            _S["tl_events"].append({
-                "key": ev["key"], "cat": ev["cat"],
-                "start": _str_dt(ev["start"]),
-                "end": _str_dt(ev.get("end")),
-                "comment": ev.get("comment",""),
-                "nettoyage_type": ev.get("nettoyage_type",""),
-                "hors_trs": ev.get("hors_trs",False),
-            })
-        return True
-    except: return False
-
-# Save session on any exit (window close, kill, etc.)
-def _on_exit(*args):
-    try: save_session()
-    except: pass
-
-atexit.register(_on_exit)
-try: signal.signal(signal.SIGTERM, _on_exit)
-except: pass
-try: signal.signal(signal.SIGINT, _on_exit)
-except: pass
-
-# ── Listes depuis Excel ────────────────────────────────────────────────────────
-def load_lists():
-    global _lists, _prod_ref_cached
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return
-    try:
-        wb = load_workbook(path, read_only=True, data_only=True)
-        if "Listes" in wb.sheetnames:
-            ws = wb["Listes"]
-            headers = [ws.cell(1,c).value for c in range(1, ws.max_column+1)]
-            for ci, h in enumerate(headers, start=1):
-                if not h: continue
-                vals = []
-                for ri in range(2, ws.max_row+1):
-                    v = ws.cell(ri,ci).value
-                    if v is not None and str(v).strip(): vals.append(str(v).strip())
-                _lists[str(h).strip()] = vals
-            # Production ref from list
-            pr_vals = _lists.get("Prod ref 8h",[]) or _lists.get("prod_ref",[])
-            if pr_vals:
-                try: _prod_ref_cached = float(str(pr_vals[0]).replace(",","."))
-                except: pass
-            # Load pilot passwords from col A (pilote names) + col B (MDP) — Excel is source of truth
-            pil_map = {}
-            for ri in range(2, ws.max_row+1):
-                pil_v = ws.cell(ri, 1).value
-                pw_v = ws.cell(ri, 2).value
-                if pil_v and str(pil_v).strip():
-                    pil_map[str(pil_v).strip()] = str(pw_v or "").strip()
-            if pil_map:
-                cfg["pilot_passwords"] = pil_map
-            # Also read fixed-position columns: C=copilotes, D=tailles, E=types_prod, F=equiv_coef, J=fibres
-            for col_idx, list_key in [(3,"copilotes"),(4,"tailles_col"),(5,"types_prod_col"),(6,"equivalences_col"),(10,"fibres_col")]:
-                vals = []
-                for ri in range(2, ws.max_row+1):
-                    v = ws.cell(ri, col_idx).value
-                    if v is not None and str(v).strip():
-                        vals.append(str(v).strip())
-                if vals:
-                    _lists[list_key] = vals
-            # Col K (11)=label, L (12)=cat : liste des arrêts configurables
-            evts_k = []
-            for ri in range(2, ws.max_row+1):
-                lbl_v = ws.cell(ri, 11).value
-                cat_v = ws.cell(ri, 12).value
-                if lbl_v is not None and str(lbl_v).strip():
-                    lbl = str(lbl_v).strip()
-                    # Rétro-compat : ancien format "label|cat" en col K seule
-                    if "|" in lbl and not cat_v:
-                        parts = lbl.split("|"); lbl = parts[0].strip(); cat_v = parts[1].strip()
-                    cat = str(cat_v or "pb").strip() or "pb"
-                    key = lbl.lower().replace(" ","_").replace("/","_").replace("é","e").replace("è","e").replace("ê","e").replace("à","a").replace("ç","c")[:28]
-                    evts_k.append({"label": lbl, "key": key, "cat": cat})
-            if evts_k:
-                _lists["arrêts_k"] = evts_k
-                cfg["events_list"] = evts_k
-                save_cfg_data()
-            # Col M (13) : labels interposte
-            ipl = []
-            for ri in range(2, ws.max_row+1):
-                v = ws.cell(ri, 13).value
-                if v is not None and str(v).strip():
-                    ipl.append(str(v).strip())
-            if ipl:
-                cfg["interposte_labels"] = ipl
-                save_cfg_data()
-            # Col N (14) : arrêts prévus (format "clé=valeur")
-            for ri in range(2, ws.max_row+1):
-                v = ws.cell(ri, 14).value
-                if v is not None and str(v).strip():
-                    try:
-                        k, val = str(v).strip().split("=", 1)
-                        k = k.strip(); val = val.strip()
-                        if k in _ARRETS_PREVUS_KEYS:
-                            cfg[k] = float(val)
-                    except: pass
-            save_cfg_data()
-        wb.close()
-    except: pass
-
-def get_list(h):
-    return _lists.get(h,[])
-
-def load_history():
-    global _decl_cache, _excel_busy
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return
-    try:
-        wb = load_workbook(path, read_only=True, data_only=True)
-        _excel_busy = False
-        _decl_cache = []
-        # Nouveau schéma unifié
-        if "Declarations" in wb.sheetnames:
-            ws = wb["Declarations"]
-            for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                if r and any(r):
-                    _decl_cache.append((i, list(r)+[None]*5))
-        # Rétro-compat: lire Data + Evenements si Declarations absent
-        elif "Data" in wb.sheetnames:
-            ws = wb["Data"]
-            for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                if r and any(r):
-                    row = list(r)+[None]*5
-                    # Convertir en format unifié (mettre "Production" en pos 0)
-                    unified = [None]*37
-                    unified[0] = "Production"
-                    unified[1] = row[0]   # OF
-                    unified[2] = row[1]   # Date
-                    unified[3] = row[2]   # Poste
-                    unified[4] = row[3]   # Pilote
-                    unified[5] = row[4]   # Co-Pilote
-                    unified[6] = row[5]   # Nb Personnes
-                    unified[7] = row[6]   # Taille
-                    unified[8] = row[7]   # Code Produit
-                    unified[9] = row[8]   # Type Produit
-                    unified[10] = row[9]  # Poids
-                    unified[11] = row[10] # Fibre
-                    unified[12] = row[11] # OF Taie
-                    unified[13] = row[12] # Traca
-                    unified[14] = row[22] # Ref Taie (col 23 dans Data)
-                    unified[15] = row[21] # Kit (col 22 dans Data)
-                    unified[16] = row[17] # Heure Debut
-                    unified[17] = row[18] # Heure Fin
-                    unified[18] = row[16] # Duree
-                    unified[19] = row[13] # Qte Fab
-                    unified[20] = row[14] # Qte Emb
-                    unified[21] = row[15] # Equiv
-                    unified[22] = row[19] # Cadence/h
-                    unified[23] = row[20] # Cadence/h/pers
-                    unified[35] = row[57] if len(row)>57 else None  # Commentaire
-                    _decl_cache.append((i, unified))
-        wb.close()
-    except PermissionError:
-        _excel_busy = True
-        def _retry():
-            import time as _t; _t.sleep(5)
-            load_history()
-        threading.Thread(target=_retry, daemon=True).start()
-    except: pass
-
-# ── Calcul équivalence ────────────────────────────────────────────────────────
-def calc_equiv(qte, taille, type_prod):
-    types  = get_list("types_prod_col") or get_list("Type produit") or get_list("types_prod")
-    equivs = get_list("equivalences_col") or get_list("Equivalence coef") or get_list("Equivalence")
-    if type_prod and types and equivs:
-        for i,t in enumerate(types):
-            if str(t).strip().lower()==str(type_prod).strip().lower():
-                if i<len(equivs):
-                    try: return round(qte*float(str(equivs[i]).replace(",",".")),2)
-                    except: pass
-    return round(float(qte or 0),2)
-
-# ── Excel helpers ─────────────────────────────────────────────────────────────
-def _get_wb(path):
-    if not path or not os.path.exists(path):
-        return None
-    try: return load_workbook(path)
-    except: return None
-
-def _safe_excel_save(wb, path):
-    bak = path+".bak"
-    try: shutil.copy2(path,bak)
-    except: pass
-    wb.save(path)
-    try: os.remove(bak)
-    except: pass
-
-def _format_row(ws, row_num):
-    thin = Side(style="thin")
-    border = Border(left=thin,right=thin,top=thin,bottom=thin)
-    for cell in ws[row_num]:
-        cell.border = border
-        cell.alignment = Alignment(horizontal="center",vertical="center",wrap_text=True)
-
-def _ensure_decl_sheet(wb):
-    if "Declarations" not in wb.sheetnames:
-        ws = wb.create_sheet("Declarations",0)
-        for i,h in enumerate(DECL_HEADERS,start=1): ws.cell(1,i).value=h
-        _format_row(ws,1)
-        # Couleur header
-        fill = PatternFill("solid", fgColor="1a1f5e")
-        from openpyxl.styles import Font
-        for cell in ws[1]:
-            cell.fill = fill
-            cell.font = Font(color="FFFFFF", bold=True, size=10)
-    else:
-        ws = wb["Declarations"]
-        for i,h in enumerate(DECL_HEADERS,start=1):
-            if ws.cell(1,i).value is None: ws.cell(1,i).value=h
-    return wb["Declarations"]
-
-def build_decl_rows(v, tl_events, of_start, pause_periods):
-    """Construit les lignes arrêts/pauses au format unifié (40 cols)."""
-    rows = []
-    kit_val = "Oui" if v.get("kit") else "Non"
-    def _base_row(type_decl, start, end, comment="", hors_trs=""):
-        dur = max(0,(end-start).total_seconds())
-        shift_dt = _S.get("shift_start") or start
-        shift_date_str = shift_dt.strftime("%d/%m/%Y")
-        return [
-            type_decl,                          # 0 Type
-            v.get("of_num",""),                 # 1 OF
-            start.strftime("%d/%m/%Y"),          # 2 Date
-            v.get("poste",""),                  # 3 Poste
-            v.get("pilote",""),                 # 4 Pilote
-            v.get("copilote",""),               # 5 Co-Pilote
-            v.get("nb_pers",""),                # 6 Nb Personnes
-            v.get("taille",""),                 # 7 Taille
-            v.get("code_prod",""),              # 8 Code Produit
-            v.get("type_prod",""),              # 9 Type Produit
-            v.get("poids",""),                  # 10 Poids Garnissage
-            v.get("fibre",""),                  # 11 Fibre
-            v.get("of_taie",""),                # 12 OF Taie
-            v.get("traca",""),                  # 13 Traca Fibre
-            v.get("ref_taie",""),               # 14 Ref Taie
-            kit_val,                            # 15 Kit
-            start.strftime("%H:%M:%S"),          # 16 Heure Debut
-            end.strftime("%H:%M:%S"),            # 17 Heure Fin
-            fmt(dur),                           # 18 Duree
-            "","","","","",                     # 19-23 prod only
-            "",                                 # 24 TRS%
-            "","","","","","",                  # 25-30 prod only
-            "","","",                           # 31-33
-            "",                                 # 34
-            comment,                            # 35 Commentaire
-            hors_trs,                           # 36 Prevu/Hors TRS
-            "","",                              # 37-38 Duree Arrets, Duree Prod Pure
-            shift_date_str,                     # 39 Date_poste
-        ]
-    for ev in tl_events:
-        if ev.get("cat") not in ("ratt","pb","nettoyage","autre"): continue
-        if not ev.get("key") or ev["key"].startswith("_"): continue
-        if of_start and ev["start"] < of_start and ev.get("key")!="arret_interposte": continue
-        start = ev["start"]
-        end = ev.get("end") or datetime.datetime.now()
-        if ev["key"]=="nettoyage":
-            ntype = ev.get("nettoyage_type","court")
-            label = {"court":"Nettoyage court","long":"Nettoyage long","grand":"Grand nettoyage"}.get(ntype,"Nettoyage court")
-        elif ev["cat"]=="autre":
-            label = ev["key"]  # Custom stop name typed by user
-        else:
-            cat_name = "Rattrapage" if ev["cat"]=="ratt" else "PB Technique"
-            lbl = next((e[0] for e in EVENTS if e[1]==ev["key"]),ev["key"])
-            label = f"{cat_name}: {lbl}"
-        rows.append(_base_row(label, start, end, ev.get("comment",""), "OUI" if ev.get("hors_trs") else ""))
-    for ps, pe in pause_periods:
-        if of_start and ps < of_start: continue
-        rows.append(_base_row("Pause", ps, pe))
-    return rows
-
-def write_excel_bg(prod_row, evt_rows):
-    """Écrit la ligne production + lignes arrêts dans la feuille Declarations."""
-    path = cfg.get("db_path","")
-    if not path: return
-    try:
-        with open(PENDING_FILE,"w",encoding="utf-8") as f:
-            json.dump({"db_path":path,"prod_row":prod_row,"evt_rows":evt_rows},f,ensure_ascii=False,default=str)
-    except: pass
-    def _bg():
-        for attempt in range(15):
-            try:
-                with _excel_lock:
-                    wb = _get_wb(path)
-                    if wb is None:
-                        time.sleep(4)
-                        continue
-                    ws = _ensure_decl_sheet(wb)
-                    if prod_row:
-                        ws.append(prod_row)
-                        _format_row(ws, ws.max_row)
-                    for er in evt_rows:
-                        ws.append(er)
-                        _format_row(ws, ws.max_row)
-                    _safe_excel_save(wb, path)
-                    try: os.remove(PENDING_FILE)
-                    except: pass
-                    break  # success — exit retry loop
-            except PermissionError:
-                # Excel a le fichier ouvert — on réessaie dans 5s
-                time.sleep(5)
-            except Exception:
-                break
-        threading.Thread(target=load_history, daemon=True).start()
-    threading.Thread(target=_bg, daemon=True).start()
-
-def write_changement_of(start_dt, end_dt, label=None, comment=""):
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return
-    pilot = _S.get("last_of_pilot") or _S.get("pilot") or ""
-    dur_s = (end_dt-start_dt).total_seconds()
-    row_type = label or "Changement d'OF"
-    shift_dt = _S.get("shift_start") or start_dt
-    shift_date_str = shift_dt.strftime("%d/%m/%Y")
-    row = [
-        row_type,"",start_dt.strftime("%d/%m/%Y"),
-        _S.get("poste",""),pilot,"","","","","","","","","","","",
-        start_dt.strftime("%H:%M:%S"),end_dt.strftime("%H:%M:%S"),fmt(dur_s),
-        "","","","","","","","","","","","","","","","",comment,
-        "","","",shift_date_str,
-    ]
-    def _bg():
-        try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _ensure_decl_sheet(wb)
-                ws.append(row)
-                _format_row(ws,ws.max_row)
-                _safe_excel_save(wb,path)
-            threading.Thread(target=load_history,daemon=True).start()
-        except: pass
-    threading.Thread(target=_bg,daemon=True).start()
-
-POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Total Arrets (min)","Total Pauses (min)","Nettoyage (min)","Durée Prod Totale (min)","Durée Prod Sans Arrêt (min)","Durée poste théorique (min)","Commentaire","Début Poste","Fin Poste"]
-
-def write_pilots_to_excel(pilot_passwords):
-    """Écrit la liste pilote+MDP dans l'onglet Listes col A+B."""
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return False
-    def _bg():
-        try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                if "Listes" not in wb.sheetnames:
-                    ws = wb.create_sheet("Listes")
-                    ws.cell(1,1).value = "Pilotes"
-                    ws.cell(1,2).value = "MDP"
-                else:
-                    ws = wb["Listes"]
-                    if not ws.cell(1,1).value: ws.cell(1,1).value = "Pilotes"
-                    if not ws.cell(1,2).value: ws.cell(1,2).value = "MDP"
-                # Clear existing pilot rows
-                for ri in range(2, ws.max_row+2):
-                    ws.cell(ri,1).value = None
-                    ws.cell(ri,2).value = None
-                # Write new pilot data
-                for ri,(p,pw) in enumerate(pilot_passwords.items(),start=2):
-                    ws.cell(ri,1).value = p
-                    ws.cell(ri,2).value = pw
-                _safe_excel_save(wb,path)
-        except: pass
-        threading.Thread(target=load_lists,daemon=True).start()
-    threading.Thread(target=_bg,daemon=True).start()
-    return True
-
-def _ensure_postes_sheet(wb):
-    if "Postes" not in wb.sheetnames:
-        ws = wb.create_sheet("Postes")
-        for i, h in enumerate(POSTES_HEADERS, start=1): ws.cell(1, i).value = h
-        _format_row(ws, 1)
-        from openpyxl.styles import PatternFill, Font
-        fill = PatternFill("solid", fgColor="1a1f5e")
-        for cell in ws[1]:
-            cell.fill = fill
-            cell.font = Font(color="FFFFFF", bold=True, size=10)
-    else:
-        ws = wb["Postes"]
-        for i, h in enumerate(POSTES_HEADERS, start=1):
-            if ws.cell(1, i).value is None: ws.cell(1, i).value = h
-    return wb["Postes"]
-
-def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
-    """Écrit en arrière-plan. Stocke postes_row_num dans _S pour que update_poste_horaires le retrouve directement."""
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return
-    def _bg():
-        try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _ensure_postes_sheet(wb)
-                new_row = ws.max_row + 1
-                ws.cell(new_row, 2).value = pilot
-                ws.cell(new_row, 4).value = poste
-                ws.cell(new_row, 16).value = debut_dt.isoformat() if debut_dt else None
-                ws.cell(new_row, 17).value = fin_dt.isoformat() if fin_dt else None
-                _format_row(ws, new_row)
-                _safe_excel_save(wb, path)
-                _S["postes_row_num"] = new_row
-                save_session()
-        except: pass
-    threading.Thread(target=_bg, daemon=True).start()
-
-def find_postes_row_num(pilot, debut_dt):
-    """Cherche dans POSTES la ligne correspondant à ce pilote + date debut. Retourne row_num ou None."""
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path) or not debut_dt: return None
-    try:
-        with _excel_lock:
-            wb = _get_wb(path)
-            if wb is None: return None
-            if "Postes" not in wb.sheetnames: return None
-            ws = wb["Postes"]
-            target_date = debut_dt.date()
-            for row in ws.iter_rows(min_row=2, values_only=False):
-                try:
-                    b = row[1].value if len(row) > 1 else None  # col B pilot
-                    p = row[15].value if len(row) > 15 else None  # col P debut
-                    if str(b or "").strip().lower() != pilot.lower(): continue
-                    if p is None: continue
-                    p_dt = datetime.datetime.fromisoformat(str(p)) if isinstance(p, str) else p
-                    if hasattr(p_dt, 'date') and p_dt.date() == target_date:
-                        return row[0].row
-                except: continue
-    except: pass
-    return None
-
-def update_poste_horaires(row_num, debut_dt, fin_dt):
-    """Écrit P et Q directement (pas de thread interne — à appeler depuis un thread background)."""
-    if not row_num or row_num <= 1: return
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return
-    try:
-        with _excel_lock:
-            wb = _get_wb(path)
-            if wb is None: return
-            if "Postes" not in wb.sheetnames: return
-            ws = wb["Postes"]
-            ws.cell(row_num, 16).value = debut_dt.isoformat() if debut_dt else None
-            ws.cell(row_num, 17).value = fin_dt.isoformat() if fin_dt else None
-            _safe_excel_save(wb, path)
-    except: pass
-
-def write_poste_row(data, row_num=None):
-    """Écrit ou met à jour une ligne dans l'onglet Postes à la fin de chaque poste."""
-    path = cfg.get("db_path","")
-    if not path: return
-    def _bg():
-        try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _ensure_postes_sheet(wb)
-                vals = [
-                    data.get("date",""),
-                    data.get("pilot",""),
-                    data.get("copilote",""),
-                    data.get("poste",""),
-                    data.get("nb_of",0),
-                    round(float(data.get("prod_total",0) or 0),0),
-                    round(float(data.get("tot_equiv",0) or 0),1),
-                    data.get("trs_shift",""),
-                    round(float(data.get("arret_min",0) or 0),1),
-                    round(float(data.get("pause_min",0) or 0),1),
-                    round(float(data.get("nett_min",0) or 0),1),
-                    round(float(data.get("dur_prod_total_min",0) or 0),1),
-                    round(float(data.get("dur_prod_sans_arret_min",0) or 0),1),
-                    round(float(data.get("dur_poste_theorique_min",0) or 0),1),
-                    data.get("comment",""),
-                ]
-                if row_num and row_num > 1:
-                    for ci, v in enumerate(vals, start=1):
-                        ws.cell(row_num, ci).value = v
-                    _format_row(ws, row_num)
-                else:
-                    ws.append(vals)
-                    _format_row(ws, ws.max_row)
-                _safe_excel_save(wb, path)
-        except: pass
-    threading.Thread(target=_bg, daemon=True).start()
-
-def get_current_shift_duration_s():
-    sd = _S.get("shift_debut_dt")
-    sf = _S.get("shift_fin_dt")
-    if sd and sf:
-        return (sf - sd).total_seconds()
-    return get_shift_duration_s(_S.get("poste",""))
-
-def load_postes_shift_map():
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return {}
-    result = {}
-    try:
-        with _excel_lock:
-            wb = _get_wb(path)
-            if wb is None: return {}
-            if "Postes" not in wb.sheetnames:
-                wb.close(); return {}
-            ws = wb["Postes"]
-            for ri in range(2, ws.max_row + 1):
-                pilot_v = ws.cell(ri, 2).value
-                deb_v = ws.cell(ri, 16).value
-                fin_v = ws.cell(ri, 17).value
-                if not pilot_v or not deb_v or not fin_v: continue
-                try:
-                    deb_dt = datetime.datetime.fromisoformat(str(deb_v)) if not hasattr(deb_v, 'hour') else datetime.datetime.combine(datetime.date.today(), deb_v)
-                    fin_dt = datetime.datetime.fromisoformat(str(fin_v)) if not hasattr(fin_v, 'hour') else datetime.datetime.combine(datetime.date.today(), fin_v)
-                    pk = (str(pilot_v).strip().lower(), deb_dt.strftime("%d/%m/%Y"))
-                    result[pk] = (deb_dt, fin_dt)
-                except: pass
-            wb.close()
-    except: pass
-    return result
-
-def _start_periodic_excel_sync():
-    """Recharge les listes Excel toutes les 5 minutes pour éviter la perte de données."""
-    def _loop():
-        while True:
-            time.sleep(300)  # 5 minutes
-            try: load_lists()
-            except: pass
-    t = threading.Thread(target=_loop, daemon=True)
-    t.start()
-
-def toggle_hors_trs_excel(row_num, new_val):
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path): return
-    def _bg():
-        try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                if "Declarations" in wb.sheetnames:
-                    ws = wb["Declarations"]
-                    ws.cell(row_num, 37).value = new_val  # col 37 = Prevu/Hors TRS
-                    _safe_excel_save(wb,path)
-        except: pass
-    threading.Thread(target=_bg,daemon=True).start()
 
 # ── Flask helpers ─────────────────────────────────────────────────────────────
 def _check_pw(pw):
@@ -3319,57 +2194,45 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 
   {alert_html}
 
-  <!-- HERO ROW : TRS + KPIs + Répartition -->
-  <div class="dash-hero">
-    <div class="dash-trs-card">
-      <div style="font-size:10px;font-weight:800;text-transform:uppercase;color:#94a3b8;letter-spacing:.8px;margin-bottom:6px">TRS Poste</div>
-      {gauge_svg(trs_poste, 150)}
-      {(f'<div style="font-size:11px;color:#0369a1;font-weight:700;text-align:center;margin-top:4px">⏱ ' + model_debut_dt.strftime("%Hh%M") + ' → ' + last_fin_dt.strftime("%Hh%M") + '</div>') if (model_debut_dt and last_fin_dt) else ((f'<div style="font-size:11px;color:#64748b;text-align:center">⏱ ' + model_debut_dt.strftime("%H:%M") + ' →</div>') if model_debut_dt else '<div style="font-size:11px;color:#94a3b8">Aucune donnée</div>')}
+  <!-- HEADER BAR like EXE Reports -->
+  <div style="background:#1e3a8a;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-radius:10px;margin-bottom:8px">
+    <div>
+      <div style="font-size:15px;font-weight:800">📋 Tableau de bord — {poste_now or "—"}</div>
+      <div style="font-size:11px;opacity:.8">{pilot_now or "—"} · Aujourd'hui · {elapsed_str}</div>
     </div>
-    <div class="dash-kpi-grid">
-      <div class="dash-kpi"><div class="dash-kpi-val" style="color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="dash-kpi-lbl">TRS Poste</div></div>
-      <div class="dash-kpi"><div class="dash-kpi-val" style="color:#7c3aed">{nb_of_today}</div><div class="dash-kpi-lbl">OF déclarés</div></div>
-      <div class="dash-kpi"><div class="dash-kpi-val" style="color:#0891b2">{tot_equiv:.1f}</div><div class="dash-kpi-lbl">Équivalence</div></div>
-      <div class="dash-kpi"><div class="dash-kpi-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:15px">min</span></div><div class="dash-kpi-lbl">Arrêts</div></div>
-      <div class="dash-kpi"><div class="dash-kpi-val" style="color:#16a34a">{prod_s_total/60:.0f}<span style="font-size:15px">min</span></div><div class="dash-kpi-lbl">Production</div></div>
-    </div>
-    <div class="dash-pie-card">
-      {pie_svg(prod_s_total, stop_s_total, 85)}
-      <div>
-        <div style="font-size:10px;font-weight:800;text-transform:uppercase;color:#94a3b8;letter-spacing:.5px;margin-bottom:8px">Répartition</div>
-        <div style="margin-bottom:6px"><div style="font-size:22px;font-weight:900;color:#22c55e;line-height:1">{prod_pct}%</div><div style="font-size:11px;color:#64748b">Production — {prod_s_total/60:.0f} min</div></div>
-        <div><div style="font-size:22px;font-weight:900;color:#ef4444;line-height:1">{100-prod_pct}%</div><div style="font-size:11px;color:#64748b">Arrêts — {stop_s_total/60:.0f} min</div></div>
-      </div>
+    <div style="text-align:right">
+      <div style="font-size:28px;font-weight:900;color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div>
+      <div style="font-size:11px;opacity:.7">TRS Poste</div>
     </div>
   </div>
 
-  <!-- CONTENT : Productions + Pareto/Arrêts -->
-  <div class="dash-content">
-    <div class="dash-card">
-      <div class="dash-card-hdr"><span class="dot" style="background:#16a34a"></span>Productions déclarées sur ce poste</div>
-      <div class="dash-card-body">
-        <table class="ktbl" style="font-size:13px">
-          <thead><tr><th>OF</th><th>Fibre</th><th>Type</th><th>Format</th><th>Lots de 2</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cad./h</th><th>Éq.</th><th>TRS</th><th>Comm.</th></tr></thead>
-          <tbody>{prod_rows_html}</tbody>
-        </table>
-      </div>
+  <!-- KPI BAR: gauge + pie + fp-cards -->
+  <div style="display:flex;gap:10px;padding:10px 12px;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:8px;align-items:center;flex-wrap:wrap;flex-shrink:0">
+    <div style="text-align:center;flex-shrink:0">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">TRS Poste</div>
+      {gauge_svg(trs_poste, 130)}
     </div>
-    <div class="dash-right">
-      <div class="dash-card" style="flex-shrink:0">
-        <div class="dash-card-hdr"><span class="dot" style="background:#d97706"></span>Pareto arrêts</div>
-        <div class="dash-card-body" style="padding:10px 14px">{pareto_html}</div>
+    <div style="text-align:center;flex-shrink:0">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">Répartition</div>
+      {pie_svg(prod_s_total, stop_s_total, 65)}
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;gap:5px;min-width:300px">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
+        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:#7c3aed;font-weight:900">{nb_of_today}</div><div class="fp-lbl" style="font-size:12px">OF déclarés</div></div>
+        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:#0891b2;font-weight:900">{tot_equiv:.1f}</div><div class="fp-lbl" style="font-size:12px">Équivalence</div></div>
+        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:{trs_col};font-weight:900">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="fp-lbl" style="font-size:12px">TRS Poste</div></div>
       </div>
-      <div class="dash-card" style="flex:1;min-height:0">
-        <div class="dash-card-hdr"><span class="dot" style="background:#ef4444"></span>Détail arrêts du poste</div>
-        <div class="dash-card-body" style="padding:0">
-          <table style="width:100%;border-collapse:collapse"><tbody>{_stop_list_html}</tbody></table>
-        </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px">{(model_debut_dt.strftime("%H:%M")+"→"+last_fin_dt.strftime("%H:%M")) if (model_debut_dt and last_fin_dt) else "—"}</div><div class="fp-lbl" style="font-size:11px">Plage</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">{prod_s_total/60:.0f} min</div><div class="fp-lbl" style="font-size:11px">Prod.</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#dc2626">{stop_s_total/60:.0f} min</div><div class="fp-lbl" style="font-size:11px">Arrêts</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">{prod_pct}%</div><div class="fp-lbl" style="font-size:11px">% prod</div></div>
       </div>
     </div>
   </div>
 
   <!-- TIMELINE -->
-  <div class="tl-cell">
+  <div style="padding:6px 12px;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:8px;flex-shrink:0">
     <div class="tl-lbl">
       <span>Timeline — {poste_now or "en cours"}</span>
       <span style="font-size:12px">{(model_debut_dt or shift_start_dt).strftime("%H:%M") if (model_debut_dt or shift_start_dt) else "—"} → maintenant</span>
@@ -3382,7 +2245,39 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
       <span><i style="background:#f59e0b"></i>Rattrapage</span>
       <span><i style="background:#38bdf8"></i>Nettoyage</span>
       <span><i style="background:#64748b"></i>Pause</span>
-      <span style="color:#1e293b;font-weight:700">| Maintenant</span>
+    </div>
+  </div>
+
+  <!-- BODY: Productions + Pareto/Arrêts side by side -->
+  <div style="display:grid;grid-template-columns:1fr 340px;gap:8px;flex:1;min-height:0;overflow:hidden">
+    <!-- Productions -->
+    <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:8px 12px;font-size:12px;font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <span style="width:8px;height:8px;background:#16a34a;border-radius:50%;display:inline-block"></span>Productions déclarées
+      </div>
+      <div style="flex:1;overflow-y:auto">
+        <table class="ktbl" style="font-size:12px">
+          <thead><tr><th>OF</th><th>Fibre</th><th>Type</th><th>Format</th><th>Lots 2</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cad./h</th><th>Éq.</th><th>TRS</th><th>Comm.</th></tr></thead>
+          <tbody>{prod_rows_html}</tbody>
+        </table>
+      </div>
+    </div>
+    <!-- Pareto + Arrêts -->
+    <div style="display:flex;flex-direction:column;gap:8px;overflow:hidden">
+      <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:10px 12px;flex-shrink:0">
+        <div style="font-size:12px;font-weight:800;color:#1e3a8a;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+          <span style="width:8px;height:8px;background:#d97706;border-radius:50%;display:inline-block"></span>Pareto arrêts
+        </div>
+        {pareto_html}
+      </div>
+      <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:1;overflow:hidden;display:flex;flex-direction:column">
+        <div style="padding:8px 12px;font-size:12px;font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <span style="width:8px;height:8px;background:#ef4444;border-radius:50%;display:inline-block"></span>Détail arrêts
+        </div>
+        <div style="flex:1;overflow-y:auto">
+          <table style="width:100%;border-collapse:collapse"><tbody>{_stop_list_html}</tbody></table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -4746,18 +3641,23 @@ select{cursor:default}
 
   <!-- ════ RAPPORTS DES POSTES ════ -->
   <div id="v-rapports" class="view" style="flex-direction:column;overflow:hidden">
-    <div style="display:grid;grid-template-columns:280px 1fr;flex:1;overflow:hidden;min-height:0">
-      <!-- Liste des postes -->
-      <div style="border-right:1px solid var(--border);overflow-y:auto;background:#f8fafc;display:flex;flex-direction:column">
-        <div style="padding:10px 14px;font-size:13px;font-weight:800;color:var(--navy);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
-          <span>📋 Tous les postes</span>
-          <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="reloadAndLoadRapports()">↺</button>
+    <div style="display:flex;flex:1;overflow:hidden;min-height:0">
+      <!-- Panneau gauche : liste OU résumé KPI selon mode -->
+      <div id="rpt-left-exe" style="width:280px;min-width:0;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:#f8fafc;overflow:hidden;transition:width .25s ease">
+        <!-- Mode liste (par défaut) -->
+        <div id="rpt-left-list" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+          <div style="padding:10px 14px;font-size:13px;font-weight:800;color:var(--navy);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
+            <span>📋 Tous les postes</span>
+            <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="reloadAndLoadRapports()">↺</button>
+          </div>
+          <div id="rpt-list" style="flex:1;overflow-y:auto">
+            <div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Chargement…</div>
+          </div>
         </div>
-        <div id="rpt-list" style="flex:1;overflow-y:auto">
-          <div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Chargement…</div>
-        </div>
+        <!-- Mode KPI (caché jusqu'à sélection d'un poste) -->
+        <div id="rpt-left-kpi" style="display:none;flex-direction:column;flex:1;overflow-y:auto"></div>
       </div>
-      <!-- Détail du rapport -->
+      <!-- Détail du rapport : tables + timeline -->
       <div id="rpt-detail" style="overflow-y:auto;flex:1;padding:0">
         <div style="padding:60px;text-align:center;color:var(--gray)">
           <div style="font-size:40px;margin-bottom:12px">📋</div>
@@ -5509,7 +4409,7 @@ async function doLogout() {
 var _zoomOpen=false;
 function applyZoom(pct){
   pct=Math.min(150,Math.max(70,pct));
-  document.documentElement.style.fontSize=pct+'%';
+  document.documentElement.style.zoom=pct/100;
   var sl=document.getElementById('zoom-slider');
   var vl=document.getElementById('zoom-val');
   if(sl) sl.value=pct;
@@ -8641,61 +7541,75 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const tlDebut=d.actual_debut||d.model_debut;
   const tlFin=d.actual_fin||d.model_fin;
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
-  const plageStr=(tlDebut&&tlFin)?(' · Plage : '+esc(tlDebut)+' → '+esc(tlFin)):'';
+  const plageStr=(tlDebut&&tlFin)?(' · '+esc(tlDebut)+' → '+esc(tlFin)):'';
+  // ── Panneau gauche : passe en mode KPI ──
+  const leftList=document.getElementById('rpt-left-list');
+  const leftKpi=document.getElementById('rpt-left-kpi');
+  const leftExe=document.getElementById('rpt-left-exe');
+  if(leftList&&leftKpi&&leftExe){
+    leftList.style.display='none';
+    leftExe.style.width='230px';
+    leftKpi.style.cssText='display:flex;flex-direction:column;flex:1;overflow-y:auto';
+    leftKpi.innerHTML=`
+      <button onclick="rptBackToList()" style="margin:8px 10px 4px;background:none;border:none;color:#3b82f6;font-size:12px;cursor:pointer;text-align:left;padding:4px 0;font-weight:700">← Retour à la liste</button>
+      <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0">
+        <div style="font-size:13px;font-weight:800">${esc(poste)}</div>
+        <div style="font-size:10px;opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
+        <div style="font-size:26px;font-weight:900;color:${trsCol};margin-top:6px;line-height:1">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
+        <div style="font-size:10px;opacity:.65">TRS Shift</div>
+      </div>
+      <div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px">
+        <div style="text-align:center">
+          <svg id="rpt-gauge" viewBox="0 0 100 58" style="width:150px;display:block;margin:0 auto">
+            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
+            <path id="rpt-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
+            <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="rpt-gauge-pct">--%</text>
+          </svg>
+          <div style="font-size:9px;color:var(--gray);margin-top:2px">TRS Poste</div>
+        </div>
+        <div style="text-align:center">
+          <svg id="rpt-pie" viewBox="0 0 130 115" style="width:130px;height:110px;display:block;margin:0 auto"></svg>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:18px;color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:10px">Pièces</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:18px;color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:10px">Équiv.</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:18px;color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl" style="font-size:10px">Cad./h</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:18px;color:#7c3aed;font-weight:900">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:10px">Nb OF</div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:12px">${(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl" style="font-size:9px">Durée ouverture</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:12px;color:#16a34a">${prodMin} min</div><div class="fp-lbl" style="font-size:9px">Durée prod</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:12px;color:#dc2626">${stopMin} min</div><div class="fp-lbl" style="font-size:9px">Arrêts</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:12px;color:#8b5cf6">${nbChangFibre}</div><div class="fp-lbl" style="font-size:9px">Chg. fibre</div></div>
+        </div>
+      </div>`;
+  }
+  // ── Panneau droit : timeline + tables (pleine largeur) ──
   detailEl.innerHTML=`
-    <div style="background:var(--navy);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <div><div style="font-size:15px;font-weight:800">📋 Rapport — ${esc(poste)}</div><div style="font-size:11px;opacity:.8">${esc(pilot)} · ${esc(date)}${plageStr}</div></div>
-      <div style="text-align:right"><div style="font-size:26px;font-weight:900;color:${trsCol}">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div><div style="font-size:11px;opacity:.7">TRS Shift</div></div>
-    </div>
-    <!-- Graphiques + KPIs -->
-    <div style="display:flex;gap:12px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);align-items:center;flex-wrap:wrap">
-      <div style="text-align:center;flex-shrink:0">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">TRS Poste</div>
-        <svg id="rpt-gauge" viewBox="0 0 100 58" style="width:180px;display:block;margin:0 auto">
-          <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
-          <path id="rpt-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
-          <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="rpt-gauge-pct">--%</text>
-        </svg>
-      </div>
-      <div style="text-align:center;flex-shrink:0">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Répartition</div>
-        <svg id="rpt-pie" viewBox="0 0 130 115" style="width:170px;height:150px;display:block;margin:0 auto"></svg>
-      </div>
-      <div style="flex:1;display:flex;flex-direction:column;gap:5px">
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:12px">Nb pièces prod.</div></div>
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:12px">Équivalence</div></div>
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl" style="font-size:12px">Cadence/h</div></div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px">${(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl" style="font-size:11px">Durée ouverture</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">${prodMin} min</div><div class="fp-lbl" style="font-size:11px">Durée prod</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#dc2626">${stopMin} min</div><div class="fp-lbl" style="font-size:11px">Arrêts total</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">${Math.round((d.planned_ded_s||0)/60)} min</div><div class="fp-lbl" style="font-size:11px">Arrêts prévus</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#7c3aed">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:11px">Nb OF</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#8b5cf6">${nbChangFibre}</div><div class="fp-lbl" style="font-size:11px">Chg. fibre</div></div>
-        </div>
-      </div>
-    </div>
     <!-- Timeline -->
-    <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border)">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline du poste</div>
+    <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline${plageStr}</div>
       <svg viewBox="0 0 800 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block">${tlContent}</svg>
       <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Rattrapage</span><span><i style="background:#38bdf8"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
     </div>
-    <!-- Corps : prods + arrêts + pareto -->
+    <!-- Productions (pleine largeur) -->
+    <div style="padding:8px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Productions</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
+          <th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>
+          <th style="padding:4px 6px">Lots×2</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>
+          <th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px;text-align:left">Comm.</th>
+        </tr></thead>
+        <tbody>${prodsHtml||'<tr><td colspan="8" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
+      </table>
+    </div>
+    <!-- Pareto + Arrêts côte à côte -->
     <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div style="display:flex;flex-direction:column;gap:8px">
         <div class="card" style="padding:10px">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Productions</div>
-          <table style="width:100%;border-collapse:collapse;font-size:11px">
-            <thead><tr style="background:#f8fafc">
-              <th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>
-              <th style="padding:4px 6px">Lots de 2</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>
-              <th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th>
-            </tr></thead>
-            <tbody>${prodsHtml||'<tr><td colspan="8" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
-          </table>
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Pareto des arrêts</div>
+          ${paretoHtml||'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>'}
         </div>
         <div class="card" style="padding:10px">
           <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>
@@ -8719,34 +7633,26 @@ async function loadSessionReport(date,pilot,poste,itemId){
           })()}
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div class="card" style="padding:10px">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Pareto des arrêts</div>
-          ${paretoHtml}
-        </div>
-        <div class="card" style="padding:10px">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Détail arrêts</div>
-          ${(d.evt_rows||[]).length?`<table style="width:100%;border-collapse:collapse;font-size:10px">
-            <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
-              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray);white-space:nowrap">Arrêt</th>
-              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">OF</th>
-              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Format</th>
-              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Type</th>
-              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray);white-space:nowrap">Plage</th>
-              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Durée</th>
-              <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Commentaire</th>
-            </tr></thead>
-            <tbody>${(d.evt_rows||[]).map(r=>`<tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:4px 5px;font-weight:600;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis">${esc(r.type||'')}</td>
-              <td style="padding:4px 5px;color:#0369a1;font-weight:700">${esc(r.of||'—')}</td>
-              <td style="padding:4px 5px;color:var(--text)">${esc(r.taille||'—')}</td>
-              <td style="padding:4px 5px;color:var(--text)">${esc(r.type_prod||'—')}</td>
-              <td style="padding:4px 5px;white-space:nowrap;color:var(--gray)">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
-              <td style="padding:4px 5px;font-weight:700;white-space:nowrap">${esc(r.duree||'')}</td>
-              <td style="padding:4px 5px;color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.comment||'')}">${esc(r.comment||'—')}</td>
-            </tr>`).join('')}</tbody>
-          </table>`:'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>'}
-        </div>
+      <div class="card" style="padding:10px;display:flex;flex-direction:column;gap:6px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Détail arrêts</div>
+        ${(d.evt_rows||[]).length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px">
+          <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
+            <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray);white-space:nowrap">Arrêt</th>
+            <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">OF</th>
+            <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Type</th>
+            <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray);white-space:nowrap">Plage</th>
+            <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Durée</th>
+            <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Commentaire</th>
+          </tr></thead>
+          <tbody>${(d.evt_rows||[]).map(r=>`<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:4px 5px;font-weight:600;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis">${esc(r.type||'')}</td>
+            <td style="padding:4px 5px;color:#0369a1;font-weight:700">${esc(r.of||'—')}</td>
+            <td style="padding:4px 5px;color:var(--text)">${esc(r.type_prod||'—')}</td>
+            <td style="padding:4px 5px;white-space:nowrap;color:var(--gray)">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
+            <td style="padding:4px 5px;font-weight:700;white-space:nowrap">${esc(r.duree||'')}</td>
+            <td style="padding:4px 5px;color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.comment||'')}">${esc(r.comment||'—')}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>`:'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>'}
       </div>
     </div>`;
   // Dessiner gauge et pie (éléments maintenant dans le DOM)
@@ -8756,6 +7662,17 @@ async function loadSessionReport(date,pilot,poste,itemId){
     {label:'Arrêts',value:stopMin,color:'#dc2626'},
     {label:'Autre',value:Math.max(0,totalMin-prodMin-stopMin),color:'#94a3b8'}
   ]);
+}
+
+function rptBackToList(){
+  const leftExe=document.getElementById('rpt-left-exe');
+  const leftList=document.getElementById('rpt-left-list');
+  const leftKpi=document.getElementById('rpt-left-kpi');
+  const detailEl=document.getElementById('rpt-detail');
+  if(leftExe) leftExe.style.width='280px';
+  if(leftList) leftList.style.display='flex';
+  if(leftKpi){leftKpi.style.display='none';leftKpi.innerHTML='';}
+  if(detailEl) detailEl.innerHTML='<div style="padding:24px;color:var(--gray);text-align:center">Sélectionnez un poste</div>';
 }
 
 // ── SETTINGS ──
