@@ -1124,6 +1124,7 @@ def toggle_hors_trs_excel(row_num, new_val):
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
 
+
 # ── Flask helpers ─────────────────────────────────────────────────────────────
 def _check_pw(pw):
     return str(pw or "") == str(cfg.get("supervisor_pw","1234"))
@@ -2034,7 +2035,7 @@ def api_fin_poste_data():
                 "type_prod":str(r[9] or ""),"qte_fab":str(r[19] or ""),
                 "qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),
                 "debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],
-                "duree":str(r[18] or ""),"trs":trs,
+                "duree":str(r[18] or ""),"trs":trs,"fibre":str(r[11] or ""),
             })
         except: pass
     trs_poste=-1.0
@@ -2477,6 +2478,7 @@ def dashboard_view():
         return content, 200, {'Content-Type': 'text/html; charset=utf-8'}
     except Exception as e:
         return f"<html><body>Erreur lecture fichier: {e}</body></html>", 500
+
 
 def _dash_budget_bars_html():
     """Génère les barres de budget arrêts prévus pour le dashboard (rendu serveur)."""
@@ -3756,6 +3758,7 @@ function loadRapports(){}
         return None, str(e)
 
 
+
 HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -4369,13 +4372,20 @@ select{cursor:default}
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Répartition</div>
         <svg id="fp-pie" viewBox="0 0 130 115" style="width:200px;height:177px;display:block;margin:0 auto"></svg>
       </div>
-      <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(75px,1fr));gap:5px">
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-trs">--%</div><div class="fp-lbl">TRS Shift</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-trs-of">--%</div><div class="fp-lbl">TRS Prod</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-eq">0</div><div class="fp-lbl">Équivalence</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-nof">0</div><div class="fp-lbl">Nb OF</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-prod-t">0 min</div><div class="fp-lbl">Durée prod</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-stop-t">0 min</div><div class="fp-lbl">Arrêts</div></div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:5px">
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-trs">--%</div><div class="fp-lbl">TRS Shift</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-trs-of">--%</div><div class="fp-lbl">TRS Prod</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-eq">0</div><div class="fp-lbl">Équivalence</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-nof">0</div><div class="fp-lbl">Nb OF</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-prod-t">0 min</div><div class="fp-lbl">Durée prod</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-stop-t">0 min</div><div class="fp-lbl">Arrêts</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#0369a1;font-weight:900" id="fp-cadence">--</div><div class="fp-lbl">Cadence/h</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#059669;font-weight:900" id="fp-pieces">--</div><div class="fp-lbl">Nb pièces</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#8b5cf6;font-weight:900" id="fp-chg-fibre">--</div><div class="fp-lbl">Chg. fibre</div></div>
+        </div>
       </div>
     </div>
     <!-- Timeline compact -->
@@ -7471,6 +7481,17 @@ async function loadFPData(){
   },0);
   document.getElementById('fp-stop-t').textContent=fmtDurMS(stopTotal);
 
+  // New metrics: Cadence/h, Nb pièces, Chg. fibre
+  const ofList=d.of_list||[];
+  const totQteFabFP=ofList.reduce((s,r)=>s+parseFloat(r.qte_fab||0),0);
+  const elapsedEffSFP=Math.max(1,(d.model_dur_s||0)-(d.planned_ded_s||0));
+  const cadenceHFP=elapsedEffSFP>0?Math.round(totQteFabFP/elapsedEffSFP*3600):0;
+  const sortedProdFFP=ofList.filter(r=>r.fibre).sort((a,b)=>(a.debut||'').localeCompare(b.debut||''));
+  let nbChangFibreFP=0;for(let i=1;i<sortedProdFFP.length;i++){if(sortedProdFFP[i].fibre!==sortedProdFFP[i-1].fibre)nbChangFibreFP++;}
+  document.getElementById('fp-cadence').textContent=cadenceHFP;
+  document.getElementById('fp-pieces').textContent=Math.round(totQteFabFP);
+  document.getElementById('fp-chg-fibre').textContent=nbChangFibreFP;
+
   // Timeline — refresh events first, then combine historical + live
   await pollEvts();
   const shiftStart=d.shift_start_iso||new Date(Date.now()-8*3600*1000).toISOString();
@@ -8700,6 +8721,7 @@ function toast(msg,type){
 </script>
 </body>
 </html>"""
+
 
 def _session_autosave():
     while True:
