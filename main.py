@@ -2566,6 +2566,18 @@ def generate_dashboard_html():
     taille_now = (_S.get("form") or {}).get("taille","") or ""
     type_prod_now = (_S.get("form") or {}).get("type_prod","") or ""
     kit_now = "Oui" if (_S.get("form") or {}).get("kit") else "Non"
+    _form_now = _S.get("form") or {}
+    copilote_now = str(_form_now.get("copilote","") or "")
+    nb_pers_now  = str(_form_now.get("nb_pers","") or "")
+    code_prod_now= str(_form_now.get("code_prod","") or "")
+    poids_now    = str(_form_now.get("poids","") or "")
+    fibre_now    = str(_form_now.get("fibre","") or "")
+    of_taie_now  = str(_form_now.get("of_taie","") or "")
+    traca_now    = str(_form_now.get("traca","") or "")
+    ref_taie_now = str(_form_now.get("ref_taie","") or "")
+    qte_fab_now  = str(_form_now.get("qte_fab","") or "")
+    qte_emb_now  = str(_form_now.get("qte_emb","") or "")
+    comment_now  = str(_form_now.get("comment","") or "")
     of_start_dt = _S.get("of_start")
     is_paused = _S.get("is_paused", False)
     # Temps écoulé depuis début OF (en cours)
@@ -2820,24 +2832,45 @@ def generate_dashboard_html():
         for lbl, dur in pareto:
             pct = dur / max_dur * 100 if max_dur > 0 else 0
             col = "#ef4444" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#38bdf8" if "nett" in lbl.lower() else "#a855f7"
-            pareto_html += f'''<div style="margin-bottom:5px">
+            pareto_html += f'''<div style="margin-bottom:4px">
               <div style="display:flex;justify-content:space-between;font-size:12px;color:#475569;margin-bottom:2px">
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%">{lbl[:30]}</span>
                 <span style="font-weight:800;color:#1e293b;flex-shrink:0">{dur/60:.0f}m</span>
               </div>
-              <div style="background:#e2e8f0;border-radius:3px;height:16px;width:100%">
-                <div style="width:{pct:.0f}%;height:16px;background:{col};border-radius:3px"></div>
+              <div style="background:#e2e8f0;border-radius:3px;height:12px;width:100%">
+                <div style="width:{pct:.0f}%;height:12px;background:{col};border-radius:3px"></div>
               </div>
             </div>'''
     else:
-        pareto_html = '<div style="color:#475569;font-size:15px;padding:10px;text-align:center">Aucun arrêt enregistré</div>'
+        pareto_html = '<div style="color:#475569;font-size:13px;padding:6px;text-align:center">Aucun arrêt enregistré</div>'
+    # ── Liste arrêts individuels ──
+    _stop_list_html = ""
+    for _sr in today_evts:
+        _st = str(_sr[0] or "").strip()
+        _sd = str(_sr[16] or "")[:5]
+        _sf = str(_sr[17] or "")[:5]
+        _sdur = str(_sr[18] or "")
+        _scmt = str(_sr[35] or "").strip()
+        _scol = "#ef4444" if any(x in _st.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in _st.lower() else "#38bdf8" if "nett" in _st.lower() else "#a855f7"
+        _stop_list_html += (f'<tr>'
+            f'<td style="padding:3px 6px;font-size:11px;font-weight:700;color:{_scol};white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis">{_st}</td>'
+            f'<td style="padding:3px 6px;font-size:11px;color:#64748b;white-space:nowrap">{_sd}→{_sf}</td>'
+            f'<td style="padding:3px 6px;font-size:11px;font-weight:800;color:#1e293b;white-space:nowrap">{_sdur}</td>'
+            f'<td style="padding:3px 6px;font-size:10px;color:#94a3b8;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{_scmt}">{_scmt}</td>'
+            f'</tr>')
+    if not _stop_list_html:
+        _stop_list_html = '<tr><td colspan="4" style="padding:6px;text-align:center;color:#94a3b8;font-size:12px">Aucun arrêt</td></tr>'
 
-    # ── Productions table ──
+    # ── Productions table (avec données détaillées pour popup) ──
+    import json as _json2
+    _dash_prod_list = []
     prod_rows_html = ""
-    for r in list(reversed(in_shift_prod))[:8]:
+    for _pi, r in enumerate(list(reversed(in_shift_prod))[:8]):
+        _trs_p = -1.0
         trs_val = ""
         try:
             tv = float(str(r[24] or "").replace(",","."))
+            _trs_p = tv
             tc = trs_color(tv)
             trs_val = f'<span style="color:{tc};font-weight:900">{tv:.1f}%</span>'
         except: pass
@@ -2849,9 +2882,26 @@ def generate_dashboard_html():
         cmt_val = str(r[35] or "").strip()
         fibre_val = str(r[11] or "").strip()
         fibre_short = fibre_val[:9]+('…' if len(fibre_val)>9 else '')
-        prod_rows_html += f'''<tr>
-          <td style="font-weight:800;font-size:15px;color:#1e293b">{r[1] or ""}</td>
-          <td style="color:#6366f1;font-weight:700;font-size:13px;cursor:pointer" title="{fibre_val}" onclick="if(this.title)alert('Fibre : '+this.title)">{fibre_short}</td>
+        # Arrêts pendant cet OF
+        _of_date = str(r[2] or "")[:10]
+        _of_pilot = str(r[4] or "")
+        _of_deb_s2 = hms2s(r[16]); _of_fin_s2 = hms2s(r[17]) or 86400
+        _of_stops2 = [{"type":str(_er[0] or ""),"debut":str(_er[16] or "")[:5],"fin":str(_er[17] or "")[:5],"duree":str(_er[18] or ""),"comment":str(_er[35] or "")}
+                      for _er in evt_rows_all if str(_er[2] or "")[:10]==_of_date and str(_er[4] or "")==_of_pilot and _of_deb_s2<=hms2s(_er[16])<=_of_fin_s2]
+        _dash_prod_list.append({"of":str(r[1] or ""),"date":str(r[2] or "")[:10],"pilot":str(r[4] or ""),"poste":str(r[3] or ""),
+            "copilote":str(r[5] or ""),"nb_pers":str(r[6] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),
+            "type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),
+            "traca":str(r[13] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),
+            "debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),
+            "qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),
+            "qte_init_taie":str(r[25] if len(r)>25 else ""),"nb_taie2_choix":str(r[26] if len(r)>26 else ""),
+            "nb_def_cout":str(r[27] if len(r)>27 else ""),"mq_taie":str(r[28] if len(r)>28 else ""),
+            "mq_housse_encart":str(r[29] if len(r)>29 else ""),"nb_pp_cousue":str(r[30] if len(r)>30 else ""),
+            "duree_mq_mp":str(r[32] if len(r)>32 else ""),"manquant_pers":str(r[33] if len(r)>33 else ""),
+            "comment":cmt_val,"trs":_trs_p,"stops":_of_stops2})
+        prod_rows_html += f'''<tr style="cursor:pointer" onclick="showDashProdOf({_pi})" title="Voir détail OF">
+          <td style="font-weight:800;font-size:15px;color:#1e3a8a;text-decoration:underline">{r[1] or ""}</td>
+          <td style="color:#6366f1;font-weight:700;font-size:13px;cursor:pointer" title="{fibre_val}" onclick="event.stopPropagation();if(this.title)alert(\'Fibre : \'+this.title)">{fibre_short}</td>
           <td style="color:#475569;font-size:14px">{r[9] or ""}</td>
           <td style="color:#475569;font-size:14px">{r[7] or ""}</td>
           <td style="text-align:center">{kit_disp}</td>
@@ -2865,6 +2915,7 @@ def generate_dashboard_html():
         </tr>'''
     if not prod_rows_html:
         prod_rows_html = '<tr><td colspan="12" style="color:#94a3b8;padding:10px;text-align:center;font-size:15px">Aucune production déclarée</td></tr>'
+    _dash_prod_json = _json2.dumps(_dash_prod_list, ensure_ascii=True, default=str)
 
     # ── ALERT BANNER HTML ──
     alert_html = ""
@@ -2894,13 +2945,32 @@ def generate_dashboard_html():
         of_stop_min = f"{of_stop_s/60:.0f}" if of_stop_s > 0 else "0"
         kit_col = "#16a34a" if kit_now == "Oui" else "#94a3b8"
         of_border_col = "#22c55e" if prod_active else "#e2e8f0"
+        # Chips ligne 1 : timing courant
         _of_chips = ""
-        for _lbl, _val, _col in [("Type", type_prod_now or "—", "#1e293b"), ("Format", taille_now or "—", "#1e293b"),
-                                   ("Kit", kit_now, kit_col), ("Début", of_debut_str, "#1e293b"),
-                                   ("Écoulé", of_elapsed_str, "#0891b2"), ("Arrêts", of_stop_min+" min", "#ef4444")]:
+        for _lbl, _val, _col in [("Début", of_debut_str, "#1e293b"),
+                                   ("Écoulé", of_elapsed_str, "#0891b2"),
+                                   ("Arrêts", of_stop_min+" min", "#ef4444")]:
             _of_chips += (f'<div style="text-align:center;flex-shrink:0">'
-                          f'<div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase">{_lbl}</div>'
+                          f'<div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">{_lbl}</div>'
                           f'<div style="font-size:15px;font-weight:800;color:{_col}">{_val}</div></div>')
+        # Chips ligne 2 : champs formulaire (uniquement si renseigné)
+        _form_detail_chips = ""
+        _form_detail_fields = [
+            ("Taille", taille_now, "#1e293b"), ("Type", type_prod_now, "#1e293b"),
+            ("Code prod.", code_prod_now, "#374151"), ("Kit", kit_now if prod_active else "", kit_col),
+            ("Fibre", fibre_now, "#6366f1"), ("Poids (g)", poids_now, "#1e293b"),
+            ("Co-pilote", copilote_now, "#1e293b"), ("Nb pers.", nb_pers_now, "#1e293b"),
+            ("OF Taie", of_taie_now, "#374151"), ("Traca", traca_now, "#374151"),
+            ("Réf Taie", ref_taie_now, "#374151"),
+            ("Qté Fab.", qte_fab_now, "#1e293b"), ("Qté Emb.", qte_emb_now, "#1e293b"),
+        ]
+        for _lbl2, _val2, _col2 in _form_detail_fields:
+            if not _val2 or _val2 == "Non": continue
+            _form_detail_chips += (f'<div style="text-align:center;flex-shrink:0;padding:2px 5px;background:#f0fdf4;border:1px solid #d1fae5;border-radius:5px">'
+                                   f'<div style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase">{_lbl2}</div>'
+                                   f'<div style="font-size:12px;font-weight:800;color:{_col2};white-space:nowrap">{_val2}</div></div>')
+        _form_section = (f'<div style="border-top:1px solid #d1fae5;padding-top:4px;display:flex;flex-wrap:wrap;gap:4px">{_form_detail_chips}</div>'
+                         if _form_detail_chips else '')
         _poste_chips = ""
         for _i, (_lbl, _val, _col) in enumerate([("Éq.", f"{tot_equiv:.1f}", "#0891b2"),
                                                    ("Qté", str(nb_pieces), "#7c3aed"),
@@ -2908,24 +2978,27 @@ def generate_dashboard_html():
                                                    ("Prod", f"{prod_s_total/3600:.1f}h", "#16a34a"),
                                                    ("Arrêts", f"{stop_s_total/60:.0f}min", "#ef4444")]):
             _bl = "border-left:1px solid #e2e8f0;" if _i > 0 else ""
-            _poste_chips += (f'<div style="text-align:center;flex:1;padding:0 4px;{_bl}">'
+            _poste_chips += (f'<div style="text-align:center;flex:1;padding:0 3px;{_bl}">'
                              f'<div style="font-size:20px;font-weight:900;color:{_col};line-height:1">{_val}</div>'
-                             f'<div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:1px">{_lbl}</div></div>')
+                             f'<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:1px">{_lbl}</div></div>')
         _budget_bars = _dash_budget_bars_html()
         _budget_col = f'  {_budget_bars}' if _budget_bars else ''
-        _grid_cols = '1fr 1fr auto' if _budget_bars else '1fr 1fr'
+        _grid_cols = '2fr 1fr auto' if _budget_bars else '2fr 1fr'
         alert_html = f'''
 <div style="display:grid;grid-template-columns:{_grid_cols};gap:6px;flex-shrink:0;align-items:stretch">
-  <div style="background:#f0fdf4;border:2px solid {of_border_col};border-radius:8px;padding:5px 12px;display:flex;align-items:center;gap:14px">
-    <div style="flex-shrink:0">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:{prod_status_col};letter-spacing:1px">{prod_status_label}</div>
-      <div style="font-size:25px;font-weight:900;color:#1e293b;line-height:1.1">OF {of_num_now}</div>
+  <div style="background:#f0fdf4;border:2px solid {of_border_col};border-radius:8px;padding:5px 12px;display:flex;flex-direction:column;gap:4px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="flex-shrink:0">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:{prod_status_col};letter-spacing:1px">{prod_status_label}</div>
+        <div style="font-size:24px;font-weight:900;color:#1e293b;line-height:1.1;font-family:monospace">OF {of_num_now}</div>
+      </div>
+      <div style="height:32px;width:1px;background:#d1fae5;flex-shrink:0"></div>
+      {_of_chips}
     </div>
-    <div style="height:32px;width:1px;background:#d1fae5;flex-shrink:0"></div>
-    {_of_chips}
+    {_form_section}
   </div>
-  <div style="background:#f8fafc;border:2px solid #e2e8f0;border-radius:8px;padding:5px 12px;display:flex;align-items:center;gap:0">
-    <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#1e3a8a;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:1px;flex-shrink:0;margin-right:10px">Poste entier</div>
+  <div style="background:#f8fafc;border:2px solid #e2e8f0;border-radius:8px;padding:3px 8px;display:flex;align-items:center;gap:0">
+    <div style="font-size:10px;font-weight:800;text-transform:uppercase;color:#1e3a8a;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:1px;flex-shrink:0;margin-right:6px">Poste entier</div>
     {_poste_chips}
   </div>
 {_budget_col}
@@ -3203,11 +3276,21 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     {'<!-- COLONNE DROITE : Stats + Pareto -->' if not has_alert else ''}
     {'''<div style="display:flex;flex-direction:column;gap:10px;overflow:hidden">''' if not has_alert else ''}
 
-      {f'''<!-- Pareto arrêts (colonne entière) -->
-      <div class="panel" style="flex:1;min-height:0">
-        <div class="panel-hdr" style="background:#78350f;color:#fff">Pareto arrêts</div>
-        <div class="panel-body">
-          {pareto_html}
+      {f'''<!-- Pareto + liste arrêts (colonne droite) -->
+      <div style="display:flex;flex-direction:column;gap:6px;overflow:hidden;flex:1;min-height:0">
+        <div class="panel" style="flex-shrink:0">
+          <div class="panel-hdr" style="background:#78350f;color:#fff;padding:4px 10px">Pareto arrêts</div>
+          <div class="panel-body" style="padding:8px 10px;max-height:160px;overflow-y:auto">
+            {pareto_html}
+          </div>
+        </div>
+        <div class="panel" style="flex:1;min-height:0">
+          <div class="panel-hdr" style="background:#450a0a;color:#fff;padding:4px 10px">Détail arrêts du poste</div>
+          <div class="panel-body" style="padding:0;overflow-y:auto">
+            <table style="width:100%;border-collapse:collapse">
+              <tbody>{_stop_list_html}</tbody>
+            </table>
+          </div>
         </div>
       </div>''' if not has_alert else ''}
 
@@ -3273,27 +3356,34 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 
 <script>
 var _dashOf={_dash_of_json};
-function showDashOf(i){{
-  var r=_dashOf[i];if(!r)return;
+var _dashProdOf={_dash_prod_json};
+function _renderDashOf(r){{
+  if(!r)return;
   var tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
   var kit=(r.kit||'').toLowerCase()==='oui'?'<span style="color:#16a34a;font-weight:800">✓ Oui</span>':'Non';
   var chips=[
-    ['Date',r.date],['Poste',r.poste],['Pilote',r.pilot],['Co-Pilote',r.copilote||'—'],
-    ['Taille',r.taille||'—'],['Type',r.type_prod||'—'],['Kit',kit,'raw'],
-    ['Nb Pers.',r.nb_pers||'—'],['Code Produit',r.code_prod||'—'],
-    ['Début',r.debut||'—'],['Fin',r.fin||'—'],['Durée',r.duree||'—'],
-    ['Qté Fab.',r.qte_fab||'—'],['Qté Emb.',r.qte_emb||'—'],['Équivalence',r.equiv||'—'],
-    ['Poids (g)',r.poids||'—'],['Fibre',r.fibre||'—'],['OF Taie',r.of_taie||'—'],
-    ['Traca',r.traca||'—'],['Code Taie',r.ref_taie||'—'],
-    ['Qté Init Taie',r.qte_init_taie||'—'],['Nb Taie 2nd',r.nb_taie2_choix||'—'],
-    ['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':'—'],
+    ['Date',r.date],['Poste',r.poste],['Pilote',r.pilot||r.pilote||''],['Co-Pilote',r.copilote||''],
+    ['Taille',r.taille||''],['Type',r.type_prod||''],['Kit',kit,'raw'],
+    ['Nb Pers.',r.nb_pers||''],['Code Produit',r.code_prod||''],
+    ['Début',r.debut||''],['Fin',r.fin||''],['Durée',r.duree||''],
+    ['Qté Fab.',r.qte_fab||''],['Qté Emb.',r.qte_emb||''],['Équivalence',r.equiv||''],
+    ['Poids (g)',r.poids||''],['Fibre',r.fibre||''],['OF Taie',r.of_taie||''],
+    ['Traca',r.traca||''],['Réf Taie',r.ref_taie||''],
+    ['Qté Init Taie',r.qte_init_taie||r.qte_init_taie||''],['Nb Taie 2nd',r.nb_taie2_choix||r.nb_taie2||''],
+    ['Nb déf. coût',r.nb_def_cout||''],['Mq taie',r.mq_taie||''],
+    ['Mq housse',r.mq_housse_encart||r.mq_housse||''],['Nb PP',r.nb_pp_cousue||r.nb_pp||''],
+    ['Durée MQ MP',r.duree_mq_mp||''],['Manquant pers.',r.manquant_pers||''],
+    ['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':''],
   ];
-  chips=chips.filter(function(c){{return c[1]&&c[1]!=='—'||c[0]==='TRS OF';}});
-  var chipsHtml=chips.map(function(c){{return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;text-align:center"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b">'+c[0]+'</div><div style="font-size:14px;font-weight:800;color:#1e293b">'+(c[2]==='raw'?c[1]:String(c[1]||'—').replace(/&/g,'&amp;').replace(/</g,'&lt;'))+'</div></div>';}}).join('');
-  var stopsHtml=(r.stops&&r.stops.length)?r.stops.map(function(e){{return '<tr><td style="padding:4px 8px;font-size:12px;font-weight:600">'+String(e.type||'').replace(/&/g,'&amp;')+'</td><td style="padding:4px 8px;font-size:11px;white-space:nowrap">'+e.debut+'→'+e.fin+'</td><td style="padding:4px 8px;font-weight:700">'+e.duree+'</td><td style="padding:4px 8px;font-size:11px;color:#64748b">'+String(e.comment||'').replace(/&/g,'&amp;')+'</td></tr>';}}).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:#94a3b8">Aucun arrêt</td></tr>';
-  document.getElementById('dash-of-detail-content').innerHTML='<div style="font-size:22px;font-weight:900;color:#1e3a8a;margin-bottom:12px;font-family:monospace">OF '+String(r.of||'—').replace(/&/g,'&amp;')+'</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px">'+chipsHtml+'</div>'+(r.comment?'<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:13px">💬 '+String(r.comment).replace(/&/g,'&amp;')+'</div>':'')+'<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:6px">Arrêts pendant cet OF</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:11px">Type</th><th style="padding:4px 8px;font-size:11px">Plage</th><th style="padding:4px 8px;font-size:11px">Durée</th><th style="padding:4px 8px;font-size:11px">Commentaire</th></tr></thead><tbody>'+stopsHtml+'</tbody></table>';
+  chips=chips.filter(function(c){{return c[1]&&c[1]!=='—'&&c[1]!==''||c[0]==='TRS OF';}});
+  var esc=function(s){{return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}};
+  var chipsHtml=chips.map(function(c){{return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;text-align:center"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b">'+c[0]+'</div><div style="font-size:14px;font-weight:800;color:#1e293b">'+(c[2]==='raw'?c[1]:esc(c[1]))+'</div></div>';}}).join('');
+  var stopsHtml=(r.stops&&r.stops.length)?r.stops.map(function(e){{return '<tr><td style="padding:4px 8px;font-size:12px;font-weight:600">'+esc(e.type||'')+'</td><td style="padding:4px 8px;font-size:11px;white-space:nowrap">'+e.debut+'→'+e.fin+'</td><td style="padding:4px 8px;font-weight:700">'+e.duree+'</td><td style="padding:4px 8px;font-size:11px;color:#64748b">'+esc(e.comment||'')+'</td></tr>';}}).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:#94a3b8">Aucun arrêt</td></tr>';
+  document.getElementById('dash-of-detail-content').innerHTML='<div style="font-size:22px;font-weight:900;color:#1e3a8a;margin-bottom:12px;font-family:monospace">OF '+esc(r.of||'—')+'</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px">'+chipsHtml+'</div>'+(r.comment?'<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:13px">💬 '+esc(r.comment)+'</div>':'')+'<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:6px">Arrêts pendant cet OF</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:11px">Type</th><th style="padding:4px 8px;font-size:11px">Plage</th><th style="padding:4px 8px;font-size:11px">Durée</th><th style="padding:4px 8px;font-size:11px">Commentaire</th></tr></thead><tbody>'+stopsHtml+'</tbody></table>';
   document.getElementById('dash-of-modal').style.display='flex';
 }}
+function showDashProdOf(i){{ _renderDashOf(_dashProdOf[i]); }}
+function showDashOf(i){{ _renderDashOf(_dashOf[i]); }}
 var _currentDashTab='accueil';
 function showTab(name){{
   _currentDashTab=name;
