@@ -3893,7 +3893,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>KPI-ORC</title>
+<title>PRODUCTION ORC — DODO</title>
 <style>
 :root{
   --navy:#1a1f5e;--navy2:#2d3480;--green:#16a34a;--red:#dc2626;
@@ -3990,13 +3990,13 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
 /* Action buttons row below timeline */
 .prod-act-row{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10}
-.act-btn{flex:1;min-width:100px;border:none;border-radius:8px;padding:24px 6px;cursor:pointer;font-size:calc(13px*var(--zf,1));font-weight:700;text-align:center;transition:all .15s;white-space:nowrap;min-height:72px;display:flex;align-items:center;justify-content:center}
+.act-btn{flex:1;min-width:100px;border:none;border-radius:8px;padding:24px 6px;cursor:pointer;font-size:calc(16px*var(--zf,1));font-weight:700;text-align:center;transition:all .15s;white-space:nowrap;min-height:80px;display:flex;align-items:center;justify-content:center;gap:4px;flex-direction:column;line-height:1.3}
 .act-btn:hover{filter:brightness(.9)}
-.act-stop{background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;font-size:calc(13px*var(--zf,1));font-weight:800;box-shadow:0 3px 8px rgba(185,28,28,.3)}
+.act-stop{background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;font-size:calc(16px*var(--zf,1));font-weight:800;box-shadow:0 3px 8px rgba(185,28,28,.3)}
 .act-nett{background:#e0f2fe;color:var(--blue)}
 .act-pause{background:#f3e8ff;color:var(--purple)}
 .act-cancel{background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1}
-.act-endprod{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;font-weight:800;box-shadow:0 3px 8px rgba(217,119,6,.3)}
+.act-endprod{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;font-weight:800;box-shadow:0 3px 8px rgba(22,163,74,.35)}
 /* 3-col form zones */
 .form-3col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 .fzone{border-radius:7px;padding:8px}
@@ -4159,7 +4159,14 @@ select{cursor:default}
 <!-- ════ LOGIN ════ -->
 <div id="v-login" class="view on">
   <div class="login-card">
-    <div class="lc-h1">⚙ KPI-ORC</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:4px">
+      <svg viewBox="0 0 160 90" height="48" style="border-radius:8px" xmlns="http://www.w3.org/2000/svg">
+        <rect x="2" y="2" width="156" height="86" rx="24" fill="#fff"/>
+        <rect x="6" y="6" width="148" height="78" rx="20" fill="#d91b1b"/>
+        <text x="80" y="63" text-anchor="middle" font-family="'Arial Black','Impact',sans-serif" font-weight="900" font-size="52" fill="#1a2b70" stroke="#fff" stroke-width="5" paint-order="stroke">DODO</text>
+      </svg>
+      <div class="lc-h1" style="margin-bottom:0">PRODUCTION ORC</div>
+    </div>
     <div class="lc-sub">Système de suivi de production</div>
     <div class="lf">
       <label>Pilote</label>
@@ -4199,7 +4206,12 @@ select{cursor:default}
 <!-- ════ APP ════ -->
 <div id="app" class="hidden" style="display:none;flex:1;flex-direction:column;overflow:hidden">
   <div id="app-hdr">
-    <div class="hdr-logo">⚙ KPI-ORC</div>
+    <svg viewBox="0 0 160 90" height="40" style="flex-shrink:0;border-radius:6px;margin-right:2px" xmlns="http://www.w3.org/2000/svg">
+      <rect x="2" y="2" width="156" height="86" rx="24" fill="#fff"/>
+      <rect x="6" y="6" width="148" height="78" rx="20" fill="#d91b1b"/>
+      <text x="80" y="63" text-anchor="middle" font-family="'Arial Black','Impact',sans-serif" font-weight="900" font-size="52" fill="#1a2b70" stroke="#fff" stroke-width="5" paint-order="stroke">DODO</text>
+    </svg>
+    <div class="hdr-logo">PRODUCTION ORC</div>
     <div class="hdr-tabs">
       <button class="htab on" id="ht-main" onclick="goTab('main')">Accueil</button>
       <button class="htab prod-on" id="ht-prod" onclick="goTab('prod')">▶ Prod en cours</button>
@@ -4395,10 +4407,8 @@ select{cursor:default}
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
             <div class="fr"><label>Co-Pilote</label><select id="f-copilote" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Code Produit</label><input id="f-code_prod" oninput="scheduleAutoSave()" onfocus="openCodeInput('code_prod','Code Produit')"></div>
             <div class="fr"><label>Type Produit</label><select id="f-type_prod" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
           </div>
           <!-- Zone Production -->
           <div class="fzone zp">
@@ -4406,9 +4416,11 @@ select{cursor:default}
             <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
             <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Traca Fibre</label><input type="text" id="f-traca" oninput="scheduleAutoSave()" placeholder="n° de traca"></div>
             <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()" onfocus="openCodeInput('ref_taie','Code Taie')"></div>
+            <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
             <div class="fr" style="display:none"><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-duree_mq_mp" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>MQ PERSONNEL (Seulement si arrêt d'une partie de la ligne) (min)</label><input id="f-manquant_pers" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
@@ -4438,7 +4450,7 @@ select{cursor:default}
           <button class="act-btn act-stop" onclick="openStopModal()">⛔ Déclarer un arrêt</button>
           <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
           <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
-          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:var(--card);border:1.5px solid #8b5cf6;color:#7c3aed;font-size:calc(12px*var(--zf,1));padding:6px 12px;border-radius:7px;font-weight:700;cursor:pointer">👥 Réunion</button>
+          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:var(--card);border:1.5px solid #8b5cf6;color:#7c3aed;font-weight:700;cursor:pointer">👥 Réunion</button>
           <button class="act-btn act-cancel" onclick="doCancelProd()">✖ Annuler prod</button>
           <button class="act-btn act-endprod" onclick="doEndProdPreview()">🏁 Fin d'OF/prod</button>
         </div>
