@@ -3112,13 +3112,13 @@ def generate_dashboard_html():
         _sess_key = f"{str(r[2] or '')[:10]}|{str(r[3] or '')}|{str(r[4] or '')}"
         if _sess_key != _prev_session_key:
             _prev_session_key = _sess_key
-            hist_html += (f'<tr style="background:#f0f4fa;border-top:2px solid #c7d2e8">'
+            hist_html += (f'<tr class="hist-sep" style="background:#f0f4fa;border-top:2px solid #c7d2e8">'
                 f'<td colspan="12" style="padding:3px 10px;font-size:10px;font-weight:600;color:#334155;letter-spacing:.2px">'
                 f'📅 {str(r[2] or "")[:10]} &nbsp;·&nbsp; 🏭 {str(r[3] or "")} &nbsp;·&nbsp; 👤 {str(r[4] or "")}'
                 f'</td></tr>')
         _fibre_h = str(r[11] or "").strip()
         _fibre_short_h = _fibre_h[:9] + ('…' if len(_fibre_h) > 9 else '')
-        hist_html += (f'<tr style="cursor:pointer" onclick="showDashOf({_hidx})" title="Voir détail OF">'
+        hist_html += (f'<tr class="hist-row" data-date="{str(r[2] or "")[:10]}" data-of="{str(r[1] or "")}" data-pilot="{str(r[4] or "")}" style="cursor:pointer" onclick="showDashOf({_hidx})" title="Voir détail OF">'
             f'<td style="font-weight:800">{str(r[2] or "")[:10]}</td>'
             f'<td style="font-weight:800;color:#1e3a8a;text-decoration:underline">{r[1] or ""}</td>'
             f'<td style="color:#6366f1;font-weight:700;font-size:12px;cursor:pointer" title="{_fibre_h}" onclick="event.stopPropagation();if(this.title)alert(\'Fibre : \'+this.title)">{_fibre_short_h}</td>'
@@ -3172,55 +3172,78 @@ def generate_dashboard_html():
 <title>Dashboard Encadrant — ORC</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1e293b;font-size:16px}}
-.hdr{{height:42px;background:#1e3a8a;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0;border-bottom:2px solid #3b82f6}}
-.hdr-title{{font-size:19px;font-weight:900;display:flex;align-items:center;gap:10px}}
-.hdr-badge{{background:rgba(255,255,255,.15);border-radius:6px;padding:3px 10px;font-size:15px;font-weight:700}}
-.hdr-badge.green{{background:#15803d}}
-.hdr-badge.gray{{background:#475569}}
-.hdr-time{{font-size:14px;opacity:.85}}
-.outer{{height:calc(100vh - 42px);display:flex;flex-direction:column;gap:6px;padding:6px;overflow:hidden}}
-/* MODE NORMAL */
-.main-grid{{flex:1;display:grid;grid-template-columns:200px 1fr 300px;gap:6px;overflow:hidden;min-height:0}}
+html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#eef2f7;color:#1e293b;font-size:15px}}
+.hdr{{height:48px;background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;box-shadow:0 2px 8px rgba(30,58,138,.3)}}
+.hdr-title{{font-size:18px;font-weight:900;display:flex;align-items:center;gap:10px;letter-spacing:.3px}}
+.hdr-badge{{background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:13px;font-weight:700}}
+.hdr-badge.green{{background:#15803d;box-shadow:0 0 0 2px #22c55e44}}
+.hdr-badge.gray{{background:rgba(255,255,255,.15)}}
+.hdr-time{{font-size:12px;opacity:.75}}
+.outer{{height:calc(100vh - 48px);display:flex;flex-direction:column;gap:8px;padding:8px;overflow:hidden}}
 .panel{{background:#fff;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
 .panel-hdr{{padding:6px 12px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
 .panel-body{{flex:1;overflow-y:auto;padding:8px 12px;min-height:0}}
-/* TRS PANEL */
-.trs-num{{font-size:42px;font-weight:900;line-height:1;color:{trs_col};text-align:center}}
+.trs-num{{font-size:42px;font-weight:900;line-height:1;text-align:center}}
 .trs-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:4px}}
 .trs-sub{{font-size:14px;color:#64748b;text-align:center;margin-top:3px}}
-/* STAT CARDS */
+/* HERO ROW */
+.dash-hero{{display:flex;gap:10px;align-items:stretch;flex-shrink:0}}
+.dash-trs-card{{background:#fff;border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.1);min-width:180px}}
+.dash-kpi-grid{{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;flex:1}}
+.dash-kpi{{background:#fff;border-radius:10px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.1);text-align:center}}
+.dash-kpi-val{{font-size:24px;font-weight:900;line-height:1.1}}
+.dash-kpi-lbl{{font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px;letter-spacing:.4px}}
+.dash-pie-card{{background:#fff;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 3px rgba(0,0,0,.1);flex-shrink:0}}
+/* CONTENT GRID */
+.dash-content{{display:grid;grid-template-columns:1fr 320px;gap:8px;flex:1;overflow:hidden;min-height:0}}
+.dash-right{{display:flex;flex-direction:column;gap:8px;overflow:hidden}}
+.dash-card{{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column}}
+.dash-card-hdr{{padding:7px 14px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.7px;color:#475569;border-bottom:1px solid #f1f5f9;flex-shrink:0;display:flex;align-items:center;gap:6px}}
+.dash-card-hdr .dot{{width:8px;height:8px;border-radius:50%;flex-shrink:0}}
+.dash-card-body{{flex:1;overflow-y:auto;min-height:0}}
+/* STAT CARDS (alert mode) */
 .stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:6px}}
-.stat-card{{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;text-align:center}}
-.stat-val{{font-size:32px;font-weight:900;line-height:1}}
-.stat-lbl{{font-size:12px;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:3px}}
-/* TIMELINE CELL */
-.tl-cell{{background:#fff;border-radius:10px;padding:6px 10px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
-.tl-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin-bottom:4px;display:flex;justify-content:space-between}}
+.stat-card{{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.05)}}
+.stat-val{{font-size:28px;font-weight:900;line-height:1}}
+.stat-lbl{{font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:3px;letter-spacing:.4px}}
+/* TIMELINE */
+.tl-cell{{background:#fff;border-radius:12px;padding:8px 12px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.08)}}
+.tl-lbl{{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#64748b;margin-bottom:5px;display:flex;justify-content:space-between}}
+.tl-legend{{display:flex;gap:10px;font-size:12px;color:#64748b;margin-top:4px;flex-wrap:wrap;align-items:center}}
+.tl-legend span i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:2px;vertical-align:middle}}
+/* FP CARDS (used in _render_rpt_panel) */
 .fp-card{{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;text-align:center}}
 .fp-big{{font-size:20px;font-weight:900;color:#1e3a8a;line-height:1.1}}
 .fp-lbl{{font-size:9px;text-transform:uppercase;font-weight:700;color:#64748b;margin-top:2px}}
 .rpt-card{{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px}}
-.tl-legend{{display:flex;gap:10px;font-size:14px;color:#64748b;margin-top:4px;flex-wrap:wrap}}
 /* TABLE */
-.ktbl{{width:100%;border-collapse:collapse;font-size:15px}}
-.ktbl th{{background:#f1f5f9;padding:5px 8px;font-weight:800;text-align:center;position:sticky;top:0;font-size:12px;text-transform:uppercase;color:#64748b;border-bottom:1px solid #e2e8f0}}
-.ktbl td{{padding:5px 8px;border-bottom:1px solid #e2e8f0;text-align:center;color:#1e293b}}
+.ktbl{{width:100%;border-collapse:collapse;font-size:14px}}
+.ktbl th{{background:#f8fafc;padding:6px 10px;font-weight:800;text-align:center;position:sticky;top:0;font-size:11px;text-transform:uppercase;color:#475569;border-bottom:2px solid #e2e8f0;white-space:nowrap}}
+.ktbl td{{padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:center;color:#1e293b}}
 .ktbl tr:hover td{{background:#f8fafc}}
-/* ANIMATIONS */
+/* HISTORIQUE FILTER */
+.hist-filter{{display:flex;gap:8px;align-items:center;padding:8px 10px;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex-shrink:0;flex-wrap:wrap}}
+.hist-filter label{{font-size:11px;font-weight:700;color:#64748b;white-space:nowrap}}
+.hist-filter input{{border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:12px;color:#1e293b;outline:none;background:#f8fafc}}
+.hist-filter input:focus{{border-color:#3b82f6;background:#fff}}
+/* TABS */
+.tab-bar{{display:flex;gap:0;flex-shrink:0;border-bottom:2px solid #e2e8f0}}
+.tab-btn{{background:none;border:none;border-bottom:3px solid transparent;padding:9px 22px;font-size:13px;font-weight:700;color:#64748b;cursor:pointer;transition:all .15s;margin-bottom:-2px}}
+.tab-btn:hover{{color:#1e3a8a}}
+.tab-btn.active{{color:#1e3a8a;border-bottom-color:#1e3a8a;background:rgba(30,58,138,.04)}}
+.tab-pane{{flex:1;display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0}}
+/* RAPPORTS SIDEBAR */
+.rpt-wrap{{display:flex;flex:1;overflow:hidden;min-height:0;position:relative;gap:0}}
+#rpt-sidebar{{width:260px;min-width:0;transition:width .25s ease,opacity .2s ease;overflow:hidden;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid #e2e8f0;background:#fafbfc}}
+#rpt-sidebar.col{{width:0;opacity:0;border-right:none}}
+#rpt-tog{{position:absolute;left:260px;top:50%;transform:translateY(-50%);z-index:20;width:18px;height:40px;background:#fff;border:1px solid #e2e8f0;border-left:none;border-radius:0 6px 6px 0;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748b;transition:left .25s ease;box-shadow:2px 0 4px rgba(0,0,0,.06);font-size:13px}}
+#rpt-sidebar.col+#rpt-tog{{left:0}}
+/* MODAL */
+.dash-modal-overlay{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:9999}}
+.dash-modal-box{{background:#fff;border-radius:16px;padding:24px;max-width:680px;width:95%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}}
 @keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.85}}}}
 @keyframes wag{{0%{{transform:rotate(-8deg)}}50%{{transform:rotate(8deg)}}100%{{transform:rotate(-8deg)}}}}
-/* SCROLLBAR */
-::-webkit-scrollbar{{width:6px}};::-webkit-scrollbar-track{{background:#f1f5f9}};::-webkit-scrollbar-thumb{{background:#cbd5e1;border-radius:3px}}
-/* DASH OF MODAL */
-.dash-modal-overlay{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:9999}}
-.dash-modal-box{{background:#fff;border-radius:12px;padding:20px;max-width:640px;width:95%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}}
-/* TABS */
-.tab-bar{{display:flex;gap:4px;flex-shrink:0;border-bottom:2px solid #e2e8f0;padding-bottom:4px}}
-.tab-btn{{background:none;border:none;padding:6px 18px;font-size:13px;font-weight:700;color:#64748b;cursor:pointer;border-radius:6px 6px 0 0;transition:all .15s}}
-.tab-btn:hover{{background:#f1f5f9;color:#1e293b}}
-.tab-btn.active{{background:#1e3a8a;color:#fff}}
-.tab-pane{{flex:1;display:flex;flex-direction:column;gap:6px;overflow:hidden;min-height:0}}
+::-webkit-scrollbar{{width:5px}}::-webkit-scrollbar-track{{background:#f1f5f9}}::-webkit-scrollbar-thumb{{background:#cbd5e1;border-radius:3px}}
 </style>
 </head>
 <body>
@@ -3251,107 +3274,69 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 
   {alert_html}
 
-  {'<!-- MODE ALERTE : mini stats bar -->' if has_alert else ''}
-  {f'''<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:6px;flex-shrink:0">
-    <div class="stat-card"><div class="stat-val" style="color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="stat-lbl">TRS Poste</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:#7c3aed">{nb_of_today}</div><div class="stat-lbl">OF déclarés</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:#0891b2">{tot_equiv:.1f}</div><div class="stat-lbl">Équivalence</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:18px">min</span></div><div class="stat-lbl">Arrêts</div></div>
-    <div class="stat-card"><div class="stat-val" style="color:#16a34a">{prod_s_total/60:.0f}<span style="font-size:18px">min</span></div><div class="stat-lbl">Production</div></div>
-  </div>''' if has_alert else ''}
+  <!-- HERO ROW : TRS + KPIs + Répartition -->
+  <div class="dash-hero">
+    <div class="dash-trs-card">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;color:#94a3b8;letter-spacing:.8px;margin-bottom:6px">TRS Poste</div>
+      {gauge_svg(trs_poste, 150)}
+      {(f'<div style="font-size:11px;color:#0369a1;font-weight:700;text-align:center;margin-top:4px">⏱ ' + model_debut_dt.strftime("%Hh%M") + ' → ' + last_fin_dt.strftime("%Hh%M") + '</div>') if (model_debut_dt and last_fin_dt) else ((f'<div style="font-size:11px;color:#64748b;text-align:center">⏱ ' + model_debut_dt.strftime("%H:%M") + ' →</div>') if model_debut_dt else '<div style="font-size:11px;color:#94a3b8">Aucune donnée</div>')}
+    </div>
+    <div class="dash-kpi-grid">
+      <div class="dash-kpi"><div class="dash-kpi-val" style="color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="dash-kpi-lbl">TRS Poste</div></div>
+      <div class="dash-kpi"><div class="dash-kpi-val" style="color:#7c3aed">{nb_of_today}</div><div class="dash-kpi-lbl">OF déclarés</div></div>
+      <div class="dash-kpi"><div class="dash-kpi-val" style="color:#0891b2">{tot_equiv:.1f}</div><div class="dash-kpi-lbl">Équivalence</div></div>
+      <div class="dash-kpi"><div class="dash-kpi-val" style="color:#ef4444">{stop_s_total/60:.0f}<span style="font-size:15px">min</span></div><div class="dash-kpi-lbl">Arrêts</div></div>
+      <div class="dash-kpi"><div class="dash-kpi-val" style="color:#16a34a">{prod_s_total/60:.0f}<span style="font-size:15px">min</span></div><div class="dash-kpi-lbl">Production</div></div>
+    </div>
+    <div class="dash-pie-card">
+      {pie_svg(prod_s_total, stop_s_total, 85)}
+      <div>
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;color:#94a3b8;letter-spacing:.5px;margin-bottom:8px">Répartition</div>
+        <div style="margin-bottom:6px"><div style="font-size:22px;font-weight:900;color:#22c55e;line-height:1">{prod_pct}%</div><div style="font-size:11px;color:#64748b">Production — {prod_s_total/60:.0f} min</div></div>
+        <div><div style="font-size:22px;font-weight:900;color:#ef4444;line-height:1">{100-prod_pct}%</div><div style="font-size:11px;color:#64748b">Arrêts — {stop_s_total/60:.0f} min</div></div>
+      </div>
+    </div>
+  </div>
 
-  {'<!-- MODE NORMAL -->' if not has_alert else ''}
-  {'''<div class="main-grid">
-
-    <!-- COLONNE GAUCHE : TRS + Pie -->
-    <div style="display:flex;flex-direction:column;gap:10px;overflow:hidden">''' if not has_alert else ''}
-
-    {f'''<!-- TRS Block -->
-      <div class="panel" style="flex:1">
-        <div class="panel-hdr" style="background:#1a1f5e;color:#fff">TRS Poste en cours</div>
-        <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px 10px">
-          {gauge_svg(trs_poste, 190)}
-          {('<div style="font-size:14px;font-weight:800;color:#0369a1;text-align:center;margin-top:2px">⏱ Entre ' + model_debut_dt.strftime("%Hh%M") + ' et ' + last_fin_dt.strftime("%Hh%M") + '</div>') if (model_debut_dt and last_fin_dt) else ('<div style="font-size:14px;color:#64748b;text-align:center">⏱ Modèle : ' + model_debut_dt.strftime("%H:%M") + ' →</div>') if model_debut_dt else '<div style="font-size:14px;color:#94a3b8;text-align:center">Aucune donnée</div>'}
+  <!-- CONTENT : Productions + Pareto/Arrêts -->
+  <div class="dash-content">
+    <div class="dash-card">
+      <div class="dash-card-hdr"><span class="dot" style="background:#16a34a"></span>Productions déclarées sur ce poste</div>
+      <div class="dash-card-body">
+        <table class="ktbl" style="font-size:13px">
+          <thead><tr><th>OF</th><th>Fibre</th><th>Type</th><th>Format</th><th>Lots de 2</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cad./h</th><th>Éq.</th><th>TRS</th><th>Comm.</th></tr></thead>
+          <tbody>{prod_rows_html}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="dash-right">
+      <div class="dash-card" style="flex-shrink:0">
+        <div class="dash-card-hdr"><span class="dot" style="background:#d97706"></span>Pareto arrêts</div>
+        <div class="dash-card-body" style="padding:10px 14px">{pareto_html}</div>
+      </div>
+      <div class="dash-card" style="flex:1;min-height:0">
+        <div class="dash-card-hdr"><span class="dot" style="background:#ef4444"></span>Détail arrêts du poste</div>
+        <div class="dash-card-body" style="padding:0">
+          <table style="width:100%;border-collapse:collapse"><tbody>{_stop_list_html}</tbody></table>
         </div>
       </div>
+    </div>
+  </div>
 
-      <!-- Pie + répartition -->
-      <div class="panel" style="flex-shrink:0">
-        <div class="panel-hdr" style="background:#0c4a6e;color:#fff">Répartition temps</div>
-        <div class="panel-body" style="display:flex;align-items:center;justify-content:space-around;padding:6px">
-          {pie_svg(prod_s_total, stop_s_total, 110)}
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <div>
-              <div style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:700">Production</div>
-              <div style="font-size:30px;font-weight:900;color:#22c55e">{prod_pct}%</div>
-              <div style="font-size:14px;color:#64748b">{prod_s_total/60:.0f} min</div>
-            </div>
-            <div>
-              <div style="font-size:12px;color:#64748b;text-transform:uppercase;font-weight:700">Arrêts</div>
-              <div style="font-size:30px;font-weight:900;color:#ef4444">{100-prod_pct}%</div>
-              <div style="font-size:14px;color:#64748b">{stop_s_total/60:.0f} min</div>
-            </div>
-          </div>
-        </div>
-      </div>''' if not has_alert else ''}
-
-    {('</div>' if not has_alert else '')}
-
-    {'<!-- COLONNE CENTRE : Timeline + Productions -->' if not has_alert else ''}
-    {'''<div style="display:flex;flex-direction:column;gap:10px;overflow:hidden;min-height:0">''' if not has_alert else ''}
-
-      {f'''<!-- Productions déclarées -->
-      <div class="panel" style="flex:1;min-height:0">
-        <div class="panel-hdr" style="background:#14532d;color:#fff">Productions déclarées sur ce poste</div>
-        <div class="panel-body" style="padding:0">
-          <table class="ktbl" style="font-size:14px">
-            <thead><tr><th>OF</th><th>Fibre</th><th>Type</th><th>Format</th><th>Lots de 2</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cadence/h</th><th>Éq.</th><th>TRS</th><th>Commentaire</th></tr></thead>
-            <tbody>{prod_rows_html}</tbody>
-          </table>
-        </div>
-      </div>''' if not has_alert else ''}
-
-    {('</div>' if not has_alert else '')}
-
-    {'<!-- COLONNE DROITE : Stats + Pareto -->' if not has_alert else ''}
-    {'''<div style="display:flex;flex-direction:column;gap:10px;overflow:hidden">''' if not has_alert else ''}
-
-      {f'''<!-- Pareto + liste arrêts (colonne droite) -->
-      <div style="display:flex;flex-direction:column;gap:6px;overflow:hidden;flex:1;min-height:0">
-        <div class="panel" style="flex-shrink:0">
-          <div class="panel-hdr" style="background:#78350f;color:#fff;padding:4px 10px">Pareto arrêts</div>
-          <div class="panel-body" style="padding:8px 10px;max-height:160px;overflow-y:auto">
-            {pareto_html}
-          </div>
-        </div>
-        <div class="panel" style="flex:1;min-height:0">
-          <div class="panel-hdr" style="background:#450a0a;color:#fff;padding:4px 10px">Détail arrêts du poste</div>
-          <div class="panel-body" style="padding:0;overflow-y:auto">
-            <table style="width:100%;border-collapse:collapse">
-              <tbody>{_stop_list_html}</tbody>
-            </table>
-          </div>
-        </div>
-      </div>''' if not has_alert else ''}
-
-    {('</div>' if not has_alert else '')}
-
-  {('</div>' if not has_alert else '')}
-
-  <!-- TIMELINE (toujours visible dans Accueil) -->
-  <div class="tl-cell" style="flex-shrink:0">
+  <!-- TIMELINE -->
+  <div class="tl-cell">
     <div class="tl-lbl">
-      <span>Timeline du poste — {poste_now or "en cours"}</span>
-      <span style="font-size:15px">{(model_debut_dt or shift_start_dt).strftime("%H:%M") if (model_debut_dt or shift_start_dt) else "—"} → maintenant</span>
+      <span>Timeline — {poste_now or "en cours"}</span>
+      <span style="font-size:12px">{(model_debut_dt or shift_start_dt).strftime("%H:%M") if (model_debut_dt or shift_start_dt) else "—"} → maintenant</span>
     </div>
     {tl_svg}
     <div class="tl-legend">
-      <span>■ <span style="color:#22c55e">Production</span></span>
-      <span>⬚ <span style="color:#4ade80">OF en cours</span></span>
-      <span>■ <span style="color:#ef4444">PB Technique</span></span>
-      <span>■ <span style="color:#f59e0b">Rattrapage</span></span>
-      <span>■ <span style="color:#38bdf8">Nettoyage</span></span>
-      <span>■ <span style="color:#64748b">Pause</span></span>
+      <span><i style="background:#22c55e"></i>Production</span>
+      <span><i style="background:#4ade80"></i>OF en cours</span>
+      <span><i style="background:#ef4444"></i>PB Technique</span>
+      <span><i style="background:#f59e0b"></i>Rattrapage</span>
+      <span><i style="background:#38bdf8"></i>Nettoyage</span>
+      <span><i style="background:#64748b"></i>Pause</span>
       <span style="color:#1e293b;font-weight:700">| Maintenant</span>
     </div>
   </div>
@@ -3360,32 +3345,45 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 
   <!-- ONGLET HISTORIQUE -->
   <div id="tab-historique" class="tab-pane" style="display:none;flex-direction:column">
-    <div class="panel" style="flex:1;min-height:0">
-      <div class="panel-hdr" style="background:#1e3a8a;color:#fff">Historique des productions ({len(hist_rows)} dernières)</div>
-      <div class="panel-body" style="padding:0">
-        <table class="ktbl">
-          <thead><tr>
-            <th>Date</th><th>OF</th><th>Fibre</th><th>Type</th><th>Poste</th><th>Pilote</th>
-            <th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Éq.</th><th>TRS</th>
-          </tr></thead>
-          <tbody>{hist_html}</tbody>
-        </table>
-      </div>
+
+  <div class="hist-filter">
+    <label>Du :</label>
+    <input type="date" id="h-from" oninput="filterHist()">
+    <label>Au :</label>
+    <input type="date" id="h-to" oninput="filterHist()">
+    <label>Recherche OF :</label>
+    <input type="text" id="h-q" placeholder="Numéro d'OF..." oninput="filterHist()" style="width:160px">
+    <button onclick="document.getElementById('h-from').value='';document.getElementById('h-to').value='';document.getElementById('h-q').value='';filterHist()" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;font-size:12px;color:#64748b;cursor:pointer">✕ Réinitialiser</button>
+    <span id="h-count" style="font-size:11px;color:#94a3b8;margin-left:auto">{len(hist_rows)} productions</span>
+  </div>
+
+  <div class="dash-card" style="flex:1;min-height:0">
+    <div class="dash-card-body" style="padding:0">
+      <table class="ktbl">
+        <thead><tr>
+          <th>Date</th><th>OF</th><th>Fibre</th><th>Type</th><th>Poste</th><th>Pilote</th>
+          <th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Éq.</th><th>TRS</th>
+        </tr></thead>
+        <tbody id="hist-tbody">{hist_html}</tbody>
+      </table>
     </div>
+  </div>
+
   </div><!-- /tab-historique -->
 
   <!-- ONGLET RAPPORTS -->
   <div id="tab-rapports" class="tab-pane" style="display:none;flex-direction:column;overflow:hidden">
-    <div style="display:grid;grid-template-columns:280px 1fr;flex:1;overflow:hidden;min-height:0">
-      <div style="border-right:1px solid #e2e8f0;overflow-y:auto;background:#f8fafc;display:flex;flex-direction:column">
+    <div class="rpt-wrap">
+      <div id="rpt-sidebar">
         <div style="padding:10px 14px;font-size:13px;font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
-          <span>📋 Tous les postes</span>
+          <span>📋 Postes</span>
           <button onclick="loadRapports()" style="font-size:11px;padding:3px 8px;background:none;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#64748b">↺</button>
         </div>
         <div id="rpt-list" style="flex:1;overflow-y:auto">
           __RPT_LIST__
         </div>
       </div>
+      <button id="rpt-tog" onclick="toggleRptSidebar()" title="Réduire/Agrandir">❮</button>
       <div id="rpt-detail" style="overflow-y:auto;flex:1;padding:0">
         __RPT_DET__
       </div>
@@ -3409,21 +3407,57 @@ function _renderDashOf(r){{
     ['Qté Fab.',r.qte_fab||''],['Qté Emb.',r.qte_emb||''],['Équivalence',r.equiv||''],
     ['Poids (g)',r.poids||''],['Fibre',r.fibre||''],['OF Taie',r.of_taie||''],
     ['Traca',r.traca||''],['Réf Taie',r.ref_taie||''],
-    ['Qté Init Taie',r.qte_init_taie||r.qte_init_taie||''],['Nb Taie 2nd',r.nb_taie2_choix||r.nb_taie2||''],
+    ['Qté Init Taie',r.qte_init_taie||''],['Nb Taie 2nd',r.nb_taie2_choix||''],
     ['Nb déf. coût',r.nb_def_cout||''],['Mq taie',r.mq_taie||''],
-    ['Mq housse',r.mq_housse_encart||r.mq_housse||''],['Nb PP',r.nb_pp_cousue||r.nb_pp||''],
+    ['Mq housse',r.mq_housse_encart||''],['Nb PP',r.nb_pp_cousue||''],
     ['Durée MQ MP',r.duree_mq_mp||''],['Manquant pers.',r.manquant_pers||''],
     ['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':''],
   ];
   chips=chips.filter(function(c){{return c[1]&&c[1]!=='—'&&c[1]!==''||c[0]==='TRS OF';}});
   var esc=function(s){{return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}};
-  var chipsHtml=chips.map(function(c){{return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;text-align:center"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b">'+c[0]+'</div><div style="font-size:14px;font-weight:800;color:#1e293b">'+(c[2]==='raw'?c[1]:esc(c[1]))+'</div></div>';}}).join('');
+  var chipsHtml=chips.map(function(c){{return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;text-align:center"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b">'+c[0]+'</div><div style="font-size:14px;font-weight:800;color:#1e293b">'+(c[2]==='raw'?c[1]:esc(c[1]))+'</div></div>';}}).join('');
   var stopsHtml=(r.stops&&r.stops.length)?r.stops.map(function(e){{return '<tr><td style="padding:4px 8px;font-size:12px;font-weight:600">'+esc(e.type||'')+'</td><td style="padding:4px 8px;font-size:11px;white-space:nowrap">'+e.debut+'→'+e.fin+'</td><td style="padding:4px 8px;font-weight:700">'+e.duree+'</td><td style="padding:4px 8px;font-size:11px;color:#64748b">'+esc(e.comment||'')+'</td></tr>';}}).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:#94a3b8">Aucun arrêt</td></tr>';
-  document.getElementById('dash-of-detail-content').innerHTML='<div style="font-size:22px;font-weight:900;color:#1e3a8a;margin-bottom:12px;font-family:monospace">OF '+esc(r.of||'—')+'</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px">'+chipsHtml+'</div>'+(r.comment?'<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:13px">💬 '+esc(r.comment)+'</div>':'')+'<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:6px">Arrêts pendant cet OF</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:11px">Type</th><th style="padding:4px 8px;font-size:11px">Plage</th><th style="padding:4px 8px;font-size:11px">Durée</th><th style="padding:4px 8px;font-size:11px">Commentaire</th></tr></thead><tbody>'+stopsHtml+'</tbody></table>';
+  document.getElementById('dash-of-detail-content').innerHTML='<div style="font-size:22px;font-weight:900;color:#1e3a8a;margin-bottom:14px;font-family:monospace">OF '+esc(r.of||'—')+'</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">'+chipsHtml+'</div>'+(r.comment?'<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">💬 '+esc(r.comment)+'</div>':'')+'<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:6px">Arrêts pendant cet OF</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:11px">Type</th><th style="padding:4px 8px;font-size:11px">Plage</th><th style="padding:4px 8px;font-size:11px">Durée</th><th style="padding:4px 8px;font-size:11px">Comm.</th></tr></thead><tbody>'+stopsHtml+'</tbody></table>';
   document.getElementById('dash-of-modal').style.display='flex';
 }}
 function showDashProdOf(i){{ _renderDashOf(_dashProdOf[i]); }}
 function showDashOf(i){{ _renderDashOf(_dashOf[i]); }}
+var _rptSideCol=false;
+function toggleRptSidebar(){{
+  var sb=document.getElementById('rpt-sidebar');
+  var tog=document.getElementById('rpt-tog');
+  if(!sb||!tog) return;
+  _rptSideCol=!_rptSideCol;
+  sb.classList.toggle('col',_rptSideCol);
+  tog.textContent=_rptSideCol?'❯':'❮';
+}}
+function filterHist(){{
+  var from=document.getElementById('h-from').value;
+  var to=document.getElementById('h-to').value;
+  var q=(document.getElementById('h-q').value||'').trim().toLowerCase();
+  var rows=document.querySelectorAll('#hist-tbody .hist-row');
+  var vis=0;
+  rows.forEach(function(tr){{
+    var d=(tr.dataset.date||'');
+    var iso=d.split('/').reverse().join('-');
+    var of=(tr.dataset.of||'').toLowerCase();
+    var ok=true;
+    if(from&&iso<from) ok=false;
+    if(to&&iso>to) ok=false;
+    if(q&&!of.includes(q)) ok=false;
+    tr.style.display=ok?'':'none';
+    if(ok) vis++;
+  }});
+  var seps=document.querySelectorAll('#hist-tbody .hist-sep');
+  seps.forEach(function(sep){{
+    var next=sep.nextElementSibling;
+    var show=false;
+    while(next&&next.classList.contains('hist-row')){{if(next.style.display!=='none'){{show=true;break;}}next=next.nextElementSibling;}}
+    sep.style.display=show?'':'none';
+  }});
+  var cnt=document.getElementById('h-count');
+  if(cnt) cnt.textContent=vis+' production'+(vis>1?'s':'');
+}}
 var _currentDashTab='accueil';
 function showTab(name){{
   _currentDashTab=name;
