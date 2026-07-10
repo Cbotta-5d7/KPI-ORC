@@ -1650,6 +1650,35 @@ def api_end_stop():
     comment = data.get("comment","")
     t_stop(key)
     tl_close(key,comment)
+    # Si pas de prod active : écrire la déclaration directement en Excel
+    if not _S.get("prod_active"):
+        ev = next((e for e in reversed(_S["tl_events"]) if e.get("key")==key and e.get("end")), None)
+        if ev and ev.get("start") and ev.get("end"):
+            _start = ev["start"]; _end = ev["end"]
+            _dur = max(0,(_end-_start).total_seconds())
+            _cat = ev.get("cat","pb"); _ntype = ev.get("nettoyage_type","court")
+            if key=="nettoyage":
+                _lbl = {"court":"Nettoyage court","long":"Nettoyage long","grand":"Grand nettoyage"}.get(_ntype,"Nettoyage court")
+            elif _cat=="autre":
+                _lbl = key
+            else:
+                _cat_n = "Rattrapage" if _cat=="ratt" else "PB Technique"
+                _evlbl = next((e[0] for e in EVENTS if e[1]==key), key)
+                _lbl = f"{_cat_n}: {_evlbl}"
+            _sh = _S.get("shift_start") or _start
+            _row = [
+                _lbl, _S.get("form",{}).get("of_num",""),
+                _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
+                "","","","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+                _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
+                "","","","","","","","","","","","","","","","",comment,"",
+                _sh.strftime("%d/%m/%Y"),
+            ]
+            write_excel_bg([], [_row])
+            try:
+                _nrn = max((rn for rn,_ in _decl_cache), default=1)+1
+                _decl_cache.append((_nrn, tuple(_row)+('',)*max(0,40-len(_row))))
+            except: pass
     threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True})
 
@@ -2114,6 +2143,7 @@ def api_fin_poste_data():
         "pilot":pilot,"date":today,
         "nb_of":len(of_list),"trs":trs_poste,"trs_shift":trs_poste_shift,
         "tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
+        "declared_stop_s": round(declared_stop_s, 0),
         "of_list":of_list,"of_count_shift":_S["of_count_shift"],
         "shift_start_iso": _dt_str(_S.get("shift_start")),
         "ecart_s": round(ecart_s, 0),
@@ -2123,6 +2153,7 @@ def api_fin_poste_data():
         "model_debut": model_debut_hm,
         "model_fin": model_fin_hm,
         "overflow_min": round(overflow_s / 60),
+        "overflow_s": round(overflow_s, 0),
     })
 
 @flask_app.route('/api/history_today')
@@ -3563,8 +3594,8 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         trs_of = d.get('trs', -1)
         trs_of_str = f'{trs_of:.1f}%' if trs_of >= 0 else '--'
         stop_min = round((d.get('stop_s', 0) or 0) / 60)
-        prod_min = round((d.get('tot_s', 0) or 0) / 60)
-        total_min = prod_min + stop_min
+        prod_min = round(max(0, (d.get('tot_s', 0) or 0) - (d.get('stop_s', 0) or 0)) / 60)
+        total_min = round((d.get('tot_s', 0) or 0) / 60) + stop_min
         ecart_mn = round((d.get('ecart_s', 0) or 0) / 60)
         stop_map = {}
         for _er in (d.get('evt_rows') or []):
@@ -3686,17 +3717,17 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             f'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">Répartition</div>{p_svg}</div>'
             f'<div style="flex:1;display:flex;flex-direction:column;gap:5px">'
             f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">'
-            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#059669;font-weight:900">{round(_tot_qte_fab)}</div><div class="fp-lbl">Nb pièces prod.</div></div>'
-            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#0891b2;font-weight:900">{round(d.get("tot_equiv",0) or 0)}</div><div class="fp-lbl">Équivalence</div></div>'
-            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#0369a1;font-weight:900">{_cad_h}</div><div class="fp-lbl">Cadence/h</div></div>'
+            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#059669;font-weight:900">{round(_tot_qte_fab)}</div><div class="fp-lbl" style="font-size:12px">Nb pièces prod.</div></div>'
+            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0891b2;font-weight:900">{round(d.get("tot_equiv",0) or 0)}</div><div class="fp-lbl" style="font-size:12px">Équivalence</div></div>'
+            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0369a1;font-weight:900">{_cad_h}</div><div class="fp-lbl" style="font-size:12px">Cadence/h</div></div>'
             f'</div>'
             f'<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px">{(_resc(d.get("model_debut",""))+"→"+_resc(d.get("model_fin",""))) if d.get("model_debut") and d.get("model_fin") else (str(round((d.get("model_dur_s",0) or 0)/60))+" min")}</div><div class="fp-lbl">Durée ouverture</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#16a34a">{prod_min} min</div><div class="fp-lbl">Durée prod</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#dc2626">{stop_min} min</div><div class="fp-lbl">Arrêts total</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#16a34a">{round((d.get("planned_ded_s",0) or 0)/60)} min</div><div class="fp-lbl">Arrêts prévus</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#7c3aed">{d.get("nb_of",0)}</div><div class="fp-lbl">Nb OF</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#8b5cf6">{_nb_chg_f}</div><div class="fp-lbl">Chg. fibre</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px">{(_resc(d.get("model_debut",""))+"→"+_resc(d.get("model_fin",""))) if d.get("model_debut") and d.get("model_fin") else (str(round((d.get("model_dur_s",0) or 0)/60))+" min")}</div><div class="fp-lbl" style="font-size:11px">Durée ouverture</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">{prod_min} min</div><div class="fp-lbl" style="font-size:11px">Durée prod</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#dc2626">{stop_min} min</div><div class="fp-lbl" style="font-size:11px">Arrêts total</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">{round((d.get("planned_ded_s",0) or 0)/60)} min</div><div class="fp-lbl" style="font-size:11px">Arrêts prévus</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#7c3aed">{d.get("nb_of",0)}</div><div class="fp-lbl" style="font-size:11px">Nb OF</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#8b5cf6">{_nb_chg_f}</div><div class="fp-lbl" style="font-size:11px">Chg. fibre</div></div>'
             f'</div></div></div>'
             f'<div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
             f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Productions</div>'
@@ -4379,17 +4410,17 @@ select{cursor:default}
       <div style="flex:1;display:flex;flex-direction:column;gap:5px">
         <div style="display:none"><span id="fp-trs"></span><span id="fp-trs-of"></span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:#059669;font-weight:900" id="fp-pieces">--</div><div class="fp-lbl">Nb pièces prod.</div></div>
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:#0891b2;font-weight:900" id="fp-eq">0</div><div class="fp-lbl">Équivalence</div></div>
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:#0369a1;font-weight:900" id="fp-cadence">--</div><div class="fp-lbl">Cadence/h</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#059669;font-weight:900" id="fp-pieces">--</div><div class="fp-lbl" style="font-size:12px">Nb pièces prod.</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0891b2;font-weight:900" id="fp-eq">0</div><div class="fp-lbl" style="font-size:12px">Équivalence</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0369a1;font-weight:900" id="fp-cadence">--</div><div class="fp-lbl" style="font-size:12px">Cadence/h</div></div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px" id="fp-ouverture">--</div><div class="fp-lbl">Durée ouverture</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a" id="fp-prod-t">0 min</div><div class="fp-lbl">Durée prod</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#dc2626" id="fp-stop-t">0 min</div><div class="fp-lbl">Arrêts total</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a" id="fp-ded">0 min</div><div class="fp-lbl">Arrêts prévus</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#7c3aed" id="fp-nof">0</div><div class="fp-lbl">Nb OF</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#8b5cf6" id="fp-chg-fibre">--</div><div class="fp-lbl">Chg. fibre</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px" id="fp-ouverture">--</div><div class="fp-lbl" style="font-size:11px">Durée ouverture</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px;color:#16a34a" id="fp-prod-t">0 min</div><div class="fp-lbl" style="font-size:11px">Durée prod</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px;color:#dc2626" id="fp-stop-t">0 min</div><div class="fp-lbl" style="font-size:11px">Arrêts total</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px;color:#16a34a" id="fp-ded">0 min</div><div class="fp-lbl" style="font-size:11px">Arrêts prévus</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px;color:#7c3aed" id="fp-nof">0</div><div class="fp-lbl" style="font-size:11px">Nb OF</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px;color:#8b5cf6" id="fp-chg-fibre">--</div><div class="fp-lbl" style="font-size:11px">Chg. fibre</div></div>
         </div>
       </div>
     </div>
@@ -5629,14 +5660,31 @@ function tlEventsToDisplayFmt(tlEvts){
   }).filter(Boolean);
 }
 
+let _lastMainChipKeys='';
 function renderStopChipsMain(s) {
   const cont=document.getElementById('stop-chips-main');
   const sb=document.getElementById('stop-bottom-main');
   if(!cont||!sb) return;
   const stops=s.active_stops||[];
   const hasAny=stops.length>0||s.is_paused;
-  if(!hasAny){sb.classList.remove('on');cont.innerHTML='';return;}
+  if(!hasAny){sb.classList.remove('on');cont.innerHTML='';_lastMainChipKeys='';return;}
   sb.classList.add('on');
+  const newKeys=stops.join(',')+(s.is_paused?'|pause':'');
+  if(newKeys===_lastMainChipKeys){
+    // Même set de stops : mettre à jour seulement les timers
+    stops.forEach(k=>{
+      const elap=s.timers&&s.timers[k]?s.timers[k].elapsed:0;
+      const el=document.getElementById('main-chip-t-'+k);
+      if(el) el.textContent=fmtDur2(elap);
+    });
+    if(s.is_paused){
+      const pe=(s.pause_total_s||0)+(s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0);
+      const el=document.getElementById('main-chip-t-_pause');
+      if(el) el.textContent=fmtDur2(pe);
+    }
+    return;
+  }
+  _lastMainChipKeys=newKeys;
   let html='';
   stops.forEach(k=>{
     const lbl=getEvtLabel(k);
@@ -5675,6 +5723,15 @@ function renderStopChips(s) {
 function startTicker() {
   if(_ticker) clearInterval(_ticker);
   _ticker=setInterval(()=>{
+    // Tick main-chip timers even without active prod
+    {const dt0=(Date.now()-_lastPoll)/1000;
+    (ST.active_stops||[]).forEach(k=>{
+      const cel=document.getElementById('main-chip-t-'+k);
+      if(cel&&ST.timers&&ST.timers[k]) cel.textContent=fmtDur2(ST.timers[k].elapsed+dt0);
+    });
+    if(ST.is_paused){const cel=document.getElementById('main-chip-t-_pause');
+      if(cel) cel.textContent=fmtDur2(_pauseStartMs>0?_pauseBaseS+(Date.now()-_pauseStartMs)/1000:_pauseBaseS);}
+    }
     if(!ST.prod_active) return;
     const dt=(Date.now()-_lastPoll)/1000;
     // OF timer
@@ -6121,9 +6178,6 @@ function psFillStopBtns(){
 
   _makeSection('⏱ Arrêts prévus',PREVUS,'#d97706');
   _makeSection('⛔ Arrêts',arretLabels,'#dc2626');
-  if(_interposteLbls.length){
-    _makeSection('🔄 Interposte',_interposteLbls,'#0891b2');
-  }
 
   document.getElementById('ps-custom').value='';
 }
@@ -7213,7 +7267,7 @@ async function doFinPoste(){
   const fpd=await apiFetch('/api/fin_poste_data');
   if(fpd){
     window._ecartFpData=fpd;
-    const hasIssue=(fpd.gap_intervals&&fpd.gap_intervals.length>0)||(fpd.overflow_min>0)||((fpd.ecart_s||0)>60);
+    const hasIssue=(fpd.gap_intervals&&fpd.gap_intervals.length>0)||((fpd.overflow_s||0)>60)||((fpd.ecart_s||0)>60);
     if(hasIssue){_showEcartModal(fpd);}else{goTab('finposte');}
   } else goTab('finposte');
 }
@@ -7489,7 +7543,7 @@ async function loadFPData(){
   document.getElementById('fp-trs-of').textContent=fmtTRS(d.trs);
   document.getElementById('fp-eq').textContent=Math.round(d.tot_equiv||0);
   document.getElementById('fp-nof').textContent=d.nb_of||0;
-  document.getElementById('fp-prod-t').textContent=Math.round((d.tot_s||0)/60)+' min';
+  // fp-prod-t sera mis à jour après le calcul de stopTotal ci-dessous
   const fpOuvEl=document.getElementById('fp-ouverture');
   if(fpOuvEl) fpOuvEl.textContent=(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min');
   const fpDedEl=document.getElementById('fp-ded');
@@ -7513,6 +7567,7 @@ async function loadFPData(){
     return a+Math.max(0,p(e.fin||'00:00:00')-p(e.debut||'00:00:00'));}catch(ex){return a;}
   },0);
   document.getElementById('fp-stop-t').textContent=fmtDurMS(stopTotal);
+  document.getElementById('fp-prod-t').textContent=Math.round(Math.max(0,(d.tot_s||0)-stopTotal)/60)+' min';
 
   // New metrics: Cadence/h, Nb pièces, Chg. fibre
   const ofList=d.of_list||[];
@@ -8334,8 +8389,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const trsS=d.trs_shift>=0?d.trs_shift:d.trs;
   const trsCol=trsS>=90?'#16a34a':trsS>=70?'#f59e0b':trsS>=0?'#dc2626':'#94a3b8';
   const stopMin=Math.round((d.stop_s||0)/60);
-  const prodMin=Math.round((d.tot_s||0)/60);
-  const totalMin=prodMin+stopMin;
+  const prodMin=Math.round(Math.max(0,(d.tot_s||0)-(d.stop_s||0))/60);
+  const totalMin=Math.round((d.tot_s||0)/60)+stopMin;
   // Pareto des arrêts
   const stopMap={};
   (d.evt_rows||[]).forEach(r=>{
@@ -8449,17 +8504,17 @@ async function loadSessionReport(date,pilot,poste,itemId){
       </div>
       <div style="flex:1;display:flex;flex-direction:column;gap:5px">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl">Nb pièces prod.</div></div>
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl">Équivalence</div></div>
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl">Cadence/h</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:12px">Nb pièces prod.</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:12px">Équivalence</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl" style="font-size:12px">Cadence/h</div></div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px">${(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl">Durée ouverture</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#16a34a">${prodMin} min</div><div class="fp-lbl">Durée prod</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#dc2626">${stopMin} min</div><div class="fp-lbl">Arrêts total</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#16a34a">${Math.round((d.planned_ded_s||0)/60)} min</div><div class="fp-lbl">Arrêts prévus</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#7c3aed">${d.nb_of||0}</div><div class="fp-lbl">Nb OF</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#8b5cf6">${nbChangFibre}</div><div class="fp-lbl">Chg. fibre</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px">${(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl" style="font-size:11px">Durée ouverture</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">${prodMin} min</div><div class="fp-lbl" style="font-size:11px">Durée prod</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#dc2626">${stopMin} min</div><div class="fp-lbl" style="font-size:11px">Arrêts total</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">${Math.round((d.planned_ded_s||0)/60)} min</div><div class="fp-lbl" style="font-size:11px">Arrêts prévus</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#7c3aed">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:11px">Nb OF</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#8b5cf6">${nbChangFibre}</div><div class="fp-lbl" style="font-size:11px">Chg. fibre</div></div>
         </div>
       </div>
     </div>
