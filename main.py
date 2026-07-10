@@ -1322,6 +1322,46 @@ def api_force_reset_prod():
     save_session()
     return jsonify({"ok":True})
 
+def _get_uncovered_gaps(from_dt, to_dt, pilot):
+    """Compute actual uncovered time gaps between from_dt and to_dt,
+    accounting for ALL declarations in _decl_cache (OFs + stops) for this pilot."""
+    if not from_dt or not to_dt: return []
+    from_s = _hms_to_sec(from_dt) if not hasattr(from_dt,'hour') else from_dt.hour*3600+from_dt.minute*60
+    to_s = _hms_to_sec(to_dt) if not hasattr(to_dt,'hour') else to_dt.hour*3600+to_dt.minute*60
+    if to_s <= from_s + 59: return []
+    date_strs = set()
+    if hasattr(from_dt,'strftime'): date_strs.add(from_dt.strftime("%d/%m/%Y"))
+    date_strs.add(datetime.date.today().strftime("%d/%m/%Y"))
+    all_slots = []
+    for rn, r in _decl_cache:
+        rd = _row_date(r[2])
+        if rd not in date_strs: continue
+        if pilot and str(r[4] or "") != pilot: continue
+        ds = _hms_to_sec(str(r[16] or "00:00:00"))
+        fs = _hms_to_sec(str(r[17] or "00:00:00"))
+        if fs > ds and ds >= 0:
+            all_slots.append([ds, fs])
+    all_slots.sort()
+    merged = []
+    for s, e in all_slots:
+        if merged and s <= merged[-1][1] + 30:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    gaps = []
+    covered = from_s
+    for s, e in merged:
+        s2 = max(s, from_s); e2 = min(e, to_s)
+        if e2 <= s2: continue
+        if s2 >= covered + 60:
+            gaps.append({"debut": _sec_to_hm(covered), "fin": _sec_to_hm(s2),
+                         "duree_s": round(s2 - covered)})
+        covered = max(covered, e2)
+    if to_s >= covered + 60:
+        gaps.append({"debut": _sec_to_hm(covered), "fin": _sec_to_hm(to_s),
+                     "duree_s": round(to_s - covered)})
+    return gaps
+
 @flask_app.route('/api/start_prod', methods=['POST'])
 def api_start_prod():
     if not _S["pilot"]:
@@ -1346,7 +1386,6 @@ def api_start_prod():
         _S["shift_start"] = now
     t_reset()
     save_session()
-    # Début de plage = shift_debut_dt en session (inclut modification login/réconciliation)
     model_debut_dt = _S.get("shift_debut_dt")
     model_debut_str = model_debut_dt.strftime("%H:%M") if model_debut_dt else ""
     ip_debut_hms = ""
@@ -1355,21 +1394,27 @@ def api_start_prod():
     pre_shift_gap_s = 0.0
     shift_model_start_str = ""
     shift_model_start_iso = ""
+    pilot = _S.get("pilot","")
+    gaps = []  # actual uncovered intervals
     if is_first_of and model_debut_dt:
         gap_s = max(0.0, (now - model_debut_dt).total_seconds())
         _S["interposte_s"] = gap_s
         ip_debut_hms = model_debut_str
         ip_debut_iso = model_debut_dt.isoformat()
-        # Alimenter pre_shift_gap_s pour que le JS ouvre m-preshift (dialogue 1er OF)
         if gap_s >= 60:
-            pre_shift_gap_s = gap_s
             shift_model_start_str = model_debut_str
             shift_model_start_iso = model_debut_dt.isoformat()
+            gaps = _get_uncovered_gaps(model_debut_dt, now, pilot)
+            pre_shift_gap_s = sum(g["duree_s"] for g in gaps) if gaps else 0.0
     elif _S["last_of_end"]:
+        gap_s = (now - _S["last_of_end"]).total_seconds()
         ip_debut_hms = _S["last_of_end"].strftime("%H:%M")
         ip_debut_iso = _S["last_of_end"].isoformat()
+        if gap_s >= 60:
+            gaps = _get_uncovered_gaps(_S["last_of_end"], now, pilot)
     return jsonify({"ok":True,"gap_s":round(gap_s,0),
                     "pre_shift_gap_s":round(pre_shift_gap_s,0),
+                    "gaps": gaps,
                     "shift_model_start":shift_model_start_str,
                     "shift_model_start_iso":shift_model_start_iso,
                     "ip_debut_hms":ip_debut_hms,
@@ -4532,10 +4577,13 @@ select{cursor:default}
     </div>
   </div>
 
-  <!-- ════ MODAL PRÉ-POSTE (1er OF vs heure modèle) ════ -->
+  <!-- ════ MODAL PRÉ-POSTE (gaps non déclarés avant 1er OF ou entre OFs) ════ -->
   <div id="m-preshift" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:601;align-items:center;justify-content:center">
     <div class="card" style="width:min(880px,95vw);padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--red)">
-      <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:4px">⚠ Début de poste non déclaré</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div id="ps-title" style="font-size:15px;font-weight:800;color:var(--navy)">⚠ Période non déclarée</div>
+        <div id="ps-counter" style="font-size:11px;font-weight:700;color:#94a3b8;background:#f1f5f9;border-radius:8px;padding:3px 10px"></div>
+      </div>
       <div id="ps-text" style="font-size:13px;color:var(--red);font-weight:700;margin-bottom:14px"></div>
       <input type="hidden" id="ps-start-iso">
       <input type="hidden" id="ps-gap-s">
@@ -4543,14 +4591,16 @@ select{cursor:default}
       <div id="ps-stop-btns" style="margin-bottom:10px"></div>
       <div style="margin-bottom:10px;display:flex;gap:6px">
         <input id="ps-custom" placeholder="Ou saisir librement…" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
-        <button class="btn btn-prim" onclick="confirmPsAsStop()" style="flex-shrink:0">→</button>
+        <button class="btn btn-prim" onclick="confirmPsAsStop()" style="flex-shrink:0">✓ Valider</button>
       </div>
       <hr style="border:none;border-top:1px solid var(--border);margin-bottom:14px">
       <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
-        <button class="btn btn-green" style="flex:1;text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseBackdate()">
-          ↩ Modifier la date de début de cet OF à <span id="ps-backdate-time" style="font-weight:800">--h--</span> ?
-        </button>
-        <button class="btn btn-sec" style="flex-shrink:0;padding:10px 18px;font-size:13px" onclick="psIgnorer()">Annuler</button>
+        <div id="ps-backdate-row" style="flex:1">
+          <button class="btn btn-green" style="width:100%;text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseBackdate()">
+            ↩ Rétrodater le début de cet OF à <span id="ps-backdate-time" style="font-weight:800">--h--</span>
+          </button>
+        </div>
+        <button class="btn btn-sec" style="flex-shrink:0;padding:10px 18px;font-size:13px" onclick="psIgnorer()">Ignorer</button>
       </div>
     </div>
   </div>
@@ -6165,6 +6215,38 @@ async function saveInterposteCfg(){
 
 function _fmtMin(s){const m=Math.round(s/60),h=Math.floor(m/60),mi=m%60;return h?`${h}h ${mi}min`:`${mi} min`;}
 
+// ── Gestion des gaps multiples (trous non déclarés avant chaque OF) ──
+let _pendingGaps=[];
+let _pendingGapIdx=0;
+let _isFirstOfGaps=false;
+
+function _showNextGap(){
+  if(_pendingGapIdx>=_pendingGaps.length){goTab('prod');return;}
+  const g=_pendingGaps[_pendingGapIdx];
+  const total=_pendingGaps.length;
+  const idx=_pendingGapIdx+1;
+  const dur=_fmtMin(g.duree_s||0);
+  // Titre + compteur
+  const titleEl=document.getElementById('ps-title');
+  if(titleEl) titleEl.textContent='⚠ Période non déclarée';
+  const cntEl=document.getElementById('ps-counter');
+  if(cntEl) cntEl.textContent=total>1?`Trou ${idx} / ${total}`:'';
+  // Plage et durée
+  const debut=g.debut||'';const fin=g.fin||'';
+  document.getElementById('ps-text').textContent=`${dur} non déclarées : ${debut.replace(':','h')} → ${fin.replace(':','h')}`;
+  document.getElementById('ps-gap-s').value=g.duree_s||0;
+  document.getElementById('ps-start-iso').value='';
+  document.getElementById('ps-custom').value='';
+  // Bouton rétrodatage : seulement sur 1er OF + 1er gap
+  const bdRow=document.getElementById('ps-backdate-row');
+  const bt=document.getElementById('ps-backdate-time');
+  const showBd=_isFirstOfGaps&&_pendingGapIdx===0;
+  if(bdRow) bdRow.style.display=showBd?'':'none';
+  if(bt) bt.textContent=debut.replace(':','h');
+  psFillStopBtns();
+  openM('m-preshift');
+}
+
 async function doStartProd() {
   saveFormToStorage();
   const r=await fetch('/api/start_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
@@ -6176,49 +6258,17 @@ async function doStartProd() {
   await pollState();
   await pollEvts();
   _pendingGapS=d.gap_s||0;
-
-  // 1er OF du poste : gap vs modèle horaire
-  if((d.pre_shift_gap_s||0)>=60 && d.shift_model_start){
-    const m=_fmtMin(d.pre_shift_gap_s);
-    document.getElementById('ps-text').textContent=
-      `${m} non déclarées depuis le début de poste (${d.shift_model_start})`;
-    document.getElementById('ps-start-iso').value=d.shift_model_start_iso||'';
-    document.getElementById('ps-gap-s').value=d.pre_shift_gap_s||0;
-    const bt=document.getElementById('ps-backdate-time');
-    if(bt) bt.textContent=d.shift_model_start||'--h--';
-    psFillStopBtns();
-    openM('m-preshift');
-    return;
-  }
-
-  // OF suivant : même vue que 1er OF (m-preshift unifiée)
-  if(_pendingGapS>=60){
-    const m=_fmtMin(_pendingGapS);
-    document.getElementById('ps-text').textContent=
-      `${m} non déclarées depuis la fin du dernier OF`;
-    const ipIso=d.ip_debut_iso||'';
-    document.getElementById('ps-start-iso').value=ipIso;
-    document.getElementById('ps-gap-s').value=_pendingGapS;
-    const bt=document.getElementById('ps-backdate-time');
-    if(bt && ipIso){
-      const t=new Date(ipIso);
-      bt.textContent=String(t.getHours()).padStart(2,'0')+'h'+String(t.getMinutes()).padStart(2,'0');
-    } else if(bt){
-      bt.textContent=d.ip_debut_hms?d.ip_debut_hms.replace(':','h'):'--h--';
-    }
-    psFillStopBtns();
-    openM('m-preshift');
-    return;
-  }
-
-  goTab('prod');
+  _pendingGaps=d.gaps||[];
+  _pendingGapIdx=0;
+  _isFirstOfGaps=!!(d.shift_model_start);
+  _showNextGap();
 }
 
-// ── Ignorer sans déclarer (m-preshift) ──
+// ── Ignorer ce trou sans déclarer, passer au suivant ──
 async function psIgnorer(){
   closeM('m-preshift');
-  await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inter_of_s:0,label:'',comment:''})});
-  goTab('prod');
+  _pendingGapIdx++;
+  _showNextGap();
 }
 
 // ── Choix pré-poste ──
@@ -6290,13 +6340,15 @@ function psFillStopBtns(){
 async function confirmPsAsStop(){
   const lbl=(document.getElementById('ps-custom').value||'').trim()||'Interposte';
   const gapS=parseFloat(document.getElementById('ps-gap-s').value)||0;
+  const g=_pendingGaps[_pendingGapIdx]||{};
   closeM('m-preshift');
-  // Déclarer le gap comme arrêt — NE PAS rétrodater le début de l'OF
-  await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inter_of_s:gapS,label:lbl,comment:''})});
+  await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({inter_of_s:gapS,label:lbl,comment:'',debut_hms:g.debut||'',fin_hms:g.fin||''})});
   await pollState();
   await pollEvts();
   loadMainDecl();
-  goTab('prod');
+  _pendingGapIdx++;
+  _showNextGap();
 }
 
 async function psChooseBackdate(){
@@ -6309,7 +6361,9 @@ async function psChooseBackdate(){
     const tStr=bt?bt.textContent:'';
     toast('OF rétro-daté à '+(tStr||'l\'heure indiquée'),'ok');
   }
-  goTab('prod');
+  // Rétrodatage = couvre toute la période → skip tous les gaps restants
+  _pendingGapIdx=_pendingGaps.length;
+  _showNextGap();
 }
 
 function ipShowModifyModel(){
