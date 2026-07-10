@@ -6984,6 +6984,14 @@ async function saveEcartPlageHoraire(){
     _cfgModels[mi].jours[dk].fin=fin;
   }
   await fetch('/api/update_model_today',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nom:poste,day_key:dk,debut,fin})});
+  // Mettre à jour shift_debut_dt / shift_fin_dt → écrit aussi dans Excel POSTES P/Q
+  const _today=new Date();
+  const [_dh,_dm]=(debut||'00:00').split(':').map(Number);
+  const [_fh,_fm]=(fin||'00:00').split(':').map(Number);
+  const _debDt=new Date(_today.getFullYear(),_today.getMonth(),_today.getDate(),_dh,_dm,0);
+  let _finDt=new Date(_today.getFullYear(),_today.getMonth(),_today.getDate(),_fh,_fm,0);
+  if(_finDt<=_debDt) _finDt=new Date(_finDt.getTime()+86400000);
+  await fetch('/api/update_shift_horaires',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({debut_iso:_debDt.toISOString(),fin_iso:_finDt.toISOString()})});
   toast('Plage mise à jour','ok');
   const fpd=await apiFetch('/api/fin_poste_data');
   if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
