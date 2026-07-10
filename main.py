@@ -4146,8 +4146,24 @@ select{cursor:default}
     </div>
     <div id="hdr-right">
       <span id="hdr-pilot-lbl"></span>
+      <button class="btn-sm btn-ghost" onclick="toggleZoomPop()" id="zoom-btn" style="font-size:11px;display:flex;align-items:center;gap:4px" title="Zoom texte">🔍 Zoom</button>
       <button class="btn-sm btn-ghost" onclick="doLogout()" style="font-size:11px">Déconnexion</button>
     </div>
+  </div>
+  <!-- Zoom popover -->
+  <div id="zoom-pop" style="display:none;position:fixed;top:44px;right:80px;z-index:9000;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 16px;box-shadow:0 4px 20px rgba(0,0,0,.4);min-width:220px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <span style="color:#fff;font-size:12px;font-weight:700">🔍 Zoom texte</span>
+      <button onclick="resetZoom()" style="background:none;border:1px solid #475569;border-radius:5px;color:#94a3b8;font-size:10px;padding:2px 7px;cursor:pointer">Reset</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button onclick="stepZoom(-5)" style="background:#334155;border:none;border-radius:5px;color:#fff;font-size:14px;width:26px;height:26px;cursor:pointer;line-height:1">−</button>
+      <input type="range" id="zoom-slider" min="70" max="150" value="100" step="5"
+        oninput="applyZoom(+this.value)"
+        style="flex:1;accent-color:#3b82f6;cursor:pointer">
+      <button onclick="stepZoom(+5)" style="background:#334155;border:none;border-radius:5px;color:#fff;font-size:14px;width:26px;height:26px;cursor:pointer;line-height:1">+</button>
+    </div>
+    <div style="text-align:center;margin-top:6px;color:#93c5fd;font-size:13px;font-weight:700" id="zoom-val">100%</div>
   </div>
   <div id="alert-strip"></div>
 
@@ -5435,6 +5451,39 @@ async function doLogout() {
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   resetToLogin();
 }
+
+// ── Zoom texte ──
+var _zoomOpen=false;
+function applyZoom(pct){
+  pct=Math.min(150,Math.max(70,pct));
+  document.documentElement.style.fontSize=pct+'%';
+  var sl=document.getElementById('zoom-slider');
+  var vl=document.getElementById('zoom-val');
+  if(sl) sl.value=pct;
+  if(vl) vl.textContent=pct+'%';
+  try{localStorage.setItem('kpi_zoom_pct',pct);}catch(e){}
+}
+function stepZoom(delta){
+  var cur=+((document.getElementById('zoom-slider')||{value:100}).value);
+  applyZoom(cur+delta);
+}
+function resetZoom(){applyZoom(100);}
+function toggleZoomPop(){
+  _zoomOpen=!_zoomOpen;
+  var pop=document.getElementById('zoom-pop');
+  if(pop) pop.style.display=_zoomOpen?'block':'none';
+}
+document.addEventListener('click',function(e){
+  if(!_zoomOpen) return;
+  var pop=document.getElementById('zoom-pop');
+  var btn=document.getElementById('zoom-btn');
+  if(pop&&btn&&!pop.contains(e.target)&&!btn.contains(e.target)){
+    _zoomOpen=false;pop.style.display='none';
+  }
+});
+(function(){
+  try{var z=+localStorage.getItem('kpi_zoom_pct');if(z>=70&&z<=150)applyZoom(z);}catch(e){}
+})();
 
 function resetToLogin() {
   ST={}; _curStopKey=null;
