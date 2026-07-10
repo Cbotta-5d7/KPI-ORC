@@ -4534,7 +4534,7 @@ select{cursor:default}
 
   <!-- ════ MODAL PRÉ-POSTE (1er OF vs heure modèle) ════ -->
   <div id="m-preshift" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:601;align-items:center;justify-content:center">
-    <div class="card" style="width:440px;max-height:85vh;overflow-y:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--red)">
+    <div class="card" style="width:min(880px,95vw);padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--red)">
       <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:4px">⚠ Début de poste non déclaré</div>
       <div id="ps-text" style="font-size:13px;color:var(--red);font-weight:700;margin-bottom:14px"></div>
       <input type="hidden" id="ps-start-iso">
@@ -4546,15 +4546,18 @@ select{cursor:default}
         <button class="btn btn-prim" onclick="confirmPsAsStop()" style="flex-shrink:0">→</button>
       </div>
       <hr style="border:none;border-top:1px solid var(--border);margin-bottom:14px">
-      <button class="btn btn-green" style="width:100%;text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseBackdate()">
-        ↩ Modifier la date de début de cet OF à <span id="ps-backdate-time" style="font-weight:800">--h--</span> ?
-      </button>
+      <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
+        <button class="btn btn-green" style="flex:1;text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseBackdate()">
+          ↩ Modifier la date de début de cet OF à <span id="ps-backdate-time" style="font-weight:800">--h--</span> ?
+        </button>
+        <button class="btn btn-sec" style="flex-shrink:0;padding:10px 18px;font-size:13px" onclick="psIgnorer()">Annuler</button>
+      </div>
     </div>
   </div>
 
   <!-- ════ MODAL INTERPOSTE ════ -->
   <div id="m-interposte" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
-    <div class="card" style="width:440px;padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--amber)">
+    <div class="card" style="width:min(880px,95vw);padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--amber)">
       <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:4px">⏱ Temps hors production</div>
       <div id="ip-duration" style="font-size:13px;color:var(--amber);font-weight:700;margin-bottom:8px"></div>
       <div style="display:flex;gap:10px;margin-bottom:12px;align-items:flex-end">
@@ -4619,7 +4622,7 @@ select{cursor:default}
 
   <!-- ════ MODAL ÉCART FIN DE POSTE ════ -->
   <div id="m-ecart-poste" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
-    <div class="card" style="width:580px;max-height:90vh;overflow-y:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #dc2626">
+    <div class="card" style="width:min(1160px,95vw);max-height:92vh;overflow-y:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #dc2626">
       <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:6px">📊 Réconciliation fin de poste</div>
       <div id="ecart-guide" style="font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;line-height:1.5"></div>
       <div id="ecart-info" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px"></div>
@@ -6211,26 +6214,18 @@ async function doStartProd() {
   goTab('prod');
 }
 
+// ── Ignorer sans déclarer (m-preshift) ──
+async function psIgnorer(){
+  closeM('m-preshift');
+  await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inter_of_s:0,label:'',comment:''})});
+  goTab('prod');
+}
+
 // ── Choix pré-poste ──
 function psFillStopBtns(){
   const bc=document.getElementById('ps-stop-btns');
   if(!bc) return;
   bc.innerHTML='';
-
-  const PREVUS=['Pause','Réunion','Nettoyage court','Nettoyage long','Nettoyage très long'];
-  const PREVUS_SET=new Set(PREVUS);
-
-  // Identifier les labels "Réunion" depuis _evtsList (correspondance par keyword)
-  const reunionKeys=new Set();
-  _evtsList.forEach(e=>{if(/réunion|reunion|meeting/i.test(e.label||'')) reunionKeys.add(e.label);});
-
-  // Arrêts standards depuis paramètres — exclure ceux déjà dans section Prévus
-  const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
-  const arretLabels=[];
-  const seenArret=new Set([...PREVUS_SET,...reunionKeys]);
-  evts.forEach(e=>{
-    if(e.label&&!seenArret.has(e.label)){seenArret.add(e.label);arretLabels.push(e.label);}
-  });
 
   const _makeBtn=(lbl,accent)=>{
     const b=document.createElement('button');
@@ -6259,8 +6254,35 @@ function psFillStopBtns(){
     bc.appendChild(row);
   };
 
-  _makeSection('⏱ Arrêts prévus',PREVUS,'#d97706');
-  _makeSection('⛔ Arrêts',arretLabels,'#dc2626');
+  // Section "Arrêts prévus" depuis _cfgArretsPrevus
+  const ap=_cfgArretsPrevus||{};
+  const PREVUS_CFG=[
+    {key:'pause_min',lbl:'Pause'},
+    {key:'meeting_tol_min',lbl:'Réunion'},
+    {key:'clean_short_min',lbl:'Nettoyage court'},
+    {key:'clean_long_min',lbl:'Nettoyage long'},
+    {key:'clean_grand_min',lbl:'Nettoyage très long'},
+  ];
+  const prevusList=PREVUS_CFG.filter(a=>(ap[a.key]||0)>0).map(a=>a.lbl);
+  if(!prevusList.length) prevusList.push(...['Pause','Réunion','Nettoyage court','Nettoyage long']);
+  _makeSection('⏱ Arrêts prévus',prevusList,'#d97706');
+
+  // Sections par catégorie depuis _evtsList (paramètres)
+  const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
+  const prevusSet=new Set(prevusList.map(l=>l.toLowerCase()));
+  const cats={pb:[],ratt:[],nettoyage:[],organisation:[],autre:[]};
+  const seen=new Set(prevusList.map(l=>l.toLowerCase()));
+  evts.forEach(e=>{
+    const lbl=e.label||'';if(!lbl||seen.has(lbl.toLowerCase())) return;
+    seen.add(lbl.toLowerCase());
+    const c=e.cat||'autre';
+    if(cats[c]!==undefined) cats[c].push(lbl);
+    else cats.autre.push(lbl);
+  });
+  if(cats.pb.length||cats.ratt.length) _makeSection('🔴 Pannes / Rattrapages',[...cats.pb,...cats.ratt],'#dc2626');
+  if(cats.nettoyage.length) _makeSection('🧹 Nettoyage',cats.nettoyage,'#f59e0b');
+  if(cats.organisation.length) _makeSection('📋 Organisation',cats.organisation,'#3b82f6');
+  if(cats.autre.length) _makeSection('⚫ Autre',cats.autre,'#64748b');
 
   document.getElementById('ps-custom').value='';
 }
