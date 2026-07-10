@@ -1766,6 +1766,14 @@ def api_history():
                 "kit": str(r[15] or ""),
                 "c1": str(r[22] or ""),
                 "c2": str(r[23] or ""),
+                "qte_init_taie": str(r[25] if len(r)>25 else ""),
+                "nb_taie2": str(r[26] if len(r)>26 else ""),
+                "nb_def_cout": str(r[27] if len(r)>27 else ""),
+                "mq_taie": str(r[28] if len(r)>28 else ""),
+                "mq_housse": str(r[29] if len(r)>29 else ""),
+                "nb_pp": str(r[30] if len(r)>30 else ""),
+                "duree_mq_mp": str(r[32] if len(r)>32 else ""),
+                "manquant_pers": str(r[33] if len(r)>33 else ""),
                 "comment": str(r[35] or ""),
             })
         except: pass
@@ -2240,7 +2248,7 @@ def api_session_report():
                 trs = round(eq/(prod_ref*dur_s/28800)*100,1) if prod_ref>0 and dur_s>0 and eq>0 else -1
                 tot_eq += eq; tot_s += dur_s
                 if fin_s > max_fin_s: max_fin_s = fin_s
-                prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),"qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"trs":trs,"comment":str(r[35] or ""),"nb_pers":str(r[6] or "")})
+                prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),"traca":str(r[13] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),"qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"trs":trs,"comment":str(r[35] or ""),"nb_pers":str(r[6] or ""),"copilote":str(r[5] or ""),"qte_init_taie":str(r[25] if len(r)>25 else ""),"nb_taie2":str(r[26] if len(r)>26 else ""),"nb_def_cout":str(r[27] if len(r)>27 else ""),"mq_taie":str(r[28] if len(r)>28 else ""),"mq_housse":str(r[29] if len(r)>29 else ""),"nb_pp":str(r[30] if len(r)>30 else ""),"duree_mq_mp":str(r[32] if len(r)>32 else ""),"manquant_pers":str(r[33] if len(r)>33 else "")})
             except: pass
         else:
             try:
@@ -4295,11 +4303,9 @@ select{cursor:default}
       <input type="hidden" id="ps-gap-s">
       <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Déclarer comme :</div>
       <div id="ps-stop-btns" style="margin-bottom:10px"></div>
-      <div style="margin-bottom:10px">
-        <input id="ps-custom" placeholder="Ou saisir librement…" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
-      </div>
-      <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
-        <button class="btn btn-prim" onclick="confirmPsAsStop()">✓ Valider</button>
+      <div style="margin-bottom:10px;display:flex;gap:6px">
+        <input id="ps-custom" placeholder="Ou saisir librement…" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
+        <button class="btn btn-prim" onclick="confirmPsAsStop()" style="flex-shrink:0">→</button>
       </div>
       <hr style="border:none;border-top:1px solid var(--border);margin-bottom:14px">
       <button class="btn btn-green" style="width:100%;text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseBackdate()">
@@ -5907,7 +5913,8 @@ function psFillStopBtns(){
       document.getElementById('ps-custom').value=lbl;
       bc.querySelectorAll('.btn').forEach(x=>{x.style.background='';x.style.borderColor='var(--border)';x.style.color='var(--text)';x.style.transform='';});
       b.style.background='var(--navy)';b.style.color='#fff';b.style.borderColor='var(--navy)';
-      b.style.transform='scale(0.93)';setTimeout(()=>{b.style.transform='';},150);
+      b.style.transform='scale(0.93)';
+      setTimeout(()=>confirmPsAsStop(),180);
     };
     return b;
   };
@@ -6882,10 +6889,23 @@ function showOfDetail(ri) {
     ['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':'—',`color:${tc}`],
     ['Heure début',r.debut||'—',''],['Heure fin',r.fin||'—',''],['Durée',r.duree||'—',''],
   ].filter(c=>c[1]&&c[1]!=='—'||c[0]==='TRS OF');
+  if(r.qte_emb) chips.push(['Qté emb.',r.qte_emb,'']);
   if(r.code_prod) chips.push(['Code Produit',r.code_prod,'font-family:monospace']);
-  if(r.ref_taie) chips.push(['Code Taie',r.ref_taie,'font-family:monospace']);
+  if(r.poids) chips.push(['Poids',r.poids,'']);
+  if(r.fibre) chips.push(['Fibre',r.fibre,'color:#6366f1']);
+  if(r.ref_taie) chips.push(['Réf Taie',r.ref_taie,'font-family:monospace']);
   if(r.of_taie) chips.push(['OF Taie',r.of_taie,'']);
+  if(r.traca) chips.push(['Traca',r.traca,'font-family:monospace']);
   if(r.nb_pers) chips.push(['Nb Pers.',r.nb_pers,'']);
+  if(r.copilote) chips.push(['Co-Pilote',r.copilote,'']);
+  if(r.qte_init_taie) chips.push(['Qté init taie',r.qte_init_taie,'']);
+  if(r.nb_taie2) chips.push(['Nb Taie 2e',r.nb_taie2,'']);
+  if(r.nb_def_cout) chips.push(['Nb déf. coût',r.nb_def_cout,'']);
+  if(r.mq_taie) chips.push(['Mq taie',r.mq_taie,'']);
+  if(r.mq_housse) chips.push(['Mq housse',r.mq_housse,'']);
+  if(r.nb_pp) chips.push(['Nb PP',r.nb_pp,'']);
+  if(r.duree_mq_mp) chips.push(['Durée MQ MP',r.duree_mq_mp,'']);
+  if(r.manquant_pers) chips.push(['Manquant pers.',r.manquant_pers,'']);
   const chipsHtml = chips.map(([lbl,val,sty])=>`<div class="fp-card" style="padding:7px">
     <div class="fp-lbl">${lbl}</div>
     <div class="fp-big" style="font-size:14px;${sty==='raw'?'':''}${sty&&sty!=='raw'?sty:''}">${sty==='raw'?val:esc(String(val))}</div>
@@ -7861,9 +7881,13 @@ function showHistRowDetail(key){
   const chips=[];
   if(isProd){
     if(r.taille)chips.push(['Taille',r.taille,'']);
-    if(r.type)chips.push(['Type prod.',r.type,'']);
+    if(r.type_prod)chips.push(['Type prod.',r.type_prod,'']);
+    if(r.code_prod)chips.push(['Code prod.',r.code_prod,'font-family:monospace']);
+    if(r.poids)chips.push(['Poids',r.poids,'']);
+    if(r.fibre)chips.push(['Fibre',r.fibre,'color:#6366f1']);
     chips.push(['Kit',kitDisp,'raw']);
     if(r.qte_fab)chips.push(['Qté fab.',r.qte_fab,'']);
+    if(r.qte_emb)chips.push(['Qté emb.',r.qte_emb,'']);
     if(r.equiv)chips.push(['Équiv.',r.equiv,'color:#0891b2;font-weight:800']);
     chips.push(['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':'—',`color:${tc}`]);
     if(r.debut)chips.push(['Début',r.debut,'']);
@@ -7872,7 +7896,19 @@ function showHistRowDetail(key){
     if(r.date)chips.push(['Date',r.date,'']);
     if(r.poste)chips.push(['Poste',r.poste,'']);
     if(r.pilote)chips.push(['Pilote',r.pilote,'']);
-    if(r.fibre)chips.push(['Fibre',r.fibre,'color:#6366f1']);
+    if(r.copilote)chips.push(['Co-Pilote',r.copilote,'']);
+    if(r.nb_pers)chips.push(['Nb Pers.',r.nb_pers,'']);
+    if(r.of_taie)chips.push(['OF Taie',r.of_taie,'']);
+    if(r.traca)chips.push(['Traca',r.traca,'font-family:monospace']);
+    if(r.ref_taie)chips.push(['Réf Taie',r.ref_taie,'font-family:monospace']);
+    if(r.qte_init_taie)chips.push(['Qté init taie',r.qte_init_taie,'']);
+    if(r.nb_taie2)chips.push(['Nb Taie 2e',r.nb_taie2,'']);
+    if(r.nb_def_cout)chips.push(['Nb déf. coût',r.nb_def_cout,'']);
+    if(r.mq_taie)chips.push(['Mq taie',r.mq_taie,'']);
+    if(r.mq_housse)chips.push(['Mq housse',r.mq_housse,'']);
+    if(r.nb_pp)chips.push(['Nb PP',r.nb_pp,'']);
+    if(r.duree_mq_mp)chips.push(['Durée MQ MP',r.duree_mq_mp,'']);
+    if(r.manquant_pers)chips.push(['Manquant pers.',r.manquant_pers,'']);
   } else {
     chips.push(['Type',r.type||r.type_arret||'—','color:#dc2626']);
     if(r.debut)chips.push(['Début',r.debut,'']);
