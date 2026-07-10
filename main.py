@@ -1124,7 +1124,6 @@ def toggle_hors_trs_excel(row_num, new_val):
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
 
-
 # ── Flask helpers ─────────────────────────────────────────────────────────────
 def _check_pw(pw):
     return str(pw or "") == str(cfg.get("supervisor_pw","1234"))
@@ -2479,7 +2478,6 @@ def dashboard_view():
     except Exception as e:
         return f"<html><body>Erreur lecture fichier: {e}</body></html>", 500
 
-
 def _dash_budget_bars_html():
     """Génère les barres de budget arrêts prévus pour le dashboard (rendu serveur)."""
     try:
@@ -3686,18 +3684,20 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             f'<div style="display:flex;gap:12px;padding:10px 14px;background:#fff;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap">'
             f'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">TRS Poste</div>{g_svg}</div>'
             f'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">Répartition</div>{p_svg}</div>'
-            f'<div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:5px">'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:{trs_col}">{trs_str}</div><div class="fp-lbl">TRS Shift</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px">{trs_of_str}</div><div class="fp-lbl">TRS Prod</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0369a1;font-weight:900">{_cad_h}</div><div class="fp-lbl">Cadence/h</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#059669;font-weight:900">{round(_tot_qte_fab)}</div><div class="fp-lbl">Nb pièces</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0891b2">{(d.get("tot_equiv",0) or 0):.1f}</div><div class="fp-lbl">Équivalence</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#7c3aed">{d.get("nb_of",0)}</div><div class="fp-lbl">Nb OF</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#8b5cf6">{_nb_chg_f}</div><div class="fp-lbl">Chg. fibre</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#16a34a">{prod_min} min</div><div class="fp-lbl">Prod</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#dc2626">{stop_min} min</div><div class="fp-lbl">Arrêts</div></div>'
-            f'{ecart_div}'
-            f'</div></div>'
+            f'<div style="flex:1;display:flex;flex-direction:column;gap:5px">'
+            f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">'
+            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#059669;font-weight:900">{round(_tot_qte_fab)}</div><div class="fp-lbl">Nb pièces prod.</div></div>'
+            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#0891b2;font-weight:900">{round(d.get("tot_equiv",0) or 0)}</div><div class="fp-lbl">Équivalence</div></div>'
+            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#0369a1;font-weight:900">{_cad_h}</div><div class="fp-lbl">Cadence/h</div></div>'
+            f'</div>'
+            f'<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px">{(_resc(d.get("model_debut",""))+"→"+_resc(d.get("model_fin",""))) if d.get("model_debut") and d.get("model_fin") else (str(round((d.get("model_dur_s",0) or 0)/60))+" min")}</div><div class="fp-lbl">Durée ouverture</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#16a34a">{prod_min} min</div><div class="fp-lbl">Durée prod</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#dc2626">{stop_min} min</div><div class="fp-lbl">Arrêts total</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#16a34a">{round((d.get("planned_ded_s",0) or 0)/60)} min</div><div class="fp-lbl">Arrêts prévus</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#7c3aed">{d.get("nb_of",0)}</div><div class="fp-lbl">Nb OF</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#8b5cf6">{_nb_chg_f}</div><div class="fp-lbl">Chg. fibre</div></div>'
+            f'</div></div></div>'
             f'<div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
             f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Productions</div>'
             f'<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#f8fafc">'
@@ -3705,10 +3705,10 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             f'<th style="padding:4px 6px">Kit</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>'
             f'<th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th>'
             f'</tr></thead><tbody>{prod_h}</tbody></table></div>'
+            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>{_budget_bars_h}</div>'
             f'<div style="display:flex;flex-direction:column;gap:8px">'
             f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px">Pareto arrêts</div>{pareto_h}</div>'
             f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Détail arrêts</div>{evts_section}</div>'
-            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>{_budget_bars_h}</div>'
             f'</div></div></div>'
         )
 
@@ -3756,7 +3756,6 @@ function loadRapports(){}
         return html_path, None
     except Exception as e:
         return None, str(e)
-
 
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
@@ -3909,8 +3908,8 @@ select{cursor:default}
 .gauge-box{padding:6px;border-top:1px solid var(--border);text-align:center}
 .gauge-lbl{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;margin-top:2px}
 /* Active stops bottom bar — chips */
-#stop-bottom{display:none;background:#7f0000;color:#fff;padding:8px 14px;align-items:center;gap:8px;flex-shrink:0;border-top:2px solid #b91c1c;flex-wrap:wrap}
-#stop-bottom.on{display:flex}
+#stop-bottom,#stop-bottom-main{display:none;background:#7f0000;color:#fff;padding:8px 14px;align-items:center;gap:8px;flex-shrink:0;border-top:2px solid #b91c1c;flex-wrap:wrap}
+#stop-bottom.on,#stop-bottom-main.on{display:flex}
 .stop-chip{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.28);border-radius:8px;padding:6px 10px;border:1px solid rgba(255,255,255,.2)}
 .chip-lbl{font-weight:800;font-size:13px;white-space:nowrap}
 .chip-tim{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
@@ -4189,6 +4188,11 @@ select{cursor:default}
         <tbody id="main-body"></tbody>
       </table>
     </div>
+    <!-- Active stops bottom bar — chips (accueil) -->
+    <div id="stop-bottom-main">
+      <div style="font-size:10px;opacity:.7;font-weight:700;white-space:nowrap">EN COURS :</div>
+      <div id="stop-chips-main" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1"></div>
+    </div>
   </div>
 
   <!-- ════ PRODUCTION VIEW ════ -->
@@ -4373,18 +4377,19 @@ select{cursor:default}
         <svg id="fp-pie" viewBox="0 0 130 115" style="width:200px;height:177px;display:block;margin:0 auto"></svg>
       </div>
       <div style="flex:1;display:flex;flex-direction:column;gap:5px">
-        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-trs">--%</div><div class="fp-lbl">TRS Shift</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-trs-of">--%</div><div class="fp-lbl">TRS Prod</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-eq">0</div><div class="fp-lbl">Équivalence</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-nof">0</div><div class="fp-lbl">Nb OF</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-prod-t">0 min</div><div class="fp-lbl">Durée prod</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:18px" id="fp-stop-t">0 min</div><div class="fp-lbl">Arrêts</div></div>
-        </div>
+        <div style="display:none"><span id="fp-trs"></span><span id="fp-trs-of"></span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#0369a1;font-weight:900" id="fp-cadence">--</div><div class="fp-lbl">Cadence/h</div></div>
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#059669;font-weight:900" id="fp-pieces">--</div><div class="fp-lbl">Nb pièces</div></div>
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#8b5cf6;font-weight:900" id="fp-chg-fibre">--</div><div class="fp-lbl">Chg. fibre</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:#059669;font-weight:900" id="fp-pieces">--</div><div class="fp-lbl">Nb pièces prod.</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:#0891b2;font-weight:900" id="fp-eq">0</div><div class="fp-lbl">Équivalence</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:#0369a1;font-weight:900" id="fp-cadence">--</div><div class="fp-lbl">Cadence/h</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px" id="fp-ouverture">--</div><div class="fp-lbl">Durée ouverture</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a" id="fp-prod-t">0 min</div><div class="fp-lbl">Durée prod</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#dc2626" id="fp-stop-t">0 min</div><div class="fp-lbl">Arrêts total</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a" id="fp-ded">0 min</div><div class="fp-lbl">Arrêts prévus</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#7c3aed" id="fp-nof">0</div><div class="fp-lbl">Nb OF</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#8b5cf6" id="fp-chg-fibre">--</div><div class="fp-lbl">Chg. fibre</div></div>
         </div>
       </div>
     </div>
@@ -5555,8 +5560,9 @@ function applyState(s) {
   const rcFin=document.getElementById('rc-fin');
   if(rcFin) rcFin.textContent=s.prod_active?'en cours':'—';
 
-  // Render active stop chips
+  // Render active stop chips (prod view + main view)
   renderStopChips(s);
+  renderStopChipsMain(s);
 
   // Render live events for current prod (recap + timeline) from tl_events in state
   if(s.prod_active&&_curTab==='prod'){
@@ -5621,6 +5627,27 @@ function tlEventsToDisplayFmt(tlEvts){
     }
     return {type,cat:ev.cat||'autre',debut:toHMS(s),fin:e?toHMS(e):'',duree:dur>0?fmtDur(dur):'',comment:ev.comment||'',hors_trs:ev.hors_trs||false,_live:!ev.end};
   }).filter(Boolean);
+}
+
+function renderStopChipsMain(s) {
+  const cont=document.getElementById('stop-chips-main');
+  const sb=document.getElementById('stop-bottom-main');
+  if(!cont||!sb) return;
+  const stops=s.active_stops||[];
+  const hasAny=stops.length>0||s.is_paused;
+  if(!hasAny){sb.classList.remove('on');cont.innerHTML='';return;}
+  sb.classList.add('on');
+  let html='';
+  stops.forEach(k=>{
+    const lbl=getEvtLabel(k);
+    const elap=s.timers&&s.timers[k]?s.timers[k].elapsed:0;
+    html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="main-chip-t-${esc(k)}">${fmtDur2(elap)}</span><button class="btn-endstop" onclick="doEndStop('${esc(k)}')">✓ Terminer</button></div>`;
+  });
+  if(s.is_paused){
+    const pe=(s.pause_total_s||0)+(s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0);
+    html+=`<div class="stop-chip"><span class="chip-lbl">⏸ Pause</span><span class="chip-tim" id="main-chip-t-_pause">${fmtDur2(pe)}</span><button class="btn-endstop" onclick="doPause()">▶ Reprendre</button></div>`;
+  }
+  cont.innerHTML=html;
 }
 
 function renderStopChips(s) {
@@ -6328,6 +6355,7 @@ async function doPause(){
   try{await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});}
   catch(e){toast('Erreur connexion serveur','err');return;}
   await pollState();
+  if(_curTab==='main') loadMainDecl();
 }
 
 async function doReunion(){
@@ -6380,7 +6408,7 @@ function doEndStop(key) {
   const k=key||_curStopKey;
   if(!k||k==='_pause'){doPause();return;}
   if(k==='nettoyage'){
-    fetch('/api/end_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(()=>{pollState();pollEvts();});
+    fetch('/api/end_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(()=>{pollState();pollEvts();if(_curTab==='main')loadMainDecl();});
     return;
   }
   // Show comment modal
@@ -6397,6 +6425,7 @@ async function confirmEndStop() {
   closeM('m-stopcmt');
   await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,comment:cmt})});
   await pollState();
+  if(_curTab==='main') loadMainDecl();
   await pollEvts();
 }
 
@@ -6929,12 +6958,12 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
   while(tickT<tE){
     const tx=toX(tickT);
     const hr=new Date(tickT).getHours();
-    html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(255,255,255,.4)" stroke-width="1"/>`;
-    html+=`<text x="${tx+2}" y="${Y+H2-3}" font-size="7" fill="rgba(255,255,255,.85)">${String(hr).padStart(2,'0')}h</text>`;
+    html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`;
+    html+=`<text x="${tx+2}" y="${Y+H2+9}" font-size="7" fill="#374151">${String(hr).padStart(2,'0')}h</text>`;
     tickT+=3600000;
   }
-  html+=`<text x="2" y="${H-1}" font-size="8" fill="#fff">${fT(tS)}</text>`;
-  html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#fff">${fT(tE)}</text>`;
+  html+=`<text x="2" y="${Y+H2+9}" font-size="8" fill="#374151">${fT(tS)}</text>`;
+  html+=`<text x="${W-30}" y="${Y+H2+9}" font-size="8" fill="#374151">${fT(tE)}</text>`;
   svg.innerHTML=html;
 }
 
@@ -7182,8 +7211,11 @@ async function skipMissingDecl(){
 async function doFinPoste(){
   if(ST.prod_active){toast('Terminer la production en cours avant de finir le poste','err');return;}
   const fpd=await apiFetch('/api/fin_poste_data');
-  if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
-  else goTab('finposte');
+  if(fpd){
+    window._ecartFpData=fpd;
+    const hasIssue=(fpd.gap_intervals&&fpd.gap_intervals.length>0)||(fpd.overflow_min>0)||((fpd.ecart_s||0)>60);
+    if(hasIssue){_showEcartModal(fpd);}else{goTab('finposte');}
+  } else goTab('finposte');
 }
 
 async function _doGoFinPoste(){
@@ -7346,7 +7378,6 @@ function _buildEcartStopSelect(gi){
   const nettoyage=new Set(['Nettoyage court','Nettoyage long','Nettoyage très long']);
   const pannes=new Set();
   const organisation=new Set();
-  const interof=new Set();
   (_evtsList||[]).forEach(e=>{
     const lbl=e.label||'';if(!lbl)return;
     if(e.cat==='pb'||e.cat==='ratt')pannes.add(lbl);
@@ -7354,7 +7385,6 @@ function _buildEcartStopSelect(gi){
     else if(e.cat==='organisation')organisation.add(lbl);
     else if(e.cat==='autre')organisation.add(lbl);
   });
-  (_interposteLbls||[]).forEach(lbl=>{if(lbl)interof.add(lbl);});
   const mkGrp=(name,items)=>{
     const arr=[...items];if(!arr.length)return'';
     return`<optgroup label="${esc(name)}">`+arr.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`).join('')+'</optgroup>';
@@ -7364,7 +7394,6 @@ function _buildEcartStopSelect(gi){
     mkGrp('🧹 Nettoyage',nettoyage)+
     mkGrp('🔴 Pannes / Rattrapages',pannes)+
     mkGrp('🔵 Organisation',organisation)+
-    mkGrp('🔄 Entre 2 OFs',interof)+
     '<optgroup label="⚫ Autre"><option value="Autre (à justifier)">Autre (à justifier)</option></optgroup>';
   return`<select id="ecart-gap-type-${gi}" onchange="ecartCheckAutreType(this,${gi})" style="width:100%;padding:4px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;background:#fff">${html}</select>`;
 }
@@ -7458,9 +7487,13 @@ async function loadFPData(){
   if(!d) return;
   document.getElementById('fp-trs').textContent=fmtTRS(d.trs_shift!==undefined?d.trs_shift:d.trs);
   document.getElementById('fp-trs-of').textContent=fmtTRS(d.trs);
-  document.getElementById('fp-eq').textContent=(d.tot_equiv||0).toFixed(1);
+  document.getElementById('fp-eq').textContent=Math.round(d.tot_equiv||0);
   document.getElementById('fp-nof').textContent=d.nb_of||0;
   document.getElementById('fp-prod-t').textContent=Math.round((d.tot_s||0)/60)+' min';
+  const fpOuvEl=document.getElementById('fp-ouverture');
+  if(fpOuvEl) fpOuvEl.textContent=(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min');
+  const fpDedEl=document.getElementById('fp-ded');
+  if(fpDedEl) fpDedEl.textContent=Math.round((d.planned_ded_s||0)/60)+' min';
   document.getElementById('fp-who').textContent=`${d.pilot||ST.pilot||''} — ${ST.poste||''}`;
   const now2=new Date();
   const fpDateEl=document.getElementById('fp-date');
@@ -8366,7 +8399,10 @@ async function loadSessionReport(date,pilot,poste,itemId){
       const t1=hm2ms(r.debut),t2=hm2ms(r.fin);
       if(!t1) return;
       const x1=toX(t1),x2=toX(t2||t1+1800000);
-      if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="#dc2626" rx="2" opacity=".75"/>`;
+      if(x2<=x1) return;
+      const tl=(r.type||'').toLowerCase();
+      const col=tl.includes('nett')?'#38bdf8':tl.includes('pause')?'#94a3b8':tl.includes('ratt')?'#f59e0b':'#dc2626';
+      html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${col}" rx="2" opacity=".75"/>`;
     });
     const fmt=ms=>{const d=new Date(ms);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
     // Hourly tick marks
@@ -8374,12 +8410,12 @@ async function loadSessionReport(date,pilot,poste,itemId){
     while(tickT<tE){
       const tx=toX(tickT);
       const hr=new Date(tickT).getHours();
-      html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(255,255,255,.4)" stroke-width="1"/>`;
-      html+=`<text x="${tx+2}" y="${Y+H2-3}" font-size="7" fill="rgba(255,255,255,.85)">${String(hr).padStart(2,'0')}h</text>`;
+      html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`;
+      html+=`<text x="${tx+2}" y="${Y+H2+9}" font-size="7" fill="#374151">${String(hr).padStart(2,'0')}h</text>`;
       tickT+=3600000;
     }
-    html+=`<text x="2" y="${H-1}" font-size="8" fill="#fff">${fmt(tS)}</text>`;
-    html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#fff">${fmt(tE)}</text>`;
+    html+=`<text x="2" y="${Y+H2+9}" font-size="8" fill="#374151">${fmt(tS)}</text>`;
+    html+=`<text x="${W-30}" y="${Y+H2+9}" font-size="8" fill="#374151">${fmt(tE)}</text>`;
     return html;
   }
   // Métriques supplémentaires
@@ -8411,38 +8447,63 @@ async function loadSessionReport(date,pilot,poste,itemId){
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Répartition</div>
         <svg id="rpt-pie" viewBox="0 0 130 115" style="width:170px;height:150px;display:block;margin:0 auto"></svg>
       </div>
-      <div style="flex:1;display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:5px">
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:${trsCol}">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div><div class="fp-lbl">TRS Shift</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px">${d.trs>=0?d.trs.toFixed(1)+'%':'—'}</div><div class="fp-lbl">TRS Prod</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl">Cadence/h</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl">Nb pièces</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#0891b2">${(d.tot_equiv||0).toFixed(1)}</div><div class="fp-lbl">Équivalence</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#7c3aed">${d.nb_of||0}</div><div class="fp-lbl">Nb OF</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#8b5cf6">${nbChangFibre}</div><div class="fp-lbl">Chg. fibre</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#16a34a">${prodMin} min</div><div class="fp-lbl">Prod</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:16px;color:#dc2626">${stopMin} min</div><div class="fp-lbl">Arrêts</div></div>
-        ${(d.ecart_s||0)>0?`<div class="fp-card" style="padding:7px;border:1.5px solid #f59e0b"><div class="fp-big" style="font-size:16px;color:#d97706">${Math.round((d.ecart_s||0)/60)} min</div><div class="fp-lbl">Non déclaré</div></div>`:''}
-        ${(d.planned_ded_s||0)>0?`<div class="fp-card" style="padding:7px;border:1.5px solid #16a34a"><div class="fp-big" style="font-size:16px;color:#16a34a">${Math.round((d.planned_ded_s||0)/60)} min</div><div class="fp-lbl">Arrêts déduits</div></div>`:''}
+      <div style="flex:1;display:flex;flex-direction:column;gap:5px">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl">Nb pièces prod.</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl">Équivalence</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:22px;color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl">Cadence/h</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px">${(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl">Durée ouverture</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#16a34a">${prodMin} min</div><div class="fp-lbl">Durée prod</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#dc2626">${stopMin} min</div><div class="fp-lbl">Arrêts total</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#16a34a">${Math.round((d.planned_ded_s||0)/60)} min</div><div class="fp-lbl">Arrêts prévus</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#7c3aed">${d.nb_of||0}</div><div class="fp-lbl">Nb OF</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:12px;color:#8b5cf6">${nbChangFibre}</div><div class="fp-lbl">Chg. fibre</div></div>
+        </div>
       </div>
     </div>
     <!-- Timeline -->
     <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border)">
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline du poste</div>
       <svg viewBox="0 0 800 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block">${tlContent}</svg>
-      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
+      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Rattrapage</span><span><i style="background:#38bdf8"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
     </div>
     <!-- Corps : prods + arrêts + pareto -->
     <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="card" style="padding:10px">
-        <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Productions</div>
-        <table style="width:100%;border-collapse:collapse;font-size:11px">
-          <thead><tr style="background:#f8fafc">
-            <th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>
-            <th style="padding:4px 6px">Lots de 2</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>
-            <th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th>
-          </tr></thead>
-          <tbody>${prodsHtml||'<tr><td colspan="8" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
-        </table>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="card" style="padding:10px">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Productions</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead><tr style="background:#f8fafc">
+              <th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>
+              <th style="padding:4px 6px">Lots de 2</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>
+              <th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th>
+            </tr></thead>
+            <tbody>${prodsHtml||'<tr><td colspan="8" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
+          </table>
+        </div>
+        <div class="card" style="padding:10px">
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>
+          ${(()=>{
+            const bd=d.budget_data||{};
+            const bKeys=['clean_short_min','clean_long_min','clean_grand_min','meeting_tol_min','pause_min'];
+            const rows=bKeys.map(bk=>{
+              const b=bd[bk];if(!b||b.budget_min<=0)return '';
+              const pct=Math.min(100,Math.round(b.used_min/b.budget_min*100));
+              const col=b.used_min>b.budget_min?'#dc2626':b.used_min/b.budget_min>=0.8?'#d97706':'#16a34a';
+              return '<div style="margin-bottom:7px">'
+                +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">'
+                +'<span style="color:var(--text)">'+esc(b.label)+'</span>'
+                +'<span style="font-weight:700;color:'+col+'">'+Math.round(b.used_min)+'/'+Math.round(b.budget_min)+' min</span>'
+                +'</div>'
+                +'<div style="background:#f1f5f9;border-radius:4px;height:12px;overflow:hidden">'
+                +'<div style="height:100%;background:'+col+';border-radius:4px;width:'+pct+'%;opacity:.85"></div>'
+                +'</div></div>';
+            }).filter(Boolean).join('');
+            return rows||'<div style="color:var(--gray);font-size:12px">Aucun budget configuré</div>';
+          })()}
+        </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px">
         <div class="card" style="padding:10px">
@@ -8471,27 +8532,6 @@ async function loadSessionReport(date,pilot,poste,itemId){
               <td style="padding:4px 5px;color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.comment||'')}">${esc(r.comment||'—')}</td>
             </tr>`).join('')}</tbody>
           </table>`:'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>'}
-        </div>
-        <div class="card" style="padding:10px">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>
-          ${(()=>{
-            const bd=d.budget_data||{};
-            const bKeys=['clean_short_min','clean_long_min','clean_grand_min','meeting_tol_min','pause_min'];
-            const rows=bKeys.map(bk=>{
-              const b=bd[bk];if(!b||b.budget_min<=0)return '';
-              const pct=Math.min(100,Math.round(b.used_min/b.budget_min*100));
-              const col=b.used_min>b.budget_min?'#dc2626':b.used_min/b.budget_min>=0.8?'#d97706':'#16a34a';
-              return '<div style="margin-bottom:7px">'
-                +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">'
-                +'<span style="color:var(--text)">'+esc(b.label)+'</span>'
-                +'<span style="font-weight:700;color:'+col+'">'+Math.round(b.used_min)+'/'+Math.round(b.budget_min)+' min</span>'
-                +'</div>'
-                +'<div style="background:#f1f5f9;border-radius:4px;height:12px;overflow:hidden">'
-                +'<div style="height:100%;background:'+col+';border-radius:4px;width:'+pct+'%;opacity:.85"></div>'
-                +'</div></div>';
-            }).filter(Boolean).join('');
-            return rows||'<div style="color:var(--gray);font-size:12px">Aucun budget configuré</div>';
-          })()}
         </div>
       </div>
     </div>`;
@@ -8721,7 +8761,6 @@ function toast(msg,type){
 </script>
 </body>
 </html>"""
-
 
 def _session_autosave():
     while True:
