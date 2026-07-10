@@ -1317,6 +1317,9 @@ def api_inter_of_confirm():
             end_dt = datetime.datetime.combine(today, datetime.time(h, mi))
             if end_dt < start_dt: end_dt += datetime.timedelta(days=1)
         except: pass
+    # 1er OF du poste : last_of_end est None → utiliser shift_debut_dt comme début du gap
+    if start_dt is None:
+        start_dt = _S.get("shift_debut_dt")
     if _S["inter_of_s"] >= 60 and start_dt and end_dt:
         write_changement_of(start_dt, end_dt, label=label or None, comment=comment)
         # Mise à jour synchrone du cache pour éviter le race-condition fin-de-poste
@@ -2501,13 +2504,11 @@ def generate_dashboard_html():
         in_shift_evts = today_evts
     stop_s_total = sum(hms2s(str(r[18] or "0")) for r in in_shift_evts
                        if str(r[0] or "").lower() not in ("pause pilote","changement d'of","interposte","changement de serie"))
-    ref_start_dt = model_debut_dt or shift_start_dt
+    ref_start_dt = _S.get("shift_debut_dt") or model_debut_dt or shift_start_dt
     if ref_start_dt and last_fin_dt and prod_ref > 0:
         elapsed_for_trs = (last_fin_dt - ref_start_dt).total_seconds()
         if elapsed_for_trs > 0:
-            planned_ded = _compute_planned_deduction_s(in_shift_evts) if in_shift_evts else 0.0
-            adj_elapsed = max(1.0, elapsed_for_trs - planned_ded)
-            trs_poste = round(tot_equiv / (prod_ref * adj_elapsed / 28800) * 100, 1)
+            trs_poste = round(tot_equiv / (prod_ref * elapsed_for_trs / 28800) * 100, 1)
 
     evt_dur = defaultdict(float)
     for r in in_shift_evts:
@@ -5505,12 +5506,11 @@ async function loadMainKPI() {
   const elHeure=document.getElementById('kpi0-heure');
   if(elHeure) elHeure.textContent=heure;
   if(d){
-    // TRS poste actuel : utiliser la durée du modèle horaire choisi (P→Q) si dispo
+    // TRS Actuel : début de plage → fin de la dernière déclaration de prod (même formule que jauge)
     let trs=-1;
     if(_todayEquivAccum>0&&_shiftRefDt&&ST.prod_ref>0){
-      const _sfDt=ST.shift_fin_iso?new Date(ST.shift_fin_iso):null;
       const refTime=_lastProdDeclTime||new Date();
-      const shiftElap=_sfDt?(_sfDt.getTime()-_shiftRefDt.getTime())/1000:(refTime.getTime()-_shiftRefDt.getTime())/1000;
+      const shiftElap=(refTime.getTime()-_shiftRefDt.getTime())/1000;
       if(shiftElap>0) trs=Math.round(_todayEquivAccum/(ST.prod_ref*shiftElap/28800)*100*10)/10;
     }
     const el0t=document.getElementById('kpi0-trs'),el0s=document.getElementById('kpi0-sub'),el0d=document.getElementById('kpi0-date');
@@ -5723,8 +5723,12 @@ function psFillStopBtns(){
   const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
   const seen=new Set();
   const allLabels=[];
+  // Toutes sections : arrêts événements + interposte + pause + nettoyage (tous types)
   evts.forEach(e=>{if(e.label&&!seen.has(e.label)){seen.add(e.label);allLabels.push(e.label);}});
   _interposteLbls.forEach(lbl=>{if(lbl&&!seen.has(lbl)){seen.add(lbl);allLabels.push(lbl);}});
+  ['Pause','Nettoyage court','Nettoyage long','Nettoyage très long'].forEach(lbl=>{
+    if(!seen.has(lbl)){seen.add(lbl);allLabels.push(lbl);}
+  });
   allLabels.forEach(lbl=>{
     const b=document.createElement('button');
     b.className='btn btn-ghost';
@@ -6246,11 +6250,10 @@ function updateGauge(s){
     else if(s.shift_start_iso){_shiftRefDt=new Date(s.shift_start_iso);}
     else{_shiftRefDt=null;}
   }
-  // When shift_fin_iso is set, use full shift duration for TRS denominator instead of elapsed
-  const _shiftFinDt=s.shift_fin_iso?new Date(s.shift_fin_iso):null;
+  // TRS Accueil : début de plage → fin de la dernière déclaration de prod (pas la durée totale du modèle)
   if(_shiftRefDt&&s.prod_ref>0){
     const calcRef=_lastProdDeclTime||new Date();
-    const shiftElap=_shiftFinDt?(_shiftFinDt.getTime()-_shiftRefDt.getTime())/1000:(calcRef.getTime()-_shiftRefDt.getTime())/1000;
+    const shiftElap=(calcRef.getTime()-_shiftRefDt.getTime())/1000;
     const todayEquiv=_todayEquivAccum||0;
     const trsPoste=shiftElap>0&&todayEquiv>0?Math.round(todayEquiv/(s.prod_ref*shiftElap/28800)*100*10)/10:-1;
     // Label : "Entre Xh et Yh" (Y = heure fin de la dernière déclaration, pas l'heure actuelle)
