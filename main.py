@@ -2578,7 +2578,7 @@ def _dash_budget_bars_html():
         color = "#dc2626" if pct >= 100 else ("#d97706" if pct >= 70 else "#16a34a")
         val_str = f"<b>+{_fmt_dur_s(over)}</b>" if over > 0 else f"{_fmt_dur_s(consumed)} / {_fmt_dur_s(budget)}"
         rows += (f'<div style="margin-bottom:6px">'
-            f'<div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:2px">'
+            f'<div style="display:flex;justify-content:space-between;font-size:calc(11px*var(--zf,1));font-weight:700;margin-bottom:2px">'
             f'<span style="color:#374151">{lbl}</span>'
             f'<span style="color:{color}">{val_str}</span></div>'
             f'<div style="background:#e5e7eb;border-radius:4px;height:7px">'
@@ -2587,7 +2587,7 @@ def _dash_budget_bars_html():
     if not any_budget:
         return ''
     return (f'<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;min-width:170px">'
-        f'<div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400e;letter-spacing:.5px;margin-bottom:8px">⏱ Arrêts prévus</div>'
+        f'<div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#92400e;letter-spacing:.5px;margin-bottom:8px">⏱ Arrêts prévus</div>'
         f'{rows}</div>')
 
 # ── Dashboard HTML superviseur ─────────────────────────────────────────────────
@@ -2918,7 +2918,7 @@ def generate_dashboard_html():
             pct = dur / max_dur * 100 if max_dur > 0 else 0
             col = "#ef4444" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#38bdf8" if "nett" in lbl.lower() else "#a855f7"
             pareto_html += f'''<div style="margin-bottom:4px">
-              <div style="display:flex;justify-content:space-between;font-size:12px;color:#475569;margin-bottom:2px">
+              <div style="display:flex;justify-content:space-between;font-size:calc(12px*var(--zf,1));color:#475569;margin-bottom:2px">
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%">{lbl[:30]}</span>
                 <span style="font-weight:800;color:#1e293b;flex-shrink:0">{dur/60:.0f}m</span>
               </div>
@@ -2927,7 +2927,7 @@ def generate_dashboard_html():
               </div>
             </div>'''
     else:
-        pareto_html = '<div style="color:#475569;font-size:13px;padding:6px;text-align:center">Aucun arrêt enregistré</div>'
+        pareto_html = '<div style="color:#475569;font-size:calc(13px*var(--zf,1));padding:6px;text-align:center">Aucun arrêt enregistré</div>'
     # ── Liste arrêts individuels ──
     _stop_list_html = ""
     for _sr in today_evts:
@@ -2938,13 +2938,13 @@ def generate_dashboard_html():
         _scmt = str(_sr[35] or "").strip()
         _scol = "#ef4444" if any(x in _st.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in _st.lower() else "#38bdf8" if "nett" in _st.lower() else "#a855f7"
         _stop_list_html += (f'<tr>'
-            f'<td style="padding:3px 6px;font-size:11px;font-weight:700;color:{_scol};white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis">{_st}</td>'
-            f'<td style="padding:3px 6px;font-size:11px;color:#64748b;white-space:nowrap">{_sd}→{_sf}</td>'
-            f'<td style="padding:3px 6px;font-size:11px;font-weight:800;color:#1e293b;white-space:nowrap">{_sdur}</td>'
-            f'<td style="padding:3px 6px;font-size:10px;color:#94a3b8;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{_scmt}">{_scmt}</td>'
+            f'<td style="padding:3px 6px;font-size:calc(11px*var(--zf,1));font-weight:700;color:{_scol};white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis">{_st}</td>'
+            f'<td style="padding:3px 6px;font-size:calc(11px*var(--zf,1));color:#64748b;white-space:nowrap">{_sd}→{_sf}</td>'
+            f'<td style="padding:3px 6px;font-size:calc(11px*var(--zf,1));font-weight:800;color:#1e293b;white-space:nowrap">{_sdur}</td>'
+            f'<td style="padding:3px 6px;font-size:calc(10px*var(--zf,1));color:#94a3b8;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{_scmt}">{_scmt}</td>'
             f'</tr>')
     if not _stop_list_html:
-        _stop_list_html = '<tr><td colspan="4" style="padding:6px;text-align:center;color:#94a3b8;font-size:12px">Aucun arrêt</td></tr>'
+        _stop_list_html = '<tr><td colspan="4" style="padding:6px;text-align:center;color:#94a3b8;font-size:calc(12px*var(--zf,1))">Aucun arrêt</td></tr>'
 
     # ── Productions table (avec données détaillées pour popup) ──
     import json as _json2
@@ -2985,21 +2985,21 @@ def generate_dashboard_html():
             "duree_mq_mp":str(r[32] if len(r)>32 else ""),"manquant_pers":str(r[33] if len(r)>33 else ""),
             "comment":cmt_val,"trs":_trs_p,"stops":_of_stops2})
         prod_rows_html += f'''<tr style="cursor:pointer" onclick="showDashProdOf({_pi})" title="Voir détail OF">
-          <td style="font-weight:800;font-size:15px;color:#1e3a8a;text-decoration:underline">{r[1] or ""}</td>
-          <td style="color:#6366f1;font-weight:700;font-size:13px;cursor:pointer" title="{fibre_val}" onclick="event.stopPropagation();if(this.title)alert(\'Fibre : \'+this.title)">{fibre_short}</td>
-          <td style="color:#475569;font-size:14px">{r[9] or ""}</td>
-          <td style="color:#475569;font-size:14px">{r[7] or ""}</td>
+          <td style="font-weight:800;font-size:calc(15px*var(--zf,1));color:#1e3a8a;text-decoration:underline">{r[1] or ""}</td>
+          <td style="color:#6366f1;font-weight:700;font-size:calc(13px*var(--zf,1));cursor:pointer" title="{fibre_val}" onclick="event.stopPropagation();if(this.title)alert(\'Fibre : \'+this.title)">{fibre_short}</td>
+          <td style="color:#475569;font-size:calc(14px*var(--zf,1))">{r[9] or ""}</td>
+          <td style="color:#475569;font-size:calc(14px*var(--zf,1))">{r[7] or ""}</td>
           <td style="text-align:center">{kit_disp}</td>
           <td style="color:#475569">{str(r[16] or "")[:5]}</td><td style="color:#475569">{str(r[17] or "")[:5]}</td>
           <td style="color:#475569">{r[18] or ""}</td>
           <td style="color:#1e293b">{r[19] or "0"}</td>
-          <td style="color:#0369a1;font-size:14px">{cad_val}</td>
+          <td style="color:#0369a1;font-size:calc(14px*var(--zf,1))">{cad_val}</td>
           <td style="font-weight:800;color:#0891b2">{r[21] or ""}</td>
           <td>{trs_val}</td>
-          <td style="color:#64748b;font-size:14px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{cmt_val}">{cmt_val}</td>
+          <td style="color:#64748b;font-size:calc(14px*var(--zf,1));max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{cmt_val}">{cmt_val}</td>
         </tr>'''
     if not prod_rows_html:
-        prod_rows_html = '<tr><td colspan="12" style="color:#94a3b8;padding:10px;text-align:center;font-size:15px">Aucune production déclarée</td></tr>'
+        prod_rows_html = '<tr><td colspan="12" style="color:#94a3b8;padding:10px;text-align:center;font-size:calc(15px*var(--zf,1))">Aucune production déclarée</td></tr>'
     _dash_prod_json = _json2.dumps(_dash_prod_list, ensure_ascii=True, default=str)
 
     # ── ALERT BANNER HTML ──
@@ -3007,8 +3007,8 @@ def generate_dashboard_html():
     if has_alert:
         stops_html = "".join(
             f'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;background:rgba(255,255,255,.12);border-radius:8px;padding:6px 14px;margin:3px 0;min-width:240px">'
-            f'<span style="font-size:22px;font-weight:800;color:#fef2f2">{nm}</span>'
-            f'<span style="font-size:30px;font-weight:900;color:#fecaca;font-variant-numeric:tabular-nums">{int(el/60)}<span style="font-size:16px">min</span></span>'
+            f'<span style="font-size:calc(22px*var(--zf,1));font-weight:800;color:#fef2f2">{nm}</span>'
+            f'<span style="font-size:calc(30px*var(--zf,1));font-weight:900;color:#fecaca;font-variant-numeric:tabular-nums">{int(el/60)}<span style="font-size:calc(16px*var(--zf,1))">min</span></span>'
             f'</div>'
             for nm, el in all_stops_info
         )
@@ -3016,10 +3016,10 @@ def generate_dashboard_html():
 <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   background:linear-gradient(135deg,#7f0000 0%,#b91c1c 50%,#ef4444 100%);
   animation:pulse 1.2s ease-in-out infinite;border-bottom:6px solid #fca5a5">
-  <div style="font-size:52px;line-height:1;animation:wag .8s ease-in-out infinite">🚨</div>
-  <div style="font-size:50px;font-weight:900;letter-spacing:4px;margin:8px 0;text-shadow:0 4px 16px rgba(0,0,0,.4);color:#fff">ARRÊT{"S" if len(all_stops_info)>1 else ""} EN COURS</div>
+  <div style="font-size:calc(52px*var(--zf,1));line-height:1;animation:wag .8s ease-in-out infinite">🚨</div>
+  <div style="font-size:calc(50px*var(--zf,1));font-weight:900;letter-spacing:4px;margin:8px 0;text-shadow:0 4px 16px rgba(0,0,0,.4);color:#fff">ARRÊT{"S" if len(all_stops_info)>1 else ""} EN COURS</div>
   {stops_html}
-  <div style="font-size:52px;line-height:1;animation:wag .8s ease-in-out infinite reverse;margin-top:8px">🚨</div>
+  <div style="font-size:calc(52px*var(--zf,1));line-height:1;animation:wag .8s ease-in-out infinite reverse;margin-top:8px">🚨</div>
 </div>'''
     else:
         # ── PROD EN COURS + PRODUCTIONS DU POSTE ──
@@ -3036,8 +3036,8 @@ def generate_dashboard_html():
                                    ("Écoulé", of_elapsed_str, "#0891b2"),
                                    ("Arrêts", of_stop_min+" min", "#ef4444")]:
             _of_chips += (f'<div style="text-align:center;flex-shrink:0">'
-                          f'<div style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase">{_lbl}</div>'
-                          f'<div style="font-size:15px;font-weight:800;color:{_col}">{_val}</div></div>')
+                          f'<div style="font-size:calc(10px*var(--zf,1));color:#64748b;font-weight:700;text-transform:uppercase">{_lbl}</div>'
+                          f'<div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:{_col}">{_val}</div></div>')
         # Chips ligne 2 : champs formulaire (uniquement si renseigné)
         _form_detail_chips = ""
         _form_detail_fields = [
@@ -3052,8 +3052,8 @@ def generate_dashboard_html():
         for _lbl2, _val2, _col2 in _form_detail_fields:
             if not _val2 or _val2 == "Non": continue
             _form_detail_chips += (f'<div style="text-align:center;flex-shrink:0;padding:2px 5px;background:#f0fdf4;border:1px solid #d1fae5;border-radius:5px">'
-                                   f'<div style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase">{_lbl2}</div>'
-                                   f'<div style="font-size:12px;font-weight:800;color:{_col2};white-space:nowrap">{_val2}</div></div>')
+                                   f'<div style="font-size:calc(9px*var(--zf,1));color:#64748b;font-weight:700;text-transform:uppercase">{_lbl2}</div>'
+                                   f'<div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:{_col2};white-space:nowrap">{_val2}</div></div>')
         _form_section = (f'<div style="border-top:1px solid #d1fae5;padding-top:4px;display:flex;flex-wrap:wrap;gap:4px">{_form_detail_chips}</div>'
                          if _form_detail_chips else '')
         _poste_chips = ""
@@ -3064,8 +3064,8 @@ def generate_dashboard_html():
                                                    ("Arrêts", f"{stop_s_total/60:.0f}min", "#ef4444")]):
             _bl = "border-left:1px solid #e2e8f0;" if _i > 0 else ""
             _poste_chips += (f'<div style="text-align:center;flex:1;padding:0 3px;{_bl}">'
-                             f'<div style="font-size:20px;font-weight:900;color:{_col};line-height:1">{_val}</div>'
-                             f'<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-top:1px">{_lbl}</div></div>')
+                             f'<div style="font-size:calc(20px*var(--zf,1));font-weight:900;color:{_col};line-height:1">{_val}</div>'
+                             f'<div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#64748b;text-transform:uppercase;margin-top:1px">{_lbl}</div></div>')
         _budget_bars = _dash_budget_bars_html()
         _budget_col = f'  {_budget_bars}' if _budget_bars else ''
         _grid_cols = '2fr 1fr auto' if _budget_bars else '2fr 1fr'
@@ -3074,8 +3074,8 @@ def generate_dashboard_html():
   <div style="background:#f0fdf4;border:2px solid {of_border_col};border-radius:8px;padding:5px 12px;display:flex;flex-direction:column;gap:4px">
     <div style="display:flex;align-items:center;gap:12px">
       <div style="flex-shrink:0">
-        <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:{prod_status_col};letter-spacing:1px">{prod_status_label}</div>
-        <div style="font-size:24px;font-weight:900;color:#1e293b;line-height:1.1;font-family:monospace">OF {of_num_now}</div>
+        <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:{prod_status_col};letter-spacing:1px">{prod_status_label}</div>
+        <div style="font-size:calc(24px*var(--zf,1));font-weight:900;color:#1e293b;line-height:1.1;font-family:monospace">OF {of_num_now}</div>
       </div>
       <div style="height:32px;width:1px;background:#d1fae5;flex-shrink:0"></div>
       {_of_chips}
@@ -3083,7 +3083,7 @@ def generate_dashboard_html():
     {_form_section}
   </div>
   <div style="background:#f8fafc;border:2px solid #e2e8f0;border-radius:8px;padding:3px 8px;display:flex;align-items:center;gap:0">
-    <div style="font-size:10px;font-weight:800;text-transform:uppercase;color:#1e3a8a;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:1px;flex-shrink:0;margin-right:6px">Poste entier</div>
+    <div style="font-size:calc(10px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#1e3a8a;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:1px;flex-shrink:0;margin-right:6px">Poste entier</div>
     {_poste_chips}
   </div>
 {_budget_col}
@@ -3158,7 +3158,7 @@ def generate_dashboard_html():
         if _sess_key != _prev_session_key:
             _prev_session_key = _sess_key
             hist_html += (f'<tr class="hist-sep" style="background:#f0f4fa;border-top:2px solid #c7d2e8">'
-                f'<td colspan="12" style="padding:3px 10px;font-size:10px;font-weight:600;color:#334155;letter-spacing:.2px">'
+                f'<td colspan="12" style="padding:3px 10px;font-size:calc(10px*var(--zf,1));font-weight:600;color:#334155;letter-spacing:.2px">'
                 f'📅 {str(r[2] or "")[:10]} &nbsp;·&nbsp; 🏭 {str(r[3] or "")} &nbsp;·&nbsp; 👤 {str(r[4] or "")}'
                 f'</td></tr>')
         _fibre_h = str(r[11] or "").strip()
@@ -3166,7 +3166,7 @@ def generate_dashboard_html():
         hist_html += (f'<tr class="hist-row" data-date="{str(r[2] or "")[:10]}" data-of="{str(r[1] or "")}" data-pilot="{str(r[4] or "")}" style="cursor:pointer" onclick="showDashOf({_hidx})" title="Voir détail OF">'
             f'<td style="font-weight:800">{str(r[2] or "")[:10]}</td>'
             f'<td style="font-weight:800;color:#1e3a8a;text-decoration:underline">{r[1] or ""}</td>'
-            f'<td style="color:#6366f1;font-weight:700;font-size:12px;cursor:pointer" title="{_fibre_h}" onclick="event.stopPropagation();if(this.title)alert(\'Fibre : \'+this.title)">{_fibre_short_h}</td>'
+            f'<td style="color:#6366f1;font-weight:700;font-size:calc(12px*var(--zf,1));cursor:pointer" title="{_fibre_h}" onclick="event.stopPropagation();if(this.title)alert(\'Fibre : \'+this.title)">{_fibre_short_h}</td>'
             f'<td>{r[9] or ""}</td>'
             f'<td>{str(r[3] or "")}</td>'
             f'<td>{str(r[4] or "")}</td>'
@@ -3217,63 +3217,63 @@ def generate_dashboard_html():
 <title>Dashboard Encadrant — ORC</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#eef2f7;color:#1e293b;font-size:15px}}
+html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#eef2f7;color:#1e293b;font-size:calc(15px*var(--zf,1))}}
 .hdr{{height:48px;background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;box-shadow:0 2px 8px rgba(30,58,138,.3)}}
-.hdr-title{{font-size:18px;font-weight:900;display:flex;align-items:center;gap:10px;letter-spacing:.3px}}
-.hdr-badge{{background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:13px;font-weight:700}}
+.hdr-title{{font-size:calc(18px*var(--zf,1));font-weight:900;display:flex;align-items:center;gap:10px;letter-spacing:.3px}}
+.hdr-badge{{background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:calc(13px*var(--zf,1));font-weight:700}}
 .hdr-badge.green{{background:#15803d;box-shadow:0 0 0 2px #22c55e44}}
 .hdr-badge.gray{{background:rgba(255,255,255,.15)}}
-.hdr-time{{font-size:12px;opacity:.75}}
+.hdr-time{{font-size:calc(12px*var(--zf,1));opacity:.75}}
 .outer{{height:calc(100vh - 48px);display:flex;flex-direction:column;gap:8px;padding:8px;overflow:hidden}}
 .panel{{background:#fff;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
-.panel-hdr{{padding:6px 12px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
+.panel-hdr{{padding:6px 12px;font-size:calc(12px*var(--zf,1));font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
 .panel-body{{flex:1;overflow-y:auto;padding:8px 12px;min-height:0}}
-.trs-num{{font-size:42px;font-weight:900;line-height:1;text-align:center}}
-.trs-lbl{{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:4px}}
-.trs-sub{{font-size:14px;color:#64748b;text-align:center;margin-top:3px}}
+.trs-num{{font-size:calc(42px*var(--zf,1));font-weight:900;line-height:1;text-align:center}}
+.trs-lbl{{font-size:calc(12px*var(--zf,1));font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:4px}}
+.trs-sub{{font-size:calc(14px*var(--zf,1));color:#64748b;text-align:center;margin-top:3px}}
 /* HERO ROW */
 .dash-hero{{display:flex;gap:10px;align-items:stretch;flex-shrink:0}}
 .dash-trs-card{{background:#fff;border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.1);min-width:180px}}
 .dash-kpi-grid{{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;flex:1}}
 .dash-kpi{{background:#fff;border-radius:10px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.1);text-align:center}}
-.dash-kpi-val{{font-size:24px;font-weight:900;line-height:1.1}}
-.dash-kpi-lbl{{font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px;letter-spacing:.4px}}
+.dash-kpi-val{{font-size:calc(24px*var(--zf,1));font-weight:900;line-height:1.1}}
+.dash-kpi-lbl{{font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px;letter-spacing:.4px}}
 .dash-pie-card{{background:#fff;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 3px rgba(0,0,0,.1);flex-shrink:0}}
 /* CONTENT GRID */
 .dash-content{{display:grid;grid-template-columns:1fr 320px;gap:8px;flex:1;overflow:hidden;min-height:0}}
 .dash-right{{display:flex;flex-direction:column;gap:8px;overflow:hidden}}
 .dash-card{{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column}}
-.dash-card-hdr{{padding:7px 14px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.7px;color:#475569;border-bottom:1px solid #f1f5f9;flex-shrink:0;display:flex;align-items:center;gap:6px}}
+.dash-card-hdr{{padding:7px 14px;font-size:calc(11px*var(--zf,1));font-weight:900;text-transform:uppercase;letter-spacing:.7px;color:#475569;border-bottom:1px solid #f1f5f9;flex-shrink:0;display:flex;align-items:center;gap:6px}}
 .dash-card-hdr .dot{{width:8px;height:8px;border-radius:50%;flex-shrink:0}}
 .dash-card-body{{flex:1;overflow-y:auto;min-height:0}}
 /* STAT CARDS (alert mode) */
 .stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:6px}}
 .stat-card{{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.05)}}
-.stat-val{{font-size:28px;font-weight:900;line-height:1}}
-.stat-lbl{{font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-top:3px;letter-spacing:.4px}}
+.stat-val{{font-size:calc(28px*var(--zf,1));font-weight:900;line-height:1}}
+.stat-lbl{{font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;margin-top:3px;letter-spacing:.4px}}
 /* TIMELINE */
 .tl-cell{{background:#fff;border-radius:12px;padding:8px 12px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.08)}}
-.tl-lbl{{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#64748b;margin-bottom:5px;display:flex;justify-content:space-between}}
-.tl-legend{{display:flex;gap:10px;font-size:12px;color:#64748b;margin-top:4px;flex-wrap:wrap;align-items:center}}
+.tl-lbl{{font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#64748b;margin-bottom:5px;display:flex;justify-content:space-between}}
+.tl-legend{{display:flex;gap:10px;font-size:calc(12px*var(--zf,1));color:#64748b;margin-top:4px;flex-wrap:wrap;align-items:center}}
 .tl-legend span i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:2px;vertical-align:middle}}
 /* FP CARDS (used in _render_rpt_panel) */
 .fp-card{{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;text-align:center}}
-.fp-big{{font-size:20px;font-weight:900;color:#1e3a8a;line-height:1.1}}
-.fp-lbl{{font-size:9px;text-transform:uppercase;font-weight:700;color:#64748b;margin-top:2px}}
+.fp-big{{font-size:calc(20px*var(--zf,1));font-weight:900;color:#1e3a8a;line-height:1.1}}
+.fp-lbl{{font-size:calc(9px*var(--zf,1));text-transform:uppercase;font-weight:700;color:#64748b;margin-top:2px}}
 .rpt-card{{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px}}
 /* TABLE */
-.ktbl{{width:100%;border-collapse:collapse;font-size:14px}}
-.ktbl th{{background:#f8fafc;padding:6px 10px;font-weight:800;text-align:center;position:sticky;top:0;font-size:11px;text-transform:uppercase;color:#475569;border-bottom:2px solid #e2e8f0;white-space:nowrap}}
+.ktbl{{width:100%;border-collapse:collapse;font-size:calc(14px*var(--zf,1))}}
+.ktbl th{{background:#f8fafc;padding:6px 10px;font-weight:800;text-align:center;position:sticky;top:0;font-size:calc(11px*var(--zf,1));text-transform:uppercase;color:#475569;border-bottom:2px solid #e2e8f0;white-space:nowrap}}
 .ktbl td{{padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:center;color:#1e293b}}
 .ktbl tr:hover td{{background:#f8fafc}}
 /* HISTORIQUE FILTER */
 .hist-filter{{display:flex;gap:8px;align-items:center;padding:8px 10px;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex-shrink:0;flex-wrap:wrap}}
-.hist-filter label{{font-size:11px;font-weight:700;color:#64748b;white-space:nowrap}}
-.hist-filter input{{border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:12px;color:#1e293b;outline:none;background:#f8fafc}}
+.hist-filter label{{font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;white-space:nowrap}}
+.hist-filter input{{border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:calc(12px*var(--zf,1));color:#1e293b;outline:none;background:#f8fafc}}
 .hist-filter input:focus{{border-color:#3b82f6;background:#fff}}
 /* TABS */
 .tab-bar{{display:flex;gap:0;flex-shrink:0;border-bottom:2px solid #e2e8f0}}
-.tab-btn{{background:none;border:none;border-bottom:3px solid transparent;padding:9px 22px;font-size:13px;font-weight:700;color:#64748b;cursor:pointer;transition:all .15s;margin-bottom:-2px}}
+.tab-btn{{background:none;border:none;border-bottom:3px solid transparent;padding:9px 22px;font-size:calc(13px*var(--zf,1));font-weight:700;color:#64748b;cursor:pointer;transition:all .15s;margin-bottom:-2px}}
 .tab-btn:hover{{color:#1e3a8a}}
 .tab-btn.active{{color:#1e3a8a;border-bottom-color:#1e3a8a;background:rgba(30,58,138,.04)}}
 .tab-pane{{flex:1;display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0}}
@@ -3281,7 +3281,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
 .rpt-wrap{{display:flex;flex:1;overflow:hidden;min-height:0;position:relative;gap:0}}
 #rpt-sidebar{{width:260px;min-width:0;transition:width .25s ease,opacity .2s ease;overflow:hidden;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid #e2e8f0;background:#fafbfc}}
 #rpt-sidebar.col{{width:0;opacity:0;border-right:none}}
-#rpt-tog{{position:absolute;left:260px;top:50%;transform:translateY(-50%);z-index:20;width:18px;height:40px;background:#fff;border:1px solid #e2e8f0;border-left:none;border-radius:0 6px 6px 0;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748b;transition:left .25s ease;box-shadow:2px 0 4px rgba(0,0,0,.06);font-size:13px}}
+#rpt-tog{{position:absolute;left:260px;top:50%;transform:translateY(-50%);z-index:20;width:18px;height:40px;background:#fff;border:1px solid #e2e8f0;border-left:none;border-radius:0 6px 6px 0;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748b;transition:left .25s ease;box-shadow:2px 0 4px rgba(0,0,0,.06);font-size:calc(13px*var(--zf,1))}}
 #rpt-sidebar.col+#rpt-tog{{left:0}}
 /* MODAL */
 .dash-modal-overlay{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:9999}}
@@ -3298,8 +3298,8 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     &#127981; Dashboard Encadrant — ORC
   </div>
   <div style="display:flex;align-items:center;gap:18px">
-    {f'<div style="display:flex;flex-direction:column;align-items:center;line-height:1.1"><span style="font-size:22px;font-weight:900;color:#fff;letter-spacing:.5px">👤 {pilot_now}</span><span style="font-size:14px;font-weight:700;color:#93c5fd;text-transform:uppercase">{poste_now}</span></div>' if pilot_now else ''}
-    {f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px;text-align:center"><div style="font-size:12px;color:#93c5fd;font-weight:700;text-transform:uppercase">Modèle horaire</div><div style="font-size:18px;font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} → {model_fin_dt.strftime("%H:%M")}</div></div>' if (model_debut_dt and model_fin_dt) else (f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px"><div style="font-size:12px;color:#93c5fd;font-weight:700">Modèle</div><div style="font-size:18px;font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} →</div></div>' if model_debut_dt else '')}
+    {f'<div style="display:flex;flex-direction:column;align-items:center;line-height:1.1"><span style="font-size:calc(22px*var(--zf,1));font-weight:900;color:#fff;letter-spacing:.5px">👤 {pilot_now}</span><span style="font-size:calc(14px*var(--zf,1));font-weight:700;color:#93c5fd;text-transform:uppercase">{poste_now}</span></div>' if pilot_now else ''}
+    {f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px;text-align:center"><div style="font-size:calc(12px*var(--zf,1));color:#93c5fd;font-weight:700;text-transform:uppercase">Modèle horaire</div><div style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} → {model_fin_dt.strftime("%H:%M")}</div></div>' if (model_debut_dt and model_fin_dt) else (f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px"><div style="font-size:calc(12px*var(--zf,1));color:#93c5fd;font-weight:700">Modèle</div><div style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} →</div></div>' if model_debut_dt else '')}
     {'<span class="hdr-badge green">▶ PROD — OF ' + of_num_now + '</span>' if prod_active else '<span class="hdr-badge gray">○ En attente</span>'}
     <span class="hdr-time">🔄 15s | {gen_time}</span>
   </div>
@@ -3322,36 +3322,36 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
   <!-- HEADER BAR like EXE Reports -->
   <div style="background:#1e3a8a;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-radius:10px;margin-bottom:8px">
     <div>
-      <div style="font-size:15px;font-weight:800">📋 Tableau de bord — {poste_now or "—"}</div>
-      <div style="font-size:11px;opacity:.8">{pilot_now or "—"} · Aujourd'hui · {elapsed_str}</div>
+      <div style="font-size:calc(15px*var(--zf,1));font-weight:800">📋 Tableau de bord — {poste_now or "—"}</div>
+      <div style="font-size:calc(11px*var(--zf,1));opacity:.8">{pilot_now or "—"} · Aujourd'hui · {elapsed_str}</div>
     </div>
     <div style="text-align:right">
-      <div style="font-size:28px;font-weight:900;color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div>
-      <div style="font-size:11px;opacity:.7">TRS Poste</div>
+      <div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div>
+      <div style="font-size:calc(11px*var(--zf,1));opacity:.7">TRS Poste</div>
     </div>
   </div>
 
   <!-- KPI BAR: gauge + pie + fp-cards -->
   <div style="display:flex;gap:10px;padding:10px 12px;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:8px;align-items:center;flex-wrap:wrap;flex-shrink:0">
     <div style="text-align:center;flex-shrink:0">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">TRS Poste</div>
+      <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">TRS Poste</div>
       {gauge_svg(trs_poste, 130)}
     </div>
     <div style="text-align:center;flex-shrink:0">
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">Répartition</div>
+      <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">Répartition</div>
       {pie_svg(prod_s_total, stop_s_total, 65)}
     </div>
     <div style="flex:1;display:flex;flex-direction:column;gap:5px;min-width:300px">
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
-        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:#7c3aed;font-weight:900">{nb_of_today}</div><div class="fp-lbl" style="font-size:12px">OF déclarés</div></div>
-        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:#0891b2;font-weight:900">{tot_equiv:.1f}</div><div class="fp-lbl" style="font-size:12px">Équivalence</div></div>
-        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:24px;color:{trs_col};font-weight:900">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="fp-lbl" style="font-size:12px">TRS Poste</div></div>
+        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(24px*var(--zf,1));color:#7c3aed;font-weight:900">{nb_of_today}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">OF déclarés</div></div>
+        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(24px*var(--zf,1));color:#0891b2;font-weight:900">{tot_equiv:.1f}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">Équivalence</div></div>
+        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(24px*var(--zf,1));color:{trs_col};font-weight:900">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">TRS Poste</div></div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px">{(model_debut_dt.strftime("%H:%M")+"→"+last_fin_dt.strftime("%H:%M")) if (model_debut_dt and last_fin_dt) else "—"}</div><div class="fp-lbl" style="font-size:11px">Plage</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">{prod_s_total/60:.0f} min</div><div class="fp-lbl" style="font-size:11px">Prod.</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#dc2626">{stop_s_total/60:.0f} min</div><div class="fp-lbl" style="font-size:11px">Arrêts</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">{prod_pct}%</div><div class="fp-lbl" style="font-size:11px">% prod</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1))">{(model_debut_dt.strftime("%H:%M")+"→"+last_fin_dt.strftime("%H:%M")) if (model_debut_dt and last_fin_dt) else "—"}</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Plage</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#16a34a">{prod_s_total/60:.0f} min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Prod.</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#dc2626">{stop_s_total/60:.0f} min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Arrêts</div></div>
+        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#16a34a">{prod_pct}%</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">% prod</div></div>
       </div>
     </div>
   </div>
@@ -3360,7 +3360,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
   <div style="padding:6px 12px;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:8px;flex-shrink:0">
     <div class="tl-lbl">
       <span>Timeline — {poste_now or "en cours"}</span>
-      <span style="font-size:12px">{(model_debut_dt or shift_start_dt).strftime("%H:%M") if (model_debut_dt or shift_start_dt) else "—"} → maintenant</span>
+      <span style="font-size:calc(12px*var(--zf,1))">{(model_debut_dt or shift_start_dt).strftime("%H:%M") if (model_debut_dt or shift_start_dt) else "—"} → maintenant</span>
     </div>
     {tl_svg}
     <div class="tl-legend">
@@ -3377,11 +3377,11 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
   <div style="display:grid;grid-template-columns:1fr 340px;gap:8px;flex:1;min-height:0;overflow:hidden">
     <!-- Productions -->
     <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column;overflow:hidden">
-      <div style="padding:8px 12px;font-size:12px;font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:6px;flex-shrink:0">
+      <div style="padding:8px 12px;font-size:calc(12px*var(--zf,1));font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:6px;flex-shrink:0">
         <span style="width:8px;height:8px;background:#16a34a;border-radius:50%;display:inline-block"></span>Productions déclarées
       </div>
       <div style="flex:1;overflow-y:auto">
-        <table class="ktbl" style="font-size:12px">
+        <table class="ktbl" style="font-size:calc(12px*var(--zf,1))">
           <thead><tr><th>OF</th><th>Fibre</th><th>Type</th><th>Format</th><th>Lots 2</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cad./h</th><th>Éq.</th><th>TRS</th><th>Comm.</th></tr></thead>
           <tbody>{prod_rows_html}</tbody>
         </table>
@@ -3390,13 +3390,13 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     <!-- Pareto + Arrêts -->
     <div style="display:flex;flex-direction:column;gap:8px;overflow:hidden">
       <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:10px 12px;flex-shrink:0">
-        <div style="font-size:12px;font-weight:800;color:#1e3a8a;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+        <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#1e3a8a;margin-bottom:8px;display:flex;align-items:center;gap:6px">
           <span style="width:8px;height:8px;background:#d97706;border-radius:50%;display:inline-block"></span>Pareto arrêts
         </div>
         {pareto_html}
       </div>
       <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:1;overflow:hidden;display:flex;flex-direction:column">
-        <div style="padding:8px 12px;font-size:12px;font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <div style="padding:8px 12px;font-size:calc(12px*var(--zf,1));font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:6px;flex-shrink:0">
           <span style="width:8px;height:8px;background:#ef4444;border-radius:50%;display:inline-block"></span>Détail arrêts
         </div>
         <div style="flex:1;overflow-y:auto">
@@ -3418,8 +3418,8 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     <input type="date" id="h-to" oninput="filterHist()">
     <label>Recherche OF :</label>
     <input type="text" id="h-q" placeholder="Numéro d'OF..." oninput="filterHist()" style="width:160px">
-    <button onclick="document.getElementById('h-from').value='';document.getElementById('h-to').value='';document.getElementById('h-q').value='';filterHist()" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;font-size:12px;color:#64748b;cursor:pointer">✕ Réinitialiser</button>
-    <span id="h-count" style="font-size:11px;color:#94a3b8;margin-left:auto">{len(hist_rows)} productions</span>
+    <button onclick="document.getElementById('h-from').value='';document.getElementById('h-to').value='';document.getElementById('h-q').value='';filterHist()" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;font-size:calc(12px*var(--zf,1));color:#64748b;cursor:pointer">✕ Réinitialiser</button>
+    <span id="h-count" style="font-size:calc(11px*var(--zf,1));color:#94a3b8;margin-left:auto">{len(hist_rows)} productions</span>
   </div>
 
   <div class="dash-card" style="flex:1;min-height:0">
@@ -3440,9 +3440,9 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
   <div id="tab-rapports" class="tab-pane" style="display:none;flex-direction:column;overflow:hidden">
     <div class="rpt-wrap">
       <div id="rpt-sidebar">
-        <div style="padding:10px 14px;font-size:13px;font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
+        <div style="padding:10px 14px;font-size:calc(13px*var(--zf,1));font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
           <span>📋 Postes</span>
-          <button onclick="loadRapports()" style="font-size:11px;padding:3px 8px;background:none;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#64748b">↺</button>
+          <button onclick="loadRapports()" style="font-size:calc(11px*var(--zf,1));padding:3px 8px;background:none;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#64748b">↺</button>
         </div>
         <div id="rpt-list" style="flex:1;overflow-y:auto">
           __RPT_LIST__
@@ -3480,9 +3480,9 @@ function _renderDashOf(r){{
   ];
   chips=chips.filter(function(c){{return c[1]&&c[1]!=='—'&&c[1]!==''||c[0]==='TRS OF';}});
   var esc=function(s){{return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}};
-  var chipsHtml=chips.map(function(c){{return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;text-align:center"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b">'+c[0]+'</div><div style="font-size:14px;font-weight:800;color:#1e293b">'+(c[2]==='raw'?c[1]:esc(c[1]))+'</div></div>';}}).join('');
-  var stopsHtml=(r.stops&&r.stops.length)?r.stops.map(function(e){{return '<tr><td style="padding:4px 8px;font-size:12px;font-weight:600">'+esc(e.type||'')+'</td><td style="padding:4px 8px;font-size:11px;white-space:nowrap">'+e.debut+'→'+e.fin+'</td><td style="padding:4px 8px;font-weight:700">'+e.duree+'</td><td style="padding:4px 8px;font-size:11px;color:#64748b">'+esc(e.comment||'')+'</td></tr>';}}).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:#94a3b8">Aucun arrêt</td></tr>';
-  document.getElementById('dash-of-detail-content').innerHTML='<div style="font-size:22px;font-weight:900;color:#1e3a8a;margin-bottom:14px;font-family:monospace">OF '+esc(r.of||'—')+'</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">'+chipsHtml+'</div>'+(r.comment?'<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">💬 '+esc(r.comment)+'</div>':'')+'<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:6px">Arrêts pendant cet OF</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:11px">Type</th><th style="padding:4px 8px;font-size:11px">Plage</th><th style="padding:4px 8px;font-size:11px">Durée</th><th style="padding:4px 8px;font-size:11px">Comm.</th></tr></thead><tbody>'+stopsHtml+'</tbody></table>';
+  var chipsHtml=chips.map(function(c){{return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;text-align:center"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b">'+c[0]+'</div><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:#1e293b">'+(c[2]==='raw'?c[1]:esc(c[1]))+'</div></div>';}}).join('');
+  var stopsHtml=(r.stops&&r.stops.length)?r.stops.map(function(e){{return '<tr><td style="padding:4px 8px;font-size:calc(12px*var(--zf,1));font-weight:600">'+esc(e.type||'')+'</td><td style="padding:4px 8px;font-size:calc(11px*var(--zf,1));white-space:nowrap">'+e.debut+'→'+e.fin+'</td><td style="padding:4px 8px;font-weight:700">'+e.duree+'</td><td style="padding:4px 8px;font-size:calc(11px*var(--zf,1));color:#64748b">'+esc(e.comment||'')+'</td></tr>';}}).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:#94a3b8">Aucun arrêt</td></tr>';
+  document.getElementById('dash-of-detail-content').innerHTML='<div style="font-size:calc(22px*var(--zf,1));font-weight:900;color:#1e3a8a;margin-bottom:14px;font-family:monospace">OF '+esc(r.of||'—')+'</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">'+chipsHtml+'</div>'+(r.comment?'<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:calc(13px*var(--zf,1))">💬 '+esc(r.comment)+'</div>':'')+'<div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:6px">Arrêts pendant cet OF</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:calc(11px*var(--zf,1))">Type</th><th style="padding:4px 8px;font-size:calc(11px*var(--zf,1))">Plage</th><th style="padding:4px 8px;font-size:calc(11px*var(--zf,1))">Durée</th><th style="padding:4px 8px;font-size:calc(11px*var(--zf,1))">Comm.</th></tr></thead><tbody>'+stopsHtml+'</tbody></table>';
   document.getElementById('dash-of-modal').style.display='flex';
 }}
 function showDashProdOf(i){{ _renderDashOf(_dashProdOf[i]); }}
@@ -3540,8 +3540,8 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
 <div id="dash-of-modal" class="dash-modal-overlay" onclick="if(event.target.id==='dash-of-modal')this.style.display='none'">
   <div class="dash-modal-box">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <span style="font-size:14px;font-weight:800;color:#1e3a8a">📋 Détail OF</span>
-      <button onclick="document.getElementById('dash-of-modal').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#64748b">✕</button>
+      <span style="font-size:calc(14px*var(--zf,1));font-weight:800;color:#1e3a8a">📋 Détail OF</span>
+      <button onclick="document.getElementById('dash-of-modal').style.display='none'" style="background:none;border:none;font-size:calc(18px*var(--zf,1));cursor:pointer;color:#64748b">✕</button>
     </div>
     <div id="dash-of-detail-content"></div>
   </div>
@@ -3708,12 +3708,12 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         max_stop = stop_arr[0][1] if stop_arr else 1.0
         pareto_h = ''.join(
             f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">'
-            f'<div style="font-size:10px;width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{_resc(e[0])}</div>'
+            f'<div style="font-size:calc(10px*var(--zf,1));width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{_resc(e[0])}</div>'
             f'<div style="flex:1;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden">'
             f'<div style="height:100%;background:#dc2626;border-radius:4px;width:{round(e[1]/max_stop*100) if max_stop>0 else 0}%;opacity:.8"></div></div>'
-            f'<div style="font-size:10px;font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">{round(e[1])}mn</div></div>'
+            f'<div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">{round(e[1])}mn</div></div>'
             for e in stop_arr
-        ) if stop_arr else '<div style="color:#64748b;font-size:12px">Aucun arrêt</div>'
+        ) if stop_arr else '<div style="color:#64748b;font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>'
         prod_h = ''
         for _pr in (d.get('prod_rows') or []):
             _to = _pr.get('trs', -1)
@@ -3722,13 +3722,13 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             prod_h += (
                 f'<tr style="border-bottom:1px solid #e2e8f0">'
                 f'<td style="padding:4px 6px;font-weight:700;color:#1e3a8a">{_resc(_pr.get("of",""))}</td>'
-                f'<td style="padding:4px 6px;font-size:11px">{_resc(_pr.get("taille",""))} {_resc(_pr.get("type_prod",""))}</td>'
+                f'<td style="padding:4px 6px;font-size:calc(11px*var(--zf,1))">{_resc(_pr.get("taille",""))} {_resc(_pr.get("type_prod",""))}</td>'
                 f'<td style="padding:4px 6px;text-align:center">{"✓" if str(_pr.get("kit","")).lower()=="oui" else ""}</td>'
                 f'<td style="padding:4px 6px">{_resc(_pr.get("qte_fab",""))}</td>'
                 f'<td style="padding:4px 6px;color:#0891b2;font-weight:700">{_resc(_pr.get("equiv",""))}</td>'
                 f'<td style="padding:4px 6px;white-space:nowrap">{_resc(_pr.get("debut",""))} → {_resc(_pr.get("fin",""))}</td>'
                 f'<td style="padding:4px 6px;font-weight:800;color:{_tc}">{_ts}</td>'
-                f'<td style="padding:4px 6px;font-size:10px;color:#64748b">{_resc(_pr.get("comment",""))}</td>'
+                f'<td style="padding:4px 6px;font-size:calc(10px*var(--zf,1));color:#64748b">{_resc(_pr.get("comment",""))}</td>'
                 f'</tr>'
             )
         if not prod_h:
@@ -3745,14 +3745,14 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
                 f'</tr>'
             )
         evts_section = (
-            f'<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">'
+            f'<table style="width:100%;border-collapse:collapse;font-size:calc(10px*var(--zf,1))"><thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">'
             f'<th style="padding:3px 5px;text-align:left;font-weight:700;color:#64748b">Arrêt</th>'
             f'<th style="padding:3px 5px;font-weight:700;color:#64748b">OF</th>'
             f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Plage</th>'
             f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Durée</th>'
             f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Commentaire</th>'
             f'</tr></thead><tbody>{evts_h}</tbody></table>'
-        ) if evts_h else '<div style="color:#64748b;font-size:12px">Aucun arrêt</div>'
+        ) if evts_h else '<div style="color:#64748b;font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>'
         _bgt_labels = {"pause_min":"Pause","meeting_tol_min":"Réunion","clean_short_min":"Nettoyage court","clean_long_min":"Nettoyage long","clean_grand_min":"Nettoyage très long"}
         _bgt_used = {bk:0.0 for bk in _bgt_labels}
         for _er in (d.get('evt_rows') or []):
@@ -3777,7 +3777,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             _bc='#dc2626' if _bu>_bm else '#d97706' if _bu/_bm>=0.8 else '#16a34a'
             _budget_bars_h+=(
                 f'<div style="margin-bottom:7px">'
-                f'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">'
+                f'<div style="display:flex;justify-content:space-between;font-size:calc(11px*var(--zf,1));margin-bottom:3px">'
                 f'<span>{_resc(_bl3)}</span>'
                 f'<span style="font-weight:700;color:{_bc}">{round(_bu)}/{round(_bm)} min</span>'
                 f'</div>'
@@ -3785,7 +3785,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
                 f'<div style="height:100%;background:{_bc};border-radius:4px;width:{_pct}%;opacity:.85"></div>'
                 f'</div></div>'
             )
-        if not _budget_bars_h: _budget_bars_h='<div style="color:#94a3b8;font-size:12px">Aucun budget configuré</div>'
+        if not _budget_bars_h: _budget_bars_h='<div style="color:#94a3b8;font-size:calc(12px*var(--zf,1))">Aucun budget configuré</div>'
         _tot_qte_fab = sum(float(str(pr.get("qte_fab","") or 0).replace(",",".")) for pr in (d.get("prod_rows") or []))
         _eff_s = max(1.0, float(d.get("model_dur_s",0) or 0) - float(d.get("planned_ded_s",0) or 0))
         _cad_h = round(_tot_qte_fab / _eff_s * 3600) if _eff_s > 0 and _tot_qte_fab > 0 else 0
@@ -3798,7 +3798,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             plage_str = f' · Modèle : {_resc(d.get("model_debut",""))} → {_resc(d.get("model_fin",""))}'
         ecart_div = (
             f'<div class="fp-card" style="padding:7px;border:1.5px solid #f59e0b">'
-            f'<div class="fp-big" style="font-size:16px;color:#d97706">{ecart_mn} min</div>'
+            f'<div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#d97706">{ecart_mn} min</div>'
             f'<div class="fp-lbl">Non déclaré</div></div>'
         ) if ecart_mn > 0 else ''
         disp = 'flex' if visible else 'none'
@@ -3807,46 +3807,46 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         return (
             f'<div class="rpt-det-panel" id="rpt-det-{idx}" style="display:{disp};flex-direction:column;overflow-y:auto">'
             f'<div style="background:#1e3a8a;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
-            f'<div><div style="font-size:15px;font-weight:800">📋 Rapport — {_resc(d.get("poste",""))}</div>'
-            f'<div style="font-size:11px;opacity:.8">{_resc(d.get("pilot",""))} · {_resc(d.get("date",""))}{plage_str}</div></div>'
-            f'<div style="text-align:right"><div style="font-size:26px;font-weight:900;color:{trs_col}">{trs_str}</div>'
-            f'<div style="font-size:11px;opacity:.7">TRS Shift</div></div></div>'
+            f'<div><div style="font-size:calc(15px*var(--zf,1));font-weight:800">📋 Rapport — {_resc(d.get("poste",""))}</div>'
+            f'<div style="font-size:calc(11px*var(--zf,1));opacity:.8">{_resc(d.get("pilot",""))} · {_resc(d.get("date",""))}{plage_str}</div></div>'
+            f'<div style="text-align:right"><div style="font-size:calc(26px*var(--zf,1));font-weight:900;color:{trs_col}">{trs_str}</div>'
+            f'<div style="font-size:calc(11px*var(--zf,1));opacity:.7">TRS Shift</div></div></div>'
             f'<div style="display:flex;gap:12px;padding:10px 14px;background:#fff;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap">'
-            f'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">TRS Poste</div>{g_svg}</div>'
-            f'<div style="text-align:center;flex-shrink:0"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">Répartition</div>{p_svg}</div>'
+            f'<div style="text-align:center;flex-shrink:0"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">TRS Poste</div>{g_svg}</div>'
+            f'<div style="text-align:center;flex-shrink:0"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">Répartition</div>{p_svg}</div>'
             f'<div style="flex:1;display:flex;flex-direction:column;gap:5px">'
             f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">'
-            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#059669;font-weight:900">{round(_tot_qte_fab)}</div><div class="fp-lbl" style="font-size:12px">Nb pièces prod.</div></div>'
-            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0891b2;font-weight:900">{round(d.get("tot_equiv",0) or 0)}</div><div class="fp-lbl" style="font-size:12px">Équivalence</div></div>'
-            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0369a1;font-weight:900">{_cad_h}</div><div class="fp-lbl" style="font-size:12px">Cadence/h</div></div>'
+            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(26px*var(--zf,1));color:#059669;font-weight:900">{round(_tot_qte_fab)}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">Nb pièces prod.</div></div>'
+            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(26px*var(--zf,1));color:#0891b2;font-weight:900">{round(d.get("tot_equiv",0) or 0)}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">Équivalence</div></div>'
+            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(26px*var(--zf,1));color:#0369a1;font-weight:900">{_cad_h}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">Cadence/h</div></div>'
             f'</div>'
             f'<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px">{(_resc(d.get("model_debut",""))+"→"+_resc(d.get("model_fin",""))) if d.get("model_debut") and d.get("model_fin") else (str(round((d.get("model_dur_s",0) or 0)/60))+" min")}</div><div class="fp-lbl" style="font-size:11px">Durée ouverture</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">{prod_min} min</div><div class="fp-lbl" style="font-size:11px">Durée prod</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#dc2626">{stop_min} min</div><div class="fp-lbl" style="font-size:11px">Arrêts total</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#16a34a">{round((d.get("planned_ded_s",0) or 0)/60)} min</div><div class="fp-lbl" style="font-size:11px">Arrêts prévus</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#7c3aed">{d.get("nb_of",0)}</div><div class="fp-lbl" style="font-size:11px">Nb OF</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:13px;color:#8b5cf6">{_nb_chg_f}</div><div class="fp-lbl" style="font-size:11px">Chg. fibre</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1))">{(_resc(d.get("model_debut",""))+"→"+_resc(d.get("model_fin",""))) if d.get("model_debut") and d.get("model_fin") else (str(round((d.get("model_dur_s",0) or 0)/60))+" min")}</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Durée ouverture</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#16a34a">{prod_min} min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Durée prod</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#dc2626">{stop_min} min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Arrêts total</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#16a34a">{round((d.get("planned_ded_s",0) or 0)/60)} min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Arrêts prévus</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#7c3aed">{d.get("nb_of",0)}</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Nb OF</div></div>'
+            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#8b5cf6">{_nb_chg_f}</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Chg. fibre</div></div>'
             f'</div></div></div>'
             f'<div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
-            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Productions</div>'
-            f'<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#f8fafc">'
+            f'<div class="rpt-card" style="padding:10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Productions</div>'
+            f'<table style="width:100%;border-collapse:collapse;font-size:calc(11px*var(--zf,1))"><thead><tr style="background:#f8fafc">'
             f'<th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>'
             f'<th style="padding:4px 6px">Kit</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>'
             f'<th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th>'
             f'</tr></thead><tbody>{prod_h}</tbody></table></div>'
-            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>{_budget_bars_h}</div>'
+            f'<div class="rpt-card" style="padding:10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>{_budget_bars_h}</div>'
             f'<div style="display:flex;flex-direction:column;gap:8px">'
-            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px">Pareto arrêts</div>{pareto_h}</div>'
-            f'<div class="rpt-card" style="padding:10px"><div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Détail arrêts</div>{evts_section}</div>'
+            f'<div class="rpt-card" style="padding:10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px">Pareto arrêts</div>{pareto_h}</div>'
+            f'<div class="rpt-card" style="padding:10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Détail arrêts</div>{evts_section}</div>'
             f'</div></div></div>'
         )
 
     _rpt_list_html = ''
     _rpt_det_html = ''
     if not _embedded_sessions_list:
-        _rpt_list_html = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Aucun poste disponible</div>'
-        _rpt_det_html = '<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:40px;margin-bottom:12px">📋</div><div style="font-size:14px;font-weight:600">Aucun rapport disponible</div></div>'
+        _rpt_list_html = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:calc(12px*var(--zf,1))">Aucun poste disponible</div>'
+        _rpt_det_html = '<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📋</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Aucun rapport disponible</div></div>'
     else:
         for _ri, _sr in enumerate(_embedded_sessions_list):
             _tv = _sr.get('trs', -1)
@@ -3855,9 +3855,9 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             _sel_st = ' style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s;background:#eff6ff"' if _ri == 0 else ' style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s"'
             _rpt_list_html += (
                 f'<div class="rpt-item" id="rpt-item-{_ri}" onclick="showRptPanel({_ri})"{_sel_st}>'
-                f'<div style="font-size:12px;font-weight:800;color:#1e3a8a">{_resc(_sr.get("date",""))} — {_resc(_sr.get("poste",""))}</div>'
-                f'<div style="font-size:11px;color:#64748b;margin-top:2px">{_resc(_sr.get("pilot","?"))} | {_sr.get("nb_of",0)} OF | Éq. {_sr.get("tot_equiv",0)}</div>'
-                f'<div style="font-size:16px;font-weight:900;color:{_tc2};margin-top:2px">{_ts2}</div>'
+                f'<div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#1e3a8a">{_resc(_sr.get("date",""))} — {_resc(_sr.get("poste",""))}</div>'
+                f'<div style="font-size:calc(11px*var(--zf,1));color:#64748b;margin-top:2px">{_resc(_sr.get("pilot","?"))} | {_sr.get("nb_of",0)} OF | Éq. {_sr.get("tot_equiv",0)}</div>'
+                f'<div style="font-size:calc(16px*var(--zf,1));font-weight:900;color:{_tc2};margin-top:2px">{_ts2}</div>'
                 f'</div>'
             )
             _rk = f"{_sr['date']}|{_sr['pilot']}|{_sr['poste']}"
@@ -3903,27 +3903,27 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   --hdr-h:52px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:13px;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:calc(13px*var(--zf,1));height:100vh;overflow:hidden;display:flex;flex-direction:column}
 
 /* ── STOP ACTIVE THEME ── */
 body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 
 /* ── HEADER ── */
 #app-hdr{height:var(--hdr-h);background:var(--navy);display:flex;align-items:center;padding:0 14px;gap:8px;flex-shrink:0;border-bottom:2px solid var(--navy2)}
-.hdr-logo{color:#fff;font-weight:800;font-size:15px;letter-spacing:1px;margin-right:10px;white-space:nowrap}
+.hdr-logo{color:#fff;font-weight:800;font-size:calc(15px*var(--zf,1));letter-spacing:1px;margin-right:10px;white-space:nowrap}
 .hdr-tabs{display:flex;gap:2px;flex:1}
-.htab{background:none;border:none;color:rgba(255,255,255,.65);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap;transition:all .15s}
+.htab{background:none;border:none;color:rgba(255,255,255,.65);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:calc(12px*var(--zf,1));font-weight:500;white-space:nowrap;transition:all .15s}
 .htab:hover{background:rgba(255,255,255,.12);color:#fff}
 .htab.on{background:rgba(255,255,255,.2);color:#fff;font-weight:700}
 .htab.prod-on{background:var(--green)!important;color:#fff!important;font-weight:700;animation:pt 2s infinite}
 #ht-prod{display:none}
 #ht-prod.prod-visible{display:inline-block!important}
 @keyframes pt{0%,100%{opacity:1}50%{opacity:.75}}
-#hdr-right{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:11px;color:rgba(255,255,255,.75)}
-#hdr-pilot-lbl{font-weight:800;color:#fff;font-size:18px;letter-spacing:.3px}
+#hdr-right{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:calc(11px*var(--zf,1));color:rgba(255,255,255,.75)}
+#hdr-pilot-lbl{font-weight:800;color:#fff;font-size:calc(18px*var(--zf,1));letter-spacing:.3px}
 
 /* ── ALERT STRIP ── */
-#alert-strip{background:#b91c1c;color:#fff;text-align:center;padding:4px;font-weight:700;font-size:12px;flex-shrink:0;display:none;animation:blink .85s step-start infinite}
+#alert-strip{background:#b91c1c;color:#fff;text-align:center;padding:4px;font-weight:700;font-size:calc(12px*var(--zf,1));flex-shrink:0;display:none;animation:blink .85s step-start infinite}
 #alert-strip.on{display:block}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
 
@@ -3934,53 +3934,53 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 /* ── LOGIN ── */
 #v-login{background:linear-gradient(135deg,#1a1f5e,#2d3480,#1e3a8a);align-items:center;justify-content:center}
 .login-card{background:#fff;border-radius:14px;padding:32px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
-.lc-h1{color:var(--navy);font-size:24px;font-weight:800;margin-bottom:2px;text-align:center}
-.lc-sub{color:#64748b;text-align:center;margin-bottom:20px;font-size:12px}
+.lc-h1{color:var(--navy);font-size:calc(24px*var(--zf,1));font-weight:800;margin-bottom:2px;text-align:center}
+.lc-sub{color:#64748b;text-align:center;margin-bottom:20px;font-size:calc(12px*var(--zf,1))}
 .lf{margin-bottom:12px}
-.lf label{display:block;font-weight:600;margin-bottom:3px;color:#374151;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-.lf select,.lf input{width:100%;padding:9px 11px;border:2px solid #e5e7eb;border-radius:7px;font-size:14px;outline:none;transition:border .2s}
+.lf label{display:block;font-weight:600;margin-bottom:3px;color:#374151;font-size:calc(11px*var(--zf,1));text-transform:uppercase;letter-spacing:.5px}
+.lf select,.lf input{width:100%;padding:9px 11px;border:2px solid #e5e7eb;border-radius:7px;font-size:calc(14px*var(--zf,1));outline:none;transition:border .2s}
 .lf select:focus,.lf input:focus{border-color:var(--navy)}
-.btn-login{width:100%;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px}
+.btn-login{width:100%;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:7px;font-size:calc(14px*var(--zf,1));font-weight:700;cursor:pointer;margin-top:4px}
 .btn-login:hover{opacity:.88}
-.ln-err{color:#dc2626;text-align:center;margin-top:6px;font-size:12px;min-height:16px}
+.ln-err{color:#dc2626;text-align:center;margin-top:6px;font-size:calc(12px*var(--zf,1));min-height:16px}
 
 /* ── MAIN VIEW (Déclarations / Évts) ── */
 #v-main{overflow:hidden}
 .main-hdr{background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap}
 .main-hdr .mtabs{display:flex;gap:3px}
-.mtab{background:none;border:none;border-bottom:2px solid transparent;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600;color:var(--gray);transition:all .15s}
+.mtab{background:none;border:none;border-bottom:2px solid transparent;padding:5px 12px;cursor:pointer;font-size:calc(12px*var(--zf,1));font-weight:600;color:var(--gray);transition:all .15s}
 .mtab.on{border-color:var(--navy);color:var(--navy)}
 .main-hdr .mbtns{display:flex;gap:6px;margin-left:auto}
-.btn-sm{padding:6px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-sm{padding:6px 12px;border:none;border-radius:6px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer;transition:all .15s}
 .btn-green{background:var(--green);color:#fff}
 .btn-green:hover{filter:brightness(.9)}
 .btn-ghost{background:var(--lgray);color:var(--text)}
 .btn-ghost:hover{filter:brightness(.93)}
 .table-wrap{flex:1;overflow-y:auto}
-.ktbl{width:100%;border-collapse:collapse;font-size:12px}
-.ktbl th{text-align:left;padding:7px 10px;background:var(--navy);color:#fff;font-size:10px;text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0}
+.ktbl{width:100%;border-collapse:collapse;font-size:calc(12px*var(--zf,1))}
+.ktbl th{text-align:left;padding:7px 10px;background:var(--navy);color:#fff;font-size:calc(10px*var(--zf,1));text-transform:uppercase;letter-spacing:.5px;position:sticky;top:0}
 .ktbl td{padding:6px 10px;border-bottom:1px solid var(--border)}
 .ktbl tr:hover td{background:var(--lgray)}
 .tg{color:var(--green);font-weight:700}
 .tm{color:var(--amber);font-weight:700}
 .tb{color:var(--red);font-weight:700}
-.btn-tbl{padding:3px 8px;border:none;border-radius:4px;font-size:10px;cursor:pointer;font-weight:600}
+.btn-tbl{padding:3px 8px;border:none;border-radius:4px;font-size:calc(10px*var(--zf,1));cursor:pointer;font-weight:600}
 
 /* ── PRODUCTION VIEW ── */
 #v-prod{overflow:hidden}
 /* pilot/OF banner */
 .pob{background:var(--navy);color:#fff;padding:6px 14px;display:flex;align-items:center;gap:24px;flex-shrink:0}
 .pob-item{display:flex;flex-direction:column;gap:1px}
-.pob-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.7px;opacity:.7;font-weight:600}
-.pob-val{font-size:22px;font-weight:800;line-height:1}
-.pob-item.of .pob-val{font-size:20px;color:#93c5fd}
+.pob-lbl{font-size:calc(9px*var(--zf,1));text-transform:uppercase;letter-spacing:.7px;opacity:.7;font-weight:600}
+.pob-val{font-size:calc(22px*var(--zf,1));font-weight:800;line-height:1}
+.pob-item.of .pob-val{font-size:calc(20px*var(--zf,1));color:#93c5fd}
 .pob-item.trs .pob-val{color:#86efac}
 /* status bar */
 .sbar{display:flex;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0}
 .sc{flex:1;padding:6px 14px;border-right:1px solid var(--border);text-align:center}
 .sc:last-child{border:none}
-.sc-lbl{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;letter-spacing:.6px}
-.sc-val{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--navy);margin-top:1px}
+.sc-lbl{font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700;letter-spacing:.6px}
+.sc-val{font-size:calc(22px*var(--zf,1));font-weight:800;font-variant-numeric:tabular-nums;color:var(--navy);margin-top:1px}
 .sc-val.green{color:var(--green)}
 .sc-val.red{color:var(--red)}
 .sc-val.amber{color:var(--amber)}
@@ -3990,9 +3990,9 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
 /* Action buttons row below timeline */
 .prod-act-row{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10}
-.act-btn{flex:1;min-width:100px;border:none;border-radius:8px;padding:24px 6px;cursor:pointer;font-size:13px;font-weight:700;text-align:center;transition:all .15s;white-space:nowrap;min-height:72px;display:flex;align-items:center;justify-content:center}
+.act-btn{flex:1;min-width:100px;border:none;border-radius:8px;padding:24px 6px;cursor:pointer;font-size:calc(13px*var(--zf,1));font-weight:700;text-align:center;transition:all .15s;white-space:nowrap;min-height:72px;display:flex;align-items:center;justify-content:center}
 .act-btn:hover{filter:brightness(.9)}
-.act-stop{background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;font-size:13px;font-weight:800;box-shadow:0 3px 8px rgba(185,28,28,.3)}
+.act-stop{background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;font-size:calc(13px*var(--zf,1));font-weight:800;box-shadow:0 3px 8px rgba(185,28,28,.3)}
 .act-nett{background:#e0f2fe;color:var(--blue)}
 .act-pause{background:#f3e8ff;color:var(--purple)}
 .act-cancel{background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1}
@@ -4000,76 +4000,76 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 /* 3-col form zones */
 .form-3col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 .fzone{border-radius:7px;padding:8px}
-.fzone h4{font-size:9px;text-transform:uppercase;letter-spacing:.7px;font-weight:700;margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid rgba(0,0,0,.08)}
+.fzone h4{font-size:calc(9px*var(--zf,1));text-transform:uppercase;letter-spacing:.7px;font-weight:700;margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid rgba(0,0,0,.08)}
 .zi{background:#eef2ff;border:1px solid #c7d2fe}.zi h4{color:#3730a3}
 .zp{background:#f0fdf4;border:1px solid #bbf7d0}.zp h4{color:#166534}
 .zq{background:#fff7ed;border:1px solid #fed7aa}.zq h4{color:#9a3412}
 .fr{display:flex;flex-direction:column;margin-bottom:4px}
-.fr label{font-size:9px;font-weight:700;color:var(--gray);margin-bottom:2px;text-transform:uppercase;letter-spacing:.2px}
-.fr input,.fr select,.fr textarea{padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:var(--card);color:var(--text);width:100%;outline:none;transition:border .15s}
+.fr label{font-size:calc(9px*var(--zf,1));font-weight:700;color:var(--gray);margin-bottom:2px;text-transform:uppercase;letter-spacing:.2px}
+.fr input,.fr select,.fr textarea{padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(12px*var(--zf,1));background:var(--card);color:var(--text);width:100%;outline:none;transition:border .15s}
 .fr input:focus,.fr select:focus{border-color:#6366f1}
 .fr textarea{resize:none;height:42px}
-.fr.comment-big textarea{height:80px;font-size:13px;border:2px solid #f59e0b;background:#fffbeb;font-weight:500}
-.fr.comment-big label{color:#d97706;font-size:10px}
+.fr.comment-big textarea{height:80px;font-size:calc(13px*var(--zf,1));border:2px solid #f59e0b;background:#fffbeb;font-weight:500}
+.fr.comment-big label{color:#d97706;font-size:calc(10px*var(--zf,1))}
 input[type=checkbox]{cursor:pointer}
 input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]),textarea{cursor:text!important}
 input,select,textarea{cursor:auto}
 input[type=text],input[type=number],input[type=password],input[type=time],input[type=date],textarea{cursor:text!important}
-.tl-legend{display:flex;gap:12px;padding:2px 4px;font-size:10px;color:var(--gray);flex-wrap:wrap;align-items:center}
+.tl-legend{display:flex;gap:12px;padding:2px 4px;font-size:calc(10px*var(--zf,1));color:var(--gray);flex-wrap:wrap;align-items:center}
 .tl-legend span{display:flex;align-items:center;gap:3px}
 .tl-legend i{display:inline-block;width:12px;height:10px;border-radius:2px;flex-shrink:0}
 select{cursor:default}
-.fr.big input{font-size:16px;font-weight:700;padding:5px 6px;color:var(--green)}
+.fr.big input{font-size:calc(16px*var(--zf,1));font-weight:700;padding:5px 6px;color:var(--green)}
 .fr.ro input{background:#f8fafc;color:var(--gray)}
 /* Timeline */
 .tl-wrap{background:var(--card);border-radius:7px;padding:7px 8px;border:1px solid var(--border)}
-.tl-wrap h5{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;letter-spacing:.7px;margin-bottom:4px}
+.tl-wrap h5{font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700;letter-spacing:.7px;margin-bottom:4px}
 /* RIGHT recap col (wider) */
 .recap-col{width:280px;flex-shrink:0;border-left:1px solid var(--border);background:var(--card);display:flex;flex-direction:column;overflow:hidden}
-.recap-hdr{font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);letter-spacing:.6px;padding:8px 8px 4px}
+.recap-hdr{font-size:calc(10px*var(--zf,1));text-transform:uppercase;font-weight:700;color:var(--gray);letter-spacing:.6px;padding:8px 8px 4px}
 .recap-body{flex:1;overflow-y:auto;padding:0 6px 6px}
-.si{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid var(--border);font-size:11px}
+.si{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid var(--border);font-size:calc(11px*var(--zf,1))}
 .si:last-child{border:none}
 .sdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.si-nm{flex:1;font-weight:600;font-size:10px;line-height:1.2}
-.si-dur{font-size:9px;color:var(--gray);white-space:nowrap}
-.btn-edit{background:none;border:none;cursor:pointer;font-size:11px;color:#6366f1;padding:1px 3px;border-radius:2px}
+.si-nm{flex:1;font-weight:600;font-size:calc(10px*var(--zf,1));line-height:1.2}
+.si-dur{font-size:calc(9px*var(--zf,1));color:var(--gray);white-space:nowrap}
+.btn-edit{background:none;border:none;cursor:pointer;font-size:calc(11px*var(--zf,1));color:#6366f1;padding:1px 3px;border-radius:2px}
 /* TRS gauge */
 .gauge-box{padding:6px;border-top:1px solid var(--border);text-align:center}
-.gauge-lbl{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;margin-top:2px}
+.gauge-lbl{font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700;margin-top:2px}
 /* Active stops bottom bar — chips */
 #stop-bottom,#stop-bottom-main{display:none;background:#7f0000;color:#fff;padding:8px 14px;align-items:center;gap:8px;flex-shrink:0;border-top:2px solid #b91c1c;flex-wrap:wrap}
 #stop-bottom.on,#stop-bottom-main.on{display:flex}
 .stop-chip{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.28);border-radius:8px;padding:6px 10px;border:1px solid rgba(255,255,255,.2)}
-.chip-lbl{font-weight:800;font-size:13px;white-space:nowrap}
-.chip-tim{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
-.btn-endstop{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.chip-lbl{font-weight:800;font-size:calc(13px*var(--zf,1));white-space:nowrap}
+.chip-tim{font-size:calc(18px*var(--zf,1));font-weight:800;font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
+.btn-endstop{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer;white-space:nowrap}
 .btn-endstop:hover{filter:brightness(.9)}
 /* KPI shift cards */
 .shift-kpis{display:flex;gap:8px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0}
 .skpi{flex:1;background:var(--bg);border-radius:var(--radius);padding:10px;border:1px solid var(--border);text-align:center}
 .skpi.current{flex:2;background:var(--navy);color:#fff;border-color:var(--navy2);box-shadow:var(--shadow)}
-.skpi.current .sk-lbl{color:rgba(255,255,255,.7)}.skpi.current .sk-val{color:#93c5fd;font-size:26px}.skpi.current .sk-sub{color:rgba(255,255,255,.75)}
-.sk-lbl{font-size:9px;text-transform:uppercase;font-weight:700;color:var(--gray);letter-spacing:.7px;margin-bottom:3px}
-.sk-val{font-size:20px;font-weight:800;color:var(--navy);line-height:1}.sk-sub{font-size:10px;color:var(--gray);margin-top:3px}
+.skpi.current .sk-lbl{color:rgba(255,255,255,.7)}.skpi.current .sk-val{color:#93c5fd;font-size:calc(26px*var(--zf,1))}.skpi.current .sk-sub{color:rgba(255,255,255,.75)}
+.sk-lbl{font-size:calc(9px*var(--zf,1));text-transform:uppercase;font-weight:700;color:var(--gray);letter-spacing:.7px;margin-bottom:3px}
+.sk-val{font-size:calc(20px*var(--zf,1));font-weight:800;color:var(--navy);line-height:1}.sk-sub{font-size:calc(10px*var(--zf,1));color:var(--gray);margin-top:3px}
 /* Merged table row types */
 .row-prod td{background:#f0fdf4}.row-evt td{background:#fff7ed}
 .row-prod:hover td,.row-evt:hover td{filter:brightness(.96)}
-.row-tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;text-transform:uppercase}
+.row-tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase}
 .tag-p{background:#bbf7d0;color:#166534}.tag-e{background:#fed7aa;color:#9a3412}.tag-n{background:#bfdbfe;color:#1e40af}
 
 /* ── FIN DE POSTE ── */
 #v-finposte{padding:0}
 .fp-scroll{flex:1;overflow-y:auto;padding:14px}
 .fp-top{text-align:center;padding-bottom:10px}
-.fp-top h2{font-size:22px;font-weight:800;color:var(--navy)}
+.fp-top h2{font-size:calc(22px*var(--zf,1));font-weight:800;color:var(--navy)}
 .fp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
 .fp-card{background:var(--card);border-radius:var(--radius);padding:12px;text-align:center;box-shadow:var(--shadow);border:1px solid var(--border)}
-.fp-big{font-size:28px;font-weight:800;color:var(--navy)}
-.fp-lbl{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700;margin-top:3px}
+.fp-big{font-size:calc(28px*var(--zf,1));font-weight:800;color:var(--navy)}
+.fp-lbl{font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700;margin-top:3px}
 .fp-acts{display:flex;justify-content:center;gap:10px;padding:14px 0}
-.fp-tbl{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px}
-.fp-tbl th{background:var(--navy);color:#fff;padding:5px 8px;font-size:9px;text-align:left;text-transform:uppercase}
+.fp-tbl{width:100%;border-collapse:collapse;font-size:calc(11px*var(--zf,1));margin-bottom:12px}
+.fp-tbl th{background:var(--navy);color:#fff;padding:5px 8px;font-size:calc(9px*var(--zf,1));text-align:left;text-transform:uppercase}
 .fp-tbl td{padding:5px 8px;border-bottom:1px solid var(--border)}
 
 /* ── HISTORY ── */
@@ -4079,22 +4079,22 @@ select{cursor:default}
 #v-settings{padding:0;overflow:hidden}
 #settings-lock{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px}
 .lock-card{background:var(--card);border-radius:12px;padding:28px;width:100%;max-width:340px;text-align:center;box-shadow:var(--shadow)}
-.lock-card h3{color:var(--navy);font-size:18px;font-weight:800;margin-bottom:8px}
-.lock-card p{color:var(--gray);font-size:12px;margin-bottom:16px}
+.lock-card h3{color:var(--navy);font-size:calc(18px*var(--zf,1));font-weight:800;margin-bottom:8px}
+.lock-card p{color:var(--gray);font-size:calc(12px*var(--zf,1));margin-bottom:16px}
 #v-settings-content{flex:1;overflow-y:auto;padding:14px;display:none}
 .ss{background:var(--card);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:var(--shadow);border:1px solid var(--border)}
-.ss h3{font-size:12px;font-weight:700;margin-bottom:10px;color:var(--navy)}
+.ss h3{font-size:calc(12px*var(--zf,1));font-weight:700;margin-bottom:10px;color:var(--navy)}
 .pr{display:flex;align-items:center;gap:6px;margin-bottom:6px;padding:5px;border-radius:5px;background:var(--bg)}
-.pr .pn{font-weight:600;min-width:110px;font-size:11px}
-.pr input{flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px}
-.btn-eye{background:none;border:none;cursor:pointer;color:var(--gray);font-size:12px;padding:2px}
+.pr .pn{font-weight:600;min-width:110px;font-size:calc(11px*var(--zf,1))}
+.pr input{flex:1;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(12px*var(--zf,1))}
+.btn-eye{background:none;border:none;cursor:pointer;color:var(--gray);font-size:calc(12px*var(--zf,1));padding:2px}
 .day-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px}
 .day-box{background:var(--bg);border-radius:4px;padding:4px;text-align:center}
-.day-lbl{font-size:8px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px}
-.day-box input{width:100%;padding:2px;border:1px solid var(--border);border-radius:3px;font-size:10px;text-align:center}
+.day-lbl{font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px}
+.day-box input{width:100%;padding:2px;border:1px solid var(--border);border-radius:3px;font-size:calc(10px*var(--zf,1));text-align:center}
 .model-card{border:1px solid var(--border);border-radius:7px;padding:10px;margin-bottom:8px}
 .mch{display:flex;align-items:center;gap:6px;margin-bottom:6px}
-.mch input{flex:1;font-size:12px;font-weight:600;padding:4px 6px;border:1px solid var(--border);border-radius:4px}
+.mch input{flex:1;font-size:calc(12px*var(--zf,1));font-weight:600;padding:4px 6px;border:1px solid var(--border);border-radius:4px}
 
 /* ── MODALS ── */
 .modal{display:none}
@@ -4104,40 +4104,40 @@ select{cursor:default}
 .mbox.wide{max-width:860px}
 .mhdr{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
 .mhdr.red{background:#b91c1c;border-radius:12px 12px 0 0}
-.mhdr h2{font-size:15px;font-weight:700;color:var(--navy)}
+.mhdr h2{font-size:calc(15px*var(--zf,1));font-weight:700;color:var(--navy)}
 .mhdr.red h2,.mhdr.red button{color:#fff}
 .mbody{flex:1;overflow-y:auto;padding:14px}
 .mftr{display:flex;gap:8px;justify-content:flex-end;padding:12px 14px;border-top:1px solid var(--border);flex-shrink:0}
-.btn{padding:7px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:4px}
+.btn{padding:7px 14px;border:none;border-radius:6px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:4px}
 .btn:hover{filter:brightness(.9)}
 .btn-prim{background:var(--navy);color:#fff}
 .btn-danger{background:var(--red);color:#fff}
 .btn-ok{background:var(--green);color:#fff}
 .btn-sec{background:var(--lgray);color:var(--text)}
 .btn-amber{background:var(--amber);color:#fff}
-.btn-lg{font-size:14px;padding:10px 20px}
+.btn-lg{font-size:calc(14px*var(--zf,1));padding:10px 20px}
 
 /* Stop modal */
-.stop-section-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin:10px 0 5px;color:var(--navy)}
+.stop-section-lbl{font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin:10px 0 5px;color:var(--navy)}
 .stop-section-lbl:first-child{margin-top:0}
 .stops-grid{display:grid;gap:5px;margin-bottom:6px}
 .stops-grid.ratt{grid-template-columns:repeat(3,1fr)}
 .stops-grid.pb{grid-template-columns:repeat(4,1fr)}
-.stop-btn{border:none;border-radius:8px;padding:8px 5px;cursor:pointer;font-size:11px;font-weight:700;color:#fff;text-align:center;transition:all .12s;box-shadow:0 2px 0 rgba(0,0,0,.2)}
+.stop-btn{border:none;border-radius:8px;padding:8px 5px;cursor:pointer;font-size:calc(11px*var(--zf,1));font-weight:700;color:#fff;text-align:center;transition:all .12s;box-shadow:0 2px 0 rgba(0,0,0,.2)}
 .stop-btn:active{transform:translateY(2px);box-shadow:none}
 .stop-btn.ratt{background:#7c3aed}
 .stop-btn.pb{background:#b91c1c}
 .custom-row{display:flex;gap:6px;margin-top:4px}
-.custom-row input{flex:1;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;outline:none}
+.custom-row input{flex:1;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1));outline:none}
 .custom-row input:focus{border-color:var(--navy)}
 
 /* End prod modal */
 .ep-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px}
 .ep-stat{text-align:center;padding:10px;background:var(--bg);border-radius:6px}
-.ep-stat .val{font-size:24px;font-weight:800;color:var(--navy)}
-.ep-stat .lbl{font-size:9px;text-transform:uppercase;color:var(--gray);font-weight:700}
-.ep-tbl{width:100%;border-collapse:collapse;font-size:11px}
-.ep-tbl th{text-align:left;padding:4px 6px;background:var(--bg);font-size:9px;text-transform:uppercase;color:var(--gray)}
+.ep-stat .val{font-size:calc(24px*var(--zf,1));font-weight:800;color:var(--navy)}
+.ep-stat .lbl{font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700}
+.ep-tbl{width:100%;border-collapse:collapse;font-size:calc(11px*var(--zf,1))}
+.ep-tbl th{text-align:left;padding:4px 6px;background:var(--bg);font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:var(--gray)}
 .ep-tbl td{padding:4px 6px;border-bottom:1px solid var(--border)}
 
 /* Utils */
@@ -4170,16 +4170,16 @@ select{cursor:default}
       <select id="ln-model" onchange="onLoginModelChange()"><option value="">-- Choisir --</option></select>
     </div>
     <!-- Horaires du jour -->
-    <div id="ln-model-info" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;border-radius:7px;padding:8px 10px;font-size:12px;margin-bottom:6px">
+    <div id="ln-model-info" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;border-radius:7px;padding:8px 10px;font-size:calc(12px*var(--zf,1));margin-bottom:6px">
       <div style="color:#0369a1;font-weight:700;margin-bottom:3px">Horaires aujourd'hui :</div>
-      <div id="ln-model-times" style="font-size:15px;font-weight:800;color:#0c4a6e;margin-bottom:5px"></div>
+      <div id="ln-model-times" style="font-size:calc(15px*var(--zf,1));font-weight:800;color:#0c4a6e;margin-bottom:5px"></div>
       <div id="ln-model-modify" style="display:none;margin-bottom:5px">
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <label style="font-size:11px;font-weight:600">Début <input type="time" id="ln-new-debut" style="padding:3px 6px;border:1.5px solid #bae6fd;border-radius:5px;font-size:12px"></label>
-          <label style="font-size:11px;font-weight:600">Fin <input type="time" id="ln-new-fin" style="padding:3px 6px;border:1.5px solid #bae6fd;border-radius:5px;font-size:12px"></label>
+          <label style="font-size:calc(11px*var(--zf,1));font-weight:600">Début <input type="time" id="ln-new-debut" style="padding:3px 6px;border:1.5px solid #bae6fd;border-radius:5px;font-size:calc(12px*var(--zf,1))"></label>
+          <label style="font-size:calc(11px*var(--zf,1));font-weight:600">Fin <input type="time" id="ln-new-fin" style="padding:3px 6px;border:1.5px solid #bae6fd;border-radius:5px;font-size:calc(12px*var(--zf,1))"></label>
         </div>
       </div>
-      <button style="font-size:11px;padding:3px 8px;background:none;border:1px solid #0369a1;border-radius:5px;color:#0369a1;cursor:pointer" onclick="toggleLoginModelModify()">✏ Modifier les horaires d'aujourd'hui</button>
+      <button style="font-size:calc(11px*var(--zf,1));padding:3px 8px;background:none;border:1px solid #0369a1;border-radius:5px;color:#0369a1;cursor:pointer" onclick="toggleLoginModelModify()">✏ Modifier les horaires d'aujourd'hui</button>
     </div>
     <div class="lf">
       <label>Mot de passe</label>
@@ -4188,9 +4188,9 @@ select{cursor:default}
     <button class="btn-login" onclick="doLogin()">Valider</button>
     <div class="ln-err" id="ln-err"></div>
     <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,.15);padding-top:12px;text-align:center">
-      <button onclick="doGuestLogin()" style="background:rgba(255,255,255,.12);color:#cbd5e1;border:1px solid rgba(255,255,255,.25);border-radius:7px;padding:7px 18px;font-size:12px;cursor:pointer;width:100%;font-weight:600">👁 Consulter en tant qu'invité</button>
+      <button onclick="doGuestLogin()" style="background:rgba(255,255,255,.12);color:#cbd5e1;border:1px solid rgba(255,255,255,.25);border-radius:7px;padding:7px 18px;font-size:calc(12px*var(--zf,1));cursor:pointer;width:100%;font-weight:600">👁 Consulter en tant qu'invité</button>
     </div>
-    <div style="margin-top:10px;text-align:center;font-size:11px;color:#94a3b8">
+    <div style="margin-top:10px;text-align:center;font-size:calc(11px*var(--zf,1));color:#94a3b8">
       Prod bloquée ? <a href="/reset" style="color:#dc2626;font-weight:700">Cliquer ici pour réinitialiser</a>
     </div>
   </div>
@@ -4203,7 +4203,7 @@ select{cursor:default}
     <div class="hdr-tabs">
       <button class="htab on" id="ht-main" onclick="goTab('main')">Accueil</button>
       <button class="htab prod-on" id="ht-prod" onclick="goTab('prod')">▶ Prod en cours</button>
-      <span id="ht-guest-badge" style="display:none;font-size:11px;font-weight:700;color:#94a3b8;padding:4px 10px;border:1px solid #94a3b8;border-radius:12px;margin-left:4px">👁 Invité</span>
+      <span id="ht-guest-badge" style="display:none;font-size:calc(11px*var(--zf,1));font-weight:700;color:#94a3b8;padding:4px 10px;border:1px solid #94a3b8;border-radius:12px;margin-left:4px">👁 Invité</span>
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📊 KPI</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports</button>
@@ -4211,47 +4211,47 @@ select{cursor:default}
     </div>
     <div id="hdr-right">
       <span id="hdr-pilot-lbl"></span>
-      <button class="btn-sm btn-ghost" onclick="toggleZoomPop()" id="zoom-btn" style="font-size:11px;display:flex;align-items:center;gap:4px" title="Zoom texte">🔍 Zoom</button>
-      <button class="btn-sm btn-ghost" onclick="doLogout()" style="font-size:11px">Déconnexion</button>
+      <button class="btn-sm btn-ghost" onclick="toggleZoomPop()" id="zoom-btn" style="font-size:calc(11px*var(--zf,1));display:flex;align-items:center;gap:4px" title="Zoom texte">🔍 Zoom</button>
+      <button class="btn-sm btn-ghost" onclick="doLogout()" style="font-size:calc(11px*var(--zf,1))">Déconnexion</button>
     </div>
   </div>
   <!-- Zoom popover -->
   <div id="zoom-pop" style="display:none;position:fixed;top:44px;right:80px;z-index:9000;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 16px;box-shadow:0 4px 20px rgba(0,0,0,.4);min-width:220px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <span style="color:#fff;font-size:12px;font-weight:700">🔍 Zoom texte</span>
-      <button onclick="resetZoom()" style="background:none;border:1px solid #475569;border-radius:5px;color:#94a3b8;font-size:10px;padding:2px 7px;cursor:pointer">Reset</button>
+      <span style="color:#fff;font-size:calc(12px*var(--zf,1));font-weight:700">🔍 Zoom texte</span>
+      <button onclick="resetZoom()" style="background:none;border:1px solid #475569;border-radius:5px;color:#94a3b8;font-size:calc(10px*var(--zf,1));padding:2px 7px;cursor:pointer">Reset</button>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
-      <button onclick="stepZoom(-5)" style="background:#334155;border:none;border-radius:5px;color:#fff;font-size:14px;width:26px;height:26px;cursor:pointer;line-height:1">−</button>
+      <button onclick="stepZoom(-5)" style="background:#334155;border:none;border-radius:5px;color:#fff;font-size:calc(14px*var(--zf,1));width:26px;height:26px;cursor:pointer;line-height:1">−</button>
       <input type="range" id="zoom-slider" min="70" max="150" value="100" step="5"
         oninput="applyZoom(+this.value)"
         style="flex:1;accent-color:#3b82f6;cursor:pointer">
-      <button onclick="stepZoom(+5)" style="background:#334155;border:none;border-radius:5px;color:#fff;font-size:14px;width:26px;height:26px;cursor:pointer;line-height:1">+</button>
+      <button onclick="stepZoom(+5)" style="background:#334155;border:none;border-radius:5px;color:#fff;font-size:calc(14px*var(--zf,1));width:26px;height:26px;cursor:pointer;line-height:1">+</button>
     </div>
-    <div style="text-align:center;margin-top:6px;color:#93c5fd;font-size:13px;font-weight:700" id="zoom-val">100%</div>
+    <div style="text-align:center;margin-top:6px;color:#93c5fd;font-size:calc(13px*var(--zf,1));font-weight:700" id="zoom-val">100%</div>
   </div>
   <div id="alert-strip"></div>
 
   <!-- ════ MAIN VIEW ════ -->
   <div id="v-main" class="view" style="flex-direction:column">
     <!-- Bannière prod en cours (visible si prod_active mais sur vue accueil) -->
-    <div id="main-prod-banner" style="display:none;background:#1e293b;color:#fff;padding:8px 14px;font-size:12px;align-items:center;gap:16px;cursor:pointer" onclick="goTab('prod')">
+    <div id="main-prod-banner" style="display:none;background:#1e293b;color:#fff;padding:8px 14px;font-size:calc(12px*var(--zf,1));align-items:center;gap:16px;cursor:pointer" onclick="goTab('prod')">
       <span style="font-weight:800;color:#86efac">▶ Prod en cours</span>
       <span>OF : <span id="mpb-of" style="font-weight:700">—</span></span>
       <span>Durée : <span id="mpb-dur" style="color:#67e8f9;font-weight:700">—</span></span>
       <span>Arrêts : <span id="mpb-stops" style="color:#fca5a5;font-weight:700">—</span></span>
-      <span style="margin-left:auto;font-size:11px;opacity:.7">Cliquer → vue prod</span>
+      <span style="margin-left:auto;font-size:calc(11px*var(--zf,1));opacity:.7">Cliquer → vue prod</span>
     </div>
     <!-- Barre Excel occupé -->
-    <div id="excel-busy-bar" style="display:none;background:#92400e;color:#fef3c7;padding:5px 14px;font-size:11px;font-weight:700;text-align:center">
+    <div id="excel-busy-bar" style="display:none;background:#92400e;color:#fef3c7;padding:5px 14px;font-size:calc(11px*var(--zf,1));font-weight:700;text-align:center">
       ⚠ Fichier Excel ouvert par un autre programme — impossible de lire/écrire les données
     </div>
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0" id="main-action-btns">
-        <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:14px;padding:10px 18px;font-weight:800">▶ Démarrer production</button>
-        <button class="btn btn-danger" onclick="openStopModal()" style="font-size:14px;padding:10px 18px;font-weight:800">⛔ Déclarer un arrêt</button>
-        <button class="btn btn-amber" onclick="doFinPoste()" style="font-size:14px;padding:10px 18px;font-weight:800">🏁 Fin de poste</button>
-        <button class="btn btn-sec" onclick="loadMainDecl()" style="font-size:12px;padding:8px 14px">↺ Actualiser</button>
+        <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:calc(14px*var(--zf,1));padding:10px 18px;font-weight:800">▶ Démarrer production</button>
+        <button class="btn btn-danger" onclick="openStopModal()" style="font-size:calc(14px*var(--zf,1));padding:10px 18px;font-weight:800">⛔ Déclarer un arrêt</button>
+        <button class="btn btn-amber" onclick="doFinPoste()" style="font-size:calc(14px*var(--zf,1));padding:10px 18px;font-weight:800">🏁 Fin de poste</button>
+        <button class="btn btn-sec" onclick="loadMainDecl()" style="font-size:calc(12px*var(--zf,1));padding:8px 14px">↺ Actualiser</button>
       </div>
     </div>
     <!-- KPI accueil — POSTE ACTUEL -->
@@ -4269,37 +4269,37 @@ select{cursor:default}
             </svg>
           </div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:10px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px">TRS du Poste</div>
-            <div style="font-size:10px;color:#64748b;margin-bottom:2px" id="gauge-poste-acc-lbl">—</div>
+            <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px">TRS du Poste</div>
+            <div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:2px" id="gauge-poste-acc-lbl">—</div>
             <!-- Stats en ligne -->
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:2px">
               <div style="text-align:center">
-                <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#64748b">Nombre OF</div>
-                <div style="font-size:18px;font-weight:900;color:#1e40af;line-height:1" id="acc-nb-of">0</div>
+                <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b">Nombre OF</div>
+                <div style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#1e40af;line-height:1" id="acc-nb-of">0</div>
               </div>
               <div style="text-align:center">
-                <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#dc2626">Arrêts</div>
-                <div style="font-size:18px;font-weight:900;color:#b91c1c;line-height:1" id="main-stat-arrets">0 min</div>
+                <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626">Arrêts</div>
+                <div style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#b91c1c;line-height:1" id="main-stat-arrets">0 min</div>
               </div>
               <div style="text-align:center">
-                <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:#16a34a">Prod</div>
-                <div style="font-size:18px;font-weight:900;color:#15803d;line-height:1" id="main-stat-prod">0 min</div>
+                <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a">Prod</div>
+                <div style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#15803d;line-height:1" id="main-stat-prod">0 min</div>
               </div>
             </div>
           </div>
           <!-- Répartition temps (pie) -->
           <div style="flex-shrink:0;text-align:center;border-left:1px solid #bae6fd;padding-left:10px;min-width:140px">
-            <div style="font-size:10px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Répartition temps</div>
+            <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Répartition temps</div>
             <svg id="pie-poste-acc" viewBox="0 0 130 115" style="width:160px;height:auto;display:block;margin:0 auto"></svg>
           </div>
         </div>
         <!-- Horaire temporaire -->
-        <div id="acc-model-info" style="display:none;border-top:1px solid #bae6fd;padding-top:5px;margin-top:2px;font-size:11px;color:#0369a1"></div>
+        <div id="acc-model-info" style="display:none;border-top:1px solid #bae6fd;padding-top:5px;margin-top:2px;font-size:calc(11px*var(--zf,1));color:#0369a1"></div>
       </div>
 
       <!-- Arrêts prévus — barres budget -->
       <div style="flex:1;min-width:170px;max-width:220px;background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:8px 12px;display:flex;flex-direction:column">
-        <div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">⏱ Arrêts prévus</div>
+        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">⏱ Arrêts prévus</div>
         <div id="budget-bars-acc" style="flex:1"></div>
       </div>
 
@@ -4307,13 +4307,13 @@ select{cursor:default}
       <div class="skpi" style="flex:1;min-width:100px">
         <div class="sk-lbl" id="kpi1-lbl">Poste précédent</div>
         <div class="sk-val" id="kpi1-trs">--%</div>
-        <div class="sk-sub" id="kpi1-date" style="font-size:10px;opacity:.85"></div>
+        <div class="sk-sub" id="kpi1-date" style="font-size:calc(10px*var(--zf,1));opacity:.85"></div>
         <div class="sk-sub" id="kpi1-sub">0 OF</div>
       </div>
       <div class="skpi" style="flex:1;min-width:100px">
         <div class="sk-lbl" id="kpi2-lbl">Avant-dernier</div>
         <div class="sk-val" id="kpi2-trs">--%</div>
-        <div class="sk-sub" id="kpi2-date" style="font-size:10px;opacity:.85"></div>
+        <div class="sk-sub" id="kpi2-date" style="font-size:calc(10px*var(--zf,1));opacity:.85"></div>
         <div class="sk-sub" id="kpi2-sub">0 OF</div>
       </div>
 
@@ -4336,7 +4336,7 @@ select{cursor:default}
     </div>
     <!-- Active stops bottom bar — chips (accueil) -->
     <div id="stop-bottom-main">
-      <div style="font-size:10px;opacity:.7;font-weight:700;white-space:nowrap">EN COURS :</div>
+      <div style="font-size:calc(10px*var(--zf,1));opacity:.7;font-weight:700;white-space:nowrap">EN COURS :</div>
       <div id="stop-chips-main" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1"></div>
     </div>
   </div>
@@ -4355,19 +4355,19 @@ select{cursor:default}
       </div>
       <div class="pob-item">
         <div class="pob-lbl">Poste</div>
-        <div class="pob-val" style="font-size:16px" id="pob-poste">—</div>
+        <div class="pob-val" style="font-size:calc(16px*var(--zf,1))" id="pob-poste">—</div>
       </div>
       <div class="pob-item">
         <div class="pob-lbl">Départ OF</div>
-        <div class="pob-val" style="font-size:16px;color:#fbbf24" id="pob-of-start">—</div>
+        <div class="pob-val" style="font-size:calc(16px*var(--zf,1));color:#fbbf24" id="pob-of-start">—</div>
       </div>
       <div class="pob-item">
         <div class="pob-lbl">Fin OF</div>
-        <div class="pob-val" style="font-size:16px;color:#94a3b8" id="rc-fin">—</div>
+        <div class="pob-val" style="font-size:calc(16px*var(--zf,1));color:#94a3b8" id="rc-fin">—</div>
       </div>
       <div class="pob-item">
         <div class="pob-lbl">Durée OF</div>
-        <div class="pob-val" style="font-size:16px;color:#0891b2" id="rc-duree">—</div>
+        <div class="pob-val" style="font-size:calc(16px*var(--zf,1));color:#0891b2" id="rc-duree">—</div>
       </div>
       <div class="pob-item trs">
         <div class="pob-lbl">TRS estimé</div>
@@ -4438,7 +4438,7 @@ select{cursor:default}
           <button class="act-btn act-stop" onclick="openStopModal()">⛔ Déclarer un arrêt</button>
           <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
           <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
-          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:var(--card);border:1.5px solid #8b5cf6;color:#7c3aed;font-size:12px;padding:6px 12px;border-radius:7px;font-weight:700;cursor:pointer">👥 Réunion</button>
+          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:var(--card);border:1.5px solid #8b5cf6;color:#7c3aed;font-size:calc(12px*var(--zf,1));padding:6px 12px;border-radius:7px;font-weight:700;cursor:pointer">👥 Réunion</button>
           <button class="act-btn act-cancel" onclick="doCancelProd()">✖ Annuler prod</button>
           <button class="act-btn act-endprod" onclick="doEndProdPreview()">🏁 Fin d'OF/prod</button>
         </div>
@@ -4449,7 +4449,7 @@ select{cursor:default}
         <div class="recap-body" id="recap-list" style="max-height:120px;flex:none;overflow-y:auto"></div>
         <!-- Budget arrêts prévus -->
         <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;background:#fffbeb">
-          <div style="font-size:9px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">⏱ Arrêts prévus</div>
+          <div style="font-size:calc(9px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">⏱ Arrêts prévus</div>
           <div id="budget-bars-prod"></div>
         </div>
         <!-- TRS OF gauge -->
@@ -4476,11 +4476,11 @@ select{cursor:default}
         <!-- Pie charts -->
         <div style="padding:4px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:4px">
           <div style="text-align:center">
-            <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">Poste — Prod/Arrêts</div>
+            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">Poste — Prod/Arrêts</div>
             <svg id="pie-poste" viewBox="0 0 130 115" style="width:100%;height:auto;display:block"></svg>
           </div>
           <div style="text-align:center">
-            <div style="font-size:8px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">OF en cours</div>
+            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">OF en cours</div>
             <svg id="pie-of" viewBox="0 0 130 115" style="width:100%;height:auto;display:block"></svg>
           </div>
         </div>
@@ -4488,7 +4488,7 @@ select{cursor:default}
     </div>
     <!-- Active stops bottom bar — chips -->
     <div id="stop-bottom">
-      <div style="font-size:10px;opacity:.7;font-weight:700;white-space:nowrap">EN COURS :</div>
+      <div style="font-size:calc(10px*var(--zf,1));opacity:.7;font-weight:700;white-space:nowrap">EN COURS :</div>
       <div id="stop-chips" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1"></div>
     </div>
   </div>
@@ -4498,50 +4498,50 @@ select{cursor:default}
     <!-- Barre titre -->
     <div style="background:var(--navy);color:#fff;padding:7px 14px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
       <div>
-        <div style="font-size:15px;font-weight:800">🏁 Fin de poste</div>
-        <div id="fp-who" style="font-size:11px;opacity:.8"></div>
+        <div style="font-size:calc(15px*var(--zf,1));font-weight:800">🏁 Fin de poste</div>
+        <div id="fp-who" style="font-size:calc(11px*var(--zf,1));opacity:.8"></div>
       </div>
       <div style="text-align:right">
-        <div style="font-size:14px;font-weight:800;color:#fbbf24" id="fp-horaire-display">—</div>
-        <div id="fp-date" style="font-size:11px;font-weight:700;opacity:.8"></div>
+        <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:#fbbf24" id="fp-horaire-display">—</div>
+        <div id="fp-date" style="font-size:calc(11px*var(--zf,1));font-weight:700;opacity:.8"></div>
       </div>
     </div>
     <!-- Graphiques + KPI (en haut, compact) -->
     <div style="display:flex;gap:12px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;align-items:center;flex-wrap:wrap">
       <div style="text-align:center;flex-shrink:0">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">TRS Poste</div>
+        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">TRS Poste</div>
         <svg id="fp-gauge" viewBox="0 0 100 58" style="width:200px;display:block;margin:0 auto">
           <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
           <path id="fp-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
           <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="fp-gauge-pct">--%</text>
         </svg>
-        <div style="font-size:18px;font-weight:800;color:var(--navy);margin-top:4px" id="fp-trs-lbl2">—</div>
-        <div style="font-size:12px;color:var(--gray);margin-top:2px" id="fp-shift-hours">—</div>
+        <div style="font-size:calc(18px*var(--zf,1));font-weight:800;color:var(--navy);margin-top:4px" id="fp-trs-lbl2">—</div>
+        <div style="font-size:calc(12px*var(--zf,1));color:var(--gray);margin-top:2px" id="fp-shift-hours">—</div>
       </div>
       <div style="text-align:center;flex-shrink:0">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Répartition</div>
+        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Répartition</div>
         <svg id="fp-pie" viewBox="0 0 130 115" style="width:200px;height:177px;display:block;margin:0 auto"></svg>
       </div>
       <div style="flex:1;display:flex;flex-direction:column;gap:5px">
         <div style="display:none"><span id="fp-trs"></span><span id="fp-trs-of"></span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#059669;font-weight:900" id="fp-pieces">--</div><div class="fp-lbl" style="font-size:12px">Nb pièces prod.</div></div>
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0891b2;font-weight:900" id="fp-eq">0</div><div class="fp-lbl" style="font-size:12px">Équivalence</div></div>
-          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:26px;color:#0369a1;font-weight:900" id="fp-cadence">--</div><div class="fp-lbl" style="font-size:12px">Cadence/h</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(26px*var(--zf,1));color:#059669;font-weight:900" id="fp-pieces">--</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">Nb pièces prod.</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(26px*var(--zf,1));color:#0891b2;font-weight:900" id="fp-eq">0</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">Équivalence</div></div>
+          <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(26px*var(--zf,1));color:#0369a1;font-weight:900" id="fp-cadence">--</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">Cadence/h</div></div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px" id="fp-ouverture">--</div><div class="fp-lbl" style="font-size:11px">Durée ouverture</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px;color:#16a34a" id="fp-prod-t">0 min</div><div class="fp-lbl" style="font-size:11px">Durée prod</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px;color:#dc2626" id="fp-stop-t">0 min</div><div class="fp-lbl" style="font-size:11px">Arrêts total</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px;color:#16a34a" id="fp-ded">0 min</div><div class="fp-lbl" style="font-size:11px">Arrêts prévus</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px;color:#7c3aed" id="fp-nof">0</div><div class="fp-lbl" style="font-size:11px">Nb OF</div></div>
-          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:14px;color:#8b5cf6" id="fp-chg-fibre">--</div><div class="fp-lbl" style="font-size:11px">Chg. fibre</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(14px*var(--zf,1))" id="fp-ouverture">--</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Durée ouverture</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(14px*var(--zf,1));color:#16a34a" id="fp-prod-t">0 min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Durée prod</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(14px*var(--zf,1));color:#dc2626" id="fp-stop-t">0 min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Arrêts total</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(14px*var(--zf,1));color:#16a34a" id="fp-ded">0 min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Arrêts prévus</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(14px*var(--zf,1));color:#7c3aed" id="fp-nof">0</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Nb OF</div></div>
+          <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(14px*var(--zf,1));color:#8b5cf6" id="fp-chg-fibre">--</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Chg. fibre</div></div>
         </div>
       </div>
     </div>
     <!-- Timeline compact -->
     <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline du poste</div>
+      <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline du poste</div>
       <svg id="fp-tl" viewBox="0 0 800 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block">
         <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
       </svg>
@@ -4550,45 +4550,45 @@ select{cursor:default}
     <!-- Corps défilant : productions + arrêts côte à côte -->
     <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div class="card" style="padding:8px">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:5px">Productions</div>
-        <table class="fp-tbl" style="font-size:10px">
+        <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:5px">Productions</div>
+        <table class="fp-tbl" style="font-size:calc(10px*var(--zf,1))">
           <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Taille</th><th>Qté</th><th>Éq</th><th>Durée</th><th>TRS%</th></tr></thead>
           <tbody id="fp-prods"></tbody>
         </table>
       </div>
       <div class="card" style="padding:8px">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:5px">Arrêts du poste</div>
-        <div id="fp-stops-list" style="font-size:11px"></div>
+        <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:5px">Arrêts du poste</div>
+        <div id="fp-stops-list" style="font-size:calc(11px*var(--zf,1))"></div>
       </div>
     </div>
     <!-- Modèle horaire + recalcul TRS -->
     <div style="padding:6px 12px;background:var(--card);border-top:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span style="font-size:11px;font-weight:700;color:var(--navy)">Modèle horaire :</span>
-      <select id="fp-model-sel" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px" onchange="recalcFPTRS()">
+      <span style="font-size:calc(11px*var(--zf,1));font-weight:700;color:var(--navy)">Modèle horaire :</span>
+      <select id="fp-model-sel" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))" onchange="recalcFPTRS()">
         <option value="">-- Choisir --</option>
       </select>
-      <span id="fp-shift-info" style="font-size:11px;color:var(--gray)"></span>
-      <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="openM('m-fp-horaires')">✏ Modifier horaires de mon poste</button>
+      <span id="fp-shift-info" style="font-size:calc(11px*var(--zf,1));color:var(--gray)"></span>
+      <button class="btn btn-ghost" style="font-size:calc(11px*var(--zf,1));padding:4px 10px" onclick="openM('m-fp-horaires')">✏ Modifier horaires de mon poste</button>
     </div>
     <!-- Boutons -->
     <div style="padding:8px 12px;background:var(--card);border-top:1px solid var(--border);flex-shrink:0;display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-sec" onclick="goTab('main')">← Retour</button>
-      <button onclick="confirmFinPoste()" style="background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:18px;font-weight:900;padding:18px 40px;cursor:pointer;box-shadow:0 4px 18px rgba(22,163,74,.4);letter-spacing:.3px;transition:all .15s" onmouseover="this.style.filter='brightness(.9)'" onmouseout="this.style.filter=''">✅ Confirmer fin de poste &amp; Déconnexion</button>
+      <button onclick="confirmFinPoste()" style="background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:calc(18px*var(--zf,1));font-weight:900;padding:18px 40px;cursor:pointer;box-shadow:0 4px 18px rgba(22,163,74,.4);letter-spacing:.3px;transition:all .15s" onmouseover="this.style.filter='brightness(.9)'" onmouseout="this.style.filter=''">✅ Confirmer fin de poste &amp; Déconnexion</button>
     </div>
   </div>
 
   <!-- ════ MODAL : horaires de poste ════ -->
   <div id="m-fp-horaires" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;align-items:center;justify-content:center">
     <div class="card" style="width:340px;padding:20px;background:#fff;border-radius:12px">
-      <div style="font-size:14px;font-weight:800;color:var(--navy);margin-bottom:14px">✏ Horaires de mon poste</div>
-      <div style="font-size:11px;color:var(--gray);margin-bottom:10px">Ces horaires servent uniquement au calcul du TRS de poste (non sauvegardés).</div>
+      <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:14px">✏ Horaires de mon poste</div>
+      <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Ces horaires servent uniquement au calcul du TRS de poste (non sauvegardés).</div>
       <div class="lf" style="margin-bottom:10px">
         <label>Début de poste</label>
-        <input type="datetime-local" id="fp-debut-dt" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+        <input type="datetime-local" id="fp-debut-dt" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
       </div>
       <div class="lf" style="margin-bottom:14px">
         <label>Fin de poste</label>
-        <input type="datetime-local" id="fp-fin-dt" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+        <input type="datetime-local" id="fp-fin-dt" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn btn-sec" onclick="closeM('m-fp-horaires')">Annuler</button>
@@ -4601,26 +4601,26 @@ select{cursor:default}
   <div id="m-preshift" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:601;align-items:center;justify-content:center">
     <div class="card" style="width:min(880px,95vw);padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--red)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <div id="ps-title" style="font-size:15px;font-weight:800;color:var(--navy)">⚠ Période non déclarée</div>
-        <div id="ps-counter" style="font-size:11px;font-weight:700;color:#94a3b8;background:#f1f5f9;border-radius:8px;padding:3px 10px"></div>
+        <div id="ps-title" style="font-size:calc(15px*var(--zf,1));font-weight:800;color:var(--navy)">⚠ Période non déclarée</div>
+        <div id="ps-counter" style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#94a3b8;background:#f1f5f9;border-radius:8px;padding:3px 10px"></div>
       </div>
-      <div id="ps-text" style="font-size:13px;color:var(--red);font-weight:700;margin-bottom:14px"></div>
+      <div id="ps-text" style="font-size:calc(13px*var(--zf,1));color:var(--red);font-weight:700;margin-bottom:14px"></div>
       <input type="hidden" id="ps-start-iso">
       <input type="hidden" id="ps-gap-s">
-      <div style="font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Déclarer comme :</div>
+      <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Déclarer comme :</div>
       <div id="ps-stop-btns" style="margin-bottom:10px"></div>
       <div style="margin-bottom:10px;display:flex;gap:6px">
-        <input id="ps-custom" placeholder="Ou saisir librement…" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
+        <input id="ps-custom" placeholder="Ou saisir librement…" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
         <button class="btn btn-prim" onclick="confirmPsAsStop()" style="flex-shrink:0">✓ Valider</button>
       </div>
       <hr style="border:none;border-top:1px solid var(--border);margin-bottom:14px">
       <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
         <div id="ps-backdate-row" style="flex:1">
-          <button class="btn btn-green" style="width:100%;text-align:left;padding:10px 14px;font-size:13px" onclick="psChooseBackdate()">
+          <button class="btn btn-green" style="width:100%;text-align:left;padding:10px 14px;font-size:calc(13px*var(--zf,1))" onclick="psChooseBackdate()">
             ↩ Rétrodater le début de cet OF à <span id="ps-backdate-time" style="font-weight:800">--h--</span>
           </button>
         </div>
-        <button class="btn btn-sec" style="flex-shrink:0;padding:10px 18px;font-size:13px" onclick="psIgnorer()">Ignorer</button>
+        <button class="btn btn-sec" style="flex-shrink:0;padding:10px 18px;font-size:calc(13px*var(--zf,1))" onclick="psIgnorer()">Ignorer</button>
       </div>
     </div>
   </div>
@@ -4628,47 +4628,47 @@ select{cursor:default}
   <!-- ════ MODAL INTERPOSTE ════ -->
   <div id="m-interposte" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
     <div class="card" style="width:min(880px,95vw);padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--amber)">
-      <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:4px">⏱ Temps hors production</div>
-      <div id="ip-duration" style="font-size:13px;color:var(--amber);font-weight:700;margin-bottom:8px"></div>
+      <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:4px">⏱ Temps hors production</div>
+      <div id="ip-duration" style="font-size:calc(13px*var(--zf,1));color:var(--amber);font-weight:700;margin-bottom:8px"></div>
       <div style="display:flex;gap:10px;margin-bottom:12px;align-items:flex-end">
         <div style="flex:1">
-          <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Début</label>
-          <input type="time" id="ip-debut" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-weight:700">
+          <label style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Début</label>
+          <input type="time" id="ip-debut" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700">
         </div>
         <div style="flex:1">
-          <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Fin</label>
-          <input type="time" id="ip-fin" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-weight:700">
+          <label style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Fin</label>
+          <input type="time" id="ip-fin" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700">
         </div>
       </div>
-      <div style="font-size:12px;color:var(--gray);margin-bottom:10px">Que s'est-il passé pendant cette période ?</div>
+      <div style="font-size:calc(12px*var(--zf,1));color:var(--gray);margin-bottom:10px">Que s'est-il passé pendant cette période ?</div>
       <div id="ip-arrprev-group" style="display:none;margin-bottom:10px"></div>
       <div id="ip-btns" style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px"></div>
       <div style="margin-bottom:10px">
-        <input id="ip-custom" placeholder="Ou saisir librement…" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+        <input id="ip-custom" placeholder="Ou saisir librement…" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
       </div>
       <div style="margin-bottom:10px">
-        <input id="ip-comment" placeholder="Commentaire (optionnel)" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+        <input id="ip-comment" placeholder="Commentaire (optionnel)" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))">
       </div>
       <!-- Formulaire modification plage horaire (caché par défaut) -->
       <div id="ip-model-form" style="display:none;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:10px;margin-bottom:10px">
-        <div style="font-size:11px;font-weight:700;color:#0369a1;margin-bottom:8px;text-transform:uppercase">Modifier la plage horaire du poste</div>
+        <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;margin-bottom:8px;text-transform:uppercase">Modifier la plage horaire du poste</div>
         <div style="display:flex;gap:10px;margin-bottom:8px">
           <div style="flex:1">
-            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Début modèle</label>
-            <input type="time" id="ip-model-debut" style="width:100%;padding:6px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:13px;font-weight:700">
+            <label style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Début modèle</label>
+            <input type="time" id="ip-model-debut" style="width:100%;padding:6px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700">
           </div>
           <div style="flex:1">
-            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Fin modèle</label>
-            <input type="time" id="ip-model-fin" style="width:100%;padding:6px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:13px;font-weight:700">
+            <label style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);display:block;margin-bottom:3px">Fin modèle</label>
+            <input type="time" id="ip-model-fin" style="width:100%;padding:6px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700">
           </div>
         </div>
         <div style="display:flex;gap:6px;justify-content:flex-end">
-          <button class="btn btn-sec" style="font-size:11px;padding:4px 10px" onclick="document.getElementById('ip-model-form').style.display='none'">Annuler</button>
-          <button class="btn btn-prim" style="font-size:11px;padding:4px 10px" onclick="ipConfirmModifyModel()">✓ Appliquer</button>
+          <button class="btn btn-sec" style="font-size:calc(11px*var(--zf,1));padding:4px 10px" onclick="document.getElementById('ip-model-form').style.display='none'">Annuler</button>
+          <button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:4px 10px" onclick="ipConfirmModifyModel()">✓ Appliquer</button>
         </div>
       </div>
       <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
-        <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;color:#0369a1;border-color:#bae6fd" onclick="ipShowModifyModel()">✏ Modifier plage horaire</button>
+        <button class="btn btn-ghost" style="font-size:calc(11px*var(--zf,1));padding:4px 10px;color:#0369a1;border-color:#bae6fd" onclick="ipShowModifyModel()">✏ Modifier plage horaire</button>
         <div style="display:flex;gap:8px">
           <button class="btn btn-sec" onclick="skipInterposte()">Ignorer</button>
           <button class="btn btn-prim" onclick="confirmInterposte()">✓ Valider</button>
@@ -4680,8 +4680,8 @@ select{cursor:default}
   <!-- ════ MODAL ARRÊTS MANQUANTS ════ -->
   <div id="m-missing-decl" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
     <div class="card" style="width:480px;max-height:85vh;overflow-y:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #f59e0b">
-      <div style="font-size:15px;font-weight:800;color:#92400e;margin-bottom:4px">⚠ Arrêts non déclarés</div>
-      <div style="font-size:12px;color:#78350f;margin-bottom:14px">Vous n'avez pas déclaré les arrêts prévus suivants. Souhaitez-vous les ajouter avant de terminer le poste ?</div>
+      <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:#92400e;margin-bottom:4px">⚠ Arrêts non déclarés</div>
+      <div style="font-size:calc(12px*var(--zf,1));color:#78350f;margin-bottom:14px">Vous n'avez pas déclaré les arrêts prévus suivants. Souhaitez-vous les ajouter avant de terminer le poste ?</div>
       <div id="md-rows" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn btn-sec" onclick="skipMissingDecl()">Ignorer et continuer</button>
@@ -4693,33 +4693,33 @@ select{cursor:default}
   <!-- ════ MODAL ÉCART FIN DE POSTE ════ -->
   <div id="m-ecart-poste" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
     <div class="card" style="width:min(1160px,95vw);max-height:92vh;overflow-y:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #dc2626">
-      <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:6px">📊 Réconciliation fin de poste</div>
-      <div id="ecart-guide" style="font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;line-height:1.5"></div>
-      <div id="ecart-info" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px"></div>
-      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Plages non justifiées</div>
+      <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:6px">📊 Réconciliation fin de poste</div>
+      <div id="ecart-guide" style="font-size:calc(12px*var(--zf,1));margin-bottom:10px;padding:8px 12px;border-radius:6px;line-height:1.5"></div>
+      <div id="ecart-info" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:calc(12px*var(--zf,1))"></div>
+      <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Plages non justifiées</div>
       <div id="ecart-gaps" style="margin-bottom:14px"></div>
       <div id="ecart-of-panel" style="margin-bottom:10px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Modifier les horaires des OFs</div>
+        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Modifier les horaires des OFs</div>
         <div id="ecart-of-list" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
       <!-- Modifier la plage horaire du poste -->
       <div id="ecart-plage-panel" style="margin-bottom:14px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#0369a1;letter-spacing:.06em;margin-bottom:6px">Modifier la plage horaire de mon poste</div>
+        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#0369a1;letter-spacing:.06em;margin-bottom:6px">Modifier la plage horaire de mon poste</div>
         <div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:10px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
           <div>
-            <label style="font-size:10px;color:var(--gray);font-weight:600;display:block;margin-bottom:3px">Heure de début</label>
-            <input type="time" id="ecart-plage-debut" style="padding:5px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:13px;font-weight:700;width:110px">
+            <label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:600;display:block;margin-bottom:3px">Heure de début</label>
+            <input type="time" id="ecart-plage-debut" style="padding:5px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:110px">
           </div>
           <div>
-            <label style="font-size:10px;color:var(--gray);font-weight:600;display:block;margin-bottom:3px">Heure de fin</label>
-            <input type="time" id="ecart-plage-fin" style="padding:5px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:13px;font-weight:700;width:110px">
+            <label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:600;display:block;margin-bottom:3px">Heure de fin</label>
+            <input type="time" id="ecart-plage-fin" style="padding:5px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:110px">
           </div>
-          <button class="btn btn-prim" style="font-size:12px;padding:6px 16px;background:#0369a1;border-color:#0369a1" onclick="saveEcartPlageHoraire()">✓ Appliquer</button>
-          <span style="font-size:10px;color:#64748b;align-self:center">Modifie uniquement pour ce poste aujourd'hui</span>
+          <button class="btn btn-prim" style="font-size:calc(12px*var(--zf,1));padding:6px 16px;background:#0369a1;border-color:#0369a1" onclick="saveEcartPlageHoraire()">✓ Appliquer</button>
+          <span style="font-size:calc(10px*var(--zf,1));color:#64748b;align-self:center">Modifie uniquement pour ce poste aujourd'hui</span>
         </div>
       </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
-        <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-ecart-poste')">Annuler</button>
+        <button class="btn btn-ghost" style="font-size:calc(12px*var(--zf,1))" onclick="closeM('m-ecart-poste')">Annuler</button>
         <button id="ecart-valider-btn" class="btn btn-sec" onclick="skipEcartPoste()">Valider et terminer</button>
       </div>
     </div>
@@ -4728,8 +4728,8 @@ select{cursor:default}
   <!-- ════ MODAL : "Autre" type d'arrêt ════ -->
   <div id="m-ecart-autre" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:700;align-items:center;justify-content:center">
     <div class="card" style="width:340px;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #64748b">
-      <div style="font-size:14px;font-weight:800;color:var(--navy);margin-bottom:10px">✏ Saisir le type d'arrêt</div>
-      <input id="ecart-autre-label" placeholder="Ex : Changement outillage, Défaut matière…" style="width:100%;padding:9px 11px;border:2px solid #e5e7eb;border-radius:7px;font-size:13px;outline:none;margin-bottom:14px" onkeydown="if(event.key==='Enter')confirmEcartAutre()">
+      <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:10px">✏ Saisir le type d'arrêt</div>
+      <input id="ecart-autre-label" placeholder="Ex : Changement outillage, Défaut matière…" style="width:100%;padding:9px 11px;border:2px solid #e5e7eb;border-radius:7px;font-size:calc(13px*var(--zf,1));outline:none;margin-bottom:14px" onkeydown="if(event.key==='Enter')confirmEcartAutre()">
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn btn-sec" onclick="closeM('m-ecart-autre')">Annuler</button>
         <button class="btn btn-prim" onclick="confirmEcartAutre()">✓ Valider</button>
@@ -4740,12 +4740,12 @@ select{cursor:default}
 <!-- Modal saisie code formaté (DDDDDD_DDD) -->
 <div id="m-code-input" class="modal" style="position:fixed;inset:0;z-index:9999;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);background:rgba(0,0,0,0.75);align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-code-input')">
   <div style="background:#fff;border-radius:14px;padding:24px 28px;width:90%;max-width:480px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.5)">
-    <div style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:8px;letter-spacing:.05em" id="code-input-lbl">CODE</div>
-    <div style="font-family:monospace;font-size:22px;font-weight:900;color:var(--navy);letter-spacing:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px">0 0 0 0 0 0 _ 0 0 0</div>
+    <div style="font-size:calc(13px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:8px;letter-spacing:.05em" id="code-input-lbl">CODE</div>
+    <div style="font-family:monospace;font-size:calc(22px*var(--zf,1));font-weight:900;color:var(--navy);letter-spacing:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px">0 0 0 0 0 0 _ 0 0 0</div>
     <input id="code-input-val" maxlength="10" autocomplete="off" spellcheck="false" inputmode="numeric"
-      style="font-size:42px;font-weight:900;text-align:center;letter-spacing:4px;font-family:monospace;border:2px solid var(--navy);border-radius:8px;padding:10px 16px;width:100%;color:var(--navy);background:#fff;margin-bottom:16px"
+      style="font-size:calc(42px*var(--zf,1));font-weight:900;text-align:center;letter-spacing:4px;font-family:monospace;border:2px solid var(--navy);border-radius:8px;padding:10px 16px;width:100%;color:var(--navy);background:#fff;margin-bottom:16px"
       oninput="_codeInputFmt(this)" onkeydown="if(event.key==='Enter')_codeInputConfirm();else if(event.key==='Escape')closeM('m-code-input')">
-    <div style="font-size:11px;color:var(--gray);margin-bottom:16px">Format : 6 chiffres, tiret bas, 3 chiffres &nbsp;(ex : 123456_789)</div>
+    <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:16px">Format : 6 chiffres, tiret bas, 3 chiffres &nbsp;(ex : 123456_789)</div>
     <div style="display:flex;gap:8px;justify-content:center">
       <button class="btn btn-ghost" onclick="closeM('m-code-input')">Annuler</button>
       <button class="btn btn-primary" onclick="_codeInputConfirm()">Confirmer ✓</button>
@@ -4757,8 +4757,8 @@ select{cursor:default}
 <div id="m-of-detail" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:650;align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-of-detail')">
   <div class="mbox" style="max-width:700px;max-height:80vh;overflow-y:auto;background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:90%">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-shrink:0">
-      <span style="font-size:14px;font-weight:800;color:var(--navy)">📋 Détail OF</span>
-      <button class="btn btn-ghost" style="font-size:12px" onclick="closeM('m-of-detail')">✕</button>
+      <span style="font-size:calc(14px*var(--zf,1));font-weight:800;color:var(--navy)">📋 Détail OF</span>
+      <button class="btn btn-ghost" style="font-size:calc(12px*var(--zf,1))" onclick="closeM('m-of-detail')">✕</button>
     </div>
     <div id="of-detail-content"></div>
   </div>
@@ -4771,12 +4771,12 @@ select{cursor:default}
       <div id="rpt-left-exe" style="width:280px;min-width:0;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:#f8fafc;overflow:hidden;transition:width .25s ease">
         <!-- Mode liste (par défaut) -->
         <div id="rpt-left-list" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
-          <div style="padding:10px 14px;font-size:13px;font-weight:800;color:var(--navy);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
+          <div style="padding:10px 14px;font-size:calc(13px*var(--zf,1));font-weight:800;color:var(--navy);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
             <span>📋 Tous les postes</span>
-            <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px" onclick="reloadAndLoadRapports()">↺</button>
+            <button class="btn btn-ghost" style="font-size:calc(11px*var(--zf,1));padding:3px 8px" onclick="reloadAndLoadRapports()">↺</button>
           </div>
           <div id="rpt-list" style="flex:1;overflow-y:auto">
-            <div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Chargement…</div>
+            <div style="padding:20px;text-align:center;color:var(--gray);font-size:calc(12px*var(--zf,1))">Chargement…</div>
           </div>
         </div>
         <!-- Mode KPI (caché jusqu'à sélection d'un poste) -->
@@ -4785,8 +4785,8 @@ select{cursor:default}
       <!-- Détail du rapport : tables + timeline -->
       <div id="rpt-detail" style="overflow-y:auto;flex:1;padding:0">
         <div style="padding:60px;text-align:center;color:var(--gray)">
-          <div style="font-size:40px;margin-bottom:12px">📋</div>
-          <div style="font-size:14px;font-weight:600">Sélectionner un poste dans la liste</div>
+          <div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📋</div>
+          <div style="font-size:calc(14px*var(--zf,1));font-weight:600">Sélectionner un poste dans la liste</div>
         </div>
       </div>
     </div>
@@ -4795,20 +4795,20 @@ select{cursor:default}
   <!-- ════ HISTORY ════ -->
   <div id="v-history" class="view" style="flex-direction:column;overflow:hidden">
     <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap">
-      <span style="font-size:12px;font-weight:700;color:var(--navy)">Historique</span>
-      <label style="font-size:11px;font-weight:600;color:var(--gray)">Du <input type="date" id="hist-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;margin-left:4px"></label>
-      <label style="font-size:11px;font-weight:600;color:var(--gray)">Au <input type="date" id="hist-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px;margin-left:4px"></label>
-      <button class="btn btn-primary" onclick="loadHist()" style="padding:5px 12px;font-size:12px">Charger</button>
+      <span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:var(--navy)">Historique</span>
+      <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Du <input type="date" id="hist-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
+      <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Au <input type="date" id="hist-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
+      <button class="btn btn-primary" onclick="loadHist()" style="padding:5px 12px;font-size:calc(12px*var(--zf,1))">Charger</button>
       <div style="width:1px;height:22px;background:var(--border);flex-shrink:0"></div>
-      <input id="hist-search" type="text" placeholder="🔍 Rechercher N° OF…" style="padding:4px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;min-width:160px" oninput="filterHistBySearch()">
+      <input id="hist-search" type="text" placeholder="🔍 Rechercher N° OF…" style="padding:4px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:calc(12px*var(--zf,1));min-width:160px" oninput="filterHistBySearch()">
       <div style="width:1px;height:22px;background:var(--border);flex-shrink:0"></div>
       <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
-        <span style="font-size:10px;font-weight:700;color:var(--gray);text-transform:uppercase">Filtrer :</span>
-        <button class="hf-btn" data-hf="production" onclick="toggleHistFilter(this)" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1.5px solid #16a34a;color:#16a34a;background:none;cursor:pointer;font-weight:700;transition:all .15s">🏭 Production</button>
-        <button class="hf-btn" data-hf="arret" onclick="toggleHistFilter(this)" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1.5px solid #dc2626;color:#dc2626;background:none;cursor:pointer;font-weight:700;transition:all .15s">⛔ Arrêts</button>
-        <button class="hf-btn" data-hf="nettoyage" onclick="toggleHistFilter(this)" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1.5px solid #0891b2;color:#0891b2;background:none;cursor:pointer;font-weight:700;transition:all .15s">🧹 Nettoyage</button>
-        <button class="hf-btn" data-hf="pause" onclick="toggleHistFilter(this)" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1.5px solid #f59e0b;color:#f59e0b;background:none;cursor:pointer;font-weight:700;transition:all .15s">⏸ Pause</button>
-        <button class="hf-btn" data-hf="reunion" onclick="toggleHistFilter(this)" style="font-size:11px;padding:3px 9px;border-radius:12px;border:1.5px solid #8b5cf6;color:#8b5cf6;background:none;cursor:pointer;font-weight:700;transition:all .15s">👥 Réunion</button>
+        <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);text-transform:uppercase">Filtrer :</span>
+        <button class="hf-btn" data-hf="production" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #16a34a;color:#16a34a;background:none;cursor:pointer;font-weight:700;transition:all .15s">🏭 Production</button>
+        <button class="hf-btn" data-hf="arret" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #dc2626;color:#dc2626;background:none;cursor:pointer;font-weight:700;transition:all .15s">⛔ Arrêts</button>
+        <button class="hf-btn" data-hf="nettoyage" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #0891b2;color:#0891b2;background:none;cursor:pointer;font-weight:700;transition:all .15s">🧹 Nettoyage</button>
+        <button class="hf-btn" data-hf="pause" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #f59e0b;color:#f59e0b;background:none;cursor:pointer;font-weight:700;transition:all .15s">⏸ Pause</button>
+        <button class="hf-btn" data-hf="reunion" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #8b5cf6;color:#8b5cf6;background:none;cursor:pointer;font-weight:700;transition:all .15s">👥 Réunion</button>
       </div>
     </div>
     <div style="flex:1;overflow-y:auto">
@@ -4820,13 +4820,13 @@ select{cursor:default}
   <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden;background:#f1f5f9">
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#1e3a8a,#1e40af);color:#fff;padding:9px 16px;flex-shrink:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <div style="font-size:18px;font-weight:900;letter-spacing:.4px;text-shadow:0 1px 4px rgba(0,0,0,.2)">📊 Tableau de Bord Performance</div>
+      <div style="font-size:calc(18px*var(--zf,1));font-weight:900;letter-spacing:.4px;text-shadow:0 1px 4px rgba(0,0,0,.2)">📊 Tableau de Bord Performance</div>
       <div style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap">
-        <label style="font-size:12px;opacity:.85;font-weight:600">Du</label>
-        <input type="date" id="kpi-from" style="padding:4px 8px;border:1px solid rgba(255,255,255,.35);border-radius:6px;font-size:12px;background:rgba(255,255,255,.18);color:#fff;outline:none;font-weight:600">
-        <label style="font-size:12px;opacity:.85;font-weight:600">au</label>
-        <input type="date" id="kpi-to" style="padding:4px 8px;border:1px solid rgba(255,255,255,.35);border-radius:6px;font-size:12px;background:rgba(255,255,255,.18);color:#fff;outline:none;font-weight:600">
-        <button onclick="loadKPI()" style="padding:5px 14px;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.45);border-radius:7px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">↺ Actualiser</button>
+        <label style="font-size:calc(12px*var(--zf,1));opacity:.85;font-weight:600">Du</label>
+        <input type="date" id="kpi-from" style="padding:4px 8px;border:1px solid rgba(255,255,255,.35);border-radius:6px;font-size:calc(12px*var(--zf,1));background:rgba(255,255,255,.18);color:#fff;outline:none;font-weight:600">
+        <label style="font-size:calc(12px*var(--zf,1));opacity:.85;font-weight:600">au</label>
+        <input type="date" id="kpi-to" style="padding:4px 8px;border:1px solid rgba(255,255,255,.35);border-radius:6px;font-size:calc(12px*var(--zf,1));background:rgba(255,255,255,.18);color:#fff;outline:none;font-weight:600">
+        <button onclick="loadKPI()" style="padding:5px 14px;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.45);border-radius:7px;color:#fff;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">↺ Actualiser</button>
       </div>
     </div>
     <!-- KPI Cards row -->
@@ -4834,15 +4834,15 @@ select{cursor:default}
     <!-- 3 courbes côte à côte (compact) -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;height:128px;flex-shrink:0;background:#fff;border-bottom:1px solid #e2e8f0">
       <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px;border-right:1px solid #f1f5f9">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📈 TRS par poste (%)</div>
+        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📈 TRS par poste (%)</div>
         <div id="kpi-trs-chart" style="flex:1;min-height:0;overflow:hidden"></div>
       </div>
       <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px;border-right:1px solid #f1f5f9;background:#fafafa">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#dc2626;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">🛑 Arrêts cumulés (min)</div>
+        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">🛑 Arrêts cumulés (min)</div>
         <div id="kpi-arr-chart" style="flex:1;min-height:0;overflow:hidden"></div>
       </div>
       <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6366f1;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📦 Nombre d'OF par poste</div>
+        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#6366f1;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📦 Nombre d'OF par poste</div>
         <div id="kpi-of-chart" style="flex:1;min-height:0;overflow:hidden"></div>
       </div>
     </div>
@@ -4851,20 +4851,20 @@ select{cursor:default}
       <!-- Gauche : cadence + 3 évolutions -->
       <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #e2e8f0;min-height:0">
         <div style="flex-shrink:0;height:140px;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⚡ Évolution cadence (unités/h &amp; éq./h)</div>
+          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⚡ Évolution cadence (unités/h &amp; éq./h)</div>
           <div id="kpi-cad-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
         <div style="flex:1;overflow-y:auto;min-height:0">
           <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#8b5cf6;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">🧵 Changements de fibre par poste</div>
+            <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#8b5cf6;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">🧵 Changements de fibre par poste</div>
             <div id="kpi-fibre-chart" style="flex:1;min-height:0;overflow:hidden"></div>
           </div>
           <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#f8fafc;border-bottom:1px solid #f1f5f9">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#0891b2;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⏱ Répartition prod / arrêts (%)</div>
+            <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#0891b2;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⏱ Répartition prod / arrêts (%)</div>
             <div id="kpi-ratio-chart" style="flex:1;min-height:0;overflow:hidden"></div>
           </div>
           <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#fff">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Pièces fab. / équivalence</div>
+            <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Pièces fab. / équivalence</div>
             <div id="kpi-qte-chart" style="flex:1;min-height:0;overflow:hidden"></div>
           </div>
         </div>
@@ -4872,14 +4872,14 @@ select{cursor:default}
       <!-- Droite : donut + pareto -->
       <div style="display:flex;flex-direction:column;overflow:hidden;background:#fff;min-height:0">
         <div style="padding:7px 10px;border-bottom:1px solid #f1f5f9;flex-shrink:0;display:flex;flex-direction:column;align-items:center">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.5px;margin-bottom:3px;align-self:flex-start">Prod vs Arrêts</div>
+          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.5px;margin-bottom:3px;align-self:flex-start">Prod vs Arrêts</div>
           <div style="display:flex;align-items:center;gap:8px">
             <svg id="kpi-donut" viewBox="0 0 100 100" style="width:78px;height:78px;flex-shrink:0"></svg>
-            <div id="kpi-donut-legend" style="display:flex;flex-direction:column;gap:3px;font-size:10px"></div>
+            <div id="kpi-donut-legend" style="display:flex;flex-direction:column;gap:3px;font-size:calc(10px*var(--zf,1))"></div>
           </div>
         </div>
         <div style="flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;min-height:0">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.5px;margin-bottom:6px;flex-shrink:0">Pareto arrêts</div>
+          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.5px;margin-bottom:6px;flex-shrink:0">Pareto arrêts</div>
           <div id="kpi-pareto-new" style="display:flex;flex-direction:column;gap:5px"></div>
         </div>
       </div>
@@ -4892,27 +4892,27 @@ select{cursor:default}
       <div class="lock-card">
         <h3>🔒 Paramètres</h3>
         <p>Entrez le mot de passe administrateur pour accéder aux paramètres.</p>
-        <input type="password" id="lock-pw" placeholder="MDP admin" style="width:100%;padding:9px 11px;border:2px solid #e5e7eb;border-radius:7px;font-size:14px;outline:none;margin-bottom:10px" onkeydown="if(event.key==='Enter')unlockSettings()">
-        <button onclick="unlockSettings()" style="width:100%;padding:10px;background:var(--navy);color:#fff;border:none;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer">Déverrouiller</button>
-        <div id="lock-err" style="color:#dc2626;margin-top:6px;font-size:12px;text-align:center;min-height:14px"></div>
+        <input type="password" id="lock-pw" placeholder="MDP admin" style="width:100%;padding:9px 11px;border:2px solid #e5e7eb;border-radius:7px;font-size:calc(14px*var(--zf,1));outline:none;margin-bottom:10px" onkeydown="if(event.key==='Enter')unlockSettings()">
+        <button onclick="unlockSettings()" style="width:100%;padding:10px;background:var(--navy);color:#fff;border:none;border-radius:7px;font-size:calc(14px*var(--zf,1));font-weight:700;cursor:pointer">Déverrouiller</button>
+        <div id="lock-err" style="color:#dc2626;margin-top:6px;font-size:calc(12px*var(--zf,1));text-align:center;min-height:14px"></div>
       </div>
     </div>
     <div id="v-settings-content">
       <div class="ss">
         <h3>📂 Fichier Excel de données</h3>
-        <div style="font-size:11px;color:var(--gray);margin-bottom:8px">Chemin complet vers le fichier Excel (.xlsx) contenant les onglets Declarations et Listes.</div>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Chemin complet vers le fichier Excel (.xlsx) contenant les onglets Declarations et Listes.</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
-          <input id="cfg-db-path" placeholder="C:\chemin\vers\fichier.xlsx" style="flex:1;min-width:200px;padding:7px 10px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
+          <input id="cfg-db-path" placeholder="C:\chemin\vers\fichier.xlsx" style="flex:1;min-width:200px;padding:7px 10px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
           <button class="btn btn-prim" onclick="setDbPath()">💾 Enregistrer</button>
         </div>
-        <div id="cfg-db-status" style="font-size:11px;color:var(--gray)"></div>
+        <div id="cfg-db-status" style="font-size:calc(11px*var(--zf,1));color:var(--gray)"></div>
       </div>
       <div class="ss">
         <h3>🔐 Mots de passe pilotes</h3>
         <div id="pwd-list"></div>
         <div class="flex mt8">
-          <input id="np-name" placeholder="Nom pilote" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px">
-          <input id="np-pw" type="password" placeholder="MDP" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:12px">
+          <input id="np-name" placeholder="Nom pilote" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+          <input id="np-pw" type="password" placeholder="MDP" style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
           <button class="btn btn-prim" onclick="addPilot()">+ Ajouter</button>
         </div>
         <div class="flex mt8">
@@ -4930,7 +4930,7 @@ select{cursor:default}
       <div class="ss">
         <h3>⚙ Référence production 8h</h3>
         <div class="flex">
-          <label style="font-weight:600;font-size:12px">Prod ref (unités/8h):</label>
+          <label style="font-weight:600;font-size:calc(12px*var(--zf,1))">Prod ref (unités/8h):</label>
           <input id="cfg-pr" type="number" style="width:90px;padding:5px;border:1px solid var(--border);border-radius:5px">
           <button class="btn btn-ok" onclick="saveProdRef()">Enregistrer</button>
         </div>
@@ -4939,53 +4939,53 @@ select{cursor:default}
         <h3>📊 Dashboard HTML superviseur</h3>
         <div class="flex">
           <button class="btn btn-prim" onclick="generateDashboard()">🔄 Générer le Dashboard HTML</button>
-          <span id="dash-status" style="font-size:11px;color:var(--gray);margin-left:8px"></span>
+          <span id="dash-status" style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-left:8px"></span>
         </div>
       </div>
       <div class="ss">
         <h3>⛔ Liste des arrêts configurables</h3>
-        <div style="font-size:11px;color:var(--gray);margin-bottom:8px">Ajouter, modifier ou supprimer les boutons d'arrêt disponibles en production. Pris en compte immédiatement.</div>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Ajouter, modifier ou supprimer les boutons d'arrêt disponibles en production. Pris en compte immédiatement.</div>
         <div id="events-list-ui" style="margin-bottom:10px"></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:8px;border-radius:7px;border:1px solid var(--border)">
-          <input id="ev-new-label" placeholder="Nom de l'arrêt" style="flex:1;min-width:120px;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
-          <select id="ev-new-cat" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
+          <input id="ev-new-label" placeholder="Nom de l'arrêt" style="flex:1;min-width:120px;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+          <select id="ev-new-cat" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
             <option value="pb">🔴 Panne</option>
             <option value="ratt">🟠 Rattrapage</option>
             <option value="organisation">🔵 Organisation</option>
             <option value="autre">⚫ Autre</option>
           </select>
-          <button class="btn btn-green" style="font-size:11px;padding:5px 12px" onclick="addEvtItem()">+ Ajouter</button>
+          <button class="btn btn-green" style="font-size:calc(11px*var(--zf,1));padding:5px 12px" onclick="addEvtItem()">+ Ajouter</button>
         </div>
-        <button class="btn btn-prim" style="margin-top:8px;font-size:12px" onclick="saveEvtList()">💾 Enregistrer la liste</button>
+        <button class="btn btn-prim" style="margin-top:8px;font-size:calc(12px*var(--zf,1))" onclick="saveEvtList()">💾 Enregistrer la liste</button>
       </div>
       <div class="ss" style="display:none"><div id="interposte-list-ui"></div></div>
       <div class="ss">
         <h3>⏱ Arrêts prévus (budget planifié)</h3>
-        <div style="font-size:11px;color:var(--gray);margin-bottom:10px">Les durées planifiées sont <b>déduites du temps de référence TRS</b> si le pilote les a réellement déclarées. Tout dépassement reste impactant. Mettre 0 pour désactiver.</div>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Les durées planifiées sont <b>déduites du temps de référence TRS</b> si le pilote les a réellement déclarées. Tout dépassement reste impactant. Mettre 0 pour désactiver.</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div class="lf" style="margin:0">
             <label>🧹 Nettoyage court (min)</label>
-            <input type="number" id="ap-clean-short" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+            <input type="number" id="ap-clean-short" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
           </div>
           <div class="lf" style="margin:0">
             <label>🧹 Nettoyage long (min)</label>
-            <input type="number" id="ap-clean-long" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+            <input type="number" id="ap-clean-long" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
           </div>
           <div class="lf" style="margin:0">
             <label>🧹 Nettoyage très long (min)</label>
-            <input type="number" id="ap-clean-grand" min="0" max="240" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+            <input type="number" id="ap-clean-grand" min="0" max="240" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
           </div>
           <div class="lf" style="margin:0">
             <label>📋 Réunion quotidienne (min)</label>
-            <input type="number" id="ap-meeting" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+            <input type="number" id="ap-meeting" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
           </div>
           <div class="lf" style="margin:0">
             <label>⏸ Pause (min)</label>
-            <input type="number" id="ap-pause" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px">
+            <input type="number" id="ap-pause" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
           </div>
         </div>
-        <div style="font-size:10px;color:var(--gray);margin-top:6px">Pour l'affectation automatique : le libellé doit contenir "nettoyage court/long/très long", "réunion" ou "pause".</div>
-        <button class="btn btn-prim" style="margin-top:10px;font-size:12px" onclick="saveArretsPrevus()">💾 Enregistrer arrêts prévus</button>
+        <div style="font-size:calc(10px*var(--zf,1));color:var(--gray);margin-top:6px">Pour l'affectation automatique : le libellé doit contenir "nettoyage court/long/très long", "réunion" ou "pause".</div>
+        <button class="btn btn-prim" style="margin-top:10px;font-size:calc(12px*var(--zf,1))" onclick="saveArretsPrevus()">💾 Enregistrer arrêts prévus</button>
       </div>
     </div>
   </div>
@@ -4995,25 +4995,25 @@ select{cursor:default}
 <!-- ════ MODAL: Choix type nettoyage ════ -->
 <div class="overlay" id="m-nett-type" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:700;align-items:center;justify-content:center">
   <div class="card" style="width:360px;padding:22px;background:#fff;border-radius:14px;border-top:4px solid #f59e0b;box-shadow:0 8px 32px rgba(0,0,0,.18)">
-    <div style="font-size:15px;font-weight:800;color:#78350f;margin-bottom:16px">🧹 Type de nettoyage</div>
+    <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:#78350f;margin-bottom:16px">🧹 Type de nettoyage</div>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <button class="btn" id="nett-btn-court" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #fde68a;background:#fffbeb;font-size:13px;font-weight:700;color:#92400e;transition:all .15s"
+      <button class="btn" id="nett-btn-court" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #fde68a;background:#fffbeb;font-size:calc(13px*var(--zf,1));font-weight:700;color:#92400e;transition:all .15s"
         onclick="doStartNettoyage('court')">
         🧹 Nettoyage court
-        <span id="nett-lbl-court" style="font-size:11px;font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
+        <span id="nett-lbl-court" style="font-size:calc(11px*var(--zf,1));font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
       </button>
-      <button class="btn" id="nett-btn-long" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #fcd34d;background:#fefce8;font-size:13px;font-weight:700;color:#78350f;transition:all .15s"
+      <button class="btn" id="nett-btn-long" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #fcd34d;background:#fefce8;font-size:calc(13px*var(--zf,1));font-weight:700;color:#78350f;transition:all .15s"
         onclick="doStartNettoyage('long')">
         🧹 Nettoyage long
-        <span id="nett-lbl-long" style="font-size:11px;font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
+        <span id="nett-lbl-long" style="font-size:calc(11px*var(--zf,1));font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
       </button>
-      <button class="btn" id="nett-btn-grand" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #f59e0b;background:#fff7ed;font-size:13px;font-weight:700;color:#7c2d12;transition:all .15s"
+      <button class="btn" id="nett-btn-grand" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #f59e0b;background:#fff7ed;font-size:calc(13px*var(--zf,1));font-weight:700;color:#7c2d12;transition:all .15s"
         onclick="doStartNettoyage('grand')">
         🧹 Nettoyage très long
-        <span id="nett-lbl-grand" style="font-size:11px;font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
+        <span id="nett-lbl-grand" style="font-size:calc(11px*var(--zf,1));font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
       </button>
     </div>
-    <button class="btn btn-sec" style="margin-top:14px;width:100%;font-size:12px" onclick="closeM('m-nett-type')">Annuler</button>
+    <button class="btn btn-sec" style="margin-top:14px;width:100%;font-size:calc(12px*var(--zf,1))" onclick="closeM('m-nett-type')">Annuler</button>
   </div>
 </div>
 
@@ -5022,16 +5022,16 @@ select{cursor:default}
   <div class="mbox">
     <div class="mhdr red">
       <h2>⛔ Déclarer un arrêt</h2>
-      <button style="background:none;border:none;cursor:pointer;color:#fff;font-size:16px" onclick="closeM('m-stop')">✕</button>
+      <button style="background:none;border:none;cursor:pointer;color:#fff;font-size:calc(16px*var(--zf,1))" onclick="closeM('m-stop')">✕</button>
     </div>
     <div class="mbody">
       <div class="stop-section-lbl" style="color:#92400e">⏱ Arrêts prévus</div>
       <div class="stops-grid" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px">
-        <button style="background:#64748b;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="closeM('m-stop');doPause()">⏸ Pause</button>
-        <button style="background:#64748b;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="closeM('m-stop');doReunion()">👥 Réunion</button>
-        <button style="background:#78350f;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('court')">🧹 Nettoyage court</button>
-        <button style="background:#92400e;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('long')">🧹 Nettoyage long</button>
-        <button style="background:#a16207;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('grand')">🧹 Nettoyage très long</button>
+        <button style="background:#64748b;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer" onclick="closeM('m-stop');doPause()">⏸ Pause</button>
+        <button style="background:#64748b;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer" onclick="closeM('m-stop');doReunion()">👥 Réunion</button>
+        <button style="background:#78350f;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('court')">🧹 Nettoyage court</button>
+        <button style="background:#92400e;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('long')">🧹 Nettoyage long</button>
+        <button style="background:#a16207;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('grand')">🧹 Nettoyage très long</button>
       </div>
       <div class="stop-section-lbl">🔄 Rattrapage</div>
       <div class="stops-grid ratt" id="sgrid-ratt"></div>
@@ -5060,11 +5060,11 @@ select{cursor:default}
         <div style="flex:1;min-width:180px"><div class="ep-grid" id="ep-stats"></div></div>
         <div style="display:flex;gap:8px;flex-shrink:0">
           <div style="text-align:center">
-            <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:2px">Répartition</div>
+            <div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:2px">Répartition</div>
             <svg id="ep-pie" viewBox="0 0 130 115" style="width:110px;height:97px;display:block"></svg>
           </div>
           <div style="text-align:center">
-            <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:2px">TRS</div>
+            <div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:2px">TRS</div>
             <svg id="ep-gauge" viewBox="0 0 100 58" style="width:90px;display:block;margin:0 auto;margin-top:8px">
               <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
               <path id="ep-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
@@ -5074,11 +5074,11 @@ select{cursor:default}
         </div>
       </div>
       <div style="margin-bottom:10px">
-        <div style="font-size:10px;text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:5px">Arrêts &amp; pauses</div>
+        <div style="font-size:calc(10px*var(--zf,1));text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:5px">Arrêts &amp; pauses</div>
         <table class="ep-tbl"><thead><tr><th>Type</th><th>Durée</th><th>%</th></tr></thead><tbody id="ep-stops"></tbody></table>
       </div>
       <div class="card" style="padding:8px;margin-bottom:0">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Timeline</div>
+        <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Timeline</div>
         <svg id="ep-tl" viewBox="0 0 800 40" preserveAspectRatio="none" style="width:100%;height:40px;display:block">
           <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
         </svg>
@@ -5117,8 +5117,8 @@ select{cursor:default}
     <div class="mhdr red"><h2>✓ Terminer l'arrêt</h2></div>
     <div class="mbody">
       <input type="hidden" id="cmt-stop-key">
-      <div id="cmt-stop-lbl" style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:10px"></div>
-      <div class="fr"><label>Commentaire (optionnel)</label><textarea id="cmt-stop-text" style="height:70px;resize:none;width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:13px" placeholder="Description de l'arrêt…"></textarea></div>
+      <div id="cmt-stop-lbl" style="font-size:calc(13px*var(--zf,1));font-weight:700;color:var(--navy);margin-bottom:10px"></div>
+      <div class="fr"><label>Commentaire (optionnel)</label><textarea id="cmt-stop-text" style="height:70px;resize:none;width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))" placeholder="Description de l'arrêt…"></textarea></div>
     </div>
     <div class="mftr">
       <button class="btn btn-sec" onclick="closeM('m-stopcmt')">Annuler</button>
@@ -5132,7 +5132,7 @@ select{cursor:default}
   <div class="mbox wide">
     <div class="mhdr">
       <h2 id="er-title">✏ Modifier la ligne</h2>
-      <button style="background:none;border:none;cursor:pointer;font-size:16px" onclick="closeM('m-editrow')">✕</button>
+      <button style="background:none;border:none;cursor:pointer;font-size:calc(16px*var(--zf,1))" onclick="closeM('m-editrow')">✕</button>
     </div>
     <div class="mbody">
       <input type="hidden" id="er-rownum"><input type="hidden" id="er-rowtype">
@@ -5165,7 +5165,7 @@ select{cursor:default}
           <div class="fr"><label>Duree MQ MP (min)</label><input type="number" id="er-dureemq"></div>
           <div class="fr"><label>Manquant Personnel (min)</label><input type="number" id="er-manqpers"></div>
         </div>
-        <div class="fr comment-big"><label>💬 Commentaire</label><textarea id="er-comment-prod" style="height:60px;resize:none;width:100%;padding:4px 6px;border:2px solid #f59e0b;border-radius:4px;font-size:12px;background:#fffbeb"></textarea></div>
+        <div class="fr comment-big"><label>💬 Commentaire</label><textarea id="er-comment-prod" style="height:60px;resize:none;width:100%;padding:4px 6px;border:2px solid #f59e0b;border-radius:4px;font-size:calc(12px*var(--zf,1));background:#fffbeb"></textarea></div>
       </div>
       <div id="er-evt-fields" style="display:none">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
@@ -5174,8 +5174,8 @@ select{cursor:default}
           <div class="fr"><label>Heure Début</label><input type="time" id="er-evtdeb" step="60"></div>
           <div class="fr"><label>Heure Fin</label><input type="time" id="er-evtfin" step="60"></div>
         </div>
-        <div class="fr"><label>Commentaire</label><textarea id="er-evtcomment" style="height:44px;resize:none;width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px"></textarea></div>
-        <div class="fr" style="margin-top:6px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;font-size:12px"><input type="checkbox" id="er-horstrs"> Hors TRS</label></div>
+        <div class="fr"><label>Commentaire</label><textarea id="er-evtcomment" style="height:44px;resize:none;width:100%;padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(12px*var(--zf,1))"></textarea></div>
+        <div class="fr" style="margin-top:6px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;font-size:calc(12px*var(--zf,1))"><input type="checkbox" id="er-horstrs"> Hors TRS</label></div>
       </div>
     </div>
     <div class="mftr">
@@ -5189,7 +5189,7 @@ select{cursor:default}
 <div id="m-pw-action" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:5000;align-items:center;justify-content:center">
   <div class="mbox" style="max-width:320px;padding:20px" onclick="event.stopPropagation()">
     <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0"><h2 id="pwa-title">🔒 Mot de passe Admin</h2></div>
-    <div class="fr" style="margin-bottom:14px"><label>Mot de passe</label><input type="password" id="pwa-pw" placeholder="••••" style="padding:6px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:14px;width:100%" onkeydown="if(event.key==='Enter')_pwaConfirm()"></div>
+    <div class="fr" style="margin-bottom:14px"><label>Mot de passe</label><input type="password" id="pwa-pw" placeholder="••••" style="padding:6px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:calc(14px*var(--zf,1));width:100%" onkeydown="if(event.key==='Enter')_pwaConfirm()"></div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-prim" onclick="_pwaConfirm()">✓ Confirmer</button>
       <button class="btn btn-sec" onclick="closeM('m-pw-action')">Annuler</button>
@@ -5534,7 +5534,8 @@ async function doLogout() {
 var _zoomOpen=false;
 function applyZoom(pct){
   pct=Math.min(150,Math.max(70,pct));
-  document.documentElement.style.zoom=pct/100;
+  document.documentElement.style.removeProperty('zoom');
+  document.documentElement.style.setProperty('--zf', pct/100);
   var sl=document.getElementById('zoom-slider');
   var vl=document.getElementById('zoom-val');
   if(sl) sl.value=pct;
@@ -5998,12 +5999,12 @@ async function loadMainDecl() {
     const fibre=r.fibre||'';const fibreShort=esc(fibre.slice(0,9));
     return `<tr class="${isProd?'row-prod':'row-evt'}">
       <td>${tag}</td><td style="font-weight:600">${esc(r.of||'')}</td>
-      <td style="font-size:10px;color:#6366f1;font-weight:600;cursor:${fibre?'pointer':''}" title="${esc(fibre)}" onclick="${fibre?'showFibre(\''+esc(fibre)+'\')':''}">${fibreShort}${fibre.length>9?'…':''}</td>
-      <td style="font-size:10px">${esc(r.date||'')}</td><td style="font-size:10px">${esc(r.poste||'')}</td>
+      <td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600;cursor:${fibre?'pointer':''}" title="${esc(fibre)}" onclick="${fibre?'showFibre(\''+esc(fibre)+'\')':''}">${fibreShort}${fibre.length>9?'…':''}</td>
+      <td style="font-size:calc(10px*var(--zf,1))">${esc(r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
-      <td style="font-size:11px">${details}</td><td style="font-size:11px">${qty}</td><td>${info}</td>
-      <td style="font-size:10px;color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
-      <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:15px;cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
+      <td style="font-size:calc(11px*var(--zf,1))">${details}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
+      <td style="font-size:calc(10px*var(--zf,1));color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
+      <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:calc(15px*var(--zf,1));cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
     </tr>`;
   }).join('');
   loadMainKPI();
@@ -6184,7 +6185,7 @@ function _fillIpArretsPrevus(){
   if(!visible.length){g.style.display='none';return;}
   g.style.display='block';
   const title=document.createElement('div');
-  title.style.cssText='font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:6px;letter-spacing:.04em';
+  title.style.cssText='font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:6px;letter-spacing:.04em';
   title.textContent='Arrêts prévus';
   g.appendChild(title);
   const row=document.createElement('div');
@@ -6193,7 +6194,7 @@ function _fillIpArretsPrevus(){
     const b=document.createElement('button');
     b.className='btn btn-ghost';
     b._origColor=a.color;
-    b.style.cssText=`font-size:12px;padding:5px 10px;border:2px solid ${a.color};color:${a.color};background:transparent;transition:all .15s`;
+    b.style.cssText=`font-size:calc(12px*var(--zf,1));padding:5px 10px;border:2px solid ${a.color};color:${a.color};background:transparent;transition:all .15s`;
     b.textContent=a.lbl+' ('+ap[a.key]+'min max autorisé pendant ce poste)';
     b.onclick=()=>{
       document.getElementById('ip-custom').value=a.lbl;
@@ -6222,11 +6223,11 @@ async function loadInterposteCfg(){
 function _renderInterposteLblsHTML(){
   const c=document.getElementById('interposte-list-ui');if(!c) return;
   c.innerHTML=_interposteLblsEditing.map((lbl,i)=>`
-    <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:12px">
+    <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1))">
       <span style="flex:1;font-weight:600">${esc(lbl)}</span>
-      <button class="btn btn-ghost" style="font-size:10px;padding:2px 6px" onclick="editInterposteLbl(${i})">✏</button>
-      <button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="rmInterposteLbl(${i})">✕</button>
-    </div>`).join('')||'<div style="color:var(--gray);font-size:11px;padding:4px">Aucun label</div>';
+      <button class="btn btn-ghost" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="editInterposteLbl(${i})">✏</button>
+      <button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="rmInterposteLbl(${i})">✕</button>
+    </div>`).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:4px">Aucun label</div>';
 }
 function addInterposteLbl(){const lbl=document.getElementById('ip-new-label').value.trim();if(!lbl){toast('Nom requis','err');return;}_interposteLblsEditing.push(lbl);document.getElementById('ip-new-label').value='';_renderInterposteLblsHTML();}
 function rmInterposteLbl(i){_interposteLblsEditing.splice(i,1);_renderInterposteLblsHTML();}
@@ -6305,7 +6306,7 @@ function psFillStopBtns(){
   const _makeBtn=(lbl,accent)=>{
     const b=document.createElement('button');
     b.className='btn btn-ghost';
-    b.style.cssText=`font-size:12px;transition:all .15s;border:2px solid ${accent||'var(--border)'};color:${accent||'var(--text)'};margin-bottom:3px`;
+    b.style.cssText=`font-size:calc(12px*var(--zf,1));transition:all .15s;border:2px solid ${accent||'var(--border)'};color:${accent||'var(--text)'};margin-bottom:3px`;
     b.textContent=lbl;
     b.onclick=()=>{
       document.getElementById('ps-custom').value=lbl;
@@ -6320,7 +6321,7 @@ function psFillStopBtns(){
   const _makeSection=(title,labels,accent)=>{
     if(!labels.length) return;
     const hdr=document.createElement('div');
-    hdr.style.cssText='font-size:10px;font-weight:800;text-transform:uppercase;color:'+accent+';letter-spacing:.4px;margin:6px 0 4px;border-bottom:1px solid #e5e7eb;padding-bottom:2px';
+    hdr.style.cssText='font-size:calc(10px*var(--zf,1));font-weight:800;text-transform:uppercase;color:'+accent+';letter-spacing:.4px;margin:6px 0 4px;border-bottom:1px solid #e5e7eb;padding-bottom:2px';
     hdr.textContent=title;
     bc.appendChild(hdr);
     const row=document.createElement('div');
@@ -6523,7 +6524,7 @@ function rebuildStopGrids(){
     const g=document.getElementById(gid); if(!g) return;
     const b=document.createElement('button');
     const col=STOP_COL[e.cat]||'#64748b';
-    b.style.cssText=`background:${col};color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer`;
+    b.style.cssText=`background:${col};color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer`;
     b.textContent=e.label;
     b.onclick=()=>{closeM('m-stop');doStartStop(e.key,e.cat);};
     g.appendChild(b);
@@ -6551,12 +6552,12 @@ function _renderEvtListHTML(){
   const c=document.getElementById('events-list-ui');if(!c) return;
   const catLbl={pb:'🔴 Panne',ratt:'🟠 Rattrapage',nettoyage:'🟡 Nettoyage',organisation:'🔵 Organisation',autre:'⚫ Autre'};
   c.innerHTML=_evtsEditing.map((e,i)=>`
-    <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:12px">
+    <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1))">
       <span style="flex:1;font-weight:600">${esc(e.label)}</span>
-      <span style="font-size:10px;color:var(--gray)">${catLbl[e.cat]||e.cat}</span>
-      <button class="btn btn-ghost" style="font-size:10px;padding:2px 6px" onclick="editEvtItem(${i})">✏</button>
-      <button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="rmEvtItem(${i})">✕</button>
-    </div>`).join('')||'<div style="color:var(--gray);font-size:11px;padding:4px">Aucun arrêt configuré</div>';
+      <span style="font-size:calc(10px*var(--zf,1));color:var(--gray)">${catLbl[e.cat]||e.cat}</span>
+      <button class="btn btn-ghost" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="editEvtItem(${i})">✏</button>
+      <button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="rmEvtItem(${i})">✕</button>
+    </div>`).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:4px">Aucun arrêt configuré</div>';
 }
 
 function addEvtItem(){
@@ -6866,14 +6867,14 @@ function renderBudgetBars(containerId,bs){
     const color=pct>=100?'#dc2626':pct>=70?'#d97706':'#16a34a';
     const valStr=over>0?`<b>+${fmtDurShort(over)}</b>`:`${fmtDurShort(consumed)} / ${fmtDurShort(budget)}`;
     html+=`<div style="margin-bottom:5px">
-      <div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;margin-bottom:2px">
+      <div style="display:flex;justify-content:space-between;font-size:calc(10px*var(--zf,1));font-weight:700;margin-bottom:2px">
         <span style="color:#374151">${esc(lbl)}</span>
         <span style="color:${color}">${valStr}</span></div>
       <div style="background:#e5e7eb;border-radius:4px;height:6px">
         <div style="background:${color};width:${Math.min(100,pct).toFixed(0)}%;height:6px;border-radius:4px"></div>
       </div></div>`;
   });
-  el.innerHTML=anyBar?html:'<div style="color:#92400e;font-size:10px;opacity:.7">Aucun budget configuré</div>';
+  el.innerHTML=anyBar?html:'<div style="color:#92400e;font-size:calc(10px*var(--zf,1));opacity:.7">Aucun budget configuré</div>';
 }
 
 function updateGauge(s){
@@ -7230,7 +7231,7 @@ function renderRecap(evts){
   if(!c) return;
   window._evMap={};
   const stops=(evts||[]).filter(e=>e.type);
-  if(!stops.length){c.innerHTML='<div style="color:var(--gray);font-size:10px;padding:4px">Aucun arrêt</div>';return;}
+  if(!stops.length){c.innerHTML='<div style="color:var(--gray);font-size:calc(10px*var(--zf,1));padding:4px">Aucun arrêt</div>';return;}
   let html='';
   stops.forEach((ev,i)=>{
     const key=ev.debut||i;
@@ -7249,8 +7250,8 @@ function renderRecap(evts){
     const col=_curStopKey==='_pause'?STOP_COL['_pause']:STOP_COL.pb;
     html+=`<div class="si" style="animation:blink .85s step-start infinite">
       <div class="sdot" style="background:${col}"></div>
-      <div class="si-nm" style="font-size:9px">${lbl}</div>
-      <div class="si-dur" style="font-size:9px">…</div>
+      <div class="si-nm" style="font-size:calc(9px*var(--zf,1))">${lbl}</div>
+      <div class="si-dur" style="font-size:calc(9px*var(--zf,1))">…</div>
     </div>`;
   }
   c.innerHTML=html;
@@ -7306,11 +7307,11 @@ function showOfDetail(ri) {
   const kitStr = (r.kit||'').toLowerCase();
   const kitDisp = kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓ Oui</span>':'<span style="color:#94a3b8">Non</span>';
   const evtsHtml = ofEvts.length ? ofEvts.map(e=>`<tr>
-    <td style="padding:4px 8px;font-weight:600;font-size:11px">${esc(e.type||'')}</td>
-    <td style="padding:4px 8px;font-size:11px;white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</td>
-    <td style="padding:4px 8px;font-weight:700;font-size:11px">${esc(e.duree||'')}</td>
-    <td style="padding:4px 8px;font-size:10px;color:var(--gray)">${esc(e.comment||'')}</td>
-  </tr>`).join('') : '<tr><td colspan="4" style="padding:8px;text-align:center;color:var(--gray);font-size:11px">Aucun arrêt</td></tr>';
+    <td style="padding:4px 8px;font-weight:600;font-size:calc(11px*var(--zf,1))">${esc(e.type||'')}</td>
+    <td style="padding:4px 8px;font-size:calc(11px*var(--zf,1));white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</td>
+    <td style="padding:4px 8px;font-weight:700;font-size:calc(11px*var(--zf,1))">${esc(e.duree||'')}</td>
+    <td style="padding:4px 8px;font-size:calc(10px*var(--zf,1));color:var(--gray)">${esc(e.comment||'')}</td>
+  </tr>`).join('') : '<tr><td colspan="4" style="padding:8px;text-align:center;color:var(--gray);font-size:calc(11px*var(--zf,1))">Aucun arrêt</td></tr>';
   const chips = [
     ['Taille',r.taille||'—',''],['Type',r.type_prod||'—',''],['Lots de 2',kitDisp,'raw'],
     ['Qté fab.',r.qte_fab||'—',''],['Équivalence',r.equiv||'—','color:#0891b2;font-weight:800'],
@@ -7336,19 +7337,19 @@ function showOfDetail(ri) {
   if(r.manquant_pers) chips.push(['Manquant pers.',r.manquant_pers,'']);
   const chipsHtml = chips.map(([lbl,val,sty])=>`<div class="fp-card" style="padding:7px">
     <div class="fp-lbl">${lbl}</div>
-    <div class="fp-big" style="font-size:14px;${sty==='raw'?'':''}${sty&&sty!=='raw'?sty:''}">${sty==='raw'?val:esc(String(val))}</div>
+    <div class="fp-big" style="font-size:calc(14px*var(--zf,1));${sty==='raw'?'':''}${sty&&sty!=='raw'?sty:''}">${sty==='raw'?val:esc(String(val))}</div>
   </div>`).join('');
   document.getElementById('of-detail-content').innerHTML = `
-    <div style="font-size:22px;font-weight:900;color:var(--navy);margin-bottom:14px;font-family:monospace">OF ${esc(r.of||'—')}</div>
+    <div style="font-size:calc(22px*var(--zf,1));font-weight:900;color:var(--navy);margin-bottom:14px;font-family:monospace">OF ${esc(r.of||'—')}</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:14px">${chipsHtml}</div>
-    ${r.comment?`<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px">💬 ${esc(r.comment)}</div>`:''}
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Arrêts pendant cet OF</div>
+    ${r.comment?`<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:calc(12px*var(--zf,1))">💬 ${esc(r.comment)}</div>`:''}
+    <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Arrêts pendant cet OF</div>
     <table style="width:100%;border-collapse:collapse">
       <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
-        <th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Type</th>
-        <th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Plage</th>
-        <th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Durée</th>
-        <th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Commentaire</th>
+        <th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Type</th>
+        <th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Plage</th>
+        <th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Durée</th>
+        <th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Commentaire</th>
       </tr></thead>
       <tbody>${evtsHtml}</tbody>
     </table>`;
@@ -7409,12 +7410,12 @@ async function checkMissingDecls(){
     }
     const div=document.createElement('div');
     div.style.cssText='background:#fffbeb;border:1.5px solid #fde68a;border-radius:8px;padding:10px 12px';
-    div.innerHTML=`<div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:6px">${esc(item.label)} <span style="font-weight:400;color:#a16207">(prévu ${item.budget} min)</span></div>
+    div.innerHTML=`<div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#92400e;margin-bottom:6px">${esc(item.label)} <span style="font-weight:400;color:#a16207">(prévu ${item.budget} min)</span></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label style="font-size:11px;font-weight:600">De <input type="time" id="${item.id}-debut" value="${sugStart}" style="padding:4px 6px;border:1.5px solid #fde68a;border-radius:5px;font-size:12px;font-weight:700;margin-left:4px"></label>
-        <label style="font-size:11px;font-weight:600">à <input type="time" id="${item.id}-fin" value="${sugEnd}" style="padding:4px 6px;border:1.5px solid #fde68a;border-radius:5px;font-size:12px;font-weight:700;margin-left:4px"></label>
-        <button onclick="addMissingDecl('${item.id}','${esc(item.label)}')" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer">+ Ajouter</button>
-        <span id="${item.id}-ok" style="display:none;color:#16a34a;font-weight:700;font-size:12px">✓ Ajouté</span>
+        <label style="font-size:calc(11px*var(--zf,1));font-weight:600">De <input type="time" id="${item.id}-debut" value="${sugStart}" style="padding:4px 6px;border:1.5px solid #fde68a;border-radius:5px;font-size:calc(12px*var(--zf,1));font-weight:700;margin-left:4px"></label>
+        <label style="font-size:calc(11px*var(--zf,1));font-weight:600">à <input type="time" id="${item.id}-fin" value="${sugEnd}" style="padding:4px 6px;border:1.5px solid #fde68a;border-radius:5px;font-size:calc(12px*var(--zf,1));font-weight:700;margin-left:4px"></label>
+        <button onclick="addMissingDecl('${item.id}','${esc(item.label)}')" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">+ Ajouter</button>
+        <span id="${item.id}-ok" style="display:none;color:#16a34a;font-weight:700;font-size:calc(12px*var(--zf,1))">✓ Ajouté</span>
       </div>`;
     container.appendChild(div);
   });
@@ -7491,8 +7492,8 @@ function _showEcartModal(fpd){
   const guidEl=document.getElementById('ecart-guide');
   if(guidEl){
     if(overflow_min>0){
-      guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#fef2f2;border:1px solid #fca5a5;line-height:1.5';
-      guidEl.innerHTML='<span style="color:#dc2626;font-weight:800;font-size:13px">⚠ Dépassement de plage : +'+overflow_min+' min au-delà de '+esc(modelFin)+'</span><br>'+
+      guidEl.style.cssText='font-size:calc(12px*var(--zf,1));margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#fef2f2;border:1px solid #fca5a5;line-height:1.5';
+      guidEl.innerHTML='<span style="color:#dc2626;font-weight:800;font-size:calc(13px*var(--zf,1))">⚠ Dépassement de plage : +'+overflow_min+' min au-delà de '+esc(modelFin)+'</span><br>'+
         '<span style="color:#7f1d1d">Un ou plusieurs OFs se terminent après la fin de la plage modèle. Modifiez la plage ci-dessous.</span>';
       // Mettre le panneau de modification de plage en rouge pour signaler l'urgence
       const plagePanel=document.getElementById('ecart-plage-panel');
@@ -7503,11 +7504,11 @@ function _showEcartModal(fpd){
         if(divs[1]){ divs[1].style.background='#fef2f2'; divs[1].style.borderColor='#fca5a5'; }
       }
     } else if(!hasGaps){
-      guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#f0fdf4;border:1px solid #bbf7d0;line-height:1.5';
-      guidEl.innerHTML='<span style="color:#16a34a;font-weight:800;font-size:13px">✓ Toute la plage '+esc(modelDebut)+' → '+esc(modelFin)+' est couverte !</span>';
+      guidEl.style.cssText='font-size:calc(12px*var(--zf,1));margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#f0fdf4;border:1px solid #bbf7d0;line-height:1.5';
+      guidEl.innerHTML='<span style="color:#16a34a;font-weight:800;font-size:calc(13px*var(--zf,1))">✓ Toute la plage '+esc(modelDebut)+' → '+esc(modelFin)+' est couverte !</span>';
     } else {
       const gapTotal=gaps.reduce((a,g)=>a+(g.duree_min||0),0);
-      guidEl.style.cssText='font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#fff7ed;border:1px solid #fed7aa;line-height:1.5';
+      guidEl.style.cssText='font-size:calc(12px*var(--zf,1));margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#fff7ed;border:1px solid #fed7aa;line-height:1.5';
       guidEl.innerHTML='Objectif : couvrir <b>'+esc(modelDebut)+' → '+esc(modelFin)+'</b> ('+model_min+' min).<br>'+
         '<span style="color:#dc2626;font-weight:700">'+gapTotal+' min de plages non couvertes ('+gaps.length+' écart'+(gaps.length>1?'s':'')+').</span> '+
         '<span style="color:var(--gray)">Déclarez les arrêts manquants ou corrigez les horaires des OFs.</span>';
@@ -7515,7 +7516,7 @@ function _showEcartModal(fpd){
   }
   // Stats
   document.getElementById('ecart-info').innerHTML=
-    '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:3px 16px;font-size:12px">'+
+    '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:3px 16px;font-size:calc(12px*var(--zf,1))">'+
     '<span style="color:var(--gray)">Durée modèle :</span><b>'+model_min+' min</b>'+
     '<span style="color:var(--gray)">Prod déclarée :</span><b>'+prod_min+' min</b>'+
     '<span style="color:var(--gray)">Arrêts déclarés :</span><b>'+stop_min+' min</b>'+
@@ -7532,7 +7533,7 @@ function _showEcartModal(fpd){
     if(!hasGaps){
       // Ne pas afficher "Aucune plage non couverte" quand il y a un dépassement
       gapsEl.innerHTML=overflow_min>0?''
-        :'<div style="color:#16a34a;font-size:12px;font-weight:700;padding:4px 0">✓ Aucune plage non couverte</div>';
+        :'<div style="color:#16a34a;font-size:calc(12px*var(--zf,1));font-weight:700;padding:4px 0">✓ Aucune plage non couverte</div>';
     } else {
       gapsEl.innerHTML='';
       gaps.forEach((g,gi)=>{
@@ -7540,19 +7541,19 @@ function _showEcartModal(fpd){
         div.style.cssText='background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:8px 10px;margin-bottom:6px';
         div.innerHTML=
           '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">'+
-            '<span style="font-size:12px;font-weight:700;color:#dc2626">⚠ '+esc(g.debut)+' → '+esc(g.fin)+
+            '<span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:#dc2626">⚠ '+esc(g.debut)+' → '+esc(g.fin)+
               ' <span style="font-weight:400;color:#9f1239">('+g.duree_min+' min)</span></span>'+
-            '<button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;color:#dc2626;border-color:#fca5a5" onclick="ecartToggleGapForm('+gi+')">+ Déclarer un arrêt</button>'+
+            '<button class="btn btn-ghost" style="font-size:calc(11px*var(--zf,1));padding:3px 10px;color:#dc2626;border-color:#fca5a5" onclick="ecartToggleGapForm('+gi+')">+ Déclarer un arrêt</button>'+
           '</div>'+
           '<div id="ecart-gap-form-'+gi+'" style="display:none;margin-top:8px;border-top:1px solid #fca5a5;padding-top:8px">'+
             '<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">'+
-              '<div><label style="font-size:10px;color:var(--gray);display:block;margin-bottom:2px">Début</label>'+
-                '<input type="time" id="ecart-gap-debut-'+gi+'" value="'+esc(g.debut)+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;width:90px"></div>'+
-              '<div><label style="font-size:10px;color:var(--gray);display:block;margin-bottom:2px">Fin</label>'+
-                '<input type="time" id="ecart-gap-fin-'+gi+'" value="'+esc(g.fin)+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;width:90px"></div>'+
-              '<div style="flex:1;min-width:160px"><label style="font-size:10px;color:var(--gray);display:block;margin-bottom:2px">Type d\'arrêt</label>'+
+              '<div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);display:block;margin-bottom:2px">Début</label>'+
+                '<input type="time" id="ecart-gap-debut-'+gi+'" value="'+esc(g.debut)+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));width:90px"></div>'+
+              '<div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);display:block;margin-bottom:2px">Fin</label>'+
+                '<input type="time" id="ecart-gap-fin-'+gi+'" value="'+esc(g.fin)+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));width:90px"></div>'+
+              '<div style="flex:1;min-width:160px"><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);display:block;margin-bottom:2px">Type d\'arrêt</label>'+
                 _buildEcartStopSelect(gi)+'</div>'+
-              '<button class="btn btn-prim" style="font-size:11px;padding:5px 12px" onclick="saveEcartGapStop('+gi+')">✓ Ajouter</button>'+
+              '<button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:5px 12px" onclick="saveEcartGapStop('+gi+')">✓ Ajouter</button>'+
             '</div>'+
           '</div>';
         gapsEl.appendChild(div);
@@ -7565,14 +7566,14 @@ function _showEcartModal(fpd){
   (fpd.of_list||[]).forEach(of=>{
     const div=document.createElement('div');
     div.style.cssText='display:flex;align-items:center;gap:8px;padding:8px;background:#f8fafc;border-radius:6px;border:1px solid var(--border);flex-wrap:wrap';
-    div.innerHTML='<span style="flex:1;font-size:12px;font-weight:700;min-width:80px">'+(of.of||'OF')+
-      ' <span style="font-weight:400;color:var(--gray);font-size:11px">'+esc(of.taille||'')+'</span> '+
-      '<span style="font-size:10px;color:#64748b">'+esc(of.debut||'')+'→'+esc(of.fin||'')+'</span></span>'+
+    div.innerHTML='<span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:700;min-width:80px">'+(of.of||'OF')+
+      ' <span style="font-weight:400;color:var(--gray);font-size:calc(11px*var(--zf,1))">'+esc(of.taille||'')+'</span> '+
+      '<span style="font-size:calc(10px*var(--zf,1));color:#64748b">'+esc(of.debut||'')+'→'+esc(of.fin||'')+'</span></span>'+
       '<div style="display:flex;align-items:center;gap:4px">'+
-      '<input type="time" class="ecart-debut" value="'+(of.debut||'')+'" data-oldebut="'+(of.debut||'')+'" data-ofnum="'+(of.of||'')+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;width:90px">'+
+      '<input type="time" class="ecart-debut" value="'+(of.debut||'')+'" data-oldebut="'+(of.debut||'')+'" data-ofnum="'+(of.of||'')+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));width:90px">'+
       '<span style="color:var(--gray)">→</span>'+
-      '<input type="time" class="ecart-fin" value="'+(of.fin||'')+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;width:90px">'+
-      '<button class="btn btn-prim" style="font-size:11px;padding:3px 10px" onclick="saveEcartOf(this)">✓</button>'+
+      '<input type="time" class="ecart-fin" value="'+(of.fin||'')+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));width:90px">'+
+      '<button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:3px 10px" onclick="saveEcartOf(this)">✓</button>'+
       '</div>';
     list.appendChild(div);
   });
@@ -7633,7 +7634,7 @@ function _buildEcartStopSelect(gi){
     mkGrp('🔴 Pannes / Rattrapages',pannes)+
     mkGrp('🔵 Organisation',organisation)+
     '<optgroup label="⚫ Autre"><option value="Autre (à justifier)">Autre (à justifier)</option></optgroup>';
-  return`<select id="ecart-gap-type-${gi}" onchange="ecartCheckAutreType(this,${gi})" style="width:100%;padding:4px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:12px;background:#fff">${html}</select>`;
+  return`<select id="ecart-gap-type-${gi}" onchange="ecartCheckAutreType(this,${gi})" style="width:100%;padding:4px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));background:#fff">${html}</select>`;
 }
 
 let _ecartGapAutreIdx=-1;
@@ -7820,10 +7821,10 @@ async function loadFPData(){
     try{const p=s=>s.split(':').reduce((a,v,i)=>a+(i===0?+v*3600:i===1?+v*60:+v),0);
     stopsByType[e.type]+=Math.max(0,p(e.fin||'00:00:00')-p(e.debut||'00:00:00'));}catch(ex){}});
     fsl.innerHTML=Object.entries(stopsByType).map(([t,s])=>`
-      <div class="flex" style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <div class="flex" style="padding:4px 0;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1))">
         <span style="flex:1;font-weight:600">${esc(t)}</span>
         <span style="color:var(--gray)">${fmtDurMS(s)}</span>
-      </div>`).join('')||'<span style="color:var(--gray);font-size:11px">Aucun arrêt</span>';
+      </div>`).join('')||'<span style="color:var(--gray);font-size:calc(11px*var(--zf,1))">Aucun arrêt</span>';
   }
 
   // Graphs
@@ -8229,9 +8230,9 @@ async function loadKPI(){
   if(cards){
     const avgStopMin=nbSess?Math.round(totalStopMin/nbSess):0;
     const mkCard=(lbl,val,col,sub)=>`<div style="padding:10px 14px;border-right:1px solid #f1f5f9;text-align:center;min-width:100px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center">
-      <div style="font-size:22px;font-weight:900;color:${col};line-height:1;letter-spacing:-.5px">${val}</div>
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;margin-top:4px;line-height:1.3">${lbl}</div>
-      ${sub?`<div style="font-size:9px;color:#64748b;margin-top:2px">${sub}</div>`:''}
+      <div style="font-size:calc(22px*var(--zf,1));font-weight:900;color:${col};line-height:1;letter-spacing:-.5px">${val}</div>
+      <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;margin-top:4px;line-height:1.3">${lbl}</div>
+      ${sub?`<div style="font-size:calc(9px*var(--zf,1));color:#64748b;margin-top:2px">${sub}</div>`:''}
     </div>`;
     cards.innerHTML=
       mkCard('TRS moyen',avgTRS>=0?avgTRS.toFixed(1)+'%':'—',_kpiTrsColor(avgTRS),nbSess?nbSess+' postes':'')+
@@ -8289,7 +8290,7 @@ async function loadKPI(){
   const paretoTotal=paretoArr.reduce((a,[,v])=>a+v,0);
   const parEl=document.getElementById('kpi-pareto-new');
   if(parEl){
-    if(!paretoArr.length){parEl.innerHTML='<div style="color:#94a3b8;font-size:11px">Aucun arrêt</div>';}
+    if(!paretoArr.length){parEl.innerHTML='<div style="color:#94a3b8;font-size:calc(11px*var(--zf,1))">Aucun arrêt</div>';}
     else{
       const maxP=paretoArr[0][1];
       let cumul=0;
@@ -8300,7 +8301,7 @@ async function loadKPI(){
         cumul+=pctTot;
         const col=STOP_COL[stopCat[type]]||'#94a3b8';
         return `<div>
-          <div style="display:flex;justify-content:space-between;font-size:10px;color:#374151;margin-bottom:2px">
+          <div style="display:flex;justify-content:space-between;font-size:calc(10px*var(--zf,1));color:#374151;margin-bottom:2px">
             <div style="display:flex;align-items:center;gap:3px;min-width:0"><div style="width:7px;height:7px;border-radius:1px;background:${col};flex-shrink:0"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px">${esc(type)}</span></div>
             <span style="white-space:nowrap;color:#6b7280;flex-shrink:0">${min}m <b style="color:#1e293b">${pctTot}%</b></span>
           </div>
@@ -8364,7 +8365,7 @@ function showHistRowDetail(key){
   }
   const chipsHtml=chips.map(([lbl,val,sty])=>`<div class="fp-card" style="padding:7px">
     <div class="fp-lbl">${lbl}</div>
-    <div class="fp-big" style="font-size:14px;${sty&&sty!=='raw'?sty:''}">${sty==='raw'?val:esc(String(val))}</div>
+    <div class="fp-big" style="font-size:calc(14px*var(--zf,1));${sty&&sty!=='raw'?sty:''}">${sty==='raw'?val:esc(String(val))}</div>
   </div>`).join('');
   // Arrêts pendant cet OF (si prod)
   let evtsHtml='';
@@ -8376,26 +8377,26 @@ function showHistRowDetail(key){
       if(e.pilote&&e.pilote!==r.pilote) return false;
       const t=_hm2s(e.debut);return t>=debS&&t<=finS;
     });
-    evtsHtml='<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--gray);margin:12px 0 6px">Arrêts pendant cet OF</div>'+
+    evtsHtml='<div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin:12px 0 6px">Arrêts pendant cet OF</div>'+
       '<table style="width:100%;border-collapse:collapse">'+
       '<thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">'+
-      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Type</th>'+
-      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Plage</th>'+
-      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Durée</th>'+
-      '<th style="padding:4px 8px;text-align:left;font-size:10px;font-weight:700">Commentaire</th>'+
+      '<th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Type</th>'+
+      '<th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Plage</th>'+
+      '<th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Durée</th>'+
+      '<th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Commentaire</th>'+
       '</tr></thead><tbody>'+
       (ofEvts.length?ofEvts.map(e=>`<tr>
-        <td style="padding:4px 8px;font-weight:600;font-size:11px">${esc(e.type||'')}</td>
-        <td style="padding:4px 8px;font-size:11px;white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</td>
-        <td style="padding:4px 8px;font-weight:700;font-size:11px">${esc(e.duree||'')}</td>
-        <td style="padding:4px 8px;font-size:10px;color:var(--gray)">${esc(e.comment||'')}</td>
-      </tr>`).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:var(--gray);font-size:11px">Aucun arrêt</td></tr>')+
+        <td style="padding:4px 8px;font-weight:600;font-size:calc(11px*var(--zf,1))">${esc(e.type||'')}</td>
+        <td style="padding:4px 8px;font-size:calc(11px*var(--zf,1));white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</td>
+        <td style="padding:4px 8px;font-weight:700;font-size:calc(11px*var(--zf,1))">${esc(e.duree||'')}</td>
+        <td style="padding:4px 8px;font-size:calc(10px*var(--zf,1));color:var(--gray)">${esc(e.comment||'')}</td>
+      </tr>`).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:var(--gray);font-size:calc(11px*var(--zf,1))">Aucun arrêt</td></tr>')+
       '</tbody></table>';
   }
   document.getElementById('of-detail-content').innerHTML=`
-    <div style="font-size:22px;font-weight:900;color:var(--navy);margin-bottom:14px;font-family:monospace">${isProd?'🏭 OF ':'⛔ '}${esc(r.of||r.type||'—')}</div>
+    <div style="font-size:calc(22px*var(--zf,1));font-weight:900;color:var(--navy);margin-bottom:14px;font-family:monospace">${isProd?'🏭 OF ':'⛔ '}${esc(r.of||r.type||'—')}</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">${chipsHtml}</div>
-    ${r.comment?`<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px">💬 ${esc(r.comment)}</div>`:''}
+    ${r.comment?`<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:calc(12px*var(--zf,1))">💬 ${esc(r.comment)}</div>`:''}
     ${evtsHtml}`;
   openM('m-of-detail');
 }
@@ -8524,12 +8525,12 @@ async function loadHist(){
     const fbrH=r.fibre||'';const fbrShH=esc(fbrH.slice(0,9));
     return `<tr class="${isProd?'row-prod':'row-evt'}" data-hftype="${esc(hftype)}">
       <td>${tag}</td><td style="font-weight:700;color:#1e3a8a;text-decoration:underline;cursor:pointer" onclick="showHistRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||r.type||'—')}</td>
-      <td style="font-size:10px;color:#6366f1;font-weight:600;cursor:${fbrH?'pointer':''}" title="${esc(fbrH)}" onclick="${fbrH?'showFibre(\''+esc(fbrH)+'\')':''}">${fbrShH}${fbrH.length>9?'…':''}</td>
-      <td style="font-size:10px">${esc(r.date||'')}</td><td style="font-size:10px">${esc(r.poste||'')}</td>
+      <td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600;cursor:${fbrH?'pointer':''}" title="${esc(fbrH)}" onclick="${fbrH?'showFibre(\''+esc(fbrH)+'\')':''}">${fbrShH}${fbrH.length>9?'…':''}</td>
+      <td style="font-size:calc(10px*var(--zf,1))">${esc(r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
-      <td style="font-size:11px">${details}</td><td style="font-size:11px">${qty}</td><td>${info}</td>
-      <td style="font-size:10px;color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
-      <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:15px;cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
+      <td style="font-size:calc(11px*var(--zf,1))">${details}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
+      <td style="font-size:calc(10px*var(--zf,1));color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
+      <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:calc(15px*var(--zf,1));cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
     </tr>`;
   }).join('');
   _applyHistFilter();
@@ -8544,10 +8545,10 @@ async function reloadAndLoadRapports(){
 async function loadRapports(){
   const listEl=document.getElementById('rpt-list');
   if(!listEl) return;
-  listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Chargement…</div>';
+  listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:calc(12px*var(--zf,1))">Chargement…</div>';
   const sessions=await apiFetch('/api/past_sessions');
   if(!sessions||!sessions.length){
-    listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Aucun poste disponible</div>';
+    listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun poste disponible</div>';
     return;
   }
   listEl.innerHTML=sessions.map((s,i)=>{
@@ -8555,9 +8556,9 @@ async function loadRapports(){
     const trsCol=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
     return `<div class="rpt-item" id="rpt-item-${i}" onclick="loadSessionReport('${esc(s.date)}','${esc(s.pilot)}','${esc(s.poste)}','rpt-item-${i}')"
       style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s">
-      <div style="font-size:12px;font-weight:800;color:var(--navy)">${esc(s.date)} — ${esc(s.poste)}</div>
-      <div style="font-size:11px;color:var(--gray);margin-top:2px">${esc(s.pilot||'?')} | ${s.nb_of} OF | Éq. ${s.tot_equiv}</div>
-      <div style="font-size:16px;font-weight:900;color:${trsCol};margin-top:2px">${trsStr}</div>
+      <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:var(--navy)">${esc(s.date)} — ${esc(s.poste)}</div>
+      <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-top:2px">${esc(s.pilot||'?')} | ${s.nb_of} OF | Éq. ${s.tot_equiv}</div>
+      <div style="font-size:calc(16px*var(--zf,1));font-weight:900;color:${trsCol};margin-top:2px">${trsStr}</div>
     </div>`;
   }).join('');
 }
@@ -8587,12 +8588,12 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const maxStopMin=stopArr.length?stopArr[0][1]:1;
   const paretoHtml=stopArr.length?stopArr.map(([k,v])=>`
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-      <div style="font-size:10px;width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${esc(k)}</div>
+      <div style="font-size:calc(10px*var(--zf,1));width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${esc(k)}</div>
       <div style="flex:1;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden">
         <div style="height:100%;background:#dc2626;border-radius:4px;width:${Math.round(v/maxStopMin*100)}%;opacity:.8"></div>
       </div>
-      <div style="font-size:10px;font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">${Math.round(v)}mn</div>
-    </div>`).join(''):'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>';
+      <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">${Math.round(v)}mn</div>
+    </div>`).join(''):'<div style="color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>';
   window._rptProdRows = d.prod_rows || [];
   window._rptEvtRows = d.evt_rows || [];
   const prodsHtml=(d.prod_rows||[]).map((r,ri)=>{
@@ -8601,13 +8602,13 @@ async function loadSessionReport(date,pilot,poste,itemId){
     const kitDisp=kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
     return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="showOfDetail(${ri})" title="Voir détail OF">
       <td style="padding:5px 8px;font-weight:700;color:#1e3a8a;text-decoration:underline">${esc(r.of||'')}</td>
-      <td style="padding:5px 8px;font-size:11px">${esc(r.taille||'')} ${esc(r.type_prod||'')}</td>
+      <td style="padding:5px 8px;font-size:calc(11px*var(--zf,1))">${esc(r.taille||'')} ${esc(r.type_prod||'')}</td>
       <td style="padding:5px 8px;text-align:center">${kitDisp}</td>
       <td style="padding:5px 8px">${esc(r.qte_fab||'')}</td>
       <td style="padding:5px 8px;color:#0891b2;font-weight:700">${esc(r.equiv||'')}</td>
       <td style="padding:5px 8px">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
       <td style="padding:5px 8px;font-weight:800;color:${tc}">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</td>
-      <td style="padding:5px 8px;font-size:10px;color:var(--gray)">${esc(r.comment||'')}</td>
+      <td style="padding:5px 8px;font-size:calc(10px*var(--zf,1));color:var(--gray)">${esc(r.comment||'')}</td>
     </tr>`;
   }).join('');
   // Timeline inline builder (ne dépend pas de ST)
@@ -8673,15 +8674,22 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const leftExe=document.getElementById('rpt-left-exe');
   if(leftList&&leftKpi&&leftExe){
     leftList.style.display='none';
-    leftExe.style.width='230px';
-    leftKpi.style.cssText='display:flex;flex-direction:column;flex:1;overflow-y:auto';
+    leftExe.style.width='246px';
+    leftKpi.style.cssText='display:flex;flex-direction:row;flex:1;overflow:hidden';
     leftKpi.innerHTML=`
-      <button onclick="rptBackToList()" style="margin:8px 10px 4px;background:none;border:none;color:#3b82f6;font-size:12px;cursor:pointer;text-align:left;padding:4px 0;font-weight:700">← Retour à la liste</button>
+      <!-- Fine bande retour (gauche) -->
+      <div onclick="rptBackToList()" title="Retour à la liste"
+        style="width:18px;background:#f0f4ff;border-right:1px solid #c7d2fe;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:background .15s"
+        onmouseenter="this.style.background='#c7d2fe'" onmouseleave="this.style.background='#f0f4ff'">
+        <span style="font-size:16px;color:#6366f1;user-select:none;line-height:1">‹</span>
+      </div>
+      <!-- Contenu KPI -->
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
       <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0">
-        <div style="font-size:13px;font-weight:800">${esc(poste)}</div>
-        <div style="font-size:10px;opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
-        <div style="font-size:26px;font-weight:900;color:${trsCol};margin-top:6px;line-height:1">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
-        <div style="font-size:10px;opacity:.65">TRS Shift</div>
+        <div style="font-size:calc(13px*var(--zf,1));font-weight:800">${esc(poste)}</div>
+        <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
+        <div style="font-size:calc(26px*var(--zf,1));font-weight:900;color:${trsCol};margin-top:6px;line-height:1">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
+        <div style="font-size:calc(10px*var(--zf,1));opacity:.65">TRS Shift</div>
       </div>
       <div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px">
         <div style="text-align:center">
@@ -8690,37 +8698,38 @@ async function loadSessionReport(date,pilot,poste,itemId){
             <path id="rpt-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
             <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="rpt-gauge-pct">--%</text>
           </svg>
-          <div style="font-size:9px;color:var(--gray);margin-top:2px">TRS Poste</div>
+          <div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:2px">TRS Poste</div>
         </div>
         <div style="text-align:center">
           <svg id="rpt-pie" viewBox="0 0 130 115" style="width:130px;height:110px;display:block;margin:0 auto"></svg>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:18px;color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:10px">Pièces</div></div>
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:18px;color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:10px">Équiv.</div></div>
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:18px;color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl" style="font-size:10px">Cad./h</div></div>
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:18px;color:#7c3aed;font-weight:900">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:10px">Nb OF</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Pièces</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Équiv.</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Cad./h</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#7c3aed;font-weight:900">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Nb OF</div></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:12px">${(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl" style="font-size:9px">Durée ouverture</div></div>
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:12px;color:#16a34a">${prodMin} min</div><div class="fp-lbl" style="font-size:9px">Durée prod</div></div>
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:12px;color:#dc2626">${stopMin} min</div><div class="fp-lbl" style="font-size:9px">Arrêts</div></div>
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:12px;color:#8b5cf6">${nbChangFibre}</div><div class="fp-lbl" style="font-size:9px">Chg. fibre</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(12px*var(--zf,1))">${(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Durée ouverture</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(12px*var(--zf,1));color:#16a34a">${prodMin} min</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Durée prod</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(12px*var(--zf,1));color:#dc2626">${stopMin} min</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Arrêts</div></div>
+          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(12px*var(--zf,1));color:#8b5cf6">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
         </div>
+      </div>
       </div>`;
   }
   // ── Panneau droit : timeline + tables (pleine largeur) ──
   detailEl.innerHTML=`
     <!-- Timeline -->
     <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
-      <div style="font-size:9px;font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline${plageStr}</div>
+      <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline${plageStr}</div>
       <svg viewBox="0 0 800 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block">${tlContent}</svg>
       <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Rattrapage</span><span><i style="background:#38bdf8"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
     </div>
     <!-- Productions (pleine largeur) -->
     <div style="padding:8px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
-      <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Productions</div>
-      <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Productions</div>
+      <table style="width:100%;border-collapse:collapse;font-size:calc(11px*var(--zf,1))">
         <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
           <th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>
           <th style="padding:4px 6px">Lots×2</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>
@@ -8733,11 +8742,11 @@ async function loadSessionReport(date,pilot,poste,itemId){
     <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div style="display:flex;flex-direction:column;gap:8px">
         <div class="card" style="padding:10px">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Pareto des arrêts</div>
-          ${paretoHtml||'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>'}
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Pareto des arrêts</div>
+          ${paretoHtml||'<div style="color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>'}
         </div>
         <div class="card" style="padding:10px">
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>
           ${(()=>{
             const bd=d.budget_data||{};
             const bKeys=['clean_short_min','clean_long_min','clean_grand_min','meeting_tol_min','pause_min'];
@@ -8746,7 +8755,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
               const pct=Math.min(100,Math.round(b.used_min/b.budget_min*100));
               const col=b.used_min>b.budget_min?'#dc2626':b.used_min/b.budget_min>=0.8?'#d97706':'#16a34a';
               return '<div style="margin-bottom:7px">'
-                +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">'
+                +'<div style="display:flex;justify-content:space-between;font-size:calc(11px*var(--zf,1));margin-bottom:3px">'
                 +'<span style="color:var(--text)">'+esc(b.label)+'</span>'
                 +'<span style="font-weight:700;color:'+col+'">'+Math.round(b.used_min)+'/'+Math.round(b.budget_min)+' min</span>'
                 +'</div>'
@@ -8754,13 +8763,13 @@ async function loadSessionReport(date,pilot,poste,itemId){
                 +'<div style="height:100%;background:'+col+';border-radius:4px;width:'+pct+'%;opacity:.85"></div>'
                 +'</div></div>';
             }).filter(Boolean).join('');
-            return rows||'<div style="color:var(--gray);font-size:12px">Aucun budget configuré</div>';
+            return rows||'<div style="color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun budget configuré</div>';
           })()}
         </div>
       </div>
       <div class="card" style="padding:10px;display:flex;flex-direction:column;gap:6px">
-        <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Détail arrêts</div>
-        ${(d.evt_rows||[]).length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px">
+        <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:6px">Détail arrêts</div>
+        ${(d.evt_rows||[]).length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:calc(10px*var(--zf,1))">
           <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
             <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray);white-space:nowrap">Arrêt</th>
             <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">OF</th>
@@ -8777,7 +8786,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
             <td style="padding:4px 5px;font-weight:700;white-space:nowrap">${esc(r.duree||'')}</td>
             <td style="padding:4px 5px;color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.comment||'')}">${esc(r.comment||'—')}</td>
           </tr>`).join('')}</tbody>
-        </table></div>`:'<div style="color:var(--gray);font-size:12px">Aucun arrêt</div>'}
+        </table></div>`:'<div style="color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>'}
       </div>
     </div>`;
   // Dessiner gauge et pie (éléments maintenant dans le DOM)
@@ -8865,7 +8874,7 @@ function updateAccModelInfo(){
   const isOverridden=(jEff.debut!==jBase.debut)||(jEff.fin!==jBase.fin);
   el.style.display='block';
   if(isOverridden){
-    el.innerHTML=`⏰ <b>${esc(poste)}</b> : <b style="color:#d97706">${esc(jEff.debut)} → ${esc(jEff.fin)}</b> <span style="background:#fef3c7;color:#92400e;font-size:10px;padding:1px 5px;border-radius:4px;font-weight:700">⚠ temporaire</span>`;
+    el.innerHTML=`⏰ <b>${esc(poste)}</b> : <b style="color:#d97706">${esc(jEff.debut)} → ${esc(jEff.fin)}</b> <span style="background:#fef3c7;color:#92400e;font-size:calc(10px*var(--zf,1));padding:1px 5px;border-radius:4px;font-weight:700">⚠ temporaire</span>`;
   } else {
     el.innerHTML=`⏰ <b>${esc(poste)}</b> : ${esc(jEff.debut)} → ${esc(jEff.fin)}`;
   }
@@ -8891,8 +8900,8 @@ function renderPwdList(){
       <div class="pn">${esc(nm)}</div>
       <input type="password" id="pwi-${esc(nm)}" value="${esc(String(pw))}" data-n="${esc(nm)}">
       <button class="btn-eye" onclick="toggleEye('pwi-${esc(nm)}')">👁</button>
-      <button class="btn btn-sec" style="font-size:10px;padding:2px 6px" onclick="rmPilot('${esc(nm)}')">✕</button>
-    </div>`).join('')||'<div style="color:var(--gray);font-size:11px;padding:3px">Aucun pilote configuré</div>';
+      <button class="btn btn-sec" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="rmPilot('${esc(nm)}')">✕</button>
+    </div>`).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:3px">Aucun pilote configuré</div>';
 }
 
 function toggleEye(id){const i=document.getElementById(id);if(i)i.type=i.type==='password'?'text':'password';}
@@ -8920,7 +8929,7 @@ function renderModelList(){
     return `<div class="model-card">
       <div class="mch">
         <input value="${esc(m.nom||'Poste '+(mi+1))}" onchange="_cfgModelsBase[${mi}].nom=this.value" placeholder="Nom du poste">
-        <button class="btn btn-danger" style="font-size:10px;padding:2px 6px" onclick="_cfgModelsBase.splice(${mi},1);renderModelList()">✕</button>
+        <button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="_cfgModelsBase.splice(${mi},1);renderModelList()">✕</button>
       </div>
       <div class="day-grid">${DAYS.map(d=>{const dc=j[d.k]||{};
         return `<div class="day-box"><div class="day-lbl">${d.l}</div>
@@ -8929,7 +8938,7 @@ function renderModelList(){
         </div>`;}).join('')}
       </div>
     </div>`;
-  }).join('')||'<div style="color:var(--gray);font-size:11px">Aucun modèle horaire</div>';
+  }).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1))">Aucun modèle horaire</div>';
 }
 
 function setDay(mi,day,field,val){if(!_cfgModelsBase[mi])return;if(!_cfgModelsBase[mi].jours)_cfgModelsBase[mi].jours={};if(!_cfgModelsBase[mi].jours[day])_cfgModelsBase[mi].jours[day]={};_cfgModelsBase[mi].jours[day][field]=val;}
@@ -8990,9 +8999,9 @@ function showFibre(name){
     m.id='m-fibre-info';
     m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;display:flex;align-items:center;justify-content:center';
     m.innerHTML='<div style="background:#fff;border-radius:14px;padding:28px 32px;min-width:260px;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center">'+
-      '<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#6366f1;letter-spacing:.6px;margin-bottom:8px">Fibre</div>'+
-      '<div id="m-fibre-name" style="font-size:18px;font-weight:800;color:#1e293b;word-break:break-all;margin-bottom:18px"></div>'+
-      '<button onclick="document.getElementById(\'m-fibre-info\').style.display=\'none\'" style="background:#6366f1;color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:13px;font-weight:700;cursor:pointer">Fermer</button>'+
+      '<div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#6366f1;letter-spacing:.6px;margin-bottom:8px">Fibre</div>'+
+      '<div id="m-fibre-name" style="font-size:calc(18px*var(--zf,1));font-weight:800;color:#1e293b;word-break:break-all;margin-bottom:18px"></div>'+
+      '<button onclick="document.getElementById(\'m-fibre-info\').style.display=\'none\'" style="background:#6366f1;color:#fff;border:none;border-radius:8px;padding:8px 24px;font-size:calc(13px*var(--zf,1));font-weight:700;cursor:pointer">Fermer</button>'+
       '</div>';
     m.onclick=e=>{if(e.target===m)m.style.display='none';};
     document.body.appendChild(m);
@@ -9010,7 +9019,7 @@ function fmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v)
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function toast(msg,type){
   let t=document.getElementById('_toast');
-  if(!t){t=document.createElement('div');t.id='_toast';t.style.cssText='position:fixed;bottom:16px;right:16px;padding:8px 14px;border-radius:7px;font-size:13px;font-weight:600;z-index:999;transition:opacity .3s;box-shadow:0 4px 12px rgba(0,0,0,.18)';document.body.appendChild(t);}
+  if(!t){t=document.createElement('div');t.id='_toast';t.style.cssText='position:fixed;bottom:16px;right:16px;padding:8px 14px;border-radius:7px;font-size:calc(13px*var(--zf,1));font-weight:600;z-index:999;transition:opacity .3s;box-shadow:0 4px 12px rgba(0,0,0,.18)';document.body.appendChild(t);}
   t.textContent=msg;t.style.background=type==='ok'?'#16a34a':'#dc2626';t.style.color='#fff';t.style.opacity='1';
   clearTimeout(t._to);t._to=setTimeout(()=>t.style.opacity='0',3000);
 }
