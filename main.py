@@ -2147,7 +2147,14 @@ def api_fin_poste_data():
         elapsed_s = max(1.0, model_dur_s - planned_ded)
         trs_poste_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
     # Compute gap intervals (plages non justifiées)
-    debut_str2, fin_str2 = _get_model_day_cfg(pilot_poste, datetime.date.today())
+    # Use session shift times (set at login from Excel) — more reliable than day-cfg lookup
+    _sd = _S.get("shift_debut_dt")
+    _sf = _S.get("shift_fin_dt")
+    if _sd and _sf:
+        debut_str2 = _sd.strftime("%H:%M")
+        fin_str2 = _sf.strftime("%H:%M")
+    else:
+        debut_str2, fin_str2 = _get_model_day_cfg(pilot_poste, datetime.date.today())
     gap_intervals = []
     model_debut_hm = debut_str2 or ""
     model_fin_hm = fin_str2 or ""
@@ -4136,10 +4143,10 @@ select{cursor:default}
 .custom-row input:focus{border-color:var(--navy)}
 
 /* End prod modal */
-.ep-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px}
-.ep-stat{text-align:center;padding:10px;background:var(--bg);border-radius:6px}
-.ep-stat .val{font-size:calc(24px*var(--zf,1));font-weight:800;color:var(--navy)}
-.ep-stat .lbl{font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700}
+.ep-grid{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.ep-stat{display:flex;align-items:center;justify-content:space-between;padding:7px 12px;background:var(--bg);border-radius:6px;border-left:3px solid #c7d2fe}
+.ep-stat .val{font-size:calc(16px*var(--zf,1));font-weight:800;color:var(--navy);white-space:nowrap}
+.ep-stat .lbl{font-size:calc(10px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700;margin-right:10px}
 .ep-tbl{width:100%;border-collapse:collapse;font-size:calc(11px*var(--zf,1))}
 .ep-tbl th{text-align:left;padding:4px 6px;background:var(--bg);font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:var(--gray)}
 .ep-tbl td{padding:4px 6px;border-bottom:1px solid var(--border)}
@@ -4396,7 +4403,7 @@ select{cursor:default}
           <!-- Zone Identification -->
           <div class="fzone zi">
             <h4>📋 Identification</h4>
-            <div class="fr"><label>N° OF *</label><input id="f-of_num" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>N° OF *</label><input id="f-of_num" oninput="scheduleAutoSave()" onfocus="openCodeInput('of_num','N° OF','9')"></div>
             <div class="fr ro"><label>Date</label><input id="f-date" readonly></div>
             <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
@@ -4752,10 +4759,10 @@ select{cursor:default}
       style="display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:16px;outline:none;cursor:text">
       <div class="cs" id="cs-0">X</div><div class="cs" id="cs-1">X</div><div class="cs" id="cs-2">X</div>
       <div class="cs" id="cs-3">X</div><div class="cs" id="cs-4">X</div><div class="cs" id="cs-5">X</div>
-      <div style="font-size:calc(26px*var(--zf,1));font-weight:900;color:#94a3b8;line-height:1;align-self:center;margin:0 3px">_</div>
+      <div id="cs-sep" style="font-size:calc(26px*var(--zf,1));font-weight:900;color:#94a3b8;line-height:1;align-self:center;margin:0 3px">_</div>
       <div class="cs" id="cs-6">X</div><div class="cs" id="cs-7">X</div><div class="cs" id="cs-8">X</div>
     </div>
-    <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:16px">Tapez les 6 premiers puis les 3 derniers chiffres</div>
+    <div id="cs-hint" style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:16px">Tapez les 6 premiers puis les 3 derniers chiffres</div>
     <div style="display:flex;gap:8px;justify-content:center">
       <button class="btn btn-ghost" onclick="closeM('m-code-input')">Annuler</button>
       <button class="btn btn-primary" onclick="_codeInputConfirm()">Confirmer ✓</button>
@@ -5059,7 +5066,7 @@ select{cursor:default}
     <div class="mhdr"><h2 id="ep-title">⏹ Fin d'OF/prod</h2></div>
     <div class="mbody">
       <div style="display:flex;gap:10px;margin-bottom:8px;align-items:flex-start;flex-wrap:wrap">
-        <div style="flex:1;min-width:180px"><div class="ep-grid" id="ep-stats"></div></div>
+        <div style="flex:1;min-width:160px"><div class="ep-grid" id="ep-stats"></div></div>
         <div style="display:flex;gap:8px;flex-shrink:0">
           <div style="text-align:center">
             <div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:2px">Répartition</div>
@@ -6399,8 +6406,11 @@ function ipShowModifyModel(){
   const dk=DAY_KEYS[new Date().getDay()];
   const model=_cfgModels&&_cfgModels.find(m=>m.nom===(ST.poste||''));
   const jour=model&&model.jours&&model.jours[dk];
-  document.getElementById('ip-model-debut').value=(jour&&jour.debut)||'';
-  document.getElementById('ip-model-fin').value=(jour&&jour.fin)||'';
+  const toHM=iso=>{if(!iso)return'';const d=new Date(iso);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
+  const deb=(jour&&jour.debut)||(model&&model.debut)||toHM(ST.shift_debut_iso)||'';
+  const fin=(jour&&jour.fin)||(model&&model.fin)||toHM(ST.shift_fin_iso)||'';
+  document.getElementById('ip-model-debut').value=deb;
+  document.getElementById('ip-model-fin').value=fin;
   document.getElementById('ip-model-form').style.display='block';
 }
 
@@ -6699,6 +6709,9 @@ function fillFormFromState(form){
     const v=form[k];
     if(v!==undefined&&v!==null&&v!=='') el.value=v;
   });
+  // Ensure nb_pers defaults to 10 if not set or 0
+  const npEl=document.getElementById('f-nb_pers');
+  if(npEl&&(!npEl.value||npEl.value==='0')) npEl.value='10';
   const ofEl=document.getElementById('pob-of');
   if(ofEl) ofEl.textContent=form.of_num||'—';
 }
@@ -6720,6 +6733,8 @@ function restoreFormFromStorage(){
       const v=f[k];
       if(v!==undefined&&v!==null&&v!=='') el.value=v;
     });
+    const npEl=document.getElementById('f-nb_pers');
+    if(npEl&&(!npEl.value||npEl.value==='0')) npEl.value='10';
   }catch(e){}
 }
 
@@ -6754,15 +6769,15 @@ function renderEPModal(d,f){
   const now=new Date();
   const dateStr=String(now.getDate()).padStart(2,'0')+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+now.getFullYear();
   document.getElementById('ep-stats').innerHTML=`
-    <div class="ep-stat"><div class="val">${esc(ofNum||'—')}</div><div class="lbl">N° OF</div></div>
-    <div class="ep-stat"><div class="val">${esc(f.type_prod||d.type_prod||'—')}</div><div class="lbl">Type produit</div></div>
-    <div class="ep-stat"><div class="val">${esc(String(f.qte_fab||d.qte_fab||0))}</div><div class="lbl">Qté fabriquée</div></div>
-    <div class="ep-stat"><div class="val">${esc(String(f.qte_emb||d.qte_emb||0))}</div><div class="lbl">Qté emballée</div></div>
-    <div class="ep-stat"><div class="val">${dateStr}</div><div class="lbl">Date</div></div>
-    <div class="ep-stat"><div class="val">${fmtTRS(d.trs)}</div><div class="lbl">TRS OF</div></div>
-    <div class="ep-stat"><div class="val">${(d.equiv||0).toFixed(1)}</div><div class="lbl">Équivalence</div></div>
-    <div class="ep-stat"><div class="val">${fmtD2(d.prod_s||0)}</div><div class="lbl">Durée prod</div></div>
-    <div class="ep-stat"><div class="val">${fmtD2(d.stop_s||0)}</div><div class="lbl">Total arrêts</div></div>
+    <div class="ep-stat"><span class="lbl">N° OF</span><span class="val">${esc(ofNum||'—')}</span></div>
+    <div class="ep-stat"><span class="lbl">Type produit</span><span class="val">${esc(f.type_prod||d.type_prod||'—')}</span></div>
+    <div class="ep-stat"><span class="lbl">Qté fabriquée</span><span class="val">${esc(String(f.qte_fab||d.qte_fab||0))}</span></div>
+    <div class="ep-stat"><span class="lbl">Qté emballée</span><span class="val">${esc(String(f.qte_emb||d.qte_emb||0))}</span></div>
+    <div class="ep-stat"><span class="lbl">Date</span><span class="val">${dateStr}</span></div>
+    <div class="ep-stat"><span class="lbl">TRS OF</span><span class="val">${fmtTRS(d.trs)}</span></div>
+    <div class="ep-stat"><span class="lbl">Équivalence</span><span class="val">${(d.equiv||0).toFixed(1)}</span></div>
+    <div class="ep-stat"><span class="lbl">Durée prod</span><span class="val">${fmtD2(d.prod_s||0)}</span></div>
+    <div class="ep-stat"><span class="lbl">Total arrêts</span><span class="val">${fmtD2(d.stop_s||0)}</span></div>
   `;
   const evts=d.tl_events||[];
   const stopMap={};
@@ -7272,8 +7287,8 @@ function calcDur(d,f){
 // ── CODE INPUT OVERLAY ──
 let _codeInputTarget = null;
 let _csDigits = ['','','','','','','','',''];
+let _csFormat = '6_3'; // '9' for 9-digit straight, '6_3' for 6+separator+3
 function _csRender(){
-  const total=_csDigits.filter(Boolean).length;
   let allFilled=true;
   for(let i=0;i<9;i++){
     const el=document.getElementById('cs-'+i);if(!el) continue;
@@ -7305,24 +7320,34 @@ function _csKeydown(e){
     e.preventDefault();closeM('m-code-input');
   }
 }
-function openCodeInput(fieldId, label) {
+function openCodeInput(fieldId, label, fmt) {
   _codeInputTarget = fieldId;
+  _csFormat = fmt || '6_3';
   document.getElementById('code-input-lbl').textContent = label || 'Code';
-  const current = ((document.getElementById('f-' + fieldId) || {}).value || '').replace('_','').replace(/[^0-9]/g,'');
-  _csDigits = Array(9).fill('').map((_,i)=>current[i]||'');
+  const raw = ((document.getElementById('f-' + fieldId) || {}).value || '').replace(/_/g,'').replace(/[^0-9]/g,'');
+  _csDigits = Array(9).fill('').map((_,i)=>raw[i]||'');
+  const sep=document.getElementById('cs-sep');
+  const hint=document.getElementById('cs-hint');
+  if(sep) sep.style.display=_csFormat==='9'?'none':'';
+  if(hint) hint.textContent=_csFormat==='9'?'Tapez les 9 chiffres du N° OF':'Tapez les 6 premiers puis les 3 derniers chiffres';
   _csRender();
   openM('m-code-input');
   setTimeout(()=>{const s=document.getElementById('code-slots');if(s)s.focus();},80);
 }
 function _codeInputConfirm() {
-  const d6=_csDigits.slice(0,6).join('');
-  const d3=_csDigits.slice(6,9).join('');
-  const v=d6+'_'+d3;
-  if(!/^[0-9]{6}_[0-9]{3}$/.test(v)){
-    toast('Format requis : 6 chiffres_3 chiffres (ex : 123456_789)', 'err'); return;
+  const all=_csDigits.join('');
+  if(_csFormat==='9'){
+    if(!/^[0-9]{9}$/.test(all)){toast('Format requis : 9 chiffres (ex : 123456789)','err');return;}
+    const field=document.getElementById('f-'+_codeInputTarget);
+    if(field){field.value=all;scheduleAutoSave();}
+  } else {
+    const d6=_csDigits.slice(0,6).join('');
+    const d3=_csDigits.slice(6,9).join('');
+    const v=d6+'_'+d3;
+    if(!/^[0-9]{6}_[0-9]{3}$/.test(v)){toast('Format requis : 6 chiffres_3 chiffres (ex : 123456_789)','err');return;}
+    const field=document.getElementById('f-'+_codeInputTarget);
+    if(field){field.value=v;scheduleAutoSave();}
   }
-  const field = document.getElementById('f-' + _codeInputTarget);
-  if(field) { field.value = v; scheduleAutoSave(); }
   closeM('m-code-input');
 }
 
