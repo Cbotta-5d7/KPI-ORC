@@ -2395,15 +2395,15 @@ def api_add_stop_decl():
         end_dt   = now.replace(hour=fh, minute=fm, second=0, microsecond=0)
         if end_dt <= start_dt: end_dt += datetime.timedelta(days=1)  # poste de nuit
         dur_s = max(0, (end_dt - start_dt).total_seconds())
-        kit_val = "Oui" if _S.get("form",{}).get("kit") else "Non"
         shift_dt2 = _S.get("shift_start") or now
         shift_date2 = shift_dt2.strftime("%d/%m/%Y")
         row = [
             stop_type, _S.get("form",{}).get("of_num",""),
             start_dt.strftime("%d/%m/%Y"), poste, pilot,
-            "","","","","","","","","","",kit_val,
+            "","","","","","","","","","",
+            "",                              # col P : vide pour les arrêts
             start_dt.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"), fmt(dur_s),
-            "","","","","","","","","","","","","","","","","",comment,"",
+            "","","","","","","","","","","","","","","","",comment,"","","",
             shift_date2,
         ]
         write_excel_bg([], [row])
