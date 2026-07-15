@@ -4036,7 +4036,11 @@ select{cursor:default}
 .btn-edit{background:none;border:none;cursor:pointer;font-size:calc(11px*var(--zf,1));color:#6366f1;padding:1px 3px;border-radius:2px}
 /* TRS gauge */
 .gauge-box{padding:6px;border-top:1px solid var(--border);text-align:center}
-.gauge-lbl{font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700;margin-top:2px}
+.gauge-lbl{font-size:calc(11px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700;margin-top:3px}
+.cs{width:calc(36px*var(--zf,1));height:calc(46px*var(--zf,1));border:2px solid #cbd5e1;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:calc(22px*var(--zf,1));font-weight:900;font-family:monospace;color:#c8d5e0;background:#f8fafc;transition:all .12s;user-select:none;cursor:default}
+.cs.cs-filled{color:#2563eb;border-color:#3b82f6;background:#eff6ff}
+.cs.cs-active{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(99,102,241,.2)}
+.cs.cs-done{border-color:#16a34a;background:#f0fdf4}
 /* Active stops bottom bar — chips */
 #stop-bottom,#stop-bottom-main{display:none;background:#7f0000;color:#fff;padding:8px 14px;align-items:center;gap:8px;flex-shrink:0;border-top:2px solid #b91c1c;flex-wrap:wrap}
 #stop-bottom.on,#stop-bottom-main.on{display:flex}
@@ -4101,7 +4105,7 @@ select{cursor:default}
 .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;align-items:center;justify-content:center}
 .overlay.on{display:flex}
 .mbox{background:var(--card);border-radius:12px;width:90%;max-width:520px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-height:92vh;display:flex;flex-direction:column}
-.mbox.wide{max-width:860px}
+.mbox.wide{max-width:1100px}
 .mhdr{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
 .mhdr.red{background:#b91c1c;border-radius:12px 12px 0 0}
 .mhdr h2{font-size:calc(15px*var(--zf,1));font-weight:700;color:var(--navy)}
@@ -4244,7 +4248,6 @@ select{cursor:default}
       <span>OF : <span id="mpb-of" style="font-weight:700">—</span></span>
       <span>Durée : <span id="mpb-dur" style="color:#67e8f9;font-weight:700">—</span></span>
       <span>Arrêts : <span id="mpb-stops" style="color:#fca5a5;font-weight:700">—</span></span>
-      <span style="margin-left:auto;font-size:calc(11px*var(--zf,1));opacity:.7">Cliquer → vue prod</span>
     </div>
     <!-- Barre Excel occupé -->
     <div id="excel-busy-bar" style="display:none;background:#92400e;color:#fef3c7;padding:5px 14px;font-size:calc(11px*var(--zf,1));font-weight:700;text-align:center">
@@ -4252,10 +4255,10 @@ select{cursor:default}
     </div>
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0" id="main-action-btns">
-        <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:calc(14px*var(--zf,1));padding:10px 18px;font-weight:800">▶ Démarrer production</button>
-        <button class="btn btn-danger" onclick="openStopModal()" style="font-size:calc(14px*var(--zf,1));padding:10px 18px;font-weight:800">⛔ Déclarer un arrêt</button>
-        <button class="btn btn-amber" onclick="doFinPoste()" style="font-size:calc(14px*var(--zf,1));padding:10px 18px;font-weight:800">🏁 Fin de poste</button>
-        <button class="btn btn-sec" onclick="loadMainDecl()" style="font-size:calc(12px*var(--zf,1));padding:8px 14px">↺ Actualiser</button>
+        <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:calc(15px*var(--zf,1));padding:18px 24px;font-weight:800;min-height:64px">▶ Démarrer production</button>
+        <button class="btn btn-danger" onclick="openStopModal()" style="font-size:calc(15px*var(--zf,1));padding:18px 24px;font-weight:800;min-height:64px">⛔ Déclarer un arrêt</button>
+        <button class="btn btn-amber" onclick="doFinPoste()" style="font-size:calc(15px*var(--zf,1));padding:18px 24px;font-weight:800;min-height:64px">🏁 Fin de poste</button>
+
       </div>
     </div>
     <!-- KPI accueil — POSTE ACTUEL -->
@@ -4266,14 +4269,14 @@ select{cursor:default}
         <!-- Titre + TRS jauge + valeur -->
         <div style="display:flex;align-items:center;gap:10px">
           <div style="flex-shrink:0;text-align:center">
-            <svg viewBox="0 0 100 58" style="width:88px;display:block;margin:0 auto">
+            <svg viewBox="0 0 100 58" style="width:120px;display:block;margin:0 auto">
               <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="rgba(0,0,0,.12)" stroke-width="11" stroke-linecap="round"/>
               <path id="gauge-poste-acc-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="11" stroke-linecap="round" stroke-dasharray="0,132"/>
               <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#15803d" id="gauge-poste-acc-pct">—</text>
             </svg>
           </div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px">TRS du Poste</div>
+            <div style="font-size:calc(12px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px">TRS du Poste</div>
             <div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:2px" id="gauge-poste-acc-lbl">—</div>
             <!-- Stats en ligne -->
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:2px">
@@ -4293,8 +4296,8 @@ select{cursor:default}
           </div>
           <!-- Répartition temps (pie) -->
           <div style="flex-shrink:0;text-align:center;border-left:1px solid #bae6fd;padding-left:10px;min-width:140px">
-            <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Répartition temps</div>
-            <svg id="pie-poste-acc" viewBox="0 0 130 115" style="width:160px;height:auto;display:block;margin:0 auto"></svg>
+            <div style="font-size:calc(12px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Répartition temps</div>
+            <svg id="pie-poste-acc" viewBox="0 0 130 115" style="width:210px;height:auto;display:block;margin:0 auto"></svg>
           </div>
         </div>
         <!-- Horaire temporaire -->
@@ -4432,7 +4435,7 @@ select{cursor:default}
         <!-- Timeline 4h -->
         <div class="tl-wrap">
           <h5>Timeline — 4 dernières heures</h5>
-          <svg id="tl-svg" viewBox="0 0 800 40" preserveAspectRatio="none" style="width:100%;height:40px;display:block">
+          <svg id="tl-svg" viewBox="0 0 800 52" preserveAspectRatio="none" style="width:100%;height:52px;display:block">
             <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
           </svg>
           <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
@@ -4460,7 +4463,7 @@ select{cursor:default}
         <div class="gauge-box" style="padding:8px 4px 4px;border-top:1px solid var(--border);flex-shrink:0">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;align-items:center">
             <div style="text-align:center">
-              <svg viewBox="0 0 100 56" style="width:100%;max-width:110px">
+              <svg viewBox="0 0 100 56" style="width:100%;max-width:140px">
                 <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
                 <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
                 <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
@@ -4468,7 +4471,7 @@ select{cursor:default}
               <div class="gauge-lbl">TRS OF</div>
             </div>
             <div style="text-align:center">
-              <svg viewBox="0 0 100 56" style="width:100%;max-width:110px">
+              <svg viewBox="0 0 100 56" style="width:100%;max-width:140px">
                 <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
                 <path id="gauge-poste-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#0891b2" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
                 <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#0c4a6e" id="gauge-poste-pct">—</text>
@@ -4546,7 +4549,7 @@ select{cursor:default}
     <!-- Timeline compact -->
     <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
       <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline du poste</div>
-      <svg id="fp-tl" viewBox="0 0 800 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block">
+      <svg id="fp-tl" viewBox="0 0 800 52" preserveAspectRatio="none" style="width:100%;height:52px;display:block">
         <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
       </svg>
       <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
@@ -4745,11 +4748,14 @@ select{cursor:default}
 <div id="m-code-input" class="modal" style="position:fixed;inset:0;z-index:9999;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);background:rgba(0,0,0,0.75);align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-code-input')">
   <div style="background:#fff;border-radius:14px;padding:24px 28px;width:90%;max-width:480px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.5)">
     <div style="font-size:calc(13px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:8px;letter-spacing:.05em" id="code-input-lbl">CODE</div>
-    <div style="font-family:monospace;font-size:calc(22px*var(--zf,1));font-weight:900;color:var(--navy);letter-spacing:6px;margin-bottom:16px;background:#f8fafc;border-radius:8px;padding:10px">0 0 0 0 0 0 _ 0 0 0</div>
-    <input id="code-input-val" maxlength="10" autocomplete="off" spellcheck="false" inputmode="numeric"
-      style="font-size:calc(42px*var(--zf,1));font-weight:900;text-align:center;letter-spacing:4px;font-family:monospace;border:2px solid var(--navy);border-radius:8px;padding:10px 16px;width:100%;color:var(--navy);background:#fff;margin-bottom:16px"
-      oninput="_codeInputFmt(this)" onkeydown="if(event.key==='Enter')_codeInputConfirm();else if(event.key==='Escape')closeM('m-code-input')">
-    <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:16px">Format : 6 chiffres, tiret bas, 3 chiffres &nbsp;(ex : 123456_789)</div>
+    <div id="code-slots" tabindex="0" onkeydown="_csKeydown(event)"
+      style="display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:16px;outline:none;cursor:text">
+      <div class="cs" id="cs-0">X</div><div class="cs" id="cs-1">X</div><div class="cs" id="cs-2">X</div>
+      <div class="cs" id="cs-3">X</div><div class="cs" id="cs-4">X</div><div class="cs" id="cs-5">X</div>
+      <div style="font-size:calc(26px*var(--zf,1));font-weight:900;color:#94a3b8;line-height:1;align-self:center;margin:0 3px">_</div>
+      <div class="cs" id="cs-6">X</div><div class="cs" id="cs-7">X</div><div class="cs" id="cs-8">X</div>
+    </div>
+    <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:16px">Tapez les 6 premiers puis les 3 derniers chiffres</div>
     <div style="display:flex;gap:8px;justify-content:center">
       <button class="btn btn-ghost" onclick="closeM('m-code-input')">Annuler</button>
       <button class="btn btn-primary" onclick="_codeInputConfirm()">Confirmer ✓</button>
@@ -4940,13 +4946,6 @@ select{cursor:default}
         </div>
       </div>
       <div class="ss">
-        <h3>📊 Dashboard HTML superviseur</h3>
-        <div class="flex">
-          <button class="btn btn-prim" onclick="generateDashboard()">🔄 Générer le Dashboard HTML</button>
-          <span id="dash-status" style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-left:8px"></span>
-        </div>
-      </div>
-      <div class="ss">
         <h3>⛔ Liste des arrêts configurables</h3>
         <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Ajouter, modifier ou supprimer les boutons d'arrêt disponibles en production. Pris en compte immédiatement.</div>
         <div id="events-list-ui" style="margin-bottom:10px"></div>
@@ -4966,26 +4965,31 @@ select{cursor:default}
       <div class="ss">
         <h3>⏱ Arrêts prévus (budget planifié)</h3>
         <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Les durées planifiées sont <b>déduites du temps de référence TRS</b> si le pilote les a réellement déclarées. Tout dépassement reste impactant. Mettre 0 pour désactiver.</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div class="lf" style="margin:0">
-            <label>🧹 Nettoyage court (min)</label>
-            <input type="number" id="ap-clean-short" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:7px;padding:7px 10px">
+            <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:600;color:#374151">🧹 Nettoyage court</span>
+            <input type="number" id="ap-clean-short" min="0" max="120" style="width:70px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(13px*var(--zf,1));text-align:right">
+            <span style="font-size:calc(11px*var(--zf,1));color:var(--gray)">min</span>
           </div>
-          <div class="lf" style="margin:0">
-            <label>🧹 Nettoyage long (min)</label>
-            <input type="number" id="ap-clean-long" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
+          <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:7px;padding:7px 10px">
+            <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:600;color:#374151">🧹 Nettoyage long</span>
+            <input type="number" id="ap-clean-long" min="0" max="120" style="width:70px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(13px*var(--zf,1));text-align:right">
+            <span style="font-size:calc(11px*var(--zf,1));color:var(--gray)">min</span>
           </div>
-          <div class="lf" style="margin:0">
-            <label>🧹 Nettoyage très long (min)</label>
-            <input type="number" id="ap-clean-grand" min="0" max="240" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
+          <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:7px;padding:7px 10px">
+            <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:600;color:#374151">🧹 Nettoyage très long</span>
+            <input type="number" id="ap-clean-grand" min="0" max="240" style="width:70px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(13px*var(--zf,1));text-align:right">
+            <span style="font-size:calc(11px*var(--zf,1));color:var(--gray)">min</span>
           </div>
-          <div class="lf" style="margin:0">
-            <label>📋 Réunion quotidienne (min)</label>
-            <input type="number" id="ap-meeting" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
+          <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:7px;padding:7px 10px">
+            <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:600;color:#374151">📋 Réunion quotidienne</span>
+            <input type="number" id="ap-meeting" min="0" max="120" style="width:70px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(13px*var(--zf,1));text-align:right">
+            <span style="font-size:calc(11px*var(--zf,1));color:var(--gray)">min</span>
           </div>
-          <div class="lf" style="margin:0">
-            <label>⏸ Pause (min)</label>
-            <input type="number" id="ap-pause" min="0" max="120" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))">
+          <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:7px;padding:7px 10px">
+            <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:600;color:#374151">⏸ Pause</span>
+            <input type="number" id="ap-pause" min="0" max="120" style="width:70px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(13px*var(--zf,1));text-align:right">
+            <span style="font-size:calc(11px*var(--zf,1));color:var(--gray)">min</span>
           </div>
         </div>
         <div style="font-size:calc(10px*var(--zf,1));color:var(--gray);margin-top:6px">Pour l'affectation automatique : le libellé doit contenir "nettoyage court/long/très long", "réunion" ou "pause".</div>
@@ -5065,11 +5069,11 @@ select{cursor:default}
         <div style="display:flex;gap:8px;flex-shrink:0">
           <div style="text-align:center">
             <div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:2px">Répartition</div>
-            <svg id="ep-pie" viewBox="0 0 130 115" style="width:110px;height:97px;display:block"></svg>
+            <svg id="ep-pie" viewBox="0 0 130 115" style="width:160px;height:142px;display:block"></svg>
           </div>
           <div style="text-align:center">
-            <div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:2px">TRS</div>
-            <svg id="ep-gauge" viewBox="0 0 100 58" style="width:90px;display:block;margin:0 auto;margin-top:8px">
+            <div style="font-size:calc(11px*var(--zf,1));text-transform:uppercase;font-weight:700;color:var(--gray);margin-bottom:2px">TRS</div>
+            <svg id="ep-gauge" viewBox="0 0 100 58" style="width:130px;display:block;margin:0 auto;margin-top:8px">
               <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
               <path id="ep-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
               <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="ep-gauge-pct">--%</text>
@@ -5083,7 +5087,7 @@ select{cursor:default}
       </div>
       <div class="card" style="padding:8px;margin-bottom:0">
         <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Timeline</div>
-        <svg id="ep-tl" viewBox="0 0 800 40" preserveAspectRatio="none" style="width:100%;height:40px;display:block">
+        <svg id="ep-tl" viewBox="0 0 800 52" preserveAspectRatio="none" style="width:100%;height:52px;display:block">
           <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
         </svg>
         <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span></div>
@@ -6817,10 +6821,13 @@ async function forceResetProd(){
 }
 
 // ── PIE & GAUGE CHARTS ──
-function drawPie(svgId, segments) {
+function drawPie(svgId, segments, opts) {
   const svg=document.getElementById(svgId);if(!svg) return;
+  const fCenter=(opts&&opts.fCenter)||13;
+  const fSub=(opts&&opts.fSub)||7;
+  const fLeg=(opts&&opts.fLeg)||7;
   const total=segments.reduce((a,s)=>a+s.value,0);
-  if(total<=0){svg.innerHTML='<text x="65" y="60" text-anchor="middle" font-size="9" fill="#94a3b8">Pas de données</text>';return;}
+  if(total<=0){svg.innerHTML=`<text x="65" y="60" text-anchor="middle" font-size="${fCenter}" fill="#94a3b8">Pas de données</text>`;return;}
   const cx=65,cy=57,r=44,ir=24;let html='',startAngle=-Math.PI/2;
   segments.forEach(seg=>{
     if(seg.value<=0) return;
@@ -6834,12 +6841,12 @@ function drawPie(svgId, segments) {
     startAngle=endAngle;
   });
   const m=segments[0],mp=total>0?Math.round(m.value/total*100):0;
-  html+=`<text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e">${mp}%</text>`;
-  html+=`<text x="${cx}" y="${cy+15}" text-anchor="middle" font-size="7" fill="#64748b">${esc(m.label)}</text>`;
+  html+=`<text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="${fCenter}" font-weight="800" fill="#1a1f5e">${mp}%</text>`;
+  html+=`<text x="${cx}" y="${cy+15}" text-anchor="middle" font-size="${fSub}" fill="#64748b">${esc(m.label)}</text>`;
   let lx=0;segments.filter(s=>s.value>0).forEach(s=>{
     const p=Math.round(s.value/total*100);
     html+=`<rect x="${lx}" y="108" width="7" height="7" fill="${s.color}" rx="1"/>`;
-    html+=`<text x="${lx+9}" y="115" font-size="7" fill="#475569">${esc(s.label)} ${p}%</text>`;lx+=65;
+    html+=`<text x="${lx+9}" y="115" font-size="${fLeg}" fill="#475569">${esc(s.label)} ${p}%</text>`;lx+=65;
   });
   svg.innerHTML=html;
 }
@@ -6960,14 +6967,14 @@ function updateGauge(s){
   const stopS=s.stop_wall_s||0;
   const ofDur=s.of_elapsed_s||0;
   const prodSof=Math.max(0,ofDur-stopS);
-  drawPie('pie-of',[{label:'Prod',value:prodSof,color:'#16a34a'},{label:'Arrêts',value:stopS,color:'#dc2626'}]);
+  drawPie('pie-of',[{label:'Prod',value:prodSof,color:'#16a34a'},{label:'Arrêts',value:stopS,color:'#dc2626'}],{fCenter:16,fSub:9,fLeg:9});
   // For poste pie — compute from shift start
   const shiftTotal=s.shift_start_iso?(Date.now()-new Date(s.shift_start_iso).getTime())/1000:0;
   const shiftStop=_todayStopAccum||0;
   const shiftProd=Math.max(0,shiftTotal-shiftStop);
   const postePieData=[{label:'Prod',value:shiftProd,color:'#16a34a'},{label:'Arrêts',value:shiftStop,color:'#dc2626'}];
-  drawPie('pie-poste',postePieData);
-  drawPie('pie-poste-acc',postePieData);
+  drawPie('pie-poste',postePieData,{fCenter:16,fSub:9,fLeg:9});
+  drawPie('pie-poste-acc',postePieData,{fCenter:16,fSub:9,fLeg:9});
 }
 // Accumulateurs poste (mis à jour à chaque loadMainDecl)
 let _todayEquivAccum=0, _todayStopAccum=0, _lastProdDeclTime=null, _shiftRefDt=null;
@@ -7133,7 +7140,7 @@ function renderTL(svgId,evts){
 function drawTL(svgId,tlEvts,debutHMS,finHMS){
   const svg=document.getElementById(svgId);
   if(!svg) return;
-  const W=800,Y=4,H2=28,H=40;
+  const W=800,Y=4,H2=28,H=52;
   let html=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
   if(!debutHMS||!finHMS){svg.innerHTML=html;return;}
   const base=new Date();base.setHours(0,0,0,0);
@@ -7150,15 +7157,15 @@ function drawTL(svgId,tlEvts,debutHMS,finHMS){
     html+=`<rect x="${x1}" y="${Y}" width="${Math.max(1,x2-x1)}" height="${H2}" fill="${STOP_COL[cat]||'#94a3b8'}" rx="2" opacity=".9"/>`;
     cur+=(e.dur_s||0)*1000;
   });
-  html+=`<text x="2" y="${H-1}" font-size="8" fill="#64748b">${debutHMS.slice(0,5)}</text>`;
-  html+=`<text x="${W-30}" y="${H-1}" font-size="8" fill="#64748b">${finHMS.slice(0,5)}</text>`;
+  html+=`<text x="2" y="${H-2}" font-size="10" fill="#374151" font-weight="600">${debutHMS.slice(0,5)}</text>`;
+  html+=`<text x="${W-36}" y="${H-2}" font-size="10" fill="#374151" font-weight="600">${finHMS.slice(0,5)}</text>`;
   svg.innerHTML=html;
 }
 
 function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
   const svg=document.getElementById(svgId);
   if(!svg) return;
-  const W=800,Y=4,H2=28,H=40;
+  const W=800,Y=4,H2=28,H=52;
   let html=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
   const tS=new Date(startIso).getTime(),tE=new Date(endIso).getTime();
   const span=tE-tS;if(span<=0){svg.innerHTML=html;return;}
@@ -7202,11 +7209,11 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
     const tx=toX(tickT);
     const hr=new Date(tickT).getHours();
     html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`;
-    html+=`<text x="${tx+2}" y="${Y+H2+9}" font-size="7" fill="#374151">${String(hr).padStart(2,'0')}h</text>`;
+    html+=`<text x="${tx+2}" y="${Y+H2+14}" font-size="9" fill="#374151" font-weight="600">${String(hr).padStart(2,'0')}h</text>`;
     tickT+=3600000;
   }
-  html+=`<text x="2" y="${Y+H2+9}" font-size="8" fill="#374151">${fT(tS)}</text>`;
-  html+=`<text x="${W-30}" y="${Y+H2+9}" font-size="8" fill="#374151">${fT(tE)}</text>`;
+  html+=`<text x="2" y="${Y+H2+14}" font-size="10" fill="#374151" font-weight="600">${fT(tS)}</text>`;
+  html+=`<text x="${W-36}" y="${Y+H2+14}" font-size="10" fill="#374151" font-weight="600">${fT(tE)}</text>`;
   svg.innerHTML=html;
 }
 
@@ -7269,27 +7276,54 @@ function calcDur(d,f){
 
 // ── CODE INPUT OVERLAY ──
 let _codeInputTarget = null;
+let _csDigits = ['','','','','','','','',''];
+function _csRender(){
+  const total=_csDigits.filter(Boolean).length;
+  let allFilled=true;
+  for(let i=0;i<9;i++){
+    const el=document.getElementById('cs-'+i);if(!el) continue;
+    const d=_csDigits[i]||'';
+    el.textContent=d||'X';
+    el.className='cs'+(d?' cs-filled':'');
+    if(!d) allFilled=false;
+  }
+  if(allFilled){for(let i=0;i<9;i++){const e=document.getElementById('cs-'+i);if(e)e.classList.add('cs-done');}}
+  else{
+    const ai=_csDigits.findIndex(d=>!d);
+    const activeEl=document.getElementById('cs-'+ai);
+    if(activeEl) activeEl.classList.add('cs-active');
+  }
+}
+function _csKeydown(e){
+  if(/^[0-9]$/.test(e.key)){
+    e.preventDefault();
+    const pos=_csDigits.findIndex(d=>!d);
+    if(pos!==-1){_csDigits[pos]=e.key;_csRender();}
+  } else if(e.key==='Backspace'){
+    e.preventDefault();
+    let pos=_csDigits.findIndex(d=>!d);
+    if(pos===-1) pos=9;
+    if(pos>0){_csDigits[pos-1]='';_csRender();}
+  } else if(e.key==='Enter'){
+    e.preventDefault();_codeInputConfirm();
+  } else if(e.key==='Escape'){
+    e.preventDefault();closeM('m-code-input');
+  }
+}
 function openCodeInput(fieldId, label) {
   _codeInputTarget = fieldId;
   document.getElementById('code-input-lbl').textContent = label || 'Code';
-  const current = (document.getElementById('f-' + fieldId) || {}).value || '';
-  const inp = document.getElementById('code-input-val');
-  if(inp) { inp.value = current; inp.style.borderColor = 'var(--navy)'; }
+  const current = ((document.getElementById('f-' + fieldId) || {}).value || '').replace('_','').replace(/[^0-9]/g,'');
+  _csDigits = Array(9).fill('').map((_,i)=>current[i]||'');
+  _csRender();
   openM('m-code-input');
-  setTimeout(() => { if(inp){ inp.focus(); inp.select(); } }, 80);
-}
-function _codeInputFmt(inp) {
-  let v = inp.value.replace(/[^0-9]/g, '');
-  v = v.slice(0, 9);
-  if(v.length > 6) inp.value = v.slice(0, 6) + '_' + v.slice(6);
-  else inp.value = v;
-  inp.style.borderColor = /^[0-9]{6}_[0-9]{3}$/.test(inp.value) ? '#16a34a' : 'var(--navy)';
+  setTimeout(()=>{const s=document.getElementById('code-slots');if(s)s.focus();},80);
 }
 function _codeInputConfirm() {
-  const inp = document.getElementById('code-input-val');
-  const v = (inp ? inp.value : '').trim();
-  if(!/^[0-9]{6}_[0-9]{3}$/.test(v)) {
-    inp.style.borderColor = '#dc2626';
+  const d6=_csDigits.slice(0,6).join('');
+  const d3=_csDigits.slice(6,9).join('');
+  const v=d6+'_'+d3;
+  if(!/^[0-9]{6}_[0-9]{3}$/.test(v)){
     toast('Format requis : 6 chiffres_3 chiffres (ex : 123456_789)', 'err'); return;
   }
   const field = document.getElementById('f-' + _codeInputTarget);
@@ -8697,7 +8731,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       </div>
       <div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px">
         <div style="text-align:center">
-          <svg id="rpt-gauge" viewBox="0 0 100 58" style="width:150px;display:block;margin:0 auto">
+          <svg id="rpt-gauge" viewBox="0 0 100 58" style="width:190px;display:block;margin:0 auto">
             <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
             <path id="rpt-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
             <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="rpt-gauge-pct">--%</text>
@@ -8705,7 +8739,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:2px">TRS Poste</div>
         </div>
         <div style="text-align:center">
-          <svg id="rpt-pie" viewBox="0 0 130 115" style="width:130px;height:110px;display:block;margin:0 auto"></svg>
+          <svg id="rpt-pie" viewBox="0 0 130 115" style="width:170px;height:145px;display:block;margin:0 auto"></svg>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
           <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Pièces</div></div>
@@ -8727,7 +8761,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     <!-- Timeline -->
     <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
       <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline${plageStr}</div>
-      <svg viewBox="0 0 800 42" preserveAspectRatio="none" style="width:100%;height:42px;display:block">${tlContent}</svg>
+      <svg viewBox="0 0 800 52" preserveAspectRatio="none" style="width:100%;height:52px;display:block">${tlContent}</svg>
       <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Rattrapage</span><span><i style="background:#38bdf8"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
     </div>
     <!-- Productions (pleine largeur) -->
