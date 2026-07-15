@@ -4529,12 +4529,11 @@ select{cursor:default}
           <path id="fp-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
           <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="fp-gauge-pct">--%</text>
         </svg>
-        <div style="font-size:calc(18px*var(--zf,1));font-weight:800;color:var(--navy);margin-top:4px" id="fp-trs-lbl2">—</div>
         <div style="font-size:calc(12px*var(--zf,1));color:var(--gray);margin-top:2px" id="fp-shift-hours">—</div>
       </div>
       <div style="text-align:center;flex-shrink:0">
         <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Répartition</div>
-        <svg id="fp-pie" viewBox="0 0 130 115" style="width:200px;height:177px;display:block;margin:0 auto"></svg>
+        <svg id="fp-pie" viewBox="0 0 130 130" style="width:200px;height:200px;display:block;margin:0 auto"></svg>
       </div>
       <div style="flex:1;display:flex;flex-direction:column;gap:5px">
         <div style="display:none"><span id="fp-trs"></span><span id="fp-trs-of"></span></div>
@@ -4574,15 +4573,6 @@ select{cursor:default}
         <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:5px">Arrêts du poste</div>
         <div id="fp-stops-list" style="font-size:calc(11px*var(--zf,1))"></div>
       </div>
-    </div>
-    <!-- Modèle horaire + recalcul TRS -->
-    <div style="padding:6px 12px;background:var(--card);border-top:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span style="font-size:calc(11px*var(--zf,1));font-weight:700;color:var(--navy)">Modèle horaire :</span>
-      <select id="fp-model-sel" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))" onchange="recalcFPTRS()">
-        <option value="">-- Choisir --</option>
-      </select>
-      <span id="fp-shift-info" style="font-size:calc(11px*var(--zf,1));color:var(--gray)"></span>
-      <button class="btn btn-ghost" style="font-size:calc(11px*var(--zf,1));padding:4px 10px" onclick="openM('m-fp-horaires')">✏ Modifier horaires de mon poste</button>
     </div>
     <!-- Boutons -->
     <div style="padding:8px 12px;background:var(--card);border-top:1px solid var(--border);flex-shrink:0;display:flex;gap:10px;justify-content:flex-end">
@@ -7805,12 +7795,20 @@ async function loadFPData(){
 
   // Count stops
   const stops=gEvts.filter(e=>e.type);
-  const stopTotal=stops.reduce((a,e)=>{
-    try{const p=s=>s.split(':').reduce((acc,v,i)=>acc+(i===0?+v*3600:i===1?+v*60:+v),0);
-    return a+Math.max(0,p(e.fin||'00:00:00')-p(e.debut||'00:00:00'));}catch(ex){return a;}
-  },0);
+  const _hmsS=hms=>{if(!hms)return 0;const p=(hms+':0:0').split(':').map(Number);return(p[0]||0)*3600+(p[1]||0)*60+(p[2]||0);};
+  const stopTotal=stops.reduce((a,e)=>a+Math.max(0,_hmsS(e.fin)-_hmsS(e.debut)),0);
   document.getElementById('fp-stop-t').textContent=fmtDurMS(stopTotal);
-  document.getElementById('fp-prod-t').textContent=Math.round(Math.max(0,(d.tot_s||0)-stopTotal)/60)+' min';
+  // Net prod = sum of each OF's time minus overlapping stops within that period
+  const _ofPs=(d.of_list||[]).map(p=>({s:_hmsS(p.debut),e:_hmsS(p.fin)})).filter(p=>p.e>p.s);
+  const _stPs=stops.map(e=>({s:_hmsS(e.debut),e:_hmsS(e.fin)})).filter(e=>e.e>e.s);
+  let _netProdS=0;
+  _ofPs.forEach(pp=>{
+    const ov=_stPs.map(sv=>({s:Math.max(sv.s,pp.s),e:Math.min(sv.e,pp.e)})).filter(o=>o.e>o.s);
+    ov.sort((a,b)=>a.s-b.s);
+    const mg=[];ov.forEach(o=>{if(mg.length&&o.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,o.e);else mg.push({...o});});
+    _netProdS+=Math.max(0,pp.e-pp.s-mg.reduce((a,o)=>a+(o.e-o.s),0));
+  });
+  document.getElementById('fp-prod-t').textContent=Math.round(_netProdS/60)+' min';
 
   // New metrics: Cadence/h, Nb pièces, Chg. fibre
   const ofList=d.of_list||[];
@@ -7891,10 +7889,9 @@ async function loadFPData(){
   drawPie('fp-pie',[
     {label:'Prod',value:prodS,color:'#16a34a'},
     {label:'Arrêts',value:stopS,color:'#dc2626'},
-  ]);
+  ],{fLeg:9,legY:118});
   const trsS=d.trs_shift!==undefined?d.trs_shift:d.trs;
   drawGauge('fp-gauge-arc','fp-gauge-pct',trsS>=0?trsS:0);
-  const fpL=document.getElementById('fp-trs-lbl2');if(fpL) fpL.textContent=fmtTRSv(trsS);
 }
 
 async function applyFPHoraires(){
@@ -7981,7 +7978,17 @@ async function confirmFinPoste(){
   const ofList=fpData&&fpData.of_list||[];
   const prod_total=ofList.reduce((s,o)=>s+parseInt(o.qte_fab||0),0);
   const dur_prod_total_s=ofList.reduce((s,o)=>s+pSec(o.duree||''),0);
-  const dur_prod_sans_arret_s=Math.max(0,dur_prod_total_s-arret_s);
+  // Net prod = each OF's (fin-debut) minus overlapping stops within that period
+  const _fpOfPs=ofList.map(o=>({s:pSec(o.debut||'0:0:0'),e:pSec(o.fin||'0:0:0')})).filter(p=>p.e>p.s);
+  const _fpStPs=stops.map(e=>({s:pSec(e.debut||'0:0:0'),e:pSec(e.fin||'0:0:0')})).filter(e=>e.e>e.s);
+  let _fpNet=0;
+  _fpOfPs.forEach(pp=>{
+    const ov=_fpStPs.map(sv=>({s:Math.max(sv.s,pp.s),e:Math.min(sv.e,pp.e)})).filter(o=>o.e>o.s);
+    ov.sort((a,b)=>a.s-b.s);
+    const mg=[];ov.forEach(o=>{if(mg.length&&o.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,o.e);else mg.push({...o});});
+    _fpNet+=Math.max(0,pp.e-pp.s-mg.reduce((a,o)=>a+(o.e-o.s),0));
+  });
+  const dur_prod_sans_arret_s=_fpNet;
   const posteRow={
     date:new Date().toLocaleDateString('fr-FR'),
     pilot:ST.pilot||'',
@@ -8647,10 +8654,23 @@ async function loadSessionReport(date,pilot,poste,itemId){
     </div>`).join(''):'<div style="color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>';
   window._rptProdRows = d.prod_rows || [];
   window._rptEvtRows = d.evt_rows || [];
+  // Helper: compute net prod and stop overlap for each OF against evt_rows
+  const _rptHmsMs=hm=>{if(!hm)return 0;const[h,m,s]=(hm+':0:0').split(':').map(Number);return(h||0)*3600000+(m||0)*60000+(s||0)*1000;};
+  const _rptStEvts=(d.evt_rows||[]).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(e=>e.e>e.s);
+  function _rptNetProd(debHm,finHm){
+    const dMs=_rptHmsMs(debHm),fMs=_rptHmsMs(finHm);
+    if(fMs<=dMs) return {netMin:0,stopMin:0};
+    const ov=_rptStEvts.map(sv=>({s:Math.max(sv.s,dMs),e:Math.min(sv.e,fMs)})).filter(o=>o.e>o.s);
+    ov.sort((a,b)=>a.s-b.s);
+    const mg=[];ov.forEach(o=>{if(mg.length&&o.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,o.e);else mg.push({...o});});
+    const blocked=mg.reduce((a,o)=>a+(o.e-o.s),0);
+    return {netMin:Math.round(Math.max(0,fMs-dMs-blocked)/60000),stopMin:Math.round(blocked/60000)};
+  }
   const prodsHtml=(d.prod_rows||[]).map((r,ri)=>{
     const tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
     const kitStr=(r.kit||'').toLowerCase();
     const kitDisp=kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
+    const {netMin,stopMin}=_rptNetProd(r.debut,r.fin);
     return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="showOfDetail(${ri})" title="Voir détail OF">
       <td style="padding:5px 8px;font-weight:700;color:#1e3a8a;text-decoration:underline">${esc(r.of||'')}</td>
       <td style="padding:5px 8px;font-size:calc(11px*var(--zf,1))">${esc(r.taille||'')} ${esc(r.type_prod||'')}</td>
@@ -8658,6 +8678,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <td style="padding:5px 8px">${esc(r.qte_fab||'')}</td>
       <td style="padding:5px 8px;color:#0891b2;font-weight:700">${esc(r.equiv||'')}</td>
       <td style="padding:5px 8px">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
+      <td style="padding:5px 8px;color:#16a34a;font-weight:700">${netMin} min</td>
+      <td style="padding:5px 8px;color:#dc2626;font-weight:700">${stopMin} min</td>
       <td style="padding:5px 8px;font-weight:800;color:${tc}">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</td>
       <td style="padding:5px 8px;font-size:calc(10px*var(--zf,1));color:var(--gray)">${esc(r.comment||'')}</td>
     </tr>`;
@@ -8785,9 +8807,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
         <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
           <th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>
           <th style="padding:4px 6px">Lots×2</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>
-          <th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px;text-align:left">Comm.</th>
+          <th style="padding:4px 6px">Heures</th><th style="padding:4px 6px;color:#16a34a">Durée prod</th><th style="padding:4px 6px;color:#dc2626">Arrêts plage</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px;text-align:left">Comm.</th>
         </tr></thead>
-        <tbody>${prodsHtml||'<tr><td colspan="8" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
+        <tbody>${prodsHtml||'<tr><td colspan="10" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
       </table>
     </div>
     <!-- Pareto + Arrêts côte à côte -->
