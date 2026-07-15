@@ -5948,6 +5948,7 @@ async function loadMainDecl() {
     (!r.date||r.date.startsWith(todayPfx))&&_isProdRow(r)
   );
   const evts=(Array.isArray(evtData)?evtData:[]).filter(r=>!r.date||r.date.startsWith(todayPfx));
+  window._mainEvtsAll=evts;
   const allRows=[];
   decls.forEach(r=>allRows.push({...r,_rowType:'prod'}));
   evts.forEach(r=>allRows.push({...r,_rowType:'evt'}));
@@ -5992,7 +5993,7 @@ async function loadMainDecl() {
     const cmt=esc(r.comment||'');
     const fibre=r.fibre||'';const fibreShort=esc(fibre.slice(0,9));
     return `<tr class="${isProd?'row-prod':'row-evt'}">
-      <td>${tag}</td><td style="font-weight:600">${esc(r.of||'')}</td>
+      <td>${tag}</td><td style="font-weight:700;color:${isProd?'#1e3a8a':'#dc2626'};text-decoration:underline;cursor:pointer" onclick="showMainRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||r.type||'—')}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600;cursor:${fibre?'pointer':''}" title="${esc(fibre)}" onclick="${fibre?'showFibre(\''+esc(fibre)+'\')':''}">${fibreShort}${fibre.length>9?'…':''}</td>
       <td style="font-size:calc(10px*var(--zf,1))">${esc(r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
@@ -7339,24 +7340,13 @@ function _codeInputConfirm() {
 // ── OF DETAIL REPORT ──
 window._rptProdRows = [];
 window._rptEvtRows = [];
-function showOfDetail(ri) {
-  const r = window._rptProdRows[ri];
-  const evtRows = window._rptEvtRows || [];
-  if(!r) return;
-  function _hm2s(hm) { if(!hm) return 0; const [h,m] = hm.split(':').map(Number); return (h||0)*3600+(m||0)*60; }
-  const debS = _hm2s(r.debut), finS = _hm2s(r.fin)||86400;
-  const ofEvts = evtRows.filter(e => { const t = _hm2s(e.debut); return t >= debS && t <= finS; });
+
+// Shared OF/arrêt detail modal renderer
+function _renderAndOpenOfDetail(r, ofEvts) {
+  const isProd = r._rowType !== 'evt';
   const tc = r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
   const kitStr = (r.kit||'').toLowerCase();
-  const kitDisp = kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓ Oui</span>':'<span style="color:#94a3b8">Non</span>';
-  const evtsHtml = ofEvts.length ? ofEvts.map(e=>`<tr>
-    <td style="padding:4px 8px;font-weight:600;font-size:calc(11px*var(--zf,1))">${esc(e.type||'')}</td>
-    <td style="padding:4px 8px;font-size:calc(11px*var(--zf,1));white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</td>
-    <td style="padding:4px 8px;font-weight:700;font-size:calc(11px*var(--zf,1))">${esc(e.duree||'')}</td>
-    <td style="padding:4px 8px;font-size:calc(10px*var(--zf,1));color:var(--gray)">${esc(e.comment||'')}</td>
-  </tr>`).join('') : '<tr><td colspan="4" style="padding:8px;text-align:center;color:var(--gray);font-size:calc(11px*var(--zf,1))">Aucun arrêt</td></tr>';
-  // Info rows (left panel) — compact key-value list
-  const infoRows = [
+  const infoRows = isProd ? [
     ['Heure début', r.debut||'—', '#374151'],
     ['Heure fin', r.fin||'—', '#374151'],
     ['Durée', r.duree||'—', '#059669'],
@@ -7366,6 +7356,9 @@ function showOfDetail(ri) {
     ['Qté fabriquée', r.qte_fab||'—', '#1e3a8a'],
     ['Qté emballée', r.qte_emb||'—', '#374151'],
     ['Équivalence', r.equiv||'—', '#0891b2'],
+    ...(r.date?[['Date', r.date, '#374151']]:[]),
+    ...(r.poste?[['Poste', r.poste, '#374151']]:[]),
+    ...(r.pilote?[['Pilote', r.pilote, '#374151']]:[]),
     ...(r.fibre?[['Fibre', r.fibre, '#6366f1']]:[]),
     ...(r.code_prod?[['Code Produit', r.code_prod, '#374151']]:[]),
     ...(r.ref_taie?[['Réf Taie', r.ref_taie, '#374151']]:[]),
@@ -7373,13 +7366,22 @@ function showOfDetail(ri) {
     ...(r.copilote?[['Co-Pilote', r.copilote, '#374151']]:[]),
     ...(r.traca?[['Traca', r.traca, '#374151']]:[]),
     ...(r.poids?[['Poids (g)', r.poids, '#374151']]:[]),
-  ].map(([lbl,val,col])=>`
+  ] : [
+    ['Type arrêt', r.type||'—', '#dc2626'],
+    ['Heure début', r.debut||'—', '#374151'],
+    ['Heure fin', r.fin||'—', '#374151'],
+    ['Durée', r.duree||'—', '#059669'],
+    ...(r.date?[['Date', r.date, '#374151']]:[]),
+    ...(r.poste?[['Poste', r.poste, '#374151']]:[]),
+    ...(r.pilote?[['Pilote', r.pilote, '#374151']]:[]),
+  ];
+  const infoHtml = infoRows.map(([lbl,val,col])=>`
     <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid #f1f5f9">
       <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em">${lbl}</span>
       <span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${col};text-align:right;max-width:55%">${esc(String(val))}</span>
     </div>`).join('');
   const commentHtml = r.comment?`<div style="background:#fffbeb;border-left:3px solid #fbbf24;padding:6px 10px;margin:8px 0;font-size:calc(11px*var(--zf,1));color:#92400e;border-radius:0 6px 6px 0">💬 ${esc(r.comment)}</div>`:'';
-  const evtsTableHtml = `<table style="width:100%;border-collapse:collapse;font-size:calc(11px*var(--zf,1))">
+  const evtsTableHtml = `<table style="width:100%;border-collapse:collapse">
     <thead><tr style="background:#f8fafc">
       <th style="padding:5px 8px;text-align:left;font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0">Type</th>
       <th style="padding:5px 8px;text-align:left;font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0">Plage</th>
@@ -7389,35 +7391,67 @@ function showOfDetail(ri) {
       <td style="padding:5px 8px;font-weight:600;color:#374151">${esc(e.type||'')}</td>
       <td style="padding:5px 8px;color:#64748b;white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</td>
       <td style="padding:5px 8px;font-weight:700;color:#dc2626">${esc(e.duree||'')}</td>
-    </tr>`).join(''):'<tr><td colspan="3" style="padding:12px 8px;text-align:center;color:#94a3b8;font-size:calc(11px*var(--zf,1))">Aucun arrêt pendant cet OF</td></tr>'}
+    </tr>`).join(''):'<tr><td colspan="3" style="padding:12px 8px;text-align:center;color:#94a3b8">Aucun arrêt</td></tr>'}
     </tbody></table>`;
+  const headerTitle = isProd ? (r.of||'—') : (r.type||'—');
+  const headerSub = isProd ? 'Détail OF' : 'Détail Arrêt';
+  const rightHtml = isProd
+    ? `<div style="text-align:right">
+        <div style="font-size:calc(26px*var(--zf,1));font-weight:900;color:${tc};line-height:1">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</div>
+        <div style="font-size:calc(9px*var(--zf,1));opacity:.55;text-transform:uppercase;letter-spacing:.08em">TRS</div>
+       </div>`
+    : `<div style="text-align:right">
+        <div style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#dc2626;line-height:1">${esc(r.duree||'—')}</div>
+        <div style="font-size:calc(9px*var(--zf,1));opacity:.55;text-transform:uppercase;letter-spacing:.08em">Durée</div>
+       </div>`;
   document.getElementById('of-detail-content').innerHTML = `
     <div style="background:var(--navy);color:#fff;padding:14px 20px;border-radius:14px 14px 0 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
       <div>
-        <div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;letter-spacing:.1em;opacity:.55;margin-bottom:2px">Détail OF</div>
-        <div style="font-size:calc(20px*var(--zf,1));font-weight:900;font-family:monospace;letter-spacing:.05em">${esc(r.of||'—')}</div>
+        <div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;letter-spacing:.1em;opacity:.55;margin-bottom:2px">${headerSub}</div>
+        <div style="font-size:calc(20px*var(--zf,1));font-weight:900;font-family:monospace;letter-spacing:.05em">${esc(headerTitle)}</div>
       </div>
       <div style="display:flex;align-items:center;gap:16px">
-        <div style="text-align:right">
-          <div style="font-size:calc(26px*var(--zf,1));font-weight:900;color:${tc};line-height:1">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</div>
-          <div style="font-size:calc(9px*var(--zf,1));opacity:.55;text-transform:uppercase;letter-spacing:.08em">TRS</div>
-        </div>
+        ${rightHtml}
         <button onclick="closeM('m-of-detail')" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;width:34px;height:34px;font-size:calc(16px*var(--zf,1));cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;min-height:0;flex:1;overflow:hidden">
       <div style="padding:14px 16px;border-right:1px solid #e2e8f0;overflow-y:auto">
         <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.08em;margin-bottom:6px">Informations</div>
-        ${infoRows}
+        ${infoHtml}
         ${commentHtml}
       </div>
       <div style="padding:14px 16px;overflow-y:auto">
-        <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.08em;margin-bottom:6px">Arrêts pendant cet OF${ofEvts.length?' ('+ofEvts.length+')':''}</div>
-        ${evtsTableHtml}
+        <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.08em;margin-bottom:6px">${isProd?'Arrêts pendant cet OF'+(ofEvts.length?' ('+ofEvts.length+')':''):'—'}</div>
+        ${isProd?evtsTableHtml:'<div style="padding:20px 0;text-align:center;color:#94a3b8;font-size:calc(11px*var(--zf,1))">Aucun arrêt associé</div>'}
       </div>
     </div>`;
   openM('m-of-detail');
 }
+
+function showOfDetail(ri) {
+  const r = window._rptProdRows[ri];
+  const evtRows = window._rptEvtRows || [];
+  if(!r) return;
+  function _hm2s(hm) { if(!hm) return 0; const p=(hm+':0:0').split(':').map(Number); return(p[0]||0)*3600+(p[1]||0)*60+(p[2]||0); }
+  const debS = _hm2s(r.debut), finS = _hm2s(r.fin)||86400;
+  const ofEvts = evtRows.filter(e => { const t = _hm2s(e.debut); return t >= debS && t <= finS; });
+  _renderAndOpenOfDetail(r, ofEvts);
+}
+
+function showMainRowDetail(key) {
+  const r = window._rowMap && window._rowMap[String(key)];
+  if(!r) return;
+  const isProd = r._rowType === 'prod';
+  let ofEvts = [];
+  if(isProd) {
+    const _hm2s = hm=>{if(!hm)return 0;const[h,m]=(hm+':00').split(':').map(Number);return(h||0)*3600+(m||0)*60;};
+    const debS=_hm2s(r.debut), finS=_hm2s(r.fin)||86400;
+    ofEvts=(window._mainEvtsAll||[]).filter(e=>{const t=_hm2s(e.debut);return t>=debS&&t<=finS;});
+  }
+  _renderAndOpenOfDetail(r, ofEvts);
+}
+
 
 // ── ARRÊTS MANQUANTS ──
 let _missingDeclChecked = false;
@@ -8392,86 +8426,17 @@ function showHistRowDetail(key){
   const r=window._rowMap&&window._rowMap[String(key)];
   if(!r) return;
   const isProd=r._rowType==='prod';
-  function _hm2s(hm){if(!hm)return 0;const[h,m]=(hm+':00').split(':').map(Number);return(h||0)*3600+(m||0)*60;}
-  const tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
-  const kitStr=(r.kit||'').toLowerCase();
-  const kitDisp=kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓ Oui</span>':'<span style="color:#94a3b8">Non</span>';
-  const chips=[];
+  let ofEvts=[];
   if(isProd){
-    if(r.taille)chips.push(['Taille',r.taille,'']);
-    if(r.type_prod)chips.push(['Type prod.',r.type_prod,'']);
-    if(r.code_prod)chips.push(['Code prod.',r.code_prod,'font-family:monospace']);
-    if(r.poids)chips.push(['Poids',r.poids,'']);
-    if(r.fibre)chips.push(['Fibre',r.fibre,'color:#6366f1']);
-    chips.push(['Lots de 2',kitDisp,'raw']);
-    if(r.qte_fab)chips.push(['Qté fab.',r.qte_fab,'']);
-    if(r.qte_emb)chips.push(['Qté emb.',r.qte_emb,'']);
-    if(r.equiv)chips.push(['Équiv.',r.equiv,'color:#0891b2;font-weight:800']);
-    chips.push(['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':'—',`color:${tc}`]);
-    if(r.debut)chips.push(['Début',r.debut,'']);
-    if(r.fin)chips.push(['Fin',r.fin,'']);
-    if(r.duree)chips.push(['Durée',r.duree,'']);
-    if(r.date)chips.push(['Date',r.date,'']);
-    if(r.poste)chips.push(['Poste',r.poste,'']);
-    if(r.pilote)chips.push(['Pilote',r.pilote,'']);
-    if(r.copilote)chips.push(['Co-Pilote',r.copilote,'']);
-    if(r.nb_pers)chips.push(['Nb Pers.',r.nb_pers,'']);
-    if(r.of_taie)chips.push(['OF Taie',r.of_taie,'']);
-    if(r.traca)chips.push(['Traca',r.traca,'font-family:monospace']);
-    if(r.ref_taie)chips.push(['Réf Taie',r.ref_taie,'font-family:monospace']);
-    if(r.qte_init_taie)chips.push(['Qté init taie',r.qte_init_taie,'']);
-    if(r.nb_taie2)chips.push(['Nb Taie 2e',r.nb_taie2,'']);
-    if(r.nb_def_cout)chips.push(['Nb déf. coût',r.nb_def_cout,'']);
-    if(r.mq_taie)chips.push(['Mq taie',r.mq_taie,'']);
-    if(r.mq_housse)chips.push(['Mq housse',r.mq_housse,'']);
-    if(r.nb_pp)chips.push(['Nb PP',r.nb_pp,'']);
-    if(r.duree_mq_mp)chips.push(['Durée MQ MP',r.duree_mq_mp,'']);
-    if(r.manquant_pers)chips.push(['Manquant pers.',r.manquant_pers,'']);
-  } else {
-    chips.push(['Type',r.type||r.type_arret||'—','color:#dc2626']);
-    if(r.debut)chips.push(['Début',r.debut,'']);
-    if(r.fin)chips.push(['Fin',r.fin,'']);
-    if(r.duree)chips.push(['Durée',r.duree,'']);
-    if(r.date)chips.push(['Date',r.date,'']);
-    if(r.poste)chips.push(['Poste',r.poste,'']);
-    if(r.pilote)chips.push(['Pilote',r.pilote,'']);
-  }
-  const chipsHtml=chips.map(([lbl,val,sty])=>`<div class="fp-card" style="padding:7px">
-    <div class="fp-lbl">${lbl}</div>
-    <div class="fp-big" style="font-size:calc(14px*var(--zf,1));${sty&&sty!=='raw'?sty:''}">${sty==='raw'?val:esc(String(val))}</div>
-  </div>`).join('');
-  // Arrêts pendant cet OF (si prod)
-  let evtsHtml='';
-  if(isProd){
+    const _hm2s=hm=>{if(!hm)return 0;const[h,m]=(hm+':00').split(':').map(Number);return(h||0)*3600+(m||0)*60;};
     const debS=_hm2s(r.debut), finS=_hm2s(r.fin)||86400;
-    const allEvts=window._histEvtsAll||[];
-    const ofEvts=allEvts.filter(e=>{
+    ofEvts=(window._histEvtsAll||[]).filter(e=>{
       if(!e.date||e.date!==r.date) return false;
       if(e.pilote&&e.pilote!==r.pilote) return false;
-      const t=_hm2s(e.debut);return t>=debS&&t<=finS;
+      const t=_hm2s(e.debut); return t>=debS&&t<=finS;
     });
-    evtsHtml='<div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin:12px 0 6px">Arrêts pendant cet OF</div>'+
-      '<table style="width:100%;border-collapse:collapse">'+
-      '<thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">'+
-      '<th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Type</th>'+
-      '<th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Plage</th>'+
-      '<th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Durée</th>'+
-      '<th style="padding:4px 8px;text-align:left;font-size:calc(10px*var(--zf,1));font-weight:700">Commentaire</th>'+
-      '</tr></thead><tbody>'+
-      (ofEvts.length?ofEvts.map(e=>`<tr>
-        <td style="padding:4px 8px;font-weight:600;font-size:calc(11px*var(--zf,1))">${esc(e.type||'')}</td>
-        <td style="padding:4px 8px;font-size:calc(11px*var(--zf,1));white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</td>
-        <td style="padding:4px 8px;font-weight:700;font-size:calc(11px*var(--zf,1))">${esc(e.duree||'')}</td>
-        <td style="padding:4px 8px;font-size:calc(10px*var(--zf,1));color:var(--gray)">${esc(e.comment||'')}</td>
-      </tr>`).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:var(--gray);font-size:calc(11px*var(--zf,1))">Aucun arrêt</td></tr>')+
-      '</tbody></table>';
   }
-  document.getElementById('of-detail-content').innerHTML=`
-    <div style="font-size:calc(22px*var(--zf,1));font-weight:900;color:var(--navy);margin-bottom:14px;font-family:monospace">${isProd?'🏭 OF ':'⛔ '}${esc(r.of||r.type||'—')}</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">${chipsHtml}</div>
-    ${r.comment?`<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:calc(12px*var(--zf,1))">💬 ${esc(r.comment)}</div>`:''}
-    ${evtsHtml}`;
-  openM('m-of-detail');
+  _renderAndOpenOfDetail(r, ofEvts);
 }
 
 // ── HISTORY ──
