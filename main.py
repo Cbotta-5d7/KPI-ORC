@@ -4213,14 +4213,14 @@ select{cursor:default}
       <button class="htab prod-on" id="ht-prod" onclick="goTab('prod')">▶ Prod en cours</button>
       <span id="ht-guest-badge" style="display:none;font-size:calc(11px*var(--zf,1));font-weight:700;color:#94a3b8;padding:4px 10px;border:1px solid #94a3b8;border-radius:12px;margin-left:4px">👁 Invité</span>
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
-      <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📊 KPI</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports</button>
-      <button class="htab" id="ht-cfg" onclick="goTab('settings')">Paramètres</button>
+      <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📊 KPI</button>
     </div>
     <div id="hdr-right">
       <span id="hdr-pilot-lbl"></span>
       <button class="btn-sm btn-ghost" onclick="toggleZoomPop()" id="zoom-btn" style="font-size:calc(11px*var(--zf,1));display:flex;align-items:center;gap:4px" title="Zoom texte">🔍 Zoom</button>
       <button class="btn-sm btn-ghost" onclick="doLogout()" style="font-size:calc(11px*var(--zf,1))">Déconnexion</button>
+      <button class="btn-sm btn-ghost" id="ht-cfg" onclick="goTab('settings')" style="font-size:calc(18px*var(--zf,1));padding:4px 8px;line-height:1" title="Paramètres">⚙</button>
     </div>
   </div>
   <!-- Zoom popover -->
@@ -4858,25 +4858,19 @@ select{cursor:default}
     </div>
     <!-- Corps principal -->
     <div style="flex:1;overflow:hidden;display:grid;grid-template-columns:1fr 210px;min-height:0">
-      <!-- Gauche : cadence + 3 évolutions -->
+      <!-- Gauche : cadence + 2 évolutions -->
       <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #e2e8f0;min-height:0">
-        <div style="flex-shrink:0;height:140px;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⚡ Évolution cadence (unités/h &amp; éq./h)</div>
+        <div style="flex:2;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9;min-height:0">
+          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⚡ Évolution cadence (éq./h)</div>
           <div id="kpi-cad-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
-        <div style="flex:1;overflow-y:auto;min-height:0">
-          <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9">
-            <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#8b5cf6;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">🧵 Changements de fibre par poste</div>
-            <div id="kpi-fibre-chart" style="flex:1;min-height:0;overflow:hidden"></div>
-          </div>
-          <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#f8fafc;border-bottom:1px solid #f1f5f9">
-            <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#0891b2;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⏱ Répartition prod / arrêts (%)</div>
-            <div id="kpi-ratio-chart" style="flex:1;min-height:0;overflow:hidden"></div>
-          </div>
-          <div style="height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#fff">
-            <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Pièces fab. / équivalence</div>
-            <div id="kpi-qte-chart" style="flex:1;min-height:0;overflow:hidden"></div>
-          </div>
+        <div style="flex:1;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9;min-height:0">
+          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#8b5cf6;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">🧵 Changements de fibre par poste</div>
+          <div id="kpi-fibre-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+        </div>
+        <div style="flex:1;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#f8fafc;min-height:0">
+          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Pièces fab. / équivalence</div>
+          <div id="kpi-qte-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
       </div>
       <!-- Droite : donut + pareto -->
@@ -6843,10 +6837,11 @@ function drawPie(svgId, segments, opts) {
   const m=segments[0],mp=total>0?Math.round(m.value/total*100):0;
   html+=`<text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="${fCenter}" font-weight="800" fill="#1a1f5e">${mp}%</text>`;
   html+=`<text x="${cx}" y="${cy+15}" text-anchor="middle" font-size="${fSub}" fill="#64748b">${esc(m.label)}</text>`;
+  const legBase=(opts&&opts.legY)||108;
   let lx=0;segments.filter(s=>s.value>0).forEach(s=>{
     const p=Math.round(s.value/total*100);
-    html+=`<rect x="${lx}" y="108" width="7" height="7" fill="${s.color}" rx="1"/>`;
-    html+=`<text x="${lx+9}" y="115" font-size="${fLeg}" fill="#475569">${esc(s.label)} ${p}%</text>`;lx+=65;
+    html+=`<rect x="${lx}" y="${legBase}" width="8" height="8" fill="${s.color}" rx="1"/>`;
+    html+=`<text x="${lx+11}" y="${legBase+8}" font-size="${fLeg}" fill="#475569" font-weight="600">${esc(s.label)} ${p}%</text>`;lx+=65;
   });
   svg.innerHTML=html;
 }
@@ -8291,18 +8286,11 @@ async function loadKPI(){
 
   // ── Cadence dual-line chart (éq./h + pièces/h) ──
   _kpiDualLineChart('kpi-cad-chart',sessArr,[
-    {key:'cad',color:'#f59e0b',label:'Éq./h'},
-    {key:'cad_qte',color:'#0891b2',label:'Pièces/h',dash:'4,3'}
+    {key:'cad',color:'#f59e0b',label:'Éq./h'}
   ]);
 
   // ── Évolution changements de fibre par poste ──
   _kpiLineChart('kpi-fibre-chart',sessArr,'nb_fibre_chg',()=>'#8b5cf6','');
-
-  // ── Évolution répartition prod/arrêts ──
-  _kpiDualLineChart('kpi-ratio-chart',sessArr,[
-    {key:'prod_pct',color:'#16a34a',label:'Prod %'},
-    {key:'stop_pct',color:'#dc2626',label:'Arrêts %',dash:'4,3'}
-  ]);
 
   // ── Évolution pièces / équivalence ──
   _kpiDualLineChart('kpi-qte-chart',sessArr,[
@@ -8717,17 +8705,18 @@ async function loadSessionReport(date,pilot,poste,itemId){
     leftKpi.innerHTML=`
       <!-- Fine bande retour (gauche) -->
       <div onclick="rptBackToList()" title="Retour à la liste"
-        style="width:18px;background:#f0f4ff;border-right:1px solid #c7d2fe;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:background .15s"
-        onmouseenter="this.style.background='#c7d2fe'" onmouseleave="this.style.background='#f0f4ff'">
-        <span style="font-size:16px;color:#6366f1;user-select:none;line-height:1">‹</span>
+        style="width:34px;background:#4f46e5;border-right:2px solid #3730a3;cursor:pointer;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;transition:background .15s;box-shadow:2px 0 8px rgba(79,70,229,.25)"
+        onmouseenter="this.style.background='#4338ca'" onmouseleave="this.style.background='#4f46e5'">
+        <span style="font-size:20px;color:#fff;user-select:none;line-height:1">‹</span>
+        <span style="font-size:9px;color:rgba(255,255,255,.85);user-select:none;writing-mode:vertical-lr;transform:rotate(180deg);letter-spacing:.08em;font-weight:700">LISTE</span>
       </div>
       <!-- Contenu KPI -->
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
       <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0">
-        <div style="font-size:calc(13px*var(--zf,1));font-weight:800">${esc(poste)}</div>
+        <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${d.model_debut&&d.model_fin?' — '+esc(d.model_debut)+' → '+esc(d.model_fin):''}</div>
         <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
-        <div style="font-size:calc(26px*var(--zf,1));font-weight:900;color:${trsCol};margin-top:6px;line-height:1">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
-        <div style="font-size:calc(10px*var(--zf,1));opacity:.65">TRS Shift</div>
+        <div style="font-size:calc(10px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Taux de rendement :</div>
+        <div style="font-size:calc(30px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
       </div>
       <div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px">
         <div style="text-align:center">
@@ -8739,7 +8728,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:2px">TRS Poste</div>
         </div>
         <div style="text-align:center">
-          <svg id="rpt-pie" viewBox="0 0 130 115" style="width:170px;height:145px;display:block;margin:0 auto"></svg>
+          <svg id="rpt-pie" viewBox="0 0 130 130" style="width:170px;height:170px;display:block;margin:0 auto"></svg>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
           <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Pièces</div></div>
@@ -8833,7 +8822,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     {label:'Prod',value:prodMin,color:'#16a34a'},
     {label:'Arrêts',value:stopMin,color:'#dc2626'},
     {label:'Autre',value:Math.max(0,totalMin-prodMin-stopMin),color:'#94a3b8'}
-  ]);
+  ],{fCenter:16,fSub:10,fLeg:10,legY:118});
 }
 
 function rptBackToList(){
