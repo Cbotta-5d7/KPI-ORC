@@ -3928,6 +3928,8 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 @keyframes pt{0%,100%{opacity:1}50%{opacity:.75}}
 #hdr-right{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:calc(11px*var(--zf,1));color:rgba(255,255,255,.75);align-self:center}
 #hdr-pilot-lbl{font-weight:800;color:#fff;font-size:calc(18px*var(--zf,1));letter-spacing:.3px}
+#ht-guest-badge{display:none!important}
+#main-prod-banner{display:none!important}
 
 /* ── ALERT STRIP ── */
 #alert-strip{background:#b91c1c;color:#fff;text-align:center;padding:4px;font-weight:700;font-size:calc(12px*var(--zf,1));flex-shrink:0;display:none;animation:blink .85s step-start infinite}
@@ -4268,42 +4270,42 @@ select{cursor:default}
       </div>
     </div>
     <!-- KPI accueil — POSTE ACTUEL -->
-    <div style="background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;padding:8px 10px;display:flex;gap:8px;align-items:stretch;flex-wrap:wrap">
+    <div style="background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;padding:4px 8px;display:flex;gap:6px;align-items:stretch;flex-wrap:wrap">
 
       <!-- POSTE ACTUEL encart principal -->
-      <div style="flex:3;min-width:280px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:6px">
+      <div style="flex:3;min-width:260px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column;gap:3px">
         <!-- Titre + TRS jauge + valeur -->
-        <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px">
           <div style="flex-shrink:0;text-align:center">
-            <svg viewBox="0 0 100 58" style="width:150px;display:block;margin:0 auto">
+            <svg viewBox="0 0 100 58" style="width:100px;display:block;margin:0 auto">
               <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="rgba(0,0,0,.12)" stroke-width="11" stroke-linecap="round"/>
               <path id="gauge-poste-acc-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="11" stroke-linecap="round" stroke-dasharray="0,132"/>
               <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#15803d" id="gauge-poste-acc-pct">—</text>
             </svg>
           </div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:calc(12px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px">TRS du Poste</div>
+            <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:#0369a1;text-transform:uppercase;letter-spacing:.5px">TRS du Poste</div>
             <div style="font-size:calc(13px*var(--zf,1));font-weight:700;color:#0369a1;margin-bottom:2px" id="gauge-poste-acc-lbl">—</div>
             <!-- Stats en colonne -->
-            <div style="display:flex;flex-direction:column;gap:3px;margin-top:4px">
-              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
-                <span style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;white-space:nowrap">Nombre OF</span>
-                <span style="font-size:calc(16px*var(--zf,1));font-weight:900;color:#1e40af;line-height:1" id="acc-nb-of">0</span>
+            <div style="display:flex;flex-direction:column;gap:1px;margin-top:2px">
+              <div style="display:flex;align-items:baseline;gap:5px">
+                <span style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;white-space:nowrap">Nb OF</span>
+                <span style="font-size:calc(17px*var(--zf,1));font-weight:900;color:#1e40af;line-height:1" id="acc-nb-of">0</span>
               </div>
-              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
-                <span style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626;white-space:nowrap">Arrêts</span>
-                <span style="font-size:calc(14px*var(--zf,1));font-weight:900;color:#b91c1c;line-height:1" id="main-stat-arrets">0 min</span>
+              <div style="display:flex;align-items:baseline;gap:5px">
+                <span style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626;white-space:nowrap">Arrêts</span>
+                <span style="font-size:calc(15px*var(--zf,1));font-weight:900;color:#b91c1c;line-height:1" id="main-stat-arrets">0 min</span>
               </div>
-              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
-                <span style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;white-space:nowrap">Prod</span>
-                <span style="font-size:calc(14px*var(--zf,1));font-weight:900;color:#15803d;line-height:1" id="main-stat-prod">0 min</span>
+              <div style="display:flex;align-items:baseline;gap:5px">
+                <span style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;white-space:nowrap">Prod</span>
+                <span style="font-size:calc(15px*var(--zf,1));font-weight:900;color:#15803d;line-height:1" id="main-stat-prod">0 min</span>
               </div>
             </div>
           </div>
           <!-- Répartition temps (pie) -->
-          <div style="flex-shrink:0;text-align:center;border-left:1px solid #bae6fd;padding-left:10px;min-width:140px">
-            <div style="font-size:calc(12px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Répartition temps</div>
-            <svg id="pie-poste-acc" viewBox="0 0 130 130" style="width:210px;height:auto;display:block;margin:0 auto"></svg>
+          <div style="flex-shrink:0;text-align:center;border-left:1px solid #bae6fd;padding-left:8px;min-width:110px">
+            <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Répartition temps</div>
+            <svg id="pie-poste-acc" viewBox="0 0 130 130" style="width:160px;height:auto;display:block;margin:0 auto"></svg>
           </div>
         </div>
         <!-- Horaire temporaire -->
@@ -4311,7 +4313,7 @@ select{cursor:default}
       </div>
 
       <!-- Arrêts prévus — barres budget -->
-      <div style="flex:2;min-width:190px;background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:8px 12px;display:flex;flex-direction:column">
+      <div style="flex:2;min-width:190px;background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column">
         <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">⏱ Arrêts prévus du poste en cours</div>
         <div id="budget-bars-acc" style="flex:1"></div>
       </div>
@@ -8733,10 +8735,10 @@ async function loadSessionReport(date,pilot,poste,itemId){
     leftKpi.innerHTML=`
       <!-- Fine bande retour (gauche) -->
       <div onclick="rptBackToList()" title="Retour à la liste"
-        style="width:34px;background:#4f46e5;border-right:2px solid #3730a3;cursor:pointer;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;transition:background .15s;box-shadow:2px 0 8px rgba(79,70,229,.25);animation:blink .85s step-start infinite"
+        style="width:44px;background:#4f46e5;border-right:2px solid #3730a3;cursor:pointer;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;transition:background .15s;box-shadow:2px 0 8px rgba(79,70,229,.25);animation:blink .85s step-start infinite"
         onmouseenter="this.style.background='#4338ca';this.style.animation='none'" onmouseleave="this.style.background='#4f46e5';this.style.animation='blink .85s step-start infinite'">
         <span style="font-size:20px;color:#fff;user-select:none;line-height:1">‹</span>
-        <span style="font-size:9px;color:rgba(255,255,255,.85);user-select:none;writing-mode:vertical-lr;transform:rotate(180deg);letter-spacing:.06em;font-weight:700">Afficher les autres</span>
+        <span style="font-size:12px;color:#fff;user-select:none;writing-mode:vertical-lr;transform:rotate(180deg);letter-spacing:.08em;font-weight:800">Afficher les autres</span>
       </div>
       <!-- Contenu KPI -->
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
