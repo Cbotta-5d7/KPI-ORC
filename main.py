@@ -2407,7 +2407,7 @@ def api_period_report():
         _pdeb, _pfin = postes_map[_pk]
         model_dur_s = max(0.0, (_pfin - _pdeb).total_seconds())
         # Arrondir comme le JS (Math.round) pour correspondre exactement à l'onglet Rapports postes
-        ouv_min = round(model_dur_s / 60)
+        ouv_min = round(model_dur_s / 60, 1)
         # Merged stop intervals
         _ivs = sorted(
             [(ds2, fs2) for ds2, fs2 in (
@@ -2419,8 +2419,8 @@ def api_period_report():
         for ds, fs in _ivs:
             if _mg and ds <= _mg[-1][1]: _mg[-1] = (_mg[-1][0], max(_mg[-1][1], fs))
             else: _mg.append((ds, fs))
-        net_stop_min = round(sum(f - d for d, f in _mg) / 60)
-        fonct_min = max(0, ouv_min - net_stop_min)
+        net_stop_min = round(sum(f - d for d, f in _mg) / 60, 1)
+        fonct_min = round(max(0.0, ouv_min - net_stop_min), 1)
         # Planned stops: min(budget, used) per category per session
         _bdata = {bk:{'budget_min':float(cfg.get(bk,0) or 0),'used_min':0.0} for bk in _blab}
         for _, re3 in s['evt_rows']:
@@ -2431,8 +2431,8 @@ def api_period_report():
                 except: _bs2=0
                 _bdata[_bk2]['used_min'] += _bs2/60
         arrets_prevu = sum(min(v['budget_min'],v['used_min']) for v in _bdata.values())
-        utile_min = max(0, ouv_min - round(arrets_prevu))
-        perte = round((fonct_min*cadence_ref - s['tot_equiv'])/cadence_ref) if cadence_ref>0 else 0
+        utile_min = round(max(0.0, ouv_min - arrets_prevu), 1)
+        perte = round((fonct_min*cadence_ref - s['tot_equiv'])/cadence_ref, 1) if cadence_ref>0 else 0.0
         planned_ded = _compute_planned_deduction_s(s['evt_rows'])
         elapsed_s = max(1.0, model_dur_s - planned_ded)
         agg_ouv     += ouv_min
@@ -2468,11 +2468,11 @@ def api_period_report():
         'nb_postes':len(postes_set),
         'tot_equiv':round(agg_equiv,1),
         'tot_pcs':round(agg_pcs),
-        'ouverture_min':round(agg_ouv),
-        'temps_utile_min':round(agg_utile),
-        'temps_fonctionnement_min':round(agg_fonct),
-        'net_stop_min':round(agg_stop),
-        'perte_cadence_min':round(agg_perte),
+        'ouverture_min':round(agg_ouv,1),
+        'temps_utile_min':round(agg_utile,1),
+        'temps_fonctionnement_min':round(agg_fonct,1),
+        'net_stop_min':round(agg_stop,1),
+        'perte_cadence_min':round(agg_perte,1),
         'cadence_ref_pcs_min':cadence_ref,
         'cadence_h':cadence_h,
         'trs_by_day':trs_by_day_list,
@@ -8600,11 +8600,11 @@ async function loadKPI(){
     </div>`;
     cards.innerHTML=
       mkCard('TRS pondéré',avgTRS>=0?avgTRS.toFixed(1)+'%':'—',_kpiTrsColor(avgTRS),_nbSessP+' postes')+
-      mkCard('T. ouverture',_ouv!=='—'?_ouv+'min':'—','#0891b2','')+
-      mkCard('T. utile',_utile!=='—'?_utile+'min':'—','#16a34a','')+
-      mkCard('T. fonctionnement',_fonct+'min','#0891b2','')+
-      mkCard('T. arrêts',_stop+'min','#dc2626','')+
-      mkCard('Perte cadence',_perte>0?_perte+'min':'—','#f97316','')+
+      mkCard('T. ouverture',_ouv!=='—'?Math.round(_ouv)+'min':'—','#0891b2','')+
+      mkCard('T. utile',_utile!=='—'?Math.round(_utile)+'min':'—','#16a34a','')+
+      mkCard('T. fonctionnement',Math.round(_fonct)+'min','#0891b2','')+
+      mkCard('T. arrêts',Math.round(_stop)+'min','#dc2626','')+
+      mkCard('Perte cadence',_perte>0?Math.round(_perte)+'min':'—','#f97316','')+
       mkCard('Équiv. totale',parseFloat(_equiv).toFixed(1),'#16a34a',(_nbSessP?Math.round(_equiv/_nbSessP*10)/10:0).toFixed(1)+'/poste')+
       mkCard('Pièces totales',_pcs,'#7c3aed','')+
       mkCard('Cadence moy.',avgCadH>0?avgCadH+' pcs/h':'—','#f59e0b','')+
