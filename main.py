@@ -2371,7 +2371,7 @@ def api_session_report():
                     "model_debut":debut_str or "","model_fin":fin_str or "",
                     "actual_debut":actual_debut,"actual_fin":actual_fin,
                     "ecart_s":round(ecart_s,0),"model_dur_s":round(model_dur_s,0),
-                    "planned_ded_s":round(planned_ded,0)})
+                    "planned_ded_s":round(planned_ded,0),"prod_ref":round(prod_ref,1)})
 
 @flask_app.route('/api/add_stop_decl', methods=['POST'])
 def api_add_stop_decl():
