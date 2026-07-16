@@ -2406,7 +2406,8 @@ def api_period_report():
         _pk = (s['pilot'].lower(), s['date'])
         _pdeb, _pfin = postes_map[_pk]
         model_dur_s = max(0.0, (_pfin - _pdeb).total_seconds())
-        ouv_min = model_dur_s / 60
+        # Arrondir comme le JS (Math.round) pour correspondre exactement à l'onglet Rapports postes
+        ouv_min = round(model_dur_s / 60)
         # Merged stop intervals
         _ivs = sorted(
             [(ds2, fs2) for ds2, fs2 in (
@@ -2418,8 +2419,8 @@ def api_period_report():
         for ds, fs in _ivs:
             if _mg and ds <= _mg[-1][1]: _mg[-1] = (_mg[-1][0], max(_mg[-1][1], fs))
             else: _mg.append((ds, fs))
-        net_stop_min = sum(f - d for d, f in _mg) / 60
-        fonct_min = max(0.0, ouv_min - net_stop_min)
+        net_stop_min = round(sum(f - d for d, f in _mg) / 60)
+        fonct_min = max(0, ouv_min - net_stop_min)
         # Planned stops: min(budget, used) per category per session
         _bdata = {bk:{'budget_min':float(cfg.get(bk,0) or 0),'used_min':0.0} for bk in _blab}
         for _, re3 in s['evt_rows']:
@@ -2430,8 +2431,8 @@ def api_period_report():
                 except: _bs2=0
                 _bdata[_bk2]['used_min'] += _bs2/60
         arrets_prevu = sum(min(v['budget_min'],v['used_min']) for v in _bdata.values())
-        utile_min = max(0.0, ouv_min - arrets_prevu)
-        perte = round((fonct_min*cadence_ref - s['tot_equiv'])/cadence_ref, 1) if cadence_ref>0 else 0.0
+        utile_min = max(0, ouv_min - round(arrets_prevu))
+        perte = round((fonct_min*cadence_ref - s['tot_equiv'])/cadence_ref) if cadence_ref>0 else 0
         planned_ded = _compute_planned_deduction_s(s['evt_rows'])
         elapsed_s = max(1.0, model_dur_s - planned_ded)
         agg_ouv     += ouv_min
@@ -2467,11 +2468,11 @@ def api_period_report():
         'nb_postes':len(postes_set),
         'tot_equiv':round(agg_equiv,1),
         'tot_pcs':round(agg_pcs),
-        'ouverture_min':round(agg_ouv,1),
-        'temps_utile_min':round(agg_utile,1),
-        'temps_fonctionnement_min':round(agg_fonct,1),
-        'net_stop_min':round(agg_stop,1),
-        'perte_cadence_min':round(agg_perte,1),
+        'ouverture_min':round(agg_ouv),
+        'temps_utile_min':round(agg_utile),
+        'temps_fonctionnement_min':round(agg_fonct),
+        'net_stop_min':round(agg_stop),
+        'perte_cadence_min':round(agg_perte),
         'cadence_ref_pcs_min':cadence_ref,
         'cadence_h':cadence_h,
         'trs_by_day':trs_by_day_list,
