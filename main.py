@@ -8721,11 +8721,20 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const sortedProdF=(d.prod_rows||[]).filter(r=>r.fibre).sort((a,b)=>(a.debut||'').localeCompare(b.debut||''));
   let nbChangFibre=0;for(let i=1;i<sortedProdF.length;i++){if(sortedProdF[i].fibre!==sortedProdF[i-1].fibre)nbChangFibre++;}
   const prodRef=d.prod_ref||200;
-  const cadencePcsMin=prodRef/480;
+  const cadenceRefPcsMin=prodRef/480;
+  const ouvertureMin=Math.round((d.model_dur_s||0)/60);
+  // Intervalles fusionnés (arrêts sans chevauchement)
+  const _allEvtIv=(d.evt_rows||[]).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(o=>o.e>o.s).sort((a,b)=>a.s-b.s);
+  const _merged=[];_allEvtIv.forEach(iv=>{if(_merged.length&&iv.s<=_merged[_merged.length-1].e)_merged[_merged.length-1].e=Math.max(_merged[_merged.length-1].e,iv.e);else _merged.push({s:iv.s,e:iv.e});});
+  const netStopMin=Math.round(_merged.reduce((a,o)=>a+(o.e-o.s),0)/60000);
+  const tempsFonctionnement=Math.max(0,ouvertureMin-netStopMin);
+  // Temps utile: ouverture - min(limite_paramètre, déclaré) par catégorie prévue
   const budgetData=d.budget_data||{};
-  const arretsPrevu=Object.values(budgetData).reduce((a,b)=>a+(b.budget_min||0),0);
-  const tempsUtile=Math.round(totalMin)-Math.round(arretsPrevu);
-  const perteCadenceMin=cadencePcsMin>0?Math.round((prodMin*cadencePcsMin-(d.tot_equiv||0))/cadencePcsMin):0;
+  const arretsPrevu=Object.values(budgetData).reduce((a,b)=>a+Math.min(b.budget_min||0,b.used_min||0),0);
+  const tempsUtile=Math.max(0,ouvertureMin-Math.round(arretsPrevu));
+  // Perte cadence: [(tempsFonctionnement * cadenceRef) - nbEquiv] / cadenceRef
+  const perteCadenceRaw=cadenceRefPcsMin>0?Math.round(((tempsFonctionnement*cadenceRefPcsMin)-(d.tot_equiv||0))/cadenceRefPcsMin):0;
+  const perteCadenceHtml=perteCadenceRaw<0?`<span style="color:#16a34a;font-weight:800">${Math.abs(perteCadenceRaw)} min de gain</span>`:perteCadenceRaw>0?`<span style="color:#dc2626;font-weight:800">${perteCadenceRaw} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
   const tlDebut=d.actual_debut||d.model_debut;
   const tlFin=d.actual_fin||d.model_fin;
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
@@ -8757,6 +8766,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px">
         <div style="text-align:center">
           <svg id="rpt-pie" viewBox="0 0 130 130" style="width:150px;height:150px;display:block;margin:0 auto"></svg>
+          ${(tlDebut&&tlFin)?`<div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:3px;font-weight:600">${esc(tlDebut)} → ${esc(tlFin)}</div>`:''}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Pièces</div></div>
@@ -8764,7 +8774,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
         </div>
         <div style="display:flex;align-items:center;gap:5px">
           <div class="fp-card" style="padding:6px;text-align:center;flex:1"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Cad./h</div></div>
-          <div style="text-align:center;flex-shrink:0"><div style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#0369a1">${Math.round(cadenceH/60*10)/10}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">pcs/min</div></div>
+          <div style="text-align:center;flex-shrink:0"><div style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#0369a1">${Math.round(cadenceRefPcsMin*10)/10}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">réf pcs/min</div></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#7c3aed;font-weight:900">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Nb OF</div></div>
@@ -8773,9 +8783,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
         <div style="display:flex;flex-direction:column;gap:4px">
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#059669">${tempsUtile} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${prodMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#dc2626">${stopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#f59e0b">${perteCadenceMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${tempsFonctionnement} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#dc2626">${netStopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${perteCadenceHtml}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
         </div>
       </div>
       </div>`;
