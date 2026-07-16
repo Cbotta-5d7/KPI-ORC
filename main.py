@@ -8741,10 +8741,10 @@ async function loadSessionReport(date,pilot,poste,itemId){
     leftKpi.innerHTML=`
       <!-- Fine bande retour (gauche) -->
       <div onclick="rptBackToList()" title="Retour à la liste"
-        style="width:44px;background:#4f46e5;border-right:2px solid #3730a3;cursor:pointer;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;transition:background .15s;box-shadow:2px 0 8px rgba(79,70,229,.25);animation:blink .85s step-start infinite"
+        style="width:28px;background:#4f46e5;border-right:2px solid #3730a3;cursor:pointer;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:background .15s;box-shadow:2px 0 6px rgba(79,70,229,.25);animation:blink .85s step-start infinite"
         onmouseenter="this.style.background='#4338ca';this.style.animation='none'" onmouseleave="this.style.background='#4f46e5';this.style.animation='blink .85s step-start infinite'">
-        <span style="font-size:20px;color:#fff;user-select:none;line-height:1">‹</span>
-        <span style="font-size:12px;color:#fff;user-select:none;writing-mode:vertical-lr;transform:rotate(180deg);letter-spacing:.08em;font-weight:800">Afficher les autres</span>
+        <span style="font-size:14px;color:#fff;user-select:none;line-height:1">‹</span>
+        <span style="font-size:9px;color:#fff;user-select:none;writing-mode:vertical-lr;transform:rotate(180deg);letter-spacing:.06em;font-weight:800">Afficher les autres</span>
       </div>
       <!-- Contenu KPI -->
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
@@ -8754,36 +8754,28 @@ async function loadSessionReport(date,pilot,poste,itemId){
         <div style="font-size:calc(10px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Taux de rendement :</div>
         <div style="font-size:calc(30px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
       </div>
-      <div style="padding:8px 10px;display:flex;flex-direction:column;gap:6px">
+      <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px">
         <div style="text-align:center">
-          <svg id="rpt-gauge" viewBox="0 0 100 58" style="width:190px;display:block;margin:0 auto">
-            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="12" stroke-linecap="round"/>
-            <path id="rpt-gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="12" stroke-linecap="round" stroke-dasharray="0,1000"/>
-            <text x="50" y="46" text-anchor="middle" font-size="14" font-weight="800" fill="#1a1f5e" id="rpt-gauge-pct">--%</text>
-          </svg>
-          <div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:2px">TRS Poste</div>
-        </div>
-        <div style="text-align:center">
-          <svg id="rpt-pie" viewBox="0 0 130 130" style="width:170px;height:170px;display:block;margin:0 auto"></svg>
+          <svg id="rpt-pie" viewBox="0 0 130 130" style="width:150px;height:150px;display:block;margin:0 auto"></svg>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Pièces</div></div>
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Équiv.</div></div>
-          <div class="fp-card" style="padding:6px;display:flex;align-items:center;justify-content:space-between;gap:4px">
-            <div><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Cad./h</div></div>
-            <div style="text-align:right"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b">${cadencePcsMin.toFixed(2)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">pcs/min</div></div>
-          </div>
-          <div class="fp-card" style="padding:6px;display:flex;align-items:center;justify-content:space-between;gap:4px">
-            <div><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#7c3aed;font-weight:900">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Nb OF</div></div>
-            <div style="text-align:right"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#8b5cf6">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
-          </div>
+          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Pièces</div></div>
+          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Équiv.</div></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px">
+          <div class="fp-card" style="padding:6px;text-align:center;flex:1"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Cad./h</div></div>
+          <div style="text-align:center;flex-shrink:0"><div style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#0369a1">${Math.round(cadenceH/60*10)/10}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">pcs/min</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#7c3aed;font-weight:900">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Nb OF</div></div>
+          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#8b5cf6;font-weight:900">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(12px*var(--zf,1))">${(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Temps d\'ouverture</div></div>
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(12px*var(--zf,1));color:#059669">${tempsUtile} min</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Temps utile</div></div>
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(12px*var(--zf,1));color:#16a34a">${prodMin} min</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Temps de fonctionnement</div></div>
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(12px*var(--zf,1));color:#dc2626">${stopMin} min</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Temps en arrêt</div></div>
-          <div class="fp-card" style="padding:6px"><div class="fp-big" style="font-size:calc(12px*var(--zf,1));color:#f59e0b">${perteCadenceMin} min</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Perte cadence</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#059669">${tempsUtile} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${prodMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#dc2626">${stopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#f59e0b">${perteCadenceMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
         </div>
       </div>
       </div>`;
@@ -8860,7 +8852,6 @@ async function loadSessionReport(date,pilot,poste,itemId){
       </div>
     </div>`;
   // Dessiner gauge et pie (éléments maintenant dans le DOM)
-  drawGauge('rpt-gauge-arc','rpt-gauge-pct',trsS>=0?trsS:0);
   drawPie('rpt-pie',[
     {label:'Prod',value:prodMin,color:'#16a34a'},
     {label:'Arrêts',value:stopMin,color:'#dc2626'},
