@@ -4426,7 +4426,8 @@ select{cursor:default}
       <button class="htab prod-on" id="ht-prod" onclick="goTab('prod')">▶ Prod en cours</button>
       <span id="ht-guest-badge" style="display:none;font-size:calc(11px*var(--zf,1));font-weight:700;color:#94a3b8;padding:4px 10px;border:1px solid #94a3b8;border-radius:12px;margin-left:4px">👁 Invité</span>
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
-      <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports</button>
+      <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports postes</button>
+      <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
       <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📊 KPI</button>
     </div>
     <div id="hdr-right">
@@ -4997,6 +4998,25 @@ select{cursor:default}
           <div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📋</div>
           <div style="font-size:calc(14px*var(--zf,1));font-weight:600">Sélectionner un poste dans la liste</div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ RAPPORTS JOUR ════ -->
+  <div id="v-rpt-jour" class="view" style="flex-direction:column;overflow:hidden">
+    <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap">
+      <span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:var(--navy)">Rapports jour</span>
+      <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Du <input type="date" id="rj-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
+      <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Au <input type="date" id="rj-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
+      <select id="rj-pilot" style="font-size:calc(12px*var(--zf,1));padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--card)"><option value="">Tous les pilotes</option></select>
+      <select id="rj-poste" style="font-size:calc(12px*var(--zf,1));padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--card)"><option value="">Tous les postes</option></select>
+      <button onclick="calcPeriodReport()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">Calculer</button>
+      <button onclick="resetPeriodReport()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:calc(12px*var(--zf,1));color:var(--gray);cursor:pointer">✕ Réinitialiser</button>
+    </div>
+    <div id="rj-result" style="flex:1;overflow-y:auto;padding:14px 18px">
+      <div style="padding:60px;text-align:center;color:var(--gray)">
+        <div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📅</div>
+        <div style="font-size:calc(14px*var(--zf,1));font-weight:600">Sélectionnez une période puis cliquez sur Calculer</div>
       </div>
     </div>
   </div>
@@ -5802,16 +5822,17 @@ function goTab(tab) {
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   document.querySelectorAll('.htab').forEach(t=>t.classList.remove('on'));
-  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports'};
+  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports','rpt-jour':'v-rpt-jour'};
   const el=document.getElementById(vm[tab]);
   if(el) el.classList.add('on');
-  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports'};
+  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour'};
   const ntEl=document.getElementById(nt[tab]);
   if(ntEl) ntEl.classList.add('on');
   if(tab==='history') loadHist();
   else if(_prevTab==='history') _resetHistFilters();
   if(tab==='finposte') loadFPData();
   if(tab==='rapports') loadRapports();
+  if(tab==='rpt-jour') loadRptJour();
   if(tab==='main') { loadMainDecl(); }
   if(tab==='kpi') loadKPI();
   if(tab==='settings') {
