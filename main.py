@@ -8510,11 +8510,15 @@ function _kpiInitDates(){
 async function loadKPI(){
   _kpiInitDates();
   const fi=document.getElementById('kpi-from'),ti=document.getElementById('kpi-to');
-  const fromMs=fi&&fi.value?new Date(fi.value).getTime():0;
-  const toMs=ti&&ti.value?new Date(ti.value).getTime()+86399000:Date.now();
+  const _parseLocalDate=s=>{if(!s)return null;const p=s.split('-');return new Date(+p[0],+p[1]-1,+p[2]).getTime();};
+  const fromMs=fi&&fi.value?_parseLocalDate(fi.value):0;
+  const toMs=ti&&ti.value?_parseLocalDate(ti.value)+86399999:Date.now();
   const pSec=s=>s?s.split(':').reduce((a,v,i)=>a+(i===0?+v*3600:i===1?+v*60:+v),0):0;
 
-  const [histData,evtData]=await Promise.all([apiFetch('/api/history'),apiFetch('/api/events_list')]);
+  const prParams=new URLSearchParams();
+  if(fi&&fi.value)prParams.set('date_from',fi.value);
+  if(ti&&ti.value)prParams.set('date_to',ti.value);
+  const [histData,evtData,prData]=await Promise.all([apiFetch('/api/history'),apiFetch('/api/events_list'),apiFetch('/api/period_report?'+prParams.toString())]);
   const allRows=Array.isArray(histData)?histData:[];
   const allEvts=Array.isArray(evtData)?evtData:[];
 
@@ -8545,7 +8549,10 @@ async function loadKPI(){
     s.cad=s.tot_s>60?Math.round(s.tot_equiv/(s.tot_s/3600)*10)/10:0;
     s.cad_qte=s.tot_s>60&&s.tot_qte>0?Math.round(s.tot_qte/(s.tot_s/3600)*10)/10:0;
     const evtKey=s.pilot+'||'+s.date+'||'+s.poste;
-    s.stop_min=Math.round((evts.filter(e=>(e.pilote||'')+'||'+(e.date||'')+'||'+(e.poste||'')==evtKey).reduce((a,e)=>a+Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0')),0))/60);
+    const sessEvts=evts.filter(e=>(e.pilote||'')+'||'+(e.date||'')+'||'+(e.poste||'')==evtKey);
+    const _ivs=sessEvts.map(e=>[pSec(e.debut||'0:0:0'),pSec(e.fin||'0:0:0')]).filter(([d,f])=>f>d).sort((a,b)=>a[0]-b[0]);
+    const _mg=[];for(const [d,f] of _ivs){if(_mg.length&&d<=_mg[_mg.length-1][1])_mg[_mg.length-1][1]=Math.max(_mg[_mg.length-1][1],f);else _mg.push([d,f]);}
+    s.stop_min=Math.round(_mg.reduce((a,[d,f])=>a+(f-d),0)/60);
     // Fibre changes: count transitions between different fibre values
     const sRows=(sessRowsMap[evtKey]||[]).sort((a,b)=>pSec(a.debut||'0:0')-pSec(b.debut||'0:0'));
     let fibChg=0;
@@ -8567,31 +8574,42 @@ async function loadKPI(){
   const totalQte=sessArr.reduce((a,s)=>a+s.tot_qte,0);
   const totalProdS=sessArr.reduce((a,s)=>a+s.tot_s,0);
   const totalStopMin=sessArr.reduce((a,s)=>a+s.stop_min,0);
-  const trsVals=sessArr.filter(s=>s.trs>=0).map(s=>s.trs);
-  const avgTRS=trsVals.length?Math.round(trsVals.reduce((a,v)=>a+v,0)/trsVals.length*10)/10:-1;
-  const avgCadH=totalProdS>0?Math.round(totalEquiv/(totalProdS/3600)*10)/10:0;
+  // Use period_report for accurate aggregate values (Postes-filtered, merged intervals, weighted TRS)
+  const pr=prData&&prData.ok?prData:{};
+  const avgTRS=pr.trs_periode!==undefined?pr.trs_periode:-1;
+  const avgCadH=pr.cadence_h!==undefined?pr.cadence_h:(totalProdS>0?Math.round(totalEquiv/(totalProdS/3600)*10)/10:0);
   const avgOFperSess=nbSess?Math.round(totalOF/nbSess*10)/10:0;
-  const avgQtePerSess=nbSess?Math.round(totalQte/nbSess*10)/10:0;
   const avgEquivPerSess=nbSess?Math.round(totalEquiv/nbSess*10)/10:0;
 
   // ── KPI Cards ──
   const cards=document.getElementById('kpi-cards');
   if(cards){
-    const avgStopMin=nbSess?Math.round(totalStopMin/nbSess):0;
+    const _ouv=pr.ouverture_min!==undefined?pr.ouverture_min:'—';
+    const _utile=pr.temps_utile_min!==undefined?pr.temps_utile_min:'—';
+    const _fonct=pr.temps_fonctionnement_min!==undefined?pr.temps_fonctionnement_min:Math.round(totalProdS/60);
+    const _stop=pr.net_stop_min!==undefined?pr.net_stop_min:totalStopMin;
+    const _perte=pr.perte_cadence_min!==undefined?pr.perte_cadence_min:0;
+    const _equiv=pr.tot_equiv!==undefined?pr.tot_equiv:parseFloat(totalEquiv.toFixed(1));
+    const _pcs=pr.tot_pcs!==undefined?pr.tot_pcs:Math.round(totalQte);
+    const _nbSessP=pr.nb_sessions!==undefined?pr.nb_sessions:nbSess;
+    const _nbOf=pr.nb_of!==undefined?pr.nb_of:totalOF;
     const mkCard=(lbl,val,col,sub)=>`<div style="padding:10px 14px;border-right:1px solid #f1f5f9;text-align:center;min-width:100px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center">
       <div style="font-size:calc(22px*var(--zf,1));font-weight:900;color:${col};line-height:1;letter-spacing:-.5px">${val}</div>
       <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;margin-top:4px;line-height:1.3">${lbl}</div>
       ${sub?`<div style="font-size:calc(9px*var(--zf,1));color:#64748b;margin-top:2px">${sub}</div>`:''}
     </div>`;
     cards.innerHTML=
-      mkCard('TRS moyen',avgTRS>=0?avgTRS.toFixed(1)+'%':'—',_kpiTrsColor(avgTRS),nbSess?nbSess+' postes':'')+
-      mkCard('Nb OF total',totalOF,'#6366f1','moy '+avgOFperSess+'/poste')+
-      mkCard('Nb postes',nbSess,'#0891b2','')+
-      mkCard('Pièces fabriquées',Math.round(totalQte),'#7c3aed',avgQtePerSess+'/poste')+
-      mkCard('Équiv. totale',totalEquiv.toFixed(1),'#16a34a',avgEquivPerSess.toFixed(1)+'/poste')+
-      mkCard('Cadence moy.',avgCadH>0?avgCadH+'/h':'—','#f59e0b','')+
-      mkCard('Arrêts totaux',totalStopMin+'min','#dc2626',avgStopMin+'min/poste')+
-      mkCard('Prod totale',Math.round(totalProdS/60)+'min','#0891b2','');
+      mkCard('TRS pondéré',avgTRS>=0?avgTRS.toFixed(1)+'%':'—',_kpiTrsColor(avgTRS),_nbSessP+' postes')+
+      mkCard('T. ouverture',_ouv!=='—'?_ouv+'min':'—','#0891b2','')+
+      mkCard('T. utile',_utile!=='—'?_utile+'min':'—','#16a34a','')+
+      mkCard('T. fonctionnement',_fonct+'min','#0891b2','')+
+      mkCard('T. arrêts',_stop+'min','#dc2626','')+
+      mkCard('Perte cadence',_perte>0?_perte+'min':'—','#f97316','')+
+      mkCard('Équiv. totale',parseFloat(_equiv).toFixed(1),'#16a34a',(_nbSessP?Math.round(_equiv/_nbSessP*10)/10:0).toFixed(1)+'/poste')+
+      mkCard('Pièces totales',_pcs,'#7c3aed','')+
+      mkCard('Cadence moy.',avgCadH>0?avgCadH+' pcs/h':'—','#f59e0b','')+
+      mkCard('Nb OF total',_nbOf,'#6366f1','moy '+avgOFperSess+'/poste')+
+      mkCard('Nb postes',_nbSessP,'#0891b2','');
   }
 
   // ── 3 courbes (compact, côte à côte) ──
