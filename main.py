@@ -8672,7 +8672,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     const W=800,Y=4,H2=28,H=40;
     // Convertir dd/mm/yyyy → base ms
     const parts=dateStr.split('/');
-    const baseMs=parts.length===3?new Date(parts[2]+'-'+parts[1]+'-'+parts[0]).getTime():Date.now();
+    const baseMs=parts.length===3?new Date(parseInt(parts[2]),parseInt(parts[1])-1,parseInt(parts[0])).getTime():Date.now();
     const hm2ms=hm=>{if(!hm)return null;const[h,m]=(hm+':00').split(':').map(Number);return baseMs+h*3600000+m*60000;};
     const mdMs=hm2ms(modelDebut),mfMs=hm2ms(modelFin);
     // Compute range
@@ -8735,8 +8735,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
   // Perte cadence: [(tempsFonctionnement * cadenceRef) - nbEquiv] / cadenceRef
   const perteCadenceRaw=cadenceRefPcsMin>0?Math.round(((tempsFonctionnement*cadenceRefPcsMin)-(d.tot_equiv||0))/cadenceRefPcsMin):0;
   const perteCadenceHtml=perteCadenceRaw<0?`<span style="color:#16a34a;font-weight:800">${Math.abs(perteCadenceRaw)} min de gain</span>`:perteCadenceRaw>0?`<span style="color:#dc2626;font-weight:800">${perteCadenceRaw} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
-  const tlDebut=d.actual_debut||d.model_debut;
-  const tlFin=d.actual_fin||d.model_fin;
+  const tlDebut=d.model_debut||d.actual_debut;
+  const tlFin=d.model_fin||d.actual_fin;
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
   const plageStr=(tlDebut&&tlFin)?(' · '+esc(tlDebut)+' → '+esc(tlFin)):'';
   // ── Panneau gauche : passe en mode KPI ──
