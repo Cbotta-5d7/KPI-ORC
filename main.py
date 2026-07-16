@@ -2336,6 +2336,9 @@ def api_past_sessions():
             if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
                 _el2 = max(1.0, _mdur2 - planned_ded)
                 trs = round(s["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
+        _pk_check = (s["pilot"].lower(), s["date"])
+        if _pk_check not in postes_map:
+            continue
         result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs,"_rn":s["max_rn"]})
     def _date_sort_key(x):
         d = x["date"]
