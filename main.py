@@ -2395,6 +2395,9 @@ def api_session_report():
     if _pk2 in _postes_map2:
         _pdeb2, _pfin2 = _postes_map2[_pk2]
         model_dur_s = max(0.0, (_pfin2 - _pdeb2).total_seconds())
+        if not debut_str:
+            debut_str = _pdeb2.strftime("%H:%M")
+            fin_str = _pfin2.strftime("%H:%M")
     else:
         model_dur_s = get_shift_duration_s(poste)
     ecart_s = max(0.0, model_dur_s - (tot_s + stop_s))
