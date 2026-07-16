@@ -8862,9 +8862,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
     </div>`;
   // Dessiner gauge et pie (éléments maintenant dans le DOM)
   drawPie('rpt-pie',[
-    {label:'Prod',value:prodMin,color:'#16a34a'},
-    {label:'Arrêts',value:stopMin,color:'#dc2626'},
-    {label:'Autre',value:Math.max(0,totalMin-prodMin-stopMin),color:'#94a3b8'}
+    {label:'Prod',value:tempsFonctionnement,color:'#16a34a'},
+    {label:'Arrêts',value:netStopMin,color:'#dc2626'}
   ],{fCenter:16,fSub:10,fLeg:10,legY:118});
 }
 
