@@ -917,7 +917,7 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
 
-POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Total Arrets (min)","Total Pauses (min)","Nettoyage (min)","Durée Prod Totale (min)","Durée Prod Sans Arrêt (min)","Durée poste théorique (min)","Commentaire","Début Poste","Fin Poste"]
+POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Total Arrets (min)","Total Pauses (min)","Nettoyage (min)","Durée Prod Totale (min)","Durée Prod Sans Arrêt (min)","Durée poste théorique (min)","Commentaire","Début Poste","Fin Poste","Temps ouverture (min)","Temps utile (min)","Temps fonctionnement (min)","Temps en arrêt (min)","Réf cadence (pcs/min)","Perte cadence (min)"]
 
 def write_pilots_to_excel(pilot_passwords):
     """Écrit la liste pilote+MDP dans l'onglet Listes col A+B."""
@@ -1054,6 +1054,12 @@ def write_poste_row(data, row_num=None):
                     round(float(data.get("dur_prod_sans_arret_min",0) or 0),1),
                     round(float(data.get("dur_poste_theorique_min",0) or 0),1),
                     data.get("comment",""),
+                    round(float(data.get("temps_ouverture_min",0) or 0),1),
+                    round(float(data.get("temps_utile_min",0) or 0),1),
+                    round(float(data.get("temps_fonctionnement_min",0) or 0),1),
+                    round(float(data.get("temps_arret_min",0) or 0),1),
+                    round(float(data.get("cadence_ref_pcs_min",0) or 0),4),
+                    round(float(data.get("perte_cadence_min",0) or 0),1),
                 ]
                 if row_num and row_num > 1:
                     for ci, v in enumerate(vals, start=1):
@@ -2191,6 +2197,37 @@ def api_fin_poste_data():
             gap_intervals.append({"debut": _sec_to_hm(covered), "fin": _sec_to_hm(mf_s), "duree_min": round((mf_s-covered)/60)})
     else:
         overflow_s = 0.0
+    # ── Nouvelles métriques pour l'onglet Postes Excel ──
+    # Intervalles d'arrêts fusionnés (sans chevauchement)
+    _stop_ivs = sorted(
+        [(s2, f2) for s2, f2 in (
+            (_hms_to_sec(str(r_s[16] or "00:00:00")), _hms_to_sec(str(r_s[17] or "00:00:00")))
+            for _, r_s in shift_evt_rows
+        ) if f2 > s2]
+    )
+    _merged_s = []
+    for _ds, _fs in _stop_ivs:
+        if _merged_s and _ds <= _merged_s[-1][1]:
+            _merged_s[-1] = (_merged_s[-1][0], max(_merged_s[-1][1], _fs))
+        else:
+            _merged_s.append((_ds, _fs))
+    net_stop_min_fp = round(sum(f - s for s, f in _merged_s) / 60, 1)
+    ouverture_min_fp = round(model_dur_s / 60, 1)
+    temps_fonctionnement_fp = round(max(0.0, ouverture_min_fp - net_stop_min_fp), 1)
+    # Budget arrêts prévus: min(limite_paramètre, déclaré) par catégorie
+    _blab = {"pause_min":"Pause","meeting_tol_min":"Réunion","clean_short_min":"Nettoyage court","clean_long_min":"Nettoyage long","clean_grand_min":"Nettoyage très long"}
+    _bdata = {bk:{"budget_min":float(cfg.get(bk,0) or 0),"used_min":0.0} for bk in _blab}
+    for _, r_e in shift_evt_rows:
+        _bk2 = _get_arret_budget_key(str(r_e[0] or '') or str(r_e[35] if len(r_e) > 35 else ''))
+        if _bk2 and _bk2 in _bdata:
+            _dp2 = str(r_e[18] or ''); _pp2 = (_dp2+':00:00').split(':')
+            try: _bs2 = int(_pp2[0] or 0)*3600+int(_pp2[1] or 0)*60+int(_pp2[2] or 0)
+            except: _bs2 = 0
+            _bdata[_bk2]['used_min'] += _bs2/60
+    arrets_prevu_fp = sum(min(v['budget_min'], v['used_min']) for v in _bdata.values())
+    temps_utile_fp = round(max(0.0, ouverture_min_fp - arrets_prevu_fp), 1)
+    cadence_ref_fp = round(prod_ref / 480, 4) if prod_ref > 0 else 0.0
+    perte_cadence_fp = round((temps_fonctionnement_fp * cadence_ref_fp - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 else 0.0
     return jsonify({
         "pilot":pilot,"date":today,
         "nb_of":len(of_list),"trs":trs_poste,"trs_shift":trs_poste_shift,
@@ -2206,6 +2243,12 @@ def api_fin_poste_data():
         "model_fin": model_fin_hm,
         "overflow_min": round(overflow_s / 60),
         "overflow_s": round(overflow_s, 0),
+        "ouverture_min": ouverture_min_fp,
+        "temps_utile_min": temps_utile_fp,
+        "temps_fonctionnement_min": temps_fonctionnement_fp,
+        "net_stop_min": net_stop_min_fp,
+        "cadence_ref_pcs_min": cadence_ref_fp,
+        "perte_cadence_min": perte_cadence_fp,
     })
 
 @flask_app.route('/api/history_today')
@@ -8055,7 +8098,13 @@ async function confirmFinPoste(){
     dur_prod_total_min:Math.round(dur_prod_total_s/60),
     dur_prod_sans_arret_min:Math.round(dur_prod_sans_arret_s/60),
     dur_poste_theorique_min:fpData&&fpData.model_dur_s?Math.round(fpData.model_dur_s/60):0,
-    comment:''
+    comment:'',
+    temps_ouverture_min:fpData&&fpData.ouverture_min||0,
+    temps_utile_min:fpData&&fpData.temps_utile_min||0,
+    temps_fonctionnement_min:fpData&&fpData.temps_fonctionnement_min||0,
+    temps_arret_min:fpData&&fpData.net_stop_min||0,
+    cadence_ref_pcs_min:fpData&&fpData.cadence_ref_pcs_min||0,
+    perte_cadence_min:fpData&&fpData.perte_cadence_min||0,
   };
   await fetch('/api/save_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posteRow)});
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
