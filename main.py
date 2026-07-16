@@ -2349,6 +2349,134 @@ def api_past_sessions():
     for x in result: x.pop("_rn", None)
     return jsonify(result[:60])
 
+@flask_app.route('/api/period_report')
+def api_period_report():
+    """Rapport agrégé sur une période : tous les postes Postes-sheet dans la plage."""
+    date_from_str = request.args.get('date_from', '').strip()  # yyyy-mm-dd
+    date_to_str   = request.args.get('date_to',   '').strip()
+    filter_pilot  = request.args.get('pilot', '').strip().lower()
+    filter_poste  = request.args.get('poste', '').strip().lower()
+    def _parse_ymd(s):
+        try: p=s.split('-'); return datetime.date(int(p[0]),int(p[1]),int(p[2]))
+        except: return None
+    def _parse_dmy(s):
+        try: p=s.split('/'); return datetime.date(int(p[2]),int(p[1]),int(p[0]))
+        except: return None
+    dt_from = _parse_ymd(date_from_str)
+    dt_to   = _parse_ymd(date_to_str)
+    prod_ref    = get_prod_ref()
+    postes_map  = load_postes_shift_map()
+    # ── Build sessions ──
+    sessions = {}
+    for rn, r in _decl_cache:
+        date_str = str(r[39] if len(r) > 39 else '').strip() or _row_date(r[2])
+        if not date_str: continue
+        pilot = str(r[4] or ''); poste = str(r[3] or '')
+        if filter_pilot and pilot.lower() != filter_pilot: continue
+        if filter_poste and poste.lower() != filter_poste: continue
+        _pk = (pilot.lower(), date_str)
+        if _pk not in postes_map: continue
+        d_obj = _parse_dmy(date_str)
+        if d_obj is None: continue
+        if dt_from and d_obj < dt_from: continue
+        if dt_to   and d_obj > dt_to:   continue
+        key = f"{date_str}||{pilot}||{poste}"
+        if key not in sessions:
+            sessions[key] = {'date':date_str,'pilot':pilot,'poste':poste,
+                             'nb_of':0,'tot_equiv':0.0,'tot_pcs':0,'evt_rows':[]}
+        row_type = str(r[0] or '').strip().lower()
+        if row_type in ('production','prod',''):
+            try:
+                eq  = float(str(r[21] or 0).replace(',','.'))
+                pcs = float(str(r[19] or 0).replace(',','.'))
+                sessions[key]['nb_of']     += 1
+                sessions[key]['tot_equiv'] += eq
+                sessions[key]['tot_pcs']   += pcs
+            except: pass
+        else:
+            sessions[key]['evt_rows'].append((rn, r))
+    # ── Aggregate ──
+    _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
+    agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
+    agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_elapsed_s=0.0
+    jours=set(); pilotes=set(); postes_set=set()
+    trs_by_day = {}
+    cadence_ref = round(prod_ref/480, 4) if prod_ref > 0 else 0.0
+    for key, s in sessions.items():
+        _pk = (s['pilot'].lower(), s['date'])
+        _pdeb, _pfin = postes_map[_pk]
+        model_dur_s = max(0.0, (_pfin - _pdeb).total_seconds())
+        ouv_min = model_dur_s / 60
+        # Merged stop intervals
+        _ivs = sorted(
+            [(ds2, fs2) for ds2, fs2 in (
+                (_hms_to_sec(str(re2[16] or '00:00:00')), _hms_to_sec(str(re2[17] or '00:00:00')))
+                for _, re2 in s['evt_rows']
+            ) if fs2 > ds2]
+        )
+        _mg = []
+        for ds, fs in _ivs:
+            if _mg and ds <= _mg[-1][1]: _mg[-1] = (_mg[-1][0], max(_mg[-1][1], fs))
+            else: _mg.append((ds, fs))
+        net_stop_min = sum(f - d for d, f in _mg) / 60
+        fonct_min = max(0.0, ouv_min - net_stop_min)
+        # Planned stops: min(budget, used) per category per session
+        _bdata = {bk:{'budget_min':float(cfg.get(bk,0) or 0),'used_min':0.0} for bk in _blab}
+        for _, re3 in s['evt_rows']:
+            _bk2 = _get_arret_budget_key(str(re3[0] or '') or str(re3[35] if len(re3)>35 else ''))
+            if _bk2 and _bk2 in _bdata:
+                _dp2=str(re3[18] or ''); _pp2=(_dp2+':00:00').split(':')
+                try: _bs2=int(_pp2[0] or 0)*3600+int(_pp2[1] or 0)*60+int(_pp2[2] or 0)
+                except: _bs2=0
+                _bdata[_bk2]['used_min'] += _bs2/60
+        arrets_prevu = sum(min(v['budget_min'],v['used_min']) for v in _bdata.values())
+        utile_min = max(0.0, ouv_min - arrets_prevu)
+        perte = round((fonct_min*cadence_ref - s['tot_equiv'])/cadence_ref, 1) if cadence_ref>0 else 0.0
+        planned_ded = _compute_planned_deduction_s(s['evt_rows'])
+        elapsed_s = max(1.0, model_dur_s - planned_ded)
+        agg_ouv     += ouv_min
+        agg_utile   += utile_min
+        agg_fonct   += fonct_min
+        agg_stop    += net_stop_min
+        agg_perte   += perte
+        agg_equiv   += s['tot_equiv']
+        agg_pcs     += s['tot_pcs']
+        agg_of      += s['nb_of']
+        agg_elapsed_s += elapsed_s
+        jours.add(s['date']); pilotes.add(s['pilot']); postes_set.add(s['poste'])
+        day = s['date']
+        if day not in trs_by_day: trs_by_day[day]={'equiv':0.0,'elapsed_s':0.0}
+        trs_by_day[day]['equiv']    += s['tot_equiv']
+        trs_by_day[day]['elapsed_s'] += elapsed_s
+    trs_periode = round(agg_equiv/(prod_ref*agg_elapsed_s/28800)*100,1) if prod_ref>0 and agg_elapsed_s>0 and agg_equiv>0 else -1.0
+    def _sort_dmy(d):
+        try: p=d.split('/'); return (int(p[2]),int(p[1]),int(p[0]))
+        except: return (0,0,0)
+    trs_by_day_list = [
+        {'date':day,'trs':round(v['equiv']/(prod_ref*v['elapsed_s']/28800)*100,1) if prod_ref>0 and v['elapsed_s']>0 and v['equiv']>0 else -1.0}
+        for day,v in sorted(trs_by_day.items(), key=lambda x:_sort_dmy(x[0]))
+    ]
+    cadence_h = round(agg_equiv/agg_fonct*60) if agg_fonct>0 else 0
+    return jsonify({
+        'ok':True,
+        'trs_periode':trs_periode,
+        'nb_sessions':len(sessions),
+        'nb_of':agg_of,
+        'nb_jours':len(jours),
+        'nb_pilotes':len(pilotes),
+        'nb_postes':len(postes_set),
+        'tot_equiv':round(agg_equiv,1),
+        'tot_pcs':round(agg_pcs),
+        'ouverture_min':round(agg_ouv,1),
+        'temps_utile_min':round(agg_utile,1),
+        'temps_fonctionnement_min':round(agg_fonct,1),
+        'net_stop_min':round(agg_stop,1),
+        'perte_cadence_min':round(agg_perte,1),
+        'cadence_ref_pcs_min':cadence_ref,
+        'cadence_h':cadence_h,
+        'trs_by_day':trs_by_day_list,
+    })
+
 @flask_app.route('/api/session_report')
 def api_session_report():
     date_str = request.args.get('date','')
@@ -3371,7 +3499,8 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
   <div class="tab-bar">
     <button class="tab-btn active" id="tb-accueil" onclick="showTab('accueil')">🏠 Accueil</button>
     <button class="tab-btn" id="tb-historique" onclick="showTab('historique')">📋 Historique</button>
-    <button class="tab-btn" id="tb-rapports" onclick="showTab('rapports')">📊 Rapports</button>
+    <button class="tab-btn" id="tb-rapports" onclick="showTab('rapports')">📊 Rapports postes</button>
+    <button class="tab-btn" id="tb-rpt-jour" onclick="showTab('rpt-jour')">📅 Rapports jour</button>
   </div>
 
   <!-- ONGLET ACCUEIL -->
@@ -3501,7 +3630,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     <div class="rpt-wrap">
       <div id="rpt-sidebar">
         <div style="padding:10px 14px;font-size:calc(13px*var(--zf,1));font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
-          <span>📋 Postes</span>
+          <span>📋 Rapports postes</span>
           <button onclick="loadRapports()" style="font-size:calc(11px*var(--zf,1));padding:3px 8px;background:none;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#64748b">↺</button>
         </div>
         <div id="rpt-list" style="flex:1;overflow-y:auto">
@@ -3514,6 +3643,28 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
       </div>
     </div>
   </div><!-- /tab-rapports -->
+
+  <!-- ONGLET RAPPORTS JOUR -->
+  <div id="tab-rpt-jour" class="tab-pane" style="display:none;flex-direction:column;overflow:hidden;height:100%">
+    <div class="hist-filter" style="flex-shrink:0">
+      <label>Du :</label>
+      <input type="date" id="rj-from" style="font-size:calc(12px*var(--zf,1))">
+      <label>Au :</label>
+      <input type="date" id="rj-to" style="font-size:calc(12px*var(--zf,1))">
+      <label>Pilote :</label>
+      <select id="rj-pilot" style="font-size:calc(12px*var(--zf,1));padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;background:#fff"><option value="">Tous</option></select>
+      <label>Poste :</label>
+      <select id="rj-poste" style="font-size:calc(12px*var(--zf,1));padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;background:#fff"><option value="">Tous</option></select>
+      <button onclick="calcPeriodReport()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">Calculer</button>
+      <button onclick="resetPeriodReport()" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;font-size:calc(12px*var(--zf,1));color:#64748b;cursor:pointer">✕ Réinitialiser</button>
+    </div>
+    <div id="rj-result" style="flex:1;overflow-y:auto;padding:12px 16px">
+      <div style="padding:60px;text-align:center;color:#94a3b8">
+        <div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📅</div>
+        <div style="font-size:calc(14px*var(--zf,1));font-weight:600">Sélectionnez une période puis cliquez sur Calculer</div>
+      </div>
+    </div>
+  </div><!-- /tab-rpt-jour -->
 
 </div><!-- /outer -->
 
@@ -3586,13 +3737,14 @@ function filterHist(){{
 var _currentDashTab='accueil';
 function showTab(name){{
   _currentDashTab=name;
-  ['accueil','historique','rapports'].forEach(function(n){{
+  ['accueil','historique','rapports','rpt-jour'].forEach(function(n){{
     var p=document.getElementById('tab-'+n);
     var b=document.getElementById('tb-'+n);
     if(p) p.style.display=(n===name)?'flex':'none';
     if(b) b.classList.toggle('active',n===name);
   }});
   if(name==='rapports') loadRapports();
+  if(name==='rpt-jour') loadRptJour();
 }}
 setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},15000);
 </script>
@@ -8640,6 +8792,122 @@ async function reloadAndLoadRapports(){
   toast('Rechargement depuis Excel…','ok');
   await apiFetch('/api/reload_excel',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   await loadRapports();
+}
+async function loadRptJour(){
+  // Populate pilot/poste selects from past_sessions
+  const sessions=await apiFetch('/api/past_sessions');
+  if(!sessions) return;
+  const pilots=[...new Set(sessions.map(s=>s.pilot).filter(Boolean))].sort();
+  const postes=[...new Set(sessions.map(s=>s.poste).filter(Boolean))].sort();
+  const pSel=document.getElementById('rj-pilot');
+  const qSel=document.getElementById('rj-poste');
+  if(pSel){
+    const cur=pSel.value;
+    pSel.innerHTML='<option value="">Tous</option>'+pilots.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('');
+  }
+  if(qSel){
+    const cur=qSel.value;
+    qSel.innerHTML='<option value="">Tous</option>'+postes.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('');
+  }
+}
+async function calcPeriodReport(){
+  const from=document.getElementById('rj-from').value;
+  const to=document.getElementById('rj-to').value;
+  const pilot=document.getElementById('rj-pilot').value;
+  const poste=document.getElementById('rj-poste').value;
+  const resultEl=document.getElementById('rj-result');
+  if(!resultEl) return;
+  resultEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--gray)">Calcul en cours…</div>';
+  let url='/api/period_report?';
+  if(from) url+='date_from='+encodeURIComponent(from)+'&';
+  if(to)   url+='date_to='+encodeURIComponent(to)+'&';
+  if(pilot) url+='pilot='+encodeURIComponent(pilot)+'&';
+  if(poste) url+='poste='+encodeURIComponent(poste)+'&';
+  const d=await apiFetch(url);
+  if(!d||!d.ok){resultEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur ou aucune donnée</div>';return;}
+  if(d.nb_sessions===0){resultEl.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">🔍</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Aucun poste trouvé pour cette période</div></div>';return;}
+  const trsCol=d.trs_periode>=90?'#16a34a':d.trs_periode>=70?'#f59e0b':d.trs_periode>=0?'#dc2626':'#94a3b8';
+  const pertRaw=d.perte_cadence_min||0;
+  const pertHtml=pertRaw<0?`<span style="color:#16a34a;font-weight:900">${Math.abs(Math.round(pertRaw))} min de gain</span>`:pertRaw>0?`<span style="color:#dc2626;font-weight:900">${Math.round(pertRaw)} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
+  // Pie chart: fonctionnement vs arrêts
+  const fonctMin=d.temps_fonctionnement_min||0;
+  const stopMin=d.net_stop_min||0;
+  const pieTotal=fonctMin+stopMin;
+  let pieHtml='';
+  if(pieTotal>0){
+    const r=60,cx=65,cy=65;
+    const slices=[{v:fonctMin,c:'#16a34a',l:'Prod'},{v:stopMin,c:'#dc2626',l:'Arrêts'}];
+    let startA=-Math.PI/2,svgPaths='';
+    slices.forEach(sl=>{
+      const a=sl.v/pieTotal*2*Math.PI;
+      const x1=cx+r*Math.cos(startA),y1=cy+r*Math.sin(startA);
+      const x2=cx+r*Math.cos(startA+a),y2=cy+r*Math.sin(startA+a);
+      const lg=a>Math.PI?1:0;
+      svgPaths+=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${sl.c}" opacity=".85"/>`;
+      startA+=a;
+    });
+    const legHtml=slices.map(sl=>`<div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1))"><div style="width:10px;height:10px;border-radius:2px;background:${sl.c};flex-shrink:0"></div>${sl.l}: <b>${Math.round(sl.v)} min</b></div>`).join('');
+    pieHtml=`<div style="text-align:center">
+      <svg viewBox="0 0 130 130" style="width:130px;height:130px;display:block;margin:0 auto"><circle cx="65" cy="65" r="60" fill="#e2e8f0"/>${svgPaths}</svg>
+      <div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;align-items:center">${legHtml}</div>
+    </div>`;
+  }
+  // TRS by day bars
+  let barHtml='';
+  if(d.trs_by_day&&d.trs_by_day.length>1){
+    const maxT=Math.max(...d.trs_by_day.filter(x=>x.trs>=0).map(x=>x.trs),1);
+    barHtml=`<div style="margin-top:16px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:12px">
+      <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px">TRS par jour</div>
+      <div style="display:flex;align-items:flex-end;gap:4px;height:80px">
+        ${d.trs_by_day.map(x=>{
+          const pct=x.trs>=0?Math.round(x.trs/maxT*100):0;
+          const bc=x.trs>=90?'#16a34a':x.trs>=70?'#f59e0b':x.trs>=0?'#dc2626':'#94a3b8';
+          const lbl=x.date.split('/').slice(0,2).join('/');
+          return `<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:2px">
+            <div style="font-size:calc(7px*var(--zf,1));color:${bc};font-weight:700">${x.trs>=0?x.trs.toFixed(0)+'%':''}</div>
+            <div style="width:100%;background:${bc};opacity:.8;border-radius:3px 3px 0 0;height:${pct}%"></div>
+            <div style="font-size:calc(6px*var(--zf,1));color:var(--gray);writing-mode:vertical-lr;transform:rotate(180deg);height:28px;line-height:1.2">${esc(lbl)}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+  resultEl.innerHTML=`
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:0 0 160px">
+        ${pieHtml}
+      </div>
+      <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px">
+        <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">
+          <div style="font-size:calc(42px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
+          <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-top:2px;font-weight:600">TRS période</div>
+          <div style="font-size:calc(10px*var(--zf,1));color:#94a3b8;margin-top:4px">${d.nb_jours} jour(s) · ${d.nb_sessions} poste(s) · ${d.nb_of} OF</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div class="fp-card" style="padding:8px;text-align:center"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#059669;font-weight:900">${Math.round(d.tot_pcs||0)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Pièces</div></div>
+          <div class="fp-card" style="padding:8px;text-align:center"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Équiv.</div></div>
+          <div class="fp-card" style="padding:8px;text-align:center"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#0369a1;font-weight:900">${d.cadence_h||0}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Cad./h moy.</div></div>
+          <div class="fp-card" style="padding:8px;text-align:center"><div class="fp-big" style="font-size:calc(14px*var(--zf,1));color:#0369a1;font-weight:900">${Math.round((d.cadence_ref_pcs_min||0)*100)/100}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Réf pcs/min</div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Temps ouverture</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1))">${Math.round(d.ouverture_min||0)} min</span></div>
+          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Temps utile</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#059669">${Math.round(d.temps_utile_min||0)} min</span></div>
+          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Temps fonctionnement</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#16a34a">${Math.round(d.temps_fonctionnement_min||0)} min</span></div>
+          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Temps en arrêt</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#dc2626">${Math.round(d.net_stop_min||0)} min</span></div>
+          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Perte cadence</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1))">${pertHtml}</span></div>
+        </div>
+      </div>
+    </div>
+    ${barHtml}
+  `;
+}
+function resetPeriodReport(){
+  document.getElementById('rj-from').value='';
+  document.getElementById('rj-to').value='';
+  document.getElementById('rj-pilot').value='';
+  document.getElementById('rj-poste').value='';
+  const r=document.getElementById('rj-result');
+  if(r) r.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📅</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Sélectionnez une période puis cliquez sur Calculer</div></div>';
 }
 async function loadRapports(){
   const listEl=document.getElementById('rpt-list');
