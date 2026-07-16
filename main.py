@@ -2384,7 +2384,11 @@ def api_session_report():
             except: pass
     actual_debut = _sec_to_hm(min(all_debut_s)) if all_debut_s else ""
     actual_fin = _sec_to_hm(max(all_fin_s)) if all_fin_s else ""
-    debut_str, fin_str = _get_model_day_cfg(poste)
+    try:
+        _date_obj_rpt = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
+    except Exception:
+        _date_obj_rpt = None
+    debut_str, fin_str = _get_model_day_cfg(poste, _date_obj_rpt)
     planned_ded = _compute_planned_deduction_s(evt_rows)
     _postes_map2 = load_postes_shift_map()
     _pk2 = (pilot.lower(), date_str)
@@ -8702,6 +8706,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     const kitStr=(r.kit||'').toLowerCase();
     const kitDisp=kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
     const {netMin,stopMin}=_rptNetProd(r.debut,r.fin);
+    const ofDurMin=r.debut&&r.fin?Math.round((_rptHmsMs(r.fin)-_rptHmsMs(r.debut))/60000):0;
     const td='padding:4px 6px;text-align:center;font-size:calc(11px*var(--zf,1))';
     return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="showOfDetail(${ri})" title="Voir détail OF">
       <td style="${td};font-weight:700;color:#1e3a8a;text-decoration:underline">${esc(r.of||'')}</td>
@@ -8710,6 +8715,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <td style="${td}">${esc(r.qte_fab||'')}</td>
       <td style="${td};color:#0891b2;font-weight:700">${esc(r.equiv||'')}</td>
       <td style="${td};white-space:nowrap">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
+      <td style="${td};color:#94a3b8">${ofDurMin>0?ofDurMin+' min':'—'}</td>
       <td style="${td};color:#16a34a;font-weight:700">${netMin} min</td>
       <td style="${td};color:#dc2626;font-weight:700">${stopMin} min</td>
       <td style="${td};font-weight:800;color:${tc}">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</td>
@@ -8756,7 +8762,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       const tx=toX(tickT);
       const hr=new Date(tickT).getHours();
       html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`;
-      html+=`<text x="${tx+2}" y="${Y+H2+9}" font-size="7" fill="#374151">${String(hr).padStart(2,'0')}h</text>`;
+      if(tx>20) html+=`<text x="${tx+2}" y="${Y+H2+9}" font-size="7" fill="#374151">${String(hr).padStart(2,'0')}h</text>`;
       tickT+=3600000;
     }
     html+=`<text x="2" y="${Y+H2+9}" font-size="8" fill="#374151">${fmt(tS)}</text>`;
@@ -8853,9 +8859,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
         <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
           <th style="padding:4px 6px;text-align:center">OF</th><th style="padding:4px 6px;text-align:center">Taille</th>
           <th style="padding:4px 6px;text-align:center">Lots×2</th><th style="padding:4px 6px;text-align:center">Qté</th><th style="padding:4px 6px;text-align:center">Éq.</th>
-          <th style="padding:4px 6px;text-align:center">Heures</th><th style="padding:4px 6px;text-align:center;color:#16a34a">Durée prod</th><th style="padding:4px 6px;text-align:center;color:#dc2626">Durée arrêts</th><th style="padding:4px 6px;text-align:center">TRS</th><th style="padding:4px 6px;text-align:left">Comm.</th>
+          <th style="padding:4px 6px;text-align:center">Heures</th><th style="padding:4px 6px;text-align:center;color:#94a3b8">Durée OF</th><th style="padding:4px 6px;text-align:center;color:#16a34a">Durée prod</th><th style="padding:4px 6px;text-align:center;color:#dc2626">Durée arrêts</th><th style="padding:4px 6px;text-align:center">TRS</th><th style="padding:4px 6px;text-align:left">Comm.</th>
         </tr></thead>
-        <tbody>${prodsHtml||'<tr><td colspan="10" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
+        <tbody>${prodsHtml||'<tr><td colspan="11" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
       </table>
     </div>
     <!-- Pareto + Arrêts côte à côte -->
