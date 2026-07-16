@@ -2383,7 +2383,7 @@ def api_period_report():
         key = f"{date_str}||{pilot}||{poste}"
         if key not in sessions:
             sessions[key] = {'date':date_str,'pilot':pilot,'poste':poste,
-                             'nb_of':0,'tot_equiv':0.0,'tot_pcs':0,'evt_rows':[]}
+                             'nb_of':0,'tot_equiv':0.0,'tot_pcs':0,'evt_rows':[],'prod_rows':[]}
         row_type = str(r[0] or '').strip().lower()
         if row_type in ('production','prod',''):
             try:
@@ -2392,6 +2392,9 @@ def api_period_report():
                 sessions[key]['nb_of']     += 1
                 sessions[key]['tot_equiv'] += eq
                 sessions[key]['tot_pcs']   += pcs
+                _deb_f = _hms_to_sec(str(r[16] or '00:00:00'))
+                _fib_f = str(r[11] or '').strip()
+                sessions[key]['prod_rows'].append((_deb_f, _fib_f))
             except: pass
         else:
             sessions[key]['evt_rows'].append((rn, r))
@@ -2399,6 +2402,7 @@ def api_period_report():
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
     agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_elapsed_s=0.0
+    agg_fibre_chg=0; agg_depassement=0.0; stop_by_type={}
     jours=set(); pilotes=set(); postes_set=set()
     trs_by_day = {}
     cadence_ref = round(prod_ref/480, 4) if prod_ref > 0 else 0.0
@@ -2435,6 +2439,17 @@ def api_period_report():
         perte = round((fonct_min*cadence_ref - s['tot_equiv'])/cadence_ref, 1) if cadence_ref>0 else 0.0
         planned_ded = _compute_planned_deduction_s(s['evt_rows'])
         elapsed_s = max(1.0, model_dur_s - planned_ded)
+        depassement = sum(max(0.0, v['used_min'] - v['budget_min']) for v in _bdata.values())
+        agg_depassement += depassement
+        _pf = sorted(s.get('prod_rows', []), key=lambda x: x[0])
+        nb_chg = sum(1 for i in range(1, len(_pf)) if _pf[i][1] and _pf[i-1][1] and _pf[i][1] != _pf[i-1][1])
+        agg_fibre_chg += nb_chg
+        for _, re_p in s['evt_rows']:
+            _stype = str(re_p[0] or '').strip()
+            if _stype:
+                _ds_p = _hms_to_sec(str(re_p[16] or '00:00:00'))
+                _fs_p = _hms_to_sec(str(re_p[17] or '00:00:00'))
+                stop_by_type[_stype] = stop_by_type.get(_stype, 0.0) + max(0.0, _fs_p - _ds_p)
         agg_ouv     += ouv_min
         agg_utile   += utile_min
         agg_fonct   += fonct_min
@@ -2476,6 +2491,9 @@ def api_period_report():
         'cadence_ref_pcs_min':cadence_ref,
         'cadence_h':cadence_h,
         'trs_by_day':trs_by_day_list,
+        'nb_fibre_chg':agg_fibre_chg,
+        'depassement_min':round(agg_depassement,1),
+        'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])[:15]],
     })
 
 @flask_app.route('/api/session_report')
@@ -4427,9 +4445,9 @@ select{cursor:default}
       <button class="htab prod-on" id="ht-prod" onclick="goTab('prod')">▶ Prod en cours</button>
       <span id="ht-guest-badge" style="display:none;font-size:calc(11px*var(--zf,1));font-weight:700;color:#94a3b8;padding:4px 10px;border:1px solid #94a3b8;border-radius:12px;margin-left:4px">👁 Invité</span>
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
-      <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports postes</button>
+      <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
-      <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📊 KPI</button>
+      <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📈 Evolution perf.</button>
     </div>
     <div id="hdr-right">
       <span id="hdr-pilot-lbl"></span>
@@ -5049,18 +5067,12 @@ select{cursor:default}
   <!-- ════ KPI VIEW ════ -->
   <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden;background:#f1f5f9">
     <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1e3a8a,#1e40af);color:#fff;padding:9px 16px;flex-shrink:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <div style="font-size:calc(18px*var(--zf,1));font-weight:900;letter-spacing:.4px;text-shadow:0 1px 4px rgba(0,0,0,.2)">📊 Tableau de Bord Performance</div>
-      <div style="display:flex;align-items:center;gap:6px;margin-left:auto;flex-wrap:wrap">
-        <label style="font-size:calc(12px*var(--zf,1));opacity:.85;font-weight:600">Du</label>
-        <input type="date" id="kpi-from" style="padding:4px 8px;border:1px solid rgba(255,255,255,.35);border-radius:6px;font-size:calc(12px*var(--zf,1));background:rgba(255,255,255,.18);color:#fff;outline:none;font-weight:600">
-        <label style="font-size:calc(12px*var(--zf,1));opacity:.85;font-weight:600">au</label>
-        <input type="date" id="kpi-to" style="padding:4px 8px;border:1px solid rgba(255,255,255,.35);border-radius:6px;font-size:calc(12px*var(--zf,1));background:rgba(255,255,255,.18);color:#fff;outline:none;font-weight:600">
-        <button onclick="loadKPI()" style="padding:5px 14px;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.45);border-radius:7px;color:#fff;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">↺ Actualiser</button>
-      </div>
+    <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;flex-shrink:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:var(--navy)">📈 Evolution perf.</span>
+      <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Du <input type="date" id="kpi-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
+      <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Au <input type="date" id="kpi-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
+      <button onclick="loadKPI()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">↺ Actualiser</button>
     </div>
-    <!-- KPI Cards row -->
-    <div id="kpi-cards" style="display:flex;flex-shrink:0;border-bottom:2px solid #e2e8f0;background:#fff;overflow-x:auto;min-height:68px"></div>
     <!-- 3 courbes côte à côte (compact) -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;height:128px;flex-shrink:0;background:#fff;border-bottom:1px solid #e2e8f0">
       <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px;border-right:1px solid #f1f5f9">
@@ -8503,8 +8515,8 @@ function _kpiDualLineChart(containerId,items,series){
 function _kpiInitDates(){
   const fi=document.getElementById('kpi-from'),ti=document.getElementById('kpi-to');
   if(!fi||!ti)return;
-  if(!fi.value){const d=new Date();d.setDate(d.getDate()-13);fi.value=d.toISOString().slice(0,10);}
-  if(!ti.value){ti.value=new Date().toISOString().slice(0,10);}
+  if(!fi.value){const d=new Date();d.setDate(d.getDate()-1);fi.value=d.toISOString().slice(0,10);}
+  if(!ti.value){const d=new Date();d.setDate(d.getDate()-1);ti.value=d.toISOString().slice(0,10);}
 }
 
 async function loadKPI(){
@@ -8581,36 +8593,7 @@ async function loadKPI(){
   const avgOFperSess=nbSess?Math.round(totalOF/nbSess*10)/10:0;
   const avgEquivPerSess=nbSess?Math.round(totalEquiv/nbSess*10)/10:0;
 
-  // ── KPI Cards ──
-  const cards=document.getElementById('kpi-cards');
-  if(cards){
-    const _ouv=pr.ouverture_min!==undefined?pr.ouverture_min:'—';
-    const _utile=pr.temps_utile_min!==undefined?pr.temps_utile_min:'—';
-    const _fonct=pr.temps_fonctionnement_min!==undefined?pr.temps_fonctionnement_min:Math.round(totalProdS/60);
-    const _stop=pr.net_stop_min!==undefined?pr.net_stop_min:totalStopMin;
-    const _perte=pr.perte_cadence_min!==undefined?pr.perte_cadence_min:0;
-    const _equiv=pr.tot_equiv!==undefined?pr.tot_equiv:parseFloat(totalEquiv.toFixed(1));
-    const _pcs=pr.tot_pcs!==undefined?pr.tot_pcs:Math.round(totalQte);
-    const _nbSessP=pr.nb_sessions!==undefined?pr.nb_sessions:nbSess;
-    const _nbOf=pr.nb_of!==undefined?pr.nb_of:totalOF;
-    const mkCard=(lbl,val,col,sub)=>`<div style="padding:10px 14px;border-right:1px solid #f1f5f9;text-align:center;min-width:100px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center">
-      <div style="font-size:calc(22px*var(--zf,1));font-weight:900;color:${col};line-height:1;letter-spacing:-.5px">${val}</div>
-      <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;margin-top:4px;line-height:1.3">${lbl}</div>
-      ${sub?`<div style="font-size:calc(9px*var(--zf,1));color:#64748b;margin-top:2px">${sub}</div>`:''}
-    </div>`;
-    cards.innerHTML=
-      mkCard('TRS pondéré',avgTRS>=0?avgTRS.toFixed(1)+'%':'—',_kpiTrsColor(avgTRS),_nbSessP+' postes')+
-      mkCard('T. ouverture',_ouv!=='—'?Math.round(_ouv)+'min':'—','#0891b2','')+
-      mkCard('T. utile',_utile!=='—'?Math.round(_utile)+'min':'—','#16a34a','')+
-      mkCard('T. fonctionnement',Math.round(_fonct)+'min','#0891b2','')+
-      mkCard('T. arrêts',Math.round(_stop)+'min','#dc2626','')+
-      mkCard('Perte cadence',_perte>0?Math.round(_perte)+'min':'—','#f97316','')+
-      mkCard('Équiv. totale',parseFloat(_equiv).toFixed(1),'#16a34a',(_nbSessP?Math.round(_equiv/_nbSessP*10)/10:0).toFixed(1)+'/poste')+
-      mkCard('Pièces totales',_pcs,'#7c3aed','')+
-      mkCard('Cadence moy.',avgCadH>0?avgCadH+' pcs/h':'—','#f59e0b','')+
-      mkCard('Nb OF total',_nbOf,'#6366f1','moy '+avgOFperSess+'/poste')+
-      mkCard('Nb postes',_nbSessP,'#0891b2','');
-  }
+
 
   // ── 3 courbes (compact, côte à côte) ──
   const trsItems=sessArr.filter(s=>s.trs>=0);
@@ -8834,6 +8817,9 @@ async function reloadAndLoadRapports(){
   await loadRapports();
 }
 async function loadRptJour(){
+  const _rjf=document.getElementById('rj-from'),_rjt=document.getElementById('rj-to');
+  if(_rjf&&!_rjf.value){const d=new Date();d.setDate(d.getDate()-1);_rjf.value=d.toISOString().slice(0,10);}
+  if(_rjt&&!_rjt.value){const d=new Date();d.setDate(d.getDate()-1);_rjt.value=d.toISOString().slice(0,10);}
   // Populate pilot/poste selects from past_sessions
   const sessions=await apiFetch('/api/past_sessions');
   if(!sessions) return;
@@ -8869,6 +8855,13 @@ async function calcPeriodReport(){
   const trsCol=d.trs_periode>=90?'#16a34a':d.trs_periode>=70?'#f59e0b':d.trs_periode>=0?'#dc2626':'#94a3b8';
   const pertRaw=d.perte_cadence_min||0;
   const pertHtml=pertRaw<0?`<span style="color:#16a34a;font-weight:900">${Math.abs(Math.round(pertRaw))} min de gain</span>`:pertRaw>0?`<span style="color:#dc2626;font-weight:900">${Math.round(pertRaw)} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
+  // Pareto arrêts
+  let paretoRjHtml='';
+  if(d.stop_pareto&&d.stop_pareto.length){
+    const maxMp=d.stop_pareto[0].min;
+    const totMp=d.stop_pareto.reduce((a,e)=>a+e.min,0);
+    paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:14px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;letter-spacing:.4px">Pareto des arrêts</div><div style="display:flex;flex-direction:column;gap:5px">${d.stop_pareto.map(e=>{const pct=Math.round(e.min/maxMp*100);const col=STOP_COL[e.cat]||'#94a3b8';const pctTot=totMp>0?Math.round(e.min/totMp*100):0;return '<div><div style="display:flex;justify-content:space-between;font-size:calc(10px*var(--zf,1));margin-bottom:2px"><div style="display:flex;align-items:center;gap:3px;min-width:0"><div style="width:7px;height:7px;border-radius:1px;background:'+col+';flex-shrink:0"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px">'+esc(e.type)+'</span></div><span style="white-space:nowrap;color:#6b7280;flex-shrink:0">'+Math.round(e.min)+'m <b style="color:#1e293b">'+pctTot+'%</b></span></div><div style="background:#f1f5f9;border-radius:3px;height:9px;overflow:hidden"><div style="width:'+pct+'%;background:'+col+';height:100%;border-radius:3px"></div></div></div>';}).join('')}</div></div>`;
+  }
   // Pie chart: fonctionnement vs arrêts
   const fonctMin=d.temps_fonctionnement_min||0;
   const stopMin=d.net_stop_min||0;
@@ -8935,10 +8928,13 @@ async function calcPeriodReport(){
           <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Temps fonctionnement</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#16a34a">${Math.round(d.temps_fonctionnement_min||0)} min</span></div>
           <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Temps en arrêt</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#dc2626">${Math.round(d.net_stop_min||0)} min</span></div>
           <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Perte cadence</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1))">${pertHtml}</span></div>
+          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Nb postes / Nb OF</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#0891b2">${d.nb_sessions||0} / ${d.nb_of||0}</span></div>
+          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Changements fibre</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#8b5cf6">${d.nb_fibre_chg||0}</span></div>
+          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Dépass. budget arrêts</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:${(d.depassement_min||0)>0?'#dc2626':'#16a34a'}">${(d.depassement_min||0)>0?'+'+Math.round(d.depassement_min)+'min':'✓ OK'}</span></div>
         </div>
       </div>
     </div>
-    ${barHtml}
+    ${barHtml}${paretoRjHtml}
   `;
 }
 function resetPeriodReport(){
