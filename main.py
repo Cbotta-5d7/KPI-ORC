@@ -8752,21 +8752,20 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <div onclick="rptBackToList()" title="Retour à la liste"
         style="width:28px;background:#4f46e5;border-right:2px solid #3730a3;cursor:pointer;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:background .15s;box-shadow:2px 0 6px rgba(79,70,229,.25);animation:blink .85s step-start infinite"
         onmouseenter="this.style.background='#4338ca';this.style.animation='none'" onmouseleave="this.style.background='#4f46e5';this.style.animation='blink .85s step-start infinite'">
-        <span style="font-size:14px;color:#fff;user-select:none;line-height:1">‹</span>
-        <span style="font-size:9px;color:#fff;user-select:none;writing-mode:vertical-lr;transform:rotate(180deg);letter-spacing:.06em;font-weight:800">Afficher les autres</span>
+        <span style="font-size:20px;color:#fff;user-select:none;line-height:1;font-weight:900">❮</span>
       </div>
       <!-- Contenu KPI -->
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
       <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0">
         <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${d.model_debut&&d.model_fin?' — '+esc(d.model_debut)+' → '+esc(d.model_fin):''}</div>
         <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
-        <div style="font-size:calc(10px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Taux de rendement :</div>
-        <div style="font-size:calc(30px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
+        <div style="font-size:calc(9px*var(--zf,1));opacity:.65;margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">TRS :</div>
+        <div style="font-size:calc(20px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
       </div>
       <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px">
         <div style="text-align:center">
           <svg id="rpt-pie" viewBox="0 0 130 130" style="width:150px;height:150px;display:block;margin:0 auto"></svg>
-          ${(tlDebut&&tlFin)?`<div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:3px;font-weight:600">${esc(tlDebut)} → ${esc(tlFin)}</div>`:''}
+          ${(d.model_debut&&d.model_fin)?`<div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:3px;font-weight:600">${esc(d.model_debut)} → ${esc(d.model_fin)}</div>`:''}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Pièces</div></div>
