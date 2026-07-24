@@ -6956,18 +6956,20 @@ function saveFormToStorage(){
 function restoreFormFromStorage(){
   try{
     const raw=localStorage.getItem('kpiorc_form');
-    if(!raw) return;
-    const f=JSON.parse(raw);
-    // Only restore if prod_active and form has of_num, or if not active (post-prod)
-    FORM_FIELDS.forEach(k=>{
-      const el=document.getElementById('f-'+k);
-      if(!el||!(k in f)) return;
-      const v=f[k];
-      if(v!==undefined&&v!==null&&v!=='') el.value=v;
-    });
-    const npEl=document.getElementById('f-nb_pers');
-    if(npEl&&(!npEl.value||npEl.value==='0')) npEl.value='10';
+    if(raw){
+      const f=JSON.parse(raw);
+      // Only restore if prod_active and form has of_num, or if not active (post-prod)
+      FORM_FIELDS.forEach(k=>{
+        const el=document.getElementById('f-'+k);
+        if(!el||!(k in f)) return;
+        const v=f[k];
+        if(v!==undefined&&v!==null&&v!=='') el.value=v;
+      });
+      const npEl=document.getElementById('f-nb_pers');
+      if(npEl&&(!npEl.value||npEl.value==='0')) npEl.value='10';
+    }
   }catch(e){}
+  fillTracaUI(document.getElementById('f-traca')?.value||'');
 }
 
 function scheduleAutoSave(){
