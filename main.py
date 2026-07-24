@@ -1825,7 +1825,17 @@ def api_preview_end_prod():
     if prod_ref>0 and of_s_brut>0:
         _prev_ded = _compute_budget_state_now()["total_of_deductible_s"]
         _eff_s = max(1.0, of_s_brut - _prev_ded)
-        trs=round(equiv/(prod_ref*_eff_s/28800)*100,1)
+        _prev_deg_s = 0.0
+        for _dp in _S.get("degrade_periods", []):
+            if _dp.get("start") and _dp.get("end"):
+                _d0 = max(_dp["start"], _S["of_start"])
+                _d1 = min(_dp["end"], now)
+                if _d1 > _d0: _prev_deg_s += (_d1 - _d0).total_seconds()
+        if _S.get("degrade_active") and _S.get("degrade_start_dt"):
+            _d0 = max(_S["degrade_start_dt"], _S["of_start"])
+            _prev_deg_s += max(0.0, (now - _d0).total_seconds())
+        _adj_s_prev = max(1.0, _eff_s - _prev_deg_s / 2.0)
+        trs=round(equiv/(prod_ref*_adj_s_prev/28800)*100,1)
     return jsonify({
         "ok":True,
         "of_s":round(of_s,0),"of_s_brut":round(of_s_brut,0),
@@ -2262,9 +2272,9 @@ def api_fin_poste_data():
             fin_s=_hms_to_sec(str(r[17] or "00:00:00"))
             s = fin_s - debut_s if fin_s > debut_s else _hms_to_sec(str(r[18] or "00:00:00"))
             tot_eq+=eq; tot_s+=s
-            trs=-1
-            if prod_ref>0 and s>0 and eq>0:
-                trs=round(eq/(prod_ref*s/28800)*100,1)
+            try: _r24fp=float(str(r[24] if len(r)>24 else '').strip() or '-1')
+            except: _r24fp=-1.0
+            trs = _r24fp if _r24fp>=0 else (round(eq/(prod_ref*s/28800)*100,1) if prod_ref>0 and s>0 and eq>0 else -1)
             of_list.append({
                 "of":str(r[1] or ""),"taille":str(r[7] or ""),
                 "type_prod":str(r[9] or ""),"qte_fab":str(r[19] or ""),
@@ -2391,6 +2401,9 @@ def api_fin_poste_data():
     # TRS ajusté pour le dégradé (Interp. B : cadence divisée par 2 pendant dégradé)
     _elapsed_fp = max(1.0, model_dur_s - arrets_prevu_fp * 60)
     _adj_fp = max(1.0, _elapsed_fp - _degrade_s_fp / 2.0)
+    # Réécrire trs_poste_shift avec l'ajustement dégradé
+    if prod_ref > 0 and _adj_fp > 0 and tot_eq > 0:
+        trs_poste_shift = round(tot_eq / (prod_ref * _adj_fp / 28800) * 100, 1)
     perte_cadence_fp = round((prod_ref * _adj_fp / 28800 - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 else 0.0
     return jsonify({
         "pilot":pilot,"date":today,
@@ -2698,7 +2711,9 @@ def api_session_report():
                 deb_s = _hms_to_sec(str(r[16] or "00:00:00"))
                 fin_s = _hms_to_sec(str(r[17] or "00:00:00"))
                 dur_s = fin_s - deb_s if fin_s > deb_s else _hms_to_sec(str(r[18] or "00:00:00"))
-                trs = round(eq/(prod_ref*dur_s/28800)*100,1) if prod_ref>0 and dur_s>0 and eq>0 else -1
+                try: _r24=float(str(r[24] if len(r)>24 else '').strip() or '-1')
+                except: _r24=-1.0
+                trs = _r24 if _r24>=0 else (round(eq/(prod_ref*dur_s/28800)*100,1) if prod_ref>0 and dur_s>0 and eq>0 else -1)
                 tot_eq += eq; tot_s += dur_s
                 if fin_s > max_fin_s: max_fin_s = fin_s
                 prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),"traca":str(r[13] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),"qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"trs":trs,"comment":str(r[35] or ""),"nb_pers":str(r[6] or ""),"copilote":str(r[5] or ""),"qte_init_taie":str(r[25] if len(r)>25 else ""),"nb_taie2":str(r[26] if len(r)>26 else ""),"nb_def_cout":str(r[27] if len(r)>27 else ""),"mq_taie":str(r[28] if len(r)>28 else ""),"mq_housse":str(r[29] if len(r)>29 else ""),"nb_pp":str(r[30] if len(r)>30 else ""),"duree_mq_mp":str(r[32] if len(r)>32 else ""),"manquant_pers":str(r[33] if len(r)>33 else "")})
@@ -6400,14 +6415,29 @@ function startTicker() {
     const pauseNow=_pauseStartMs>0?_pauseBaseS+(Date.now()-_pauseStartMs)/1000:_pauseBaseS;
     const tp=document.getElementById('sc-pause');
     if(tp) tp.textContent=fmtDur(pauseNow);
-    // Pièces théoriques : avec déduction budget arrêts prévus
+    // Pièces théoriques : avec déduction budget + ajustement mode dégradé
     const thEl=document.getElementById('sc-theo');
     if(thEl&&ST.prod_ref){
       const typeProd=document.getElementById('f-type_prod')?.value||ST.form?.type_prod||'';
       const coef=(window._equivCoefs&&window._equivCoefs[typeProd])||1;
       const _ofDedT=(ST.budget_state&&ST.budget_state.total_of_deductible_s)||0;
       const effOfElT=Math.max(1,_ofElapAtPoll+dt-_ofDedT);
-      const theo=Math.round(ST.prod_ref*effOfElT/28800/coef);
+      // Calculer les secondes en mode dégradé (cadence ÷ 2)
+      let _degST=0;
+      const _ofStartMsT=ST.of_start_iso?new Date(ST.of_start_iso).getTime():0;
+      const _nowMsT=Date.now();
+      if(ST.degrade_active&&ST.degrade_start_iso&&_ofStartMsT>0){
+        const _dsTmp=Math.max(new Date(ST.degrade_start_iso).getTime(),_ofStartMsT);
+        _degST=Math.max(0,(_nowMsT-_dsTmp)/1000);
+      }
+      (ST.degrade_periods_iso||[]).forEach(function(p){
+        if(!p.start||!p.end||!_ofStartMsT) return;
+        const _d0=Math.max(new Date(p.start).getTime(),_ofStartMsT);
+        const _d1=Math.min(new Date(p.end).getTime(),_nowMsT);
+        if(_d1>_d0) _degST+=(_d1-_d0)/1000;
+      });
+      const _adjEffOfElT=Math.max(1,effOfElT-_degST/2);
+      const theo=Math.round(ST.prod_ref*_adjEffOfElT/28800/coef);
       thEl.textContent=theo>0?theo+' pièces':'—';
     }
     // Mise à jour bannière accueil (durée OF et arrêts)
