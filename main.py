@@ -5101,13 +5101,13 @@ select{cursor:default}
           <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⚡ Évolution cadence (éq./h)</div>
           <div id="kpi-cad-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
-        <div style="flex:1;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9;min-height:0">
+        <div style="flex:1;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#f8fafc;border-bottom:1px solid #f1f5f9;min-height:0">
+          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Équivalence</div>
+          <div id="kpi-qte-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+        </div>
+        <div style="flex:1;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;min-height:0">
           <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#8b5cf6;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">🧵 Changements de fibre par poste</div>
           <div id="kpi-fibre-chart" style="flex:1;min-height:0;overflow:hidden"></div>
-        </div>
-        <div style="flex:1;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#f8fafc;min-height:0">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Pièces fab. / équivalence</div>
-          <div id="kpi-qte-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
       </div>
       <!-- Droite : donut + pareto -->
@@ -8399,7 +8399,7 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
   const vals=items.map(it=>it[valueKey]||0);
   const minV=yMin!==undefined?yMin:Math.max(0,Math.min(...vals)-5);
   const maxV=yMax!==undefined?yMax:Math.max(...vals,1)+2;
-  const padL=36,padR=8,padT=12,padB=80;
+  const padL=36,padR=65,padT=12,padB=80;
   const gW=W-padL-padR,gH=H-padT-padB;
   const toX=i=>padL+i/(Math.max(items.length-1,1))*gW;
   const toY=v=>padT+gH*(1-(v-minV)/(maxV-minV||1));
@@ -8480,7 +8480,7 @@ function _kpiDualLineChart(containerId,items,series){
   const allVals=series.flatMap(s=>items.map(it=>parseFloat(it[s.key]||0)));
   const minV=Math.max(0,Math.min(...allVals)-2);
   const maxV=Math.max(...allVals,1)+2;
-  const padL=32,padR=8,padT=8,padB=62;
+  const padL=32,padR=65,padT=8,padB=62;
   const gW=W-padL-padR,gH=H-padT-padB;
   const toX=i=>padL+i/(Math.max(items.length-1,1))*gW;
   const toY=v=>padT+gH*(1-(v-minV)/(maxV-minV||1));
@@ -8617,11 +8617,8 @@ async function loadKPI(){
   // ── Évolution changements de fibre par poste ──
   _kpiLineChart('kpi-fibre-chart',sessArr,'nb_fibre_chg',()=>'#8b5cf6','');
 
-  // ── Évolution pièces / équivalence ──
-  _kpiDualLineChart('kpi-qte-chart',sessArr,[
-    {key:'tot_qte',color:'#7c3aed',label:'Pièces'},
-    {key:'tot_equiv',color:'#16a34a',label:'Équivalence',dash:'4,3'}
-  ]);
+  // ── Évolution équivalence ──
+  _kpiLineChart('kpi-qte-chart',sessArr,'tot_equiv',()=>'#16a34a','');
 
   // ── Donut Prod/Arrêts ──
   _kpiDrawDonut('kpi-donut','kpi-donut-legend',[
