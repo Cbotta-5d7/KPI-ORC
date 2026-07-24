@@ -144,6 +144,26 @@ def write_arrets_prevus_to_excel():
         except: pass
     threading.Thread(target=_bg, daemon=True).start()
 
+def write_degrade_list_to_excel():
+    """Écrit les motifs mode dégradé dans l'onglet Listes col O."""
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path): return
+    def _bg2():
+        try:
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None: return
+                ws = _get_or_create_listes_ws(wb)
+                ws.cell(1, 15).value = "Mode dégradé"
+                motifs = cfg.get("degrade_motifs", [])
+                for ri in range(2, max(len(motifs)+3, 20)):
+                    ws.cell(ri, 15).value = None
+                for ri, m in enumerate(motifs, start=2):
+                    ws.cell(ri, 15).value = m
+                _safe_excel_save(wb, path)
+        except: pass
+    threading.Thread(target=_bg2, daemon=True).start()
+
 def save_events_list(ev_list):
     cfg["events_list"] = ev_list
     save_cfg_data()
@@ -169,6 +189,11 @@ _S = {
     "shift_debut_dt": None,
     "shift_fin_dt": None,
     "tot_prod_s": 0.0,
+    "budget_overrides": {},
+    "degrade_active": False,
+    "degrade_type": "",
+    "degrade_start_dt": None,
+    "degrade_periods": [],
 }
 _excel_lock = threading.Lock()
 _lists = {}
@@ -310,6 +335,11 @@ def _get_arret_budget_key(label):
     if "pause" in l: return "pause_min"
     return None
 
+def _is_degrade_type(t):
+    """Retourne True si le type est un motif de mode dégradé configuré."""
+    motifs = cfg.get("degrade_motifs", [])
+    return bool(motifs) and str(t or "").strip() in motifs
+
 def _compute_planned_deduction_s(evt_rows):
     """Calcule les secondes à déduire de l'elapsed TRS pour les arrêts planifiés.
     evt_rows : liste de tuples (rn, r) issus de _decl_cache OU liste de dicts {"type","duree"}.
@@ -352,7 +382,8 @@ def _compute_budget_state_now():
         "clean_long_min":  "Nettoyage long",
         "clean_grand_min": "Nettoyage très long",
     }
-    budgets_s = {lbl: float(cfg.get(k, 0) or 0) * 60 for k, lbl in BUDGET_KEYS.items()}
+    _ov = _S.get("budget_overrides", {})
+    budgets_s = {lbl: float((_ov.get(k) if _ov.get(k) is not None else cfg.get(k, 0)) or 0) * 60 for k, lbl in BUDGET_KEYS.items()}
     shift_consumed = {lbl: 0.0 for lbl in BUDGET_KEYS.values()}
     of_consumed    = {lbl: 0.0 for lbl in BUDGET_KEYS.values()}
 
@@ -545,6 +576,11 @@ def save_session():
             "shift_debut_dt": _dt_str(_S.get("shift_debut_dt")),
             "shift_fin_dt": _dt_str(_S.get("shift_fin_dt")),
             "tot_prod_s": _S.get("tot_prod_s", 0.0),
+            "budget_overrides": _S.get("budget_overrides", {}),
+            "degrade_active": _S.get("degrade_active", False),
+            "degrade_type": _S.get("degrade_type", ""),
+            "degrade_start_dt": _dt_str(_S.get("degrade_start_dt")),
+            "degrade_periods": [{"start": _dt_str(p["start"]), "end": _dt_str(p["end"]), "type": p["type"]} for p in _S.get("degrade_periods", [])],
         }
         with open(SESSION_FILE,"w",encoding="utf-8") as f: json.dump(d,f,default=str)
     except: pass
@@ -571,6 +607,11 @@ def load_session():
         _S["shift_debut_dt"] = _str_dt(d.get("shift_debut_dt"))
         _S["shift_fin_dt"]   = _str_dt(d.get("shift_fin_dt"))
         _S["tot_prod_s"]     = float(d.get("tot_prod_s", 0))
+        _S["budget_overrides"] = d.get("budget_overrides", {})
+        _S["degrade_active"] = d.get("degrade_active", False)
+        _S["degrade_type"]   = d.get("degrade_type", "")
+        _S["degrade_start_dt"] = _str_dt(d.get("degrade_start_dt"))
+        _S["degrade_periods"] = [{"start": _str_dt(p.get("start")), "end": _str_dt(p.get("end")), "type": p.get("type","")} for p in d.get("degrade_periods", [])]
         raw_timers = d.get("timers",{})
         _S["timers"] = {}
         for k,t in raw_timers.items():
@@ -681,6 +722,15 @@ def load_lists():
                             cfg[k] = float(val)
                     except: pass
             save_cfg_data()
+            # Col O (15) : motifs mode dégradé
+            _deg_motifs = []
+            for ri in range(2, ws.max_row+1):
+                _ov2 = ws.cell(ri, 15).value
+                if _ov2 is not None and str(_ov2).strip():
+                    _deg_motifs.append(str(_ov2).strip())
+            if _deg_motifs:
+                cfg["degrade_motifs"] = _deg_motifs
+                save_cfg_data()
         wb.close()
     except: pass
 
@@ -1173,6 +1223,12 @@ def _state_json():
         "shift_debut_iso": _dt_str(_S.get("shift_debut_dt")),
         "shift_fin_iso": _dt_str(_S.get("shift_fin_dt")),
         "budget_state": _compute_budget_state_now(),
+        "degrade_active": _S.get("degrade_active", False),
+        "degrade_type": _S.get("degrade_type", ""),
+        "degrade_start_iso": _dt_str(_S.get("degrade_start_dt")),
+        "degrade_periods_iso": [{"start": _dt_str(p["start"]), "end": _dt_str(p["end"]), "type": p["type"]} for p in _S.get("degrade_periods", [])],
+        "degrade_motifs": cfg.get("degrade_motifs", []),
+        "budget_overrides": _S.get("budget_overrides", {}),
     }
 
 @flask_app.route('/')
@@ -1520,6 +1576,78 @@ def api_interposte_cfg_post():
     write_interposte_to_excel(cfg["interposte_labels"])
     return jsonify({"ok":True})
 
+    threading.Thread(target=generate_dashboard_html, daemon=True).start()
+    return jsonify({"ok":True})
+
+@flask_app.route('/api/set_budget_override', methods=['POST'])
+def api_set_budget_override():
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    ov = data.get("overrides",{})
+    valid_keys = {"clean_short_min","clean_long_min","clean_grand_min","meeting_tol_min","pause_min"}
+    _S["budget_overrides"] = {k: float(v) for k,v in ov.items() if k in valid_keys}
+    save_session()
+    return jsonify({"ok":True})
+
+@flask_app.route('/api/start_degrade', methods=['POST'])
+def api_start_degrade():
+    data = request.json or {}
+    motif = str(data.get("motif","")).strip()
+    if not motif:
+        return jsonify({"ok":False,"error":"Motif requis"}),400
+    if _S.get("degrade_active"):
+        return jsonify({"ok":False,"error":"Mode dégradé déjà actif"}),400
+    _S["degrade_active"] = True
+    _S["degrade_type"] = motif
+    _S["degrade_start_dt"] = datetime.datetime.now()
+    save_session()
+    threading.Thread(target=generate_dashboard_html, daemon=True).start()
+    return jsonify({"ok":True})
+
+@flask_app.route('/api/stop_degrade', methods=['POST'])
+def api_stop_degrade():
+    if not _S.get("degrade_active"):
+        return jsonify({"ok":False,"error":"Mode dégradé non actif"}),400
+    end_dt_deg = datetime.datetime.now()
+    start_dt_deg = _S["degrade_start_dt"]
+    motif = _S["degrade_type"]
+    dur_s = max(0, (end_dt_deg - start_dt_deg).total_seconds())
+    _S["degrade_periods"].append({"start": start_dt_deg, "end": end_dt_deg, "type": motif})
+    _S["degrade_active"] = False; _S["degrade_type"] = ""; _S["degrade_start_dt"] = None
+    pilot = _S.get("pilot",""); poste = _S.get("poste","")
+    of_num = _S.get("form",{}).get("of_num","") if _S.get("prod_active") else ""
+    shift_dt = _S.get("shift_start") or start_dt_deg
+    _row = [
+        motif, of_num,
+        start_dt_deg.strftime("%d/%m/%Y"), poste, pilot,
+        "","","","","","","","","","","",
+        start_dt_deg.strftime("%H:%M:%S"), end_dt_deg.strftime("%H:%M:%S"), fmt(dur_s),
+        "","","","","","","","","","","","","","","","","","","","","",
+        shift_dt.strftime("%d/%m/%Y"),
+    ]
+    write_excel_bg([], [_row])
+    try:
+        _nrn = max((rn for rn,_ in _decl_cache), default=1)+1
+        _decl_cache.append((_nrn, tuple(_row)+("",)*max(0,40-len(_row))))
+    except: pass
+    save_session()
+    threading.Thread(target=generate_dashboard_html, daemon=True).start()
+    return jsonify({"ok":True})
+
+@flask_app.route('/api/save_degrade_list', methods=['POST'])
+def api_save_degrade_list():
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    motifs = [str(m).strip() for m in data.get("motifs",[]) if str(m).strip()]
+    cfg["degrade_motifs"] = motifs
+    save_cfg_data()
+    write_degrade_list_to_excel()
+    return jsonify({"ok":True})
+
 @flask_app.route('/api/end_prod', methods=['POST'])
 def api_end_prod():
     if not _S["prod_active"] or not _S["of_start"]:
@@ -1528,6 +1656,24 @@ def api_end_prod():
     v = data.get("form",{})
     if _S["is_paused"]:
         _toggle_pause_internal()
+    # Fermer le mode dégradé actif si en cours
+    _degrade_end_row = None
+    if _S.get("degrade_active") and _S.get("degrade_start_dt"):
+        _dg_end = datetime.datetime.now()
+        _dg_start = _S["degrade_start_dt"]
+        _dg_motif = _S["degrade_type"]
+        _dg_dur = max(0, (_dg_end - _dg_start).total_seconds())
+        _S["degrade_periods"].append({"start": _dg_start, "end": _dg_end, "type": _dg_motif})
+        _S["degrade_active"] = False; _S["degrade_type"] = ""; _S["degrade_start_dt"] = None
+        _sh_dt = _S.get("shift_start") or _dg_start
+        _degrade_end_row = [
+            _dg_motif, data.get("form",{}).get("of_num",""),
+            _dg_start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
+            "","","","","","","","","","","",
+            _dg_start.strftime("%H:%M:%S"), _dg_end.strftime("%H:%M:%S"), fmt(_dg_dur),
+            "","","","","","","","","","","","","","","","","","","","","",
+            _sh_dt.strftime("%d/%m/%Y"),
+        ]
     t_stop_all()
     tl_close_all()
     end_dt = datetime.datetime.now()
@@ -1553,8 +1699,16 @@ def api_end_prod():
     trs = -1.0
     trs_str = ""
     if prod_ref>0 and of_s_brut>0:
-        effective_of_s = max(1.0, of_s_brut - _of_planned_ded_s)
-        trs = round(equiv/(prod_ref*effective_of_s/28800)*100,1)
+        # Calculer le temps en mode dégradé pendant cet OF
+        _deg_s = 0.0
+        for _dp in _S.get("degrade_periods", []):
+            if _dp.get("start") and _dp.get("end"):
+                _d0 = max(_dp["start"], _S["of_start"])
+                _d1 = min(_dp["end"], end_dt)
+                if _d1 > _d0: _deg_s += (_d1 - _d0).total_seconds()
+        _eff_s = max(1.0, of_s_brut - _of_planned_ded_s)
+        _adj_s = max(1.0, _eff_s - _deg_s / 2.0)  # dégradé = cadence / 2
+        trs = round(equiv/(prod_ref*_adj_s/28800)*100,1)
         trs_str = str(trs)
 
     # Ligne Production (40 cols, format unifié)
@@ -1642,8 +1796,10 @@ def api_end_prod():
     _S["pause_total_s"] = 0.0
     _S["pause_periods"] = []
     _S["form"] = {}
+    _S["degrade_periods"] = []
     save_session()
-    write_excel_bg(prod_row, evt_rows)
+    _extra_evt_rows = [_degrade_end_row] if _degrade_end_row else []
+    write_excel_bg(prod_row, evt_rows + _extra_evt_rows)
     threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True,"recap":recap})
 
@@ -2198,11 +2354,16 @@ def api_fin_poste_data():
     else:
         overflow_s = 0.0
     # ── Nouvelles métriques pour l'onglet Postes Excel ──
-    # Intervalles d'arrêts fusionnés (sans chevauchement)
+    # Intervalles d'arrêts fusionnés (sans chevauchement, hors dégradé)
+    _degrade_s_fp = sum(
+        max(0.0, _hms_to_sec(str(r_s[17] or "00:00:00")) - _hms_to_sec(str(r_s[16] or "00:00:00")))
+        for _, r_s in shift_evt_rows if _is_degrade_type(str(r_s[0] or ""))
+    )
     _stop_ivs = sorted(
         [(s2, f2) for s2, f2 in (
             (_hms_to_sec(str(r_s[16] or "00:00:00")), _hms_to_sec(str(r_s[17] or "00:00:00")))
             for _, r_s in shift_evt_rows
+            if not _is_degrade_type(str(r_s[0] or ""))
         ) if f2 > s2]
     )
     _merged_s = []
@@ -2227,7 +2388,10 @@ def api_fin_poste_data():
     arrets_prevu_fp = sum(min(v['budget_min'], v['used_min']) for v in _bdata.values())
     temps_utile_fp = round(max(0.0, ouverture_min_fp - arrets_prevu_fp), 1)
     cadence_ref_fp = round(prod_ref / 480, 4) if prod_ref > 0 else 0.0
-    perte_cadence_fp = round((temps_fonctionnement_fp * cadence_ref_fp - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 else 0.0
+    # TRS ajusté pour le dégradé (Interp. B : cadence divisée par 2 pendant dégradé)
+    _elapsed_fp = max(1.0, model_dur_s - arrets_prevu_fp * 60)
+    _adj_fp = max(1.0, _elapsed_fp - _degrade_s_fp / 2.0)
+    perte_cadence_fp = round((prod_ref * _adj_fp / 28800 - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 else 0.0
     return jsonify({
         "pilot":pilot,"date":today,
         "nb_of":len(of_list),"trs":trs_poste,"trs_shift":trs_poste_shift,
@@ -2249,6 +2413,7 @@ def api_fin_poste_data():
         "net_stop_min": net_stop_min_fp,
         "cadence_ref_pcs_min": cadence_ref_fp,
         "perte_cadence_min": perte_cadence_fp,
+        "degrade_min": round(_degrade_s_fp / 60, 1),
     })
 
 @flask_app.route('/api/history_today')
@@ -2412,11 +2577,16 @@ def api_period_report():
         model_dur_s = max(0.0, (_pfin - _pdeb).total_seconds())
         # Arrondir comme le JS (Math.round) pour correspondre exactement à l'onglet Rapports postes
         ouv_min = round(model_dur_s / 60, 1)
-        # Merged stop intervals
+        # Merged stop intervals (excl. dégradé)
+        _deg_s = sum(
+            max(0.0, _hms_to_sec(str(re2[17] or '00:00:00')) - _hms_to_sec(str(re2[16] or '00:00:00')))
+            for _, re2 in s['evt_rows'] if _is_degrade_type(str(re2[0] or ''))
+        )
         _ivs = sorted(
             [(ds2, fs2) for ds2, fs2 in (
                 (_hms_to_sec(str(re2[16] or '00:00:00')), _hms_to_sec(str(re2[17] or '00:00:00')))
                 for _, re2 in s['evt_rows']
+                if not _is_degrade_type(str(re2[0] or ''))
             ) if fs2 > ds2]
         )
         _mg = []
@@ -2436,9 +2606,10 @@ def api_period_report():
                 _bdata[_bk2]['used_min'] += _bs2/60
         arrets_prevu = sum(min(v['budget_min'],v['used_min']) for v in _bdata.values())
         utile_min = round(max(0.0, ouv_min - arrets_prevu), 1)
-        perte = round((fonct_min*cadence_ref - s['tot_equiv'])/cadence_ref, 1) if cadence_ref>0 else 0.0
         planned_ded = _compute_planned_deduction_s(s['evt_rows'])
         elapsed_s = max(1.0, model_dur_s - planned_ded)
+        adj_s = max(1.0, elapsed_s - _deg_s / 2.0)
+        perte = round((prod_ref * adj_s / 28800 - s['tot_equiv']) / cadence_ref, 1) if cadence_ref>0 else 0.0
         depassement = sum(max(0.0, v['used_min'] - v['budget_min']) for v in _bdata.values())
         agg_depassement += depassement
         _pf = sorted(s.get('prod_rows', []), key=lambda x: x[0])
@@ -2446,7 +2617,7 @@ def api_period_report():
         agg_fibre_chg += nb_chg
         for _, re_p in s['evt_rows']:
             _stype = str(re_p[0] or '').strip()
-            if _stype:
+            if _stype and not _is_degrade_type(_stype):
                 _ds_p = _hms_to_sec(str(re_p[16] or '00:00:00'))
                 _fs_p = _hms_to_sec(str(re_p[17] or '00:00:00'))
                 stop_by_type[_stype] = stop_by_type.get(_stype, 0.0) + max(0.0, _fs_p - _ds_p)
@@ -2458,13 +2629,13 @@ def api_period_report():
         agg_equiv   += s['tot_equiv']
         agg_pcs     += s['tot_pcs']
         agg_of      += s['nb_of']
-        agg_elapsed_s += elapsed_s
+        agg_elapsed_s += adj_s
         jours.add(s['date']); pilotes.add(s['pilot']); postes_set.add(s['poste'])
         day = s['date']
         if day not in trs_by_day: trs_by_day[day]={'equiv':0.0,'elapsed_s':0.0}
         trs_by_day[day]['equiv']    += s['tot_equiv']
         trs_by_day[day]['elapsed_s'] += elapsed_s
-        _trs_s = round(s['tot_equiv']/(prod_ref*elapsed_s/28800)*100,1) if prod_ref>0 and elapsed_s>0 and s['tot_equiv']>0 else -1.0
+        _trs_s = round(s['tot_equiv']/(prod_ref*adj_s/28800)*100,1) if prod_ref>0 and adj_s>0 and s['tot_equiv']>0 else -1.0
         _cad_s = round(s['tot_equiv']/fonct_min*60) if fonct_min>0 else 0
         sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1)})
     trs_periode = round(agg_equiv/(prod_ref*agg_elapsed_s/28800)*100,1) if prod_ref>0 and agg_elapsed_s>0 and agg_equiv>0 else -1.0
@@ -2498,6 +2669,7 @@ def api_period_report():
         'nb_fibre_chg':agg_fibre_chg,
         'depassement_min':round(agg_depassement,1),
         'sessions_detail':sessions_detail_sorted,
+        'degrade_min_total': round(sum(sum(max(0.0, _hms_to_sec(str(re2[17] or '00:00:00')) - _hms_to_sec(str(re2[16] or '00:00:00'))) for _, re2 in s['evt_rows'] if _is_degrade_type(str(re2[0] or ''))) for s in sessions.values()) / 60, 1),
         'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])[:15]],
     })
 
@@ -2507,7 +2679,7 @@ def api_session_report():
     pilot = request.args.get('pilot','')
     poste = request.args.get('poste','')
     prod_ref = get_prod_ref()
-    prod_rows = []; evt_rows = []; tot_eq = 0.0; tot_s = 0.0; max_fin_s = 0.0; stop_s = 0.0
+    prod_rows = []; evt_rows = []; tot_eq = 0.0; tot_s = 0.0; max_fin_s = 0.0; stop_s = 0.0; degrade_s = 0.0
     all_debut_s = []; all_fin_s = []
     for rn, r in _decl_cache:
         row_date_key = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
@@ -2531,11 +2703,17 @@ def api_session_report():
                 if fin_s > max_fin_s: max_fin_s = fin_s
                 prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),"traca":str(r[13] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),"qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"trs":trs,"comment":str(r[35] or ""),"nb_pers":str(r[6] or ""),"copilote":str(r[5] or ""),"qte_init_taie":str(r[25] if len(r)>25 else ""),"nb_taie2":str(r[26] if len(r)>26 else ""),"nb_def_cout":str(r[27] if len(r)>27 else ""),"mq_taie":str(r[28] if len(r)>28 else ""),"mq_housse":str(r[29] if len(r)>29 else ""),"nb_pp":str(r[30] if len(r)>30 else ""),"duree_mq_mp":str(r[32] if len(r)>32 else ""),"manquant_pers":str(r[33] if len(r)>33 else "")})
             except: pass
+        elif _is_degrade_type(str(r[0] or "").strip()):
+            try:
+                dur_s = _hms_to_sec(str(r[18] or "00:00:00"))
+                degrade_s += dur_s
+                evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or ""),"is_degrade":True})
+            except: pass
         else:
             try:
                 dur_s = _hms_to_sec(str(r[18] or "00:00:00"))
                 stop_s += dur_s
-                evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or "")})
+                evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or ""),"is_degrade":False})
             except: pass
     actual_debut = _sec_to_hm(min(all_debut_s)) if all_debut_s else ""
     actual_fin = _sec_to_hm(max(all_fin_s)) if all_fin_s else ""
@@ -2557,9 +2735,14 @@ def api_session_report():
         model_dur_s = get_shift_duration_s(poste)
     ecart_s = max(0.0, model_dur_s - (tot_s + stop_s))
     trs_shift = -1.0
+    perte_cadence_s = 0.0
     if model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
         elapsed_s = max(1.0, model_dur_s - planned_ded)
-        trs_shift = round(tot_eq/(prod_ref*elapsed_s/28800)*100,1)
+        adj_s = max(1.0, elapsed_s - degrade_s / 2.0)
+        trs_shift = round(tot_eq/(prod_ref*adj_s/28800)*100,1)
+        _cadence_ref_s = prod_ref / 28800  # pcs par seconde
+        if _cadence_ref_s > 0:
+            perte_cadence_s = max(0.0, prod_ref * adj_s / 28800 - tot_eq) / _cadence_ref_s
     trs_of = round(tot_eq/(prod_ref*tot_s/28800)*100,1) if prod_ref>0 and tot_s>0 and tot_eq>0 else -1
     _budget_labels = {"pause_min":"Pause","meeting_tol_min":"Réunion","clean_short_min":"Nettoyage court","clean_long_min":"Nettoyage long","clean_grand_min":"Nettoyage très long"}
     budget_data = {bk:{"label":bl,"budget_min":float(cfg.get(bk,0) or 0),"used_min":0.0} for bk,bl in _budget_labels.items()}
@@ -2573,6 +2756,8 @@ def api_session_report():
     return jsonify({"date":date_str,"pilot":pilot,"poste":poste,"prod_rows":prod_rows,"evt_rows":evt_rows,"budget_data":budget_data,
                     "trs_shift":trs_shift,"trs":trs_of,"tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
                     "stop_s":round(stop_s,0),"nb_of":len(prod_rows),
+                    "degrade_s":round(degrade_s,0),
+                    "perte_cadence_min":round(perte_cadence_s/60,1),
                     "model_debut":debut_str or "","model_fin":fin_str or "",
                     "actual_debut":actual_debut,"actual_fin":actual_fin,
                     "ecart_s":round(ecart_s,0),"model_dur_s":round(model_dur_s,0),
@@ -3706,10 +3891,10 @@ function _renderDashOf(r){{
     ['Début',r.debut||''],['Fin',r.fin||''],['Durée',r.duree||''],
     ['Qté Fab.',r.qte_fab||''],['Qté Emb.',r.qte_emb||''],['Équivalence',r.equiv||''],
     ['Poids (g)',r.poids||''],['Fibre',r.fibre||''],['OF Taie',r.of_taie||''],
-    ['Traca',r.traca||''],['Réf Taie',r.ref_taie||''],
+    ['Traca',(r.traca||'').split(';').filter(function(t){return t.trim();}).join(' · ')],['Réf Taie',r.ref_taie||''],
     ['Qté Init Taie',r.qte_init_taie||''],['Nb Taie 2nd',r.nb_taie2_choix||''],
     ['Nb déf. coût',r.nb_def_cout||''],['Mq taie',r.mq_taie||''],
-    ['Mq housse',r.mq_housse_encart||''],['Nb PP',r.nb_pp_cousue||''],
+    ['Mq housse',r.mq_housse_encart||''],['PP cousu emb.',r.nb_pp_cousue||''],
     ['Durée MQ MP',r.duree_mq_mp||''],['Manquant pers.',r.manquant_pers||''],
     ['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':''],
   ];
@@ -4477,6 +4662,7 @@ select{cursor:default}
     <div style="text-align:center;margin-top:6px;color:#93c5fd;font-size:calc(13px*var(--zf,1));font-weight:700" id="zoom-val">135%</div>
   </div>
   <div id="alert-strip"></div>
+  <div id="degrade-strip" style="display:none;background:#854d0e;color:#fef9c3;text-align:center;padding:4px;font-weight:700;font-size:calc(12px*var(--zf,1));flex-shrink:0;animation:blink .85s step-start infinite"></div>
 
   <!-- ════ MAIN VIEW ════ -->
   <div id="v-main" class="view" style="flex-direction:column">
@@ -4495,6 +4681,7 @@ select{cursor:default}
       <div class="mbtns" style="margin-left:0" id="main-action-btns">
         <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:calc(15px*var(--zf,1));padding:18px 24px;font-weight:800;min-height:64px">▶ Démarrer production</button>
         <button class="btn btn-danger" onclick="openStopModal()" style="font-size:calc(15px*var(--zf,1));padding:18px 24px;font-weight:800;min-height:64px">⛔ Déclarer un arrêt</button>
+        <button id="btn-degrade-acc" class="btn" onclick="toggleDegrade()" style="font-size:calc(13px*var(--zf,1));padding:14px 20px;font-weight:800;min-height:64px;background:#fef9c3;border:2px solid #ca8a04;color:#854d0e">🟡 Mode dégradé</button>
         <button class="btn btn-amber" onclick="doFinPoste()" style="font-size:calc(15px*var(--zf,1));padding:18px 24px;font-weight:800;min-height:64px">🏁 Fin de poste</button>
 
       </div>
@@ -4544,7 +4731,10 @@ select{cursor:default}
 
       <!-- Arrêts prévus — barres budget -->
       <div style="flex:2;min-width:190px;background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column">
-        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">⏱ Arrêts prévus du poste en cours</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">⏱ Arrêts prévus du poste</span>
+          <button onclick="openBudgetOverrideModal()" id="btn-bov-acc" style="display:none;background:none;border:1px solid #92400e;border-radius:4px;color:#92400e;font-size:calc(10px*var(--zf,1));padding:1px 7px;cursor:pointer" title="Modifier le budget pour ce poste">✏️</button>
+        </div>
         <div id="budget-bars-acc" style="flex:1"></div>
       </div>
 
@@ -4642,6 +4832,7 @@ select{cursor:default}
             <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Code Produit</label><input id="f-code_prod" oninput="scheduleAutoSave()" onfocus="openCodeInput('code_prod','Code Produit')"></div>
             <div class="fr"><label>Type Produit</label><select id="f-type_prod" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
+            <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
           </div>
           <!-- Zone Production -->
           <div class="fzone zp">
@@ -4651,9 +4842,8 @@ select{cursor:default}
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>Traca Fibre</label><input type="text" id="f-traca" oninput="scheduleAutoSave()" placeholder="n° de traca"></div>
-            <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()" onfocus="openCodeInput('ref_taie','Code Taie')"></div>
-            <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
+            <div class="fr"><label>Traca Fibre</label><input type="text" id="f-traca" style="display:none"><div id="f-traca-ui" style="display:flex;flex-direction:column;gap:2px;margin-bottom:3px"></div><button type="button" onclick="addTracaRow()" style="align-self:flex-start;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:5px;color:#1d4ed8;font-size:calc(10px*var(--zf,1));font-weight:700;padding:3px 10px;cursor:pointer">+ Lot</button></div>
+            <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-duree_mq_mp" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>MQ PERSONNEL (Seulement si arrêt d'une partie de la ligne) (min)</label><input id="f-manquant_pers" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
@@ -4666,7 +4856,7 @@ select{cursor:default}
             <div class="fr"><label>Nb Défaut Couture</label><input id="f-nb_def_cout" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Mq Taie</label><input id="f-mq_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Mq Housse/Encart</label><input id="f-mq_housse_encart" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Nb PP Cousue</label><input id="f-nb_pp_cousue" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>PP cousu et emballé</label><input id="f-nb_pp_cousue" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr comment-big"><label>💬 Commentaire</label><textarea id="f-comment" oninput="scheduleAutoSave()" placeholder="Commentaire libre…"></textarea></div>
           </div>
         </div>
@@ -4681,6 +4871,7 @@ select{cursor:default}
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row">
           <button class="act-btn act-stop" onclick="openStopModal()">⛔ Déclarer un arrêt</button>
+          <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="background:#fef9c3;border:1.5px solid #ca8a04;color:#854d0e;font-weight:700">🟡 Mode dégradé</button>
           <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
           <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
           <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:var(--card);border:1.5px solid #8b5cf6;color:#7c3aed;font-weight:700;cursor:pointer">👥 Réunion</button>
@@ -4694,7 +4885,10 @@ select{cursor:default}
         <div class="recap-body" id="recap-list" style="max-height:120px;flex:none;overflow-y:auto"></div>
         <!-- Budget arrêts prévus -->
         <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;background:#fffbeb">
-          <div style="font-size:calc(9px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">⏱ Arrêts prévus</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:calc(9px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">⏱ Arrêts prévus</span>
+            <button onclick="openBudgetOverrideModal()" id="btn-bov-prod" style="display:none;background:none;border:1px solid #92400e;border-radius:4px;color:#92400e;font-size:calc(9px*var(--zf,1));padding:1px 6px;cursor:pointer" title="Modifier le budget pour ce poste">✏️</button>
+          </div>
           <div id="budget-bars-prod"></div>
         </div>
         <!-- TRS OF gauge -->
@@ -5226,6 +5420,16 @@ select{cursor:default}
         <div style="font-size:calc(10px*var(--zf,1));color:var(--gray);margin-top:6px">Pour l'affectation automatique : le libellé doit contenir "nettoyage court/long/très long", "réunion" ou "pause".</div>
         <button class="btn btn-prim" style="margin-top:10px;font-size:calc(12px*var(--zf,1))" onclick="saveArretsPrevus()">💾 Enregistrer arrêts prévus</button>
       </div>
+      <div class="ss">
+        <h3>🟡 Mode dégradé</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Configurez les motifs disponibles pour le mode dégradé.<br>Quand ce mode est actif, la cadence cible est divisée par 2 (le TRS est ajusté en conséquence).</div>
+        <div id="degrade-list-ui" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <input id="deg-new-label" placeholder="Nouveau motif dégradé" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))">
+          <button class="btn btn-green" onclick="addDegradeItem()">+ Ajouter</button>
+        </div>
+        <button class="btn btn-prim" style="font-size:calc(12px*var(--zf,1))" onclick="saveDegradeList()">💾 Enregistrer liste dégradé</button>
+      </div>
     </div>
   </div>
 
@@ -5392,7 +5596,7 @@ select{cursor:default}
           <div class="fr"><label>Poids Garnissage (g)</label><input type="number" id="er-poids"></div>
           <div class="fr"><label>Fibre</label><select id="er-fibre"><option value="">--</option></select></div>
           <div class="fr"><label>OF Taie</label><input id="er-oftaie"></div>
-          <div class="fr"><label>Traca Fibre</label><select id="er-traca"><option value="">--</option></select></div>
+          <div class="fr"><label>Traca Fibre</label><input type="text" id="er-traca" placeholder="n° de lot(s), séparés par ;"></div>
           <div class="fr"><label>Réf Taie</label><input id="er-reftaie"></div>
           <div class="fr"><label>Lots de 2</label><select id="er-kit"><option value="">Non</option><option value="oui">Oui</option></select></div>
           <div class="fr"><label>Qté Init Taie</label><input type="number" id="er-qteinit"></div>
@@ -5400,7 +5604,7 @@ select{cursor:default}
           <div class="fr"><label>Nb Défaut Couture</label><input type="number" id="er-nbdef"></div>
           <div class="fr"><label>Mq Taie</label><input type="number" id="er-mqtaie"></div>
           <div class="fr"><label>Mq Housse/Encart</label><input type="number" id="er-mqhousse"></div>
-          <div class="fr"><label>Nb PP Cousue</label><input type="number" id="er-nbpp"></div>
+          <div class="fr"><label>PP cousu et emballé</label><input type="number" id="er-nbpp"></div>
           <div class="fr"><label>Duree MQ MP (min)</label><input type="number" id="er-dureemq"></div>
           <div class="fr"><label>Manquant Personnel (min)</label><input type="number" id="er-manqpers"></div>
         </div>
@@ -5421,6 +5625,30 @@ select{cursor:default}
       <button class="btn btn-sec" onclick="closeM('m-editrow')">Annuler</button>
       <button class="btn btn-danger" onclick="deleteRow(null,'er-rownum')">🗑 Supprimer</button>
       <button class="btn btn-ok" onclick="saveEditRow()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div id="m-degrade" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:5100;align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-degrade')">
+  <div class="mbox" style="max-width:380px;padding:20px" onclick="event.stopPropagation()">
+    <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0;background:#854d0e;color:#fef9c3"><h2 id="m-degrade-title">🟡 Mode dégradé</h2></div>
+    <div id="m-degrade-body" style="margin-bottom:14px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-prim" id="m-degrade-confirm" onclick="_confirmDegrade()" style="background:#854d0e;border-color:#854d0e">✓ Confirmer</button>
+      <button class="btn btn-sec" onclick="closeM('m-degrade')">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<div id="m-budget-override" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:5100;align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-budget-override')">
+  <div class="mbox" style="max-width:360px;padding:20px" onclick="event.stopPropagation()">
+    <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0"><h2>✏️ Budget arrêts — surcharge ponctuelle</h2></div>
+    <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Modification temporaire pour ce poste uniquement. Revient aux valeurs globales en fin de poste.</div>
+    <div class="fr" style="margin-bottom:12px"><label>Code admin</label><input type="password" id="bov-pw" placeholder="••••" style="padding:6px 10px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:calc(14px*var(--zf,1));width:100%"></div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px" id="bov-fields"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-prim" onclick="saveBudgetOverride()">✓ Appliquer</button>
+      <button class="btn btn-sec" onclick="closeM('m-budget-override')">Annuler</button>
     </div>
   </div>
 </div>
@@ -5534,7 +5762,7 @@ async function loadLists() {
   popSel('er-taille', d.tailles||[]);
   popSel('er-typeprod', d.types_prod||[]);
   popSel('er-fibre', d.fibres||[]);
-  popSel('er-traca', d.tracas||[]);
+  // er-traca est maintenant un input text (multi-lots), pas de popSel
   // Build equivalence coef map: type_prod -> coef
   const eqs=d.equivalences||[]; const tps=d.types_prod||[];
   window._equivCoefs={};
@@ -5876,6 +6104,7 @@ async function unlockSettings() {
     document.getElementById('settings-lock').style.display='none';
     document.getElementById('v-settings-content').style.display='block';
     loadCfg();
+    renderDegradeList(_degradeListLocal);
   } else {
     document.getElementById('lock-err').textContent = d.error||'Mot de passe incorrect';
   }
@@ -6015,6 +6244,27 @@ function applyState(s) {
     renderRecap(le);
   }
 
+  // Mode dégradé strip
+  const ds=document.getElementById('degrade-strip');
+  const bdAcc=document.getElementById('btn-degrade-acc');
+  const bdProd=document.getElementById('btn-degrade-prod');
+  window._degradeActive=s.degrade_active||false;
+  window._degradeMotifs=s.degrade_motifs||[];
+  window._degradePeriodsIso=s.degrade_periods_iso||[];
+  if(s.degrade_active){
+    if(ds){ds.textContent='🟡 MODE DÉGRADÉ EN COURS : '+esc(s.degrade_type||'')+' — Cliquer pour désactiver';ds.style.display='block';ds.onclick=stopDegrade;}
+    if(bdAcc){bdAcc.style.background='#ca8a04';bdAcc.style.color='#fff';bdAcc.textContent='🟡 Désactiver dégradé';}
+    if(bdProd){bdProd.style.background='#ca8a04';bdProd.style.color='#fff';bdProd.textContent='🟡 Désactiver dégradé';}
+  } else {
+    if(ds){ds.style.display='none';ds.onclick=null;}
+    if(bdAcc){bdAcc.style.background='#fef9c3';bdAcc.style.color='#854d0e';bdAcc.textContent='🟡 Mode dégradé';}
+    if(bdProd){bdProd.style.background='#fef9c3';bdProd.style.color='#854d0e';bdProd.textContent='🟡 Mode dégradé';}
+  }
+  // Afficher bouton ✏️ budget si pilote connecté
+  const _showBov=!!(s.pilot);
+  const bovA=document.getElementById('btn-bov-acc');if(bovA)bovA.style.display=_showBov?'':'none';
+  const bovP=document.getElementById('btn-bov-prod');if(bovP)bovP.style.display=_showBov?'':'none';
+  window._budgetOverrides=s.budget_overrides||{};
   // Pause button text
   const pbtn=document.getElementById('btn-pause');
   if(pbtn) pbtn.textContent=s.is_paused?'▶ Reprendre':'⏸ Pause';
@@ -6933,6 +7183,43 @@ function collectForm(){
   return f;
 }
 
+// ── Traca Fibre multi-lots ────────────────────────────────────────────────────
+function addTracaRow(val){
+  if(val===undefined)val='';
+  const ui=document.getElementById('f-traca-ui');if(!ui)return;
+  const row=document.createElement('div');
+  row.className='traca-row';row.style.cssText='display:flex;gap:4px;align-items:center';
+  const inp=document.createElement('input');
+  inp.type='text';inp.className='traca-input';inp.value=val;
+  inp.placeholder='n° de lot / traca';
+  inp.style.cssText='flex:1;padding:5px 7px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));min-width:0';
+  inp.oninput=syncTracaField;
+  const btn=document.createElement('button');
+  btn.type='button';btn.textContent='×';
+  btn.style.cssText='background:#fee2e2;border:none;border-radius:4px;color:#dc2626;font-weight:900;padding:3px 8px;cursor:pointer;flex-shrink:0;font-size:calc(13px*var(--zf,1));line-height:1';
+  btn.onclick=function(){removeTracaRow(this);};
+  row.appendChild(inp);row.appendChild(btn);ui.appendChild(row);
+}
+function removeTracaRow(btn){
+  const ui=document.getElementById('f-traca-ui');if(!ui)return;
+  if(ui.querySelectorAll('.traca-row').length<=1)return;
+  btn.closest('.traca-row').remove();
+  syncTracaField();scheduleAutoSave();
+}
+function syncTracaField(){
+  const val=[...document.querySelectorAll('#f-traca-ui .traca-input')].map(i=>i.value.trim()).filter(Boolean).join(';');
+  const h=document.getElementById('f-traca');if(h)h.value=val;
+  scheduleAutoSave();
+}
+function fillTracaUI(val){
+  const ui=document.getElementById('f-traca-ui');if(!ui)return;
+  ui.innerHTML='';
+  const parts=(val||'').split(';').map(s=>s.trim()).filter(Boolean);
+  if(!parts.length)parts.push('');
+  parts.forEach(p=>addTracaRow(p));
+}
+// ── fin Traca multi-lots ───────────────────────────────────────────────────────
+
 function fillFormFromState(form){
   if(!form) return;
   FORM_FIELDS.forEach(k=>{
@@ -6946,6 +7233,7 @@ function fillFormFromState(form){
   if(npEl&&(!npEl.value||npEl.value==='0')) npEl.value='10';
   const ofEl=document.getElementById('pob-of');
   if(ofEl) ofEl.textContent=form.of_num||'—';
+  fillTracaUI(form.traca||'');
 }
 
 // Form persistence in localStorage (persist across restarts until new prod)
@@ -7132,6 +7420,109 @@ function renderBudgetBars(containerId,bs){
   el.innerHTML=anyBar?html:'<div style="color:#92400e;font-size:calc(10px*var(--zf,1));opacity:.7">Aucun budget configuré</div>';
 }
 
+// ── Mode dégradé ──────────────────────────────────────────────────────────────
+function toggleDegrade(){
+  if(window._degradeActive) stopDegrade();
+  else openDegradeModal();
+}
+function openDegradeModal(){
+  const motifs=window._degradeMotifs||[];
+  const bd=document.getElementById('m-degrade-body');
+  const tl=document.getElementById('m-degrade-title');
+  if(tl) tl.textContent='🟡 Mode dégradé — choisir le motif';
+  if(!bd) return;
+  if(!motifs.length){
+    bd.innerHTML='<div style="color:#dc2626;font-size:calc(12px*var(--zf,1))">Aucun motif configuré. Veuillez d\'abord les ajouter dans les Paramètres.</div>';
+    document.getElementById('m-degrade-confirm').style.display='none';
+  } else {
+    let html='<div style="display:flex;flex-direction:column;gap:6px">';
+    motifs.forEach(function(m,i){
+      html+=`<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #ca8a04;border-radius:7px;cursor:pointer;background:#fef9c3"><input type="radio" name="deg-motif" value="${esc(m)}" ${i===0?'checked':''}> <span style="font-weight:700;color:#854d0e">${esc(m)}</span></label>`;
+    });
+    html+='</div>';
+    bd.innerHTML=html;
+    document.getElementById('m-degrade-confirm').style.display='';
+  }
+  openM('m-degrade');
+}
+async function _confirmDegrade(){
+  const r=document.querySelector('input[name="deg-motif"]:checked');
+  if(!r) return;
+  closeM('m-degrade');
+  try{
+    await fetch('/api/start_degrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({motif:r.value})});
+  }catch(e){toast('Erreur connexion','err');}
+  await pollState();
+}
+async function stopDegrade(){
+  try{
+    await fetch('/api/stop_degrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  }catch(e){toast('Erreur connexion','err');}
+  await pollState();
+}
+// ── Budget override ─────────────────────────────────────────────────────────
+function openBudgetOverrideModal(){
+  const bs=window._lastBudgetState;
+  const ov=window._budgetOverrides||{};
+  const LABELS={'clean_short_min':'🧹 Nettoyage court','clean_long_min':'🧹 Nettoyage long','clean_grand_min':'🧹 Nettoyage très long','meeting_tol_min':'📋 Réunion','pause_min':'⏸ Pause'};
+  let html='';
+  Object.entries(LABELS).forEach(function([k,lbl]){
+    const bgt=bs&&bs.per_type&&bs.per_type[lbl.replace(/^[^\w]*\s/,'').trim()];
+    const defVal=ov[k]!==undefined?ov[k]:(bgt?Math.round(bgt.budget_s/60):0);
+    html+=`<div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:7px;padding:6px 10px"><span style="flex:1;font-size:calc(11px*var(--zf,1));font-weight:600">${lbl}</span><input type="number" id="bov-${k}" value="${defVal}" min="0" max="240" style="width:65px;padding:4px 7px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));text-align:right"><span style="font-size:calc(10px*var(--zf,1));color:var(--gray)">min</span></div>`;
+  });
+  const f=document.getElementById('bov-fields');
+  if(f) f.innerHTML=html;
+  const p=document.getElementById('bov-pw');if(p)p.value='';
+  openM('m-budget-override');
+}
+async function saveBudgetOverride(){
+  const pw=document.getElementById('bov-pw')?.value||'';
+  const overrides={};
+  ['clean_short_min','clean_long_min','clean_grand_min','meeting_tol_min','pause_min'].forEach(function(k){
+    const el=document.getElementById('bov-'+k);
+    if(el) overrides[k]=parseFloat(el.value)||0;
+  });
+  try{
+    const r=await fetch('/api/set_budget_override',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,overrides})});
+    const d=await r.json();
+    if(d&&d.ok){closeM('m-budget-override');toast('Budget modifié pour ce poste');await pollState();}
+    else toast(d?.error||'Mot de passe incorrect','err');
+  }catch(e){toast('Erreur connexion','err');}
+}
+// ── Liste dégradé dans Paramètres ───────────────────────────────────────────
+function renderDegradeList(motifs){
+  const ul=document.getElementById('degrade-list-ui');if(!ul)return;
+  if(!motifs||!motifs.length){ul.innerHTML='<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:6px 0">Aucun motif configuré.</div>';return;}
+  ul.innerHTML=motifs.map(function(m,i){
+    return `<div style="display:flex;align-items:center;gap:6px;background:#fef9c3;border:1px solid #ca8a04;border-radius:6px;padding:5px 10px;margin-bottom:4px"><span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:600;color:#854d0e">${esc(m)}</span><button onclick="removeDegradeItem(${i})" style="background:#fee2e2;border:none;border-radius:4px;color:#dc2626;font-weight:900;padding:2px 7px;cursor:pointer">×</button></div>`;
+  }).join('');
+}
+function addDegradeItem(){
+  const inp=document.getElementById('deg-new-label');
+  if(!inp||!inp.value.trim()) return;
+  _degradeListLocal=_degradeListLocal||[];
+  _degradeListLocal.push(inp.value.trim());
+  inp.value='';
+  renderDegradeList(_degradeListLocal);
+}
+function removeDegradeItem(i){
+  if(!_degradeListLocal) return;
+  _degradeListLocal.splice(i,1);
+  renderDegradeList(_degradeListLocal);
+}
+let _degradeListLocal=[];
+async function saveDegradeList(){
+  const pw=document.getElementById('set-pw')?.value||'';
+  try{
+    const r=await fetch('/api/save_degrade_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,motifs:_degradeListLocal})});
+    const d=await r.json();
+    if(d&&d.ok) toast('Liste dégradé enregistrée');
+    else toast(d?.error||'Erreur','err');
+  }catch(e){toast('Erreur connexion','err');}
+}
+// ── fin Mode dégradé JS ──────────────────────────────────────────────────────
+
 function updateGauge(s){
   const arc=document.getElementById('gauge-arc');
   const pct=document.getElementById('gauge-pct');
@@ -7149,9 +7540,24 @@ function updateGauge(s){
   const typeProd=s.form?s.form.type_prod||'':'';
   const coef=(window._equivCoefs&&typeProd&&window._equivCoefs[typeProd])||1;
   const equiv=qFab*coef;
+  // Calculer le temps dégradé pour cet OF (live)
+  let _degS=0;
+  const _ofStartMs=s.of_start_iso?new Date(s.of_start_iso).getTime():0;
+  const _nowMs=Date.now();
+  if(s.degrade_active&&s.degrade_start_iso&&_ofStartMs>0){
+    const _ds=Math.max(new Date(s.degrade_start_iso).getTime(),_ofStartMs);
+    _degS=Math.max(0,(_nowMs-_ds)/1000);
+  }
+  (s.degrade_periods_iso||[]).forEach(function(p){
+    if(!p.start||!p.end||!_ofStartMs) return;
+    const _d0=Math.max(new Date(p.start).getTime(),_ofStartMs);
+    const _d1=Math.min(new Date(p.end).getTime(),_nowMs);
+    if(_d1>_d0) _degS+=(_d1-_d0)/1000;
+  });
+  const _adjS=Math.max(1,effOfS-_degS/2);
   let trs=-1;
   if(ofS>0&&prodRef>0&&equiv>0){
-    trs=Math.round(equiv/(prodRef*effOfS/28800)*100*10)/10;
+    trs=Math.round(equiv/(prodRef*_adjS/28800)*100*10)/10;
   }
   // Mise à jour barres budget accueil + prod en cours
   renderBudgetBars('budget-bars-acc',bs);
@@ -7612,7 +8018,7 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     ...(r.ref_taie?[['Réf Taie', r.ref_taie, '#374151']]:[]),
     ...(r.nb_pers?[['Nb Personnes', r.nb_pers, '#374151']]:[]),
     ...(r.copilote?[['Co-Pilote', r.copilote, '#374151']]:[]),
-    ...(r.traca?[['Traca', r.traca, '#374151']]:[]),
+    ...(r.traca?[['Traca', r.traca.split(';').filter(t=>t.trim()).join(' · '), '#374151']]:[]),
     ...(r.poids?[['Poids (g)', r.poids, '#374151']]:[]),
   ] : [
     ['Type arrêt', r.type||'—', '#dc2626'],
