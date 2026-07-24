@@ -4842,7 +4842,7 @@ select{cursor:default}
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>Traca Fibre</label><input type="text" id="f-traca" style="display:none"><div id="f-traca-ui" style="display:flex;flex-direction:column;gap:2px;margin-bottom:3px"></div><button type="button" onclick="addTracaRow()" style="align-self:flex-start;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:5px;color:#1d4ed8;font-size:calc(10px*var(--zf,1));font-weight:700;padding:3px 10px;cursor:pointer">+ Lot</button></div>
+            <div class="fr"><label>Traca Fibre</label><input type="text" id="f-traca" style="display:none"><div id="f-traca-ui" style="display:flex;flex-direction:column;gap:2px;margin-bottom:3px"></div><button type="button" onclick="addTracaRow()" style="align-self:flex-start;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:5px;color:#1d4ed8;font-size:calc(10px*var(--zf,1));font-weight:700;padding:3px 10px;cursor:pointer">Ajouter une autre traça</button></div>
             <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-duree_mq_mp" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
@@ -6778,6 +6778,10 @@ async function doStartProd() {
   _pendingGaps=d.gaps||[];
   _pendingGapIdx=0;
   _isFirstOfGaps=!!(d.shift_model_start);
+  // Fallback : si _get_uncovered_gaps n'a rien renvoyé mais gap > 1 min, créer un gap synthétique
+  if(_pendingGaps.length===0 && _pendingGapS>=60){
+    _pendingGaps=[{debut:d.ip_debut_hms||'',fin:d.ip_fin_hms||'',duree_s:_pendingGapS}];
+  }
   _showNextGap();
 }
 
@@ -7513,7 +7517,7 @@ function removeDegradeItem(i){
 }
 let _degradeListLocal=[];
 async function saveDegradeList(){
-  const pw=document.getElementById('set-pw')?.value||'';
+  const pw=_adminPw||'';
   try{
     const r=await fetch('/api/save_degrade_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,motifs:_degradeListLocal})});
     const d=await r.json();
