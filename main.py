@@ -3891,7 +3891,7 @@ function _renderDashOf(r){{
     ['Début',r.debut||''],['Fin',r.fin||''],['Durée',r.duree||''],
     ['Qté Fab.',r.qte_fab||''],['Qté Emb.',r.qte_emb||''],['Équivalence',r.equiv||''],
     ['Poids (g)',r.poids||''],['Fibre',r.fibre||''],['OF Taie',r.of_taie||''],
-    ['Traca',(r.traca||'').split(';').filter(function(t){return t.trim();}).join(' · ')],['Réf Taie',r.ref_taie||''],
+    ['Traca',(r.traca||'').split(';').filter(function(t){{return t.trim();}}).join(' · ')],['Réf Taie',r.ref_taie||''],
     ['Qté Init Taie',r.qte_init_taie||''],['Nb Taie 2nd',r.nb_taie2_choix||''],
     ['Nb déf. coût',r.nb_def_cout||''],['Mq taie',r.mq_taie||''],
     ['Mq housse',r.mq_housse_encart||''],['PP cousu emb.',r.nb_pp_cousue||''],
