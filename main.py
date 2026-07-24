@@ -5079,7 +5079,7 @@ select{cursor:default}
       <button onclick="loadKPI()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">↺ Actualiser</button>
     </div>
     <!-- 3 courbes côte à côte (compact) -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;height:128px;flex-shrink:0;background:#fff;border-bottom:1px solid #e2e8f0">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;height:200px;flex-shrink:0;background:#fff;border-bottom:1px solid #e2e8f0">
       <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px;border-right:1px solid #f1f5f9">
         <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📈 TRS par poste (%)</div>
         <div id="kpi-trs-chart" style="flex:1;min-height:0;overflow:hidden"></div>
@@ -8399,7 +8399,7 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
   const vals=items.map(it=>it[valueKey]||0);
   const minV=yMin!==undefined?yMin:Math.max(0,Math.min(...vals)-5);
   const maxV=yMax!==undefined?yMax:Math.max(...vals,1)+2;
-  const padL=30,padR=8,padT=10,padB=62;
+  const padL=36,padR=8,padT=12,padB=80;
   const gW=W-padL-padR,gH=H-padT-padB;
   const toX=i=>padL+i/(Math.max(items.length-1,1))*gW;
   const toY=v=>padT+gH*(1-(v-minV)/(maxV-minV||1));
@@ -8410,7 +8410,7 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
     const v=minV+(maxV-minV)*t/nTicks;
     const y=toY(v);
     svg+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1"/>`;
-    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="8" fill="#94a3b8">${v%1?v.toFixed(0):v}${unit||''}</text>`;
+    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11" fill="#64748b">${v%1?v.toFixed(0):v}${unit||''}</text>`;
   }
   // area fill
   let areaD=`M${toX(0).toFixed(1)},${(H-padB).toFixed(1)}`;
@@ -8428,11 +8428,11 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
     const col=colorFn?colorFn(it):areaCol;
     svg+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${col}" stroke="#fff" stroke-width="1.5"/>`;
     const v=it[valueKey]||0;
-    svg+=`<text x="${x.toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${col}">${v%1?v.toFixed(1):v}</text>`;
+    svg+=`<text x="${x.toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${v%1?v.toFixed(1):v}</text>`;
     // X labels: date (line1) + poste (line2) — bigger, black
     const lblParts=(it._xLabel||'').split('\n');
-    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="9" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
-    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="8" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
+    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="11" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
+    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="10" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
   });
   svg+='</svg>';
   el.innerHTML=svg;
@@ -8601,7 +8601,10 @@ async function loadKPI(){
 
 
   // ── 3 courbes (compact, côte à côte) ──
-  const trsItems=sessArr.filter(s=>s.trs>=0);
+  // TRS : utiliser sessions_detail du period_report (calcul pondéré correct)
+  const prSd=(prData&&prData.sessions_detail)||[];
+  prSd.forEach(s=>{const dp=(s.date||'').split('/');s._xLabel=(dp[0]||'')+'/'+(dp[1]||'')+'\n'+(s.poste||'');});
+  const trsItems=prSd.length>0?prSd.filter(s=>s.trs>=0):sessArr.filter(s=>s.trs>=0);
   _kpiLineChart('kpi-trs-chart',trsItems,'trs',it=>_kpiTrsColor(it.trs),'%',0,100);
   _kpiLineChart('kpi-arr-chart',sessArr,'stop_min',()=>'#dc2626','min');
   _kpiLineChart('kpi-of-chart',sessArr,'nb_of',()=>'#6366f1','');
@@ -8860,44 +8863,64 @@ async function calcPeriodReport(){
   const trsCol=d.trs_periode>=90?'#16a34a':d.trs_periode>=70?'#f59e0b':d.trs_periode>=0?'#dc2626':'#94a3b8';
   const pertRaw=d.perte_cadence_min||0;
   const pertHtml=pertRaw<0?`<span style="color:#16a34a;font-weight:900">${Math.abs(Math.round(pertRaw))} min de gain</span>`:pertRaw>0?`<span style="color:#dc2626;font-weight:900">${Math.round(pertRaw)} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
-  // Pareto arrêts
-  let paretoRjHtml='';
-  if(d.stop_pareto&&d.stop_pareto.length){
-    const maxMp=d.stop_pareto[0].min;
-    const totMp=d.stop_pareto.reduce((a,e)=>a+e.min,0);
-    paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:14px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;letter-spacing:.4px">Pareto des arrêts</div><div style="display:flex;flex-direction:column;gap:5px">${d.stop_pareto.map(e=>{const pct=Math.round(e.min/maxMp*100);const col=STOP_COL[e.cat]||'#94a3b8';const pctTot=totMp>0?Math.round(e.min/totMp*100):0;return '<div><div style="display:flex;justify-content:space-between;font-size:calc(10px*var(--zf,1));margin-bottom:2px"><div style="display:flex;align-items:center;gap:3px;min-width:0"><div style="width:7px;height:7px;border-radius:1px;background:'+col+';flex-shrink:0"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px">'+esc(e.type)+'</span></div><span style="white-space:nowrap;color:#6b7280;flex-shrink:0">'+Math.round(e.min)+'m <b style="color:#1e293b">'+pctTot+'%</b></span></div><div style="background:#f1f5f9;border-radius:3px;height:9px;overflow:hidden"><div style="width:'+pct+'%;background:'+col+';height:100%;border-radius:3px"></div></div></div>';}).join('')}</div></div>`;
-  }
-  // Chart A : TRS par équipe
+  // Charts horizontaux (lisibles, pas de rotation)
+  const _hbar=(items,maxV,colorFn,valFn,lblFn)=>items.map(s=>{
+    const v=valFn(s),pct=maxV>0?Math.round(v/maxV*100):0,col=colorFn(s,v);
+    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+      <div style="flex:0 0 160px;font-size:calc(10px*var(--zf,1));color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right">${esc(lblFn(s))}</div>
+      <div style="flex:1;background:#f1f5f9;border-radius:3px;height:16px;position:relative;min-width:60px">
+        <div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.85;transition:width .3s"></div>
+      </div>
+      <div style="flex:0 0 42px;font-size:calc(10px*var(--zf,1));font-weight:700;color:${col}">${v}</div>
+    </div>`;
+  }).join('');
+  const _slbl=s=>{const dp=s.date.split('/');return (dp[0]||'')+'/'+(dp[1]||'')+' · '+(s.pilot||'?')+' · '+(s.poste||'?');};
+  // Chart A : TRS par équipe (barres horizontales)
   let chartTrsHtml='';
   if(d.sessions_detail&&d.sessions_detail.length>0){
     const sd=d.sessions_detail;
     const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),1);
-    chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:14px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;letter-spacing:.4px">TRS par équipe</div><div style="display:flex;align-items:flex-end;gap:3px;height:90px;overflow-x:auto;padding-bottom:2px">${sd.map(s=>{const pct=s.trs>=0?Math.round(s.trs/maxTrs*100):0;const bc=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';const dp=s.date.split('/');const dlbl=dp.length>=2?dp[0]+'/'+dp[1]:s.date;return '<div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:38px;gap:1px"><div style="font-size:calc(7px*var(--zf,1));color:'+bc+';font-weight:700">'+( s.trs>=0?s.trs.toFixed(0)+'%':''  )+'</div><div style="width:100%;background:'+bc+';opacity:.85;border-radius:3px 3px 0 0;height:'+pct+'%"></div><div style="font-size:calc(6px*var(--zf,1));color:#374151;text-align:center;line-height:1.3">'+esc(dlbl)+'</div><div style="font-size:calc(6px*var(--zf,1));color:#6366f1;text-align:center;line-height:1.2;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.pilot||'')+'</div><div style="font-size:calc(6px*var(--zf,1));color:#94a3b8;text-align:center;line-height:1.2;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.poste||'')+'</div></div>';}).join('')}</div></div>`;
+    const rows=_hbar(sd,maxTrs,s=>s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8',s=>s.trs>=0?s.trs.toFixed(0)+'%':'—',_slbl);
+    chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex-shrink:0"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">📈 TRS par équipe</div>${rows}</div>`;
   }
-  // Chart B : Cadence vs référence
+  // Chart B : Cadence vs référence (barres horizontales + trait cible)
   let chartCadHtml='';
   if(d.sessions_detail&&d.sessions_detail.length>0){
     const sd2=d.sessions_detail;
     const cadRef=Math.round((d.cadence_ref_pcs_min||0)*60);
     const maxCad=Math.max(...sd2.map(s=>s.cadence_h||0),cadRef,1);
-    const CH=75,WB=28,GP=3,PD=4;
-    const svgW=Math.max(220,sd2.length*(WB+GP)+PD*2);
-    const tY=CH-Math.round(cadRef/maxCad*CH);
-    let svgB='',svgL='';
-    sd2.forEach((s,i)=>{
-      const x=PD+i*(WB+GP);
-      const bh=Math.max(1,Math.round((s.cadence_h||0)/maxCad*CH));
-      const by=CH-bh;
-      const col=(s.cadence_h||0)>=cadRef?'#16a34a':'#f59e0b';
-      svgB+=`<rect x="${x}" y="${by}" width="${WB}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(s.cadence_h>0)svgB+=`<text x="${x+WB/2}" y="${Math.max(by-2,8)}" text-anchor="middle" font-size="7" fill="#374151">${s.cadence_h}</text>`;
-      const dp=s.date.split('/');const dlbl=dp.length>=2?dp[0]+'/'+dp[1]:s.date;
-      svgL+=`<text x="${x+WB/2}" y="${CH+11}" text-anchor="middle" font-size="6" fill="#374151">${esc(dlbl)}</text>`;
-      svgL+=`<text x="${x+WB/2}" y="${CH+19}" text-anchor="middle" font-size="6" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
-      svgL+=`<text x="${x+WB/2}" y="${CH+27}" text-anchor="middle" font-size="6" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
-    });
-    const tLine=cadRef>0?`<line x1="0" y1="${tY}" x2="${svgW}" y2="${tY}" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5,3"/><text x="2" y="${Math.max(tY-3,8)}" font-size="7" fill="#dc2626" font-weight="600">Cible ${cadRef} éq/h</text>`:'';
-    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:14px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;letter-spacing:.4px">Cadence réalisée vs référence (éq/h)</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH+32}" style="display:block">${svgB}${tLine}${svgL}</svg></div></div>`;
+    const targetPct=cadRef>0?Math.round(cadRef/maxCad*100):0;
+    const rows2=sd2.map(s=>{
+      const v=s.cadence_h||0,pct=Math.round(v/maxCad*100),col=v>=cadRef?'#16a34a':'#f59e0b';
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+        <div style="flex:0 0 160px;font-size:calc(10px*var(--zf,1));color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right">${esc(_slbl(s))}</div>
+        <div style="flex:1;background:#f1f5f9;border-radius:3px;height:16px;position:relative;min-width:60px">
+          <div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.85"></div>
+          ${cadRef>0?`<div style="position:absolute;left:${targetPct}%;top:-2px;height:calc(100% + 4px);width:2px;background:#dc2626"></div>`:''}
+        </div>
+        <div style="flex:0 0 42px;font-size:calc(10px*var(--zf,1));font-weight:700;color:${col}">${v>0?v:'—'}</div>
+      </div>`;
+    }).join('');
+    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex-shrink:0"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#f59e0b;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">⚡ Cadence réalisée vs référence${cadRef>0?' (cible : '+cadRef+' éq/h)':''}</div>${rows2}</div>`;
+  }
+  // Pareto arrêts (barres horizontales)
+  let paretoRjHtml='';
+  if(d.stop_pareto&&d.stop_pareto.length){
+    const maxMp=d.stop_pareto[0].min,totMp=d.stop_pareto.reduce((a,e)=>a+e.min,0);
+    const rows3=d.stop_pareto.map(e=>{
+      const pct=Math.round(e.min/maxMp*100),col=STOP_COL[e.cat]||'#94a3b8',pctTot=totMp>0?Math.round(e.min/totMp*100):0;
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+        <div style="flex:0 0 160px;display:flex;align-items:center;gap:4px;min-width:0">
+          <div style="width:8px;height:8px;border-radius:2px;background:${col};flex-shrink:0"></div>
+          <span style="font-size:calc(10px*var(--zf,1));color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.type)}</span>
+        </div>
+        <div style="flex:1;background:#f1f5f9;border-radius:3px;height:16px;min-width:60px">
+          <div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8"></div>
+        </div>
+        <div style="flex:0 0 62px;font-size:calc(10px*var(--zf,1));color:#6b7280;text-align:right">${Math.round(e.min)}m <b style="color:#1e293b">${pctTot}%</b></div>
+      </div>`;
+    }).join('');
+    paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex-shrink:0"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">🛑 Pareto des arrêts</div>${rows3}</div>`;
   }
   // Pie chart: fonctionnement vs arrêts
   const fonctMin=d.temps_fonctionnement_min||0;
@@ -8942,36 +8965,42 @@ async function calcPeriodReport(){
       </div>
     </div>`;
   }
+  // Pie compact (80px)
+  let pieSmall='';
+  if(pieTotal>0){const r=36,cx=40,cy=40;let sA=-Math.PI/2,paths='';[{v:fonctMin,c:'#16a34a'},{v:stopMin,c:'#dc2626'}].forEach(sl=>{const a=sl.v/pieTotal*2*Math.PI;const x1=cx+r*Math.cos(sA),y1=cy+r*Math.sin(sA);const x2=cx+r*Math.cos(sA+a),y2=cy+r*Math.sin(sA+a);paths+=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${a>Math.PI?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${sl.c}" opacity=".85"/>`;sA+=a;});pieSmall=`<svg viewBox="0 0 80 80" style="width:80px;height:80px;flex-shrink:0"><circle cx="40" cy="40" r="36" fill="#e2e8f0"/>${paths}</svg>`;}
   resultEl.innerHTML=`
-    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
-      <div style="flex:0 0 160px">
-        ${pieHtml}
+    <div style="display:flex;gap:10px;height:100%;min-height:0;align-items:stretch">
+      <!-- Colonne gauche : KPI synthèse -->
+      <div style="flex:0 0 240px;display:flex;flex-direction:column;gap:4px;overflow:hidden">
+        <!-- TRS + pie côte à côte -->
+        <div style="display:flex;align-items:center;gap:8px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px;flex-shrink:0">
+          ${pieSmall}
+          <div style="flex:1;text-align:center">
+            <div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
+            <div style="font-size:calc(9px*var(--zf,1));color:var(--gray);font-weight:600;margin-top:2px">TRS période</div>
+            <div style="font-size:calc(8px*var(--zf,1));color:#94a3b8;margin-top:1px">${d.nb_jours}j · ${d.nb_sessions} postes · ${d.nb_of} OF</div>
+          </div>
+        </div>
+        <!-- Stats 2×2 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;flex-shrink:0">
+          <div class="fp-card" style="padding:4px 6px;text-align:center"><div style="font-size:calc(14px*var(--zf,1));color:#059669;font-weight:900">${Math.round(d.tot_pcs||0)}</div><div style="font-size:calc(8px*var(--zf,1));color:#94a3b8">Pièces</div></div>
+          <div class="fp-card" style="padding:4px 6px;text-align:center"><div style="font-size:calc(14px*var(--zf,1));color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div style="font-size:calc(8px*var(--zf,1));color:#94a3b8">Équiv.</div></div>
+          <div class="fp-card" style="padding:4px 6px;text-align:center"><div style="font-size:calc(14px*var(--zf,1));color:#0369a1;font-weight:900">${d.cadence_h||0}</div><div style="font-size:calc(8px*var(--zf,1));color:#94a3b8">Cad./h</div></div>
+          <div class="fp-card" style="padding:4px 6px;text-align:center"><div style="font-size:calc(13px*var(--zf,1));color:#0369a1;font-weight:900">${Math.round((d.cadence_ref_pcs_min||0)*100)/100}</div><div style="font-size:calc(8px*var(--zf,1));color:#94a3b8">Réf/min</div></div>
+        </div>
+        <!-- Lignes info compactes -->
+        <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
+          ${[['Ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Arrêts',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Perte cadence',pertRaw>0?'+'+Math.round(pertRaw)+' min':pertRaw<0?Math.abs(Math.round(pertRaw))+' min gain':'✓ 0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes / OF',d.nb_sessions+' / '+d.nb_of,'#0891b2'],['Chgt fibre',d.nb_fibre_chg||0,'#8b5cf6'],['Dépass. arrêts',(d.depassement_min||0)>0?'+'+Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 7px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(9px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
+        </div>
       </div>
-      <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:8px">
-        <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center">
-          <div style="font-size:calc(42px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
-          <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-top:2px;font-weight:600">TRS période</div>
-          <div style="font-size:calc(10px*var(--zf,1));color:#94a3b8;margin-top:4px">${d.nb_jours} jour(s) · ${d.nb_sessions} poste(s) · ${d.nb_of} OF</div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-          <div class="fp-card" style="padding:8px;text-align:center"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#059669;font-weight:900">${Math.round(d.tot_pcs||0)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Pièces</div></div>
-          <div class="fp-card" style="padding:8px;text-align:center"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Équiv.</div></div>
-          <div class="fp-card" style="padding:8px;text-align:center"><div class="fp-big" style="font-size:calc(18px*var(--zf,1));color:#0369a1;font-weight:900">${d.cadence_h||0}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Cad./h moy.</div></div>
-          <div class="fp-card" style="padding:8px;text-align:center"><div class="fp-big" style="font-size:calc(14px*var(--zf,1));color:#0369a1;font-weight:900">${Math.round((d.cadence_ref_pcs_min||0)*100)/100}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Réf pcs/min</div></div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:5px">
-          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Temps ouverture</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1))">${Math.round(d.ouverture_min||0)} min</span></div>
-          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Temps utile</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#059669">${Math.round(d.temps_utile_min||0)} min</span></div>
-          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Temps fonctionnement</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#16a34a">${Math.round(d.temps_fonctionnement_min||0)} min</span></div>
-          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Temps en arrêt</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#dc2626">${Math.round(d.net_stop_min||0)} min</span></div>
-          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Perte cadence</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1))">${pertHtml}</span></div>
-          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Nb postes / Nb OF</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#0891b2">${d.nb_sessions||0} / ${d.nb_of||0}</span></div>
-          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Changements fibre</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#8b5cf6">${d.nb_fibre_chg||0}</span></div>
-          <div class="fp-card" style="padding:7px 10px;display:flex;justify-content:space-between;align-items:center"><span class="fp-lbl" style="font-size:calc(10px*var(--zf,1))">Dépass. budget arrêts</span><span class="fp-big" style="font-size:calc(13px*var(--zf,1));color:${(d.depassement_min||0)>0?'#dc2626':'#16a34a'}">${(d.depassement_min||0)>0?'+'+Math.round(d.depassement_min)+'min':'✓ OK'}</span></div>
-        </div>
+      <!-- Colonne droite : graphiques -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
+        ${chartTrsHtml}
+        ${chartCadHtml}
+        ${paretoRjHtml}
+        ${barHtml}
       </div>
     </div>
-    ${barHtml}${chartTrsHtml}${chartCadHtml}${paretoRjHtml}
   `;
 }
 function resetPeriodReport(){
