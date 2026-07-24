@@ -2402,7 +2402,7 @@ def api_period_report():
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
     agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_elapsed_s=0.0
-    agg_fibre_chg=0; agg_depassement=0.0; stop_by_type={}
+    agg_fibre_chg=0; agg_depassement=0.0; stop_by_type={}; sessions_detail=[]
     jours=set(); pilotes=set(); postes_set=set()
     trs_by_day = {}
     cadence_ref = round(prod_ref/480, 4) if prod_ref > 0 else 0.0
@@ -2464,6 +2464,9 @@ def api_period_report():
         if day not in trs_by_day: trs_by_day[day]={'equiv':0.0,'elapsed_s':0.0}
         trs_by_day[day]['equiv']    += s['tot_equiv']
         trs_by_day[day]['elapsed_s'] += elapsed_s
+        _trs_s = round(s['tot_equiv']/(prod_ref*elapsed_s/28800)*100,1) if prod_ref>0 and elapsed_s>0 and s['tot_equiv']>0 else -1.0
+        _cad_s = round(s['tot_equiv']/fonct_min*60) if fonct_min>0 else 0
+        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1)})
     trs_periode = round(agg_equiv/(prod_ref*agg_elapsed_s/28800)*100,1) if prod_ref>0 and agg_elapsed_s>0 and agg_equiv>0 else -1.0
     def _sort_dmy(d):
         try: p=d.split('/'); return (int(p[2]),int(p[1]),int(p[0]))
@@ -2473,6 +2476,7 @@ def api_period_report():
         for day,v in sorted(trs_by_day.items(), key=lambda x:_sort_dmy(x[0]))
     ]
     cadence_h = round(agg_equiv/agg_fonct*60) if agg_fonct>0 else 0
+    sessions_detail_sorted = sorted(sessions_detail, key=lambda x: _sort_dmy(x['date']))
     return jsonify({
         'ok':True,
         'trs_periode':trs_periode,
@@ -2493,6 +2497,7 @@ def api_period_report():
         'trs_by_day':trs_by_day_list,
         'nb_fibre_chg':agg_fibre_chg,
         'depassement_min':round(agg_depassement,1),
+        'sessions_detail':sessions_detail_sorted,
         'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])[:15]],
     })
 
@@ -8862,6 +8867,38 @@ async function calcPeriodReport(){
     const totMp=d.stop_pareto.reduce((a,e)=>a+e.min,0);
     paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:14px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;letter-spacing:.4px">Pareto des arrêts</div><div style="display:flex;flex-direction:column;gap:5px">${d.stop_pareto.map(e=>{const pct=Math.round(e.min/maxMp*100);const col=STOP_COL[e.cat]||'#94a3b8';const pctTot=totMp>0?Math.round(e.min/totMp*100):0;return '<div><div style="display:flex;justify-content:space-between;font-size:calc(10px*var(--zf,1));margin-bottom:2px"><div style="display:flex;align-items:center;gap:3px;min-width:0"><div style="width:7px;height:7px;border-radius:1px;background:'+col+';flex-shrink:0"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px">'+esc(e.type)+'</span></div><span style="white-space:nowrap;color:#6b7280;flex-shrink:0">'+Math.round(e.min)+'m <b style="color:#1e293b">'+pctTot+'%</b></span></div><div style="background:#f1f5f9;border-radius:3px;height:9px;overflow:hidden"><div style="width:'+pct+'%;background:'+col+';height:100%;border-radius:3px"></div></div></div>';}).join('')}</div></div>`;
   }
+  // Chart A : TRS par équipe
+  let chartTrsHtml='';
+  if(d.sessions_detail&&d.sessions_detail.length>0){
+    const sd=d.sessions_detail;
+    const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),1);
+    chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:14px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;letter-spacing:.4px">TRS par équipe</div><div style="display:flex;align-items:flex-end;gap:3px;height:90px;overflow-x:auto;padding-bottom:2px">${sd.map(s=>{const pct=s.trs>=0?Math.round(s.trs/maxTrs*100):0;const bc=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';const dp=s.date.split('/');const dlbl=dp.length>=2?dp[0]+'/'+dp[1]:s.date;return '<div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:38px;gap:1px"><div style="font-size:calc(7px*var(--zf,1));color:'+bc+';font-weight:700">'+( s.trs>=0?s.trs.toFixed(0)+'%':''  )+'</div><div style="width:100%;background:'+bc+';opacity:.85;border-radius:3px 3px 0 0;height:'+pct+'%"></div><div style="font-size:calc(6px*var(--zf,1));color:#374151;text-align:center;line-height:1.3">'+esc(dlbl)+'</div><div style="font-size:calc(6px*var(--zf,1));color:#6366f1;text-align:center;line-height:1.2;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.pilot||'')+'</div><div style="font-size:calc(6px*var(--zf,1));color:#94a3b8;text-align:center;line-height:1.2;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.poste||'')+'</div></div>';}).join('')}</div></div>`;
+  }
+  // Chart B : Cadence vs référence
+  let chartCadHtml='';
+  if(d.sessions_detail&&d.sessions_detail.length>0){
+    const sd2=d.sessions_detail;
+    const cadRef=Math.round((d.cadence_ref_pcs_min||0)*60);
+    const maxCad=Math.max(...sd2.map(s=>s.cadence_h||0),cadRef,1);
+    const CH=75,WB=28,GP=3,PD=4;
+    const svgW=Math.max(220,sd2.length*(WB+GP)+PD*2);
+    const tY=CH-Math.round(cadRef/maxCad*CH);
+    let svgB='',svgL='';
+    sd2.forEach((s,i)=>{
+      const x=PD+i*(WB+GP);
+      const bh=Math.max(1,Math.round((s.cadence_h||0)/maxCad*CH));
+      const by=CH-bh;
+      const col=(s.cadence_h||0)>=cadRef?'#16a34a':'#f59e0b';
+      svgB+=`<rect x="${x}" y="${by}" width="${WB}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
+      if(s.cadence_h>0)svgB+=`<text x="${x+WB/2}" y="${Math.max(by-2,8)}" text-anchor="middle" font-size="7" fill="#374151">${s.cadence_h}</text>`;
+      const dp=s.date.split('/');const dlbl=dp.length>=2?dp[0]+'/'+dp[1]:s.date;
+      svgL+=`<text x="${x+WB/2}" y="${CH+11}" text-anchor="middle" font-size="6" fill="#374151">${esc(dlbl)}</text>`;
+      svgL+=`<text x="${x+WB/2}" y="${CH+19}" text-anchor="middle" font-size="6" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
+      svgL+=`<text x="${x+WB/2}" y="${CH+27}" text-anchor="middle" font-size="6" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
+    });
+    const tLine=cadRef>0?`<line x1="0" y1="${tY}" x2="${svgW}" y2="${tY}" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="5,3"/><text x="2" y="${Math.max(tY-3,8)}" font-size="7" fill="#dc2626" font-weight="600">Cible ${cadRef} éq/h</text>`:'';
+    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:14px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;letter-spacing:.4px">Cadence réalisée vs référence (éq/h)</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH+32}" style="display:block">${svgB}${tLine}${svgL}</svg></div></div>`;
+  }
   // Pie chart: fonctionnement vs arrêts
   const fonctMin=d.temps_fonctionnement_min||0;
   const stopMin=d.net_stop_min||0;
@@ -8934,7 +8971,7 @@ async function calcPeriodReport(){
         </div>
       </div>
     </div>
-    ${barHtml}${paretoRjHtml}
+    ${barHtml}${chartTrsHtml}${chartCadHtml}${paretoRjHtml}
   `;
 }
 function resetPeriodReport(){
