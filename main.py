@@ -8889,7 +8889,7 @@ async function calcPeriodReport(){
       svgL+=`<text x="${x+WB/2}" y="${padT+gH+40}" text-anchor="middle" font-size="9" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
     });
     const yBase=padT+gH;
-    chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex-shrink:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">📈 TRS par équipe</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgB}${svgL}</svg></div></div>`;
+    chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex:1;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">📈 TRS par équipe</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgB}${svgL}</svg></div></div>`;
   }
   // ── Chart B : Cadence vs référence — barres verticales SVG ─────────────────
   let chartCadHtml='';
@@ -8919,8 +8919,9 @@ async function calcPeriodReport(){
       svgL2+=`<text x="${x+WB2/2}" y="${padT2+gH2+40}" text-anchor="middle" font-size="9" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
     });
     const yBase2=padT2+gH2;
-    const tLine=tY!==null?`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#dc2626" stroke-width="2" stroke-dasharray="6,3"/><rect x="2" y="${Math.max(tY-11,0)}" width="${Math.min(76,svgW2-4)}" height="12" fill="white" opacity=".8" rx="2"/><text x="4" y="${Math.max(tY-2,10)}" font-size="10" fill="#dc2626" font-weight="700">Cible ${cadRef} éq/h</text>`:'';
-    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex-shrink:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#f59e0b;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">⚡ Cadence réalisée vs référence${cadRef>0?' — cible '+cadRef+' éq/h':''}</div><div style="overflow-x:auto"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgB2}${tLine}${svgL2}</svg></div></div>`;
+    const tLine=tY!==null?`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#dc2626" stroke-width="2" stroke-dasharray="6,3"/>`:'';
+    const legCad=cadRef>0?`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#dc2626;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#dc2626" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible ${cadRef} éq/h</span>`:'';
+    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex:1;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#f59e0b;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence vs référence${legCad}</div><div style="overflow-x:auto"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgB2}${tLine}${svgL2}</svg></div></div>`;
   }
   // ── Pareto arrêts — barres horizontales ────────────────────────────────────
   let paretoRjHtml='';
@@ -8964,26 +8965,7 @@ async function calcPeriodReport(){
       <div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;align-items:center">${legHtml}</div>
     </div>`;
   }
-  // TRS by day bars
-  let barHtml='';
-  if(d.trs_by_day&&d.trs_by_day.length>1){
-    const maxT=Math.max(...d.trs_by_day.filter(x=>x.trs>=0).map(x=>x.trs),1);
-    barHtml=`<div style="margin-top:16px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:10px;padding:12px">
-      <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px">TRS par jour</div>
-      <div style="display:flex;align-items:flex-end;gap:4px;height:80px">
-        ${d.trs_by_day.map(x=>{
-          const pct=x.trs>=0?Math.round(x.trs/maxT*100):0;
-          const bc=x.trs>=90?'#16a34a':x.trs>=70?'#f59e0b':x.trs>=0?'#dc2626':'#94a3b8';
-          const lbl=x.date.split('/').slice(0,2).join('/');
-          return `<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:2px">
-            <div style="font-size:calc(7px*var(--zf,1));color:${bc};font-weight:700">${x.trs>=0?x.trs.toFixed(0)+'%':''}</div>
-            <div style="width:100%;background:${bc};opacity:.8;border-radius:3px 3px 0 0;height:${pct}%"></div>
-            <div style="font-size:calc(6px*var(--zf,1));color:var(--gray);writing-mode:vertical-lr;transform:rotate(180deg);height:28px;line-height:1.2">${esc(lbl)}</div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>`;
-  }
+  // TRS par jour supprimé
   // Pie compact (80px)
   let pieSmall='';
   if(pieTotal>0){const r=36,cx=40,cy=40;let sA=-Math.PI/2,paths='';[{v:fonctMin,c:'#16a34a'},{v:stopMin,c:'#dc2626'}].forEach(sl=>{const a=sl.v/pieTotal*2*Math.PI;const x1=cx+r*Math.cos(sA),y1=cy+r*Math.sin(sA);const x2=cx+r*Math.cos(sA+a),y2=cy+r*Math.sin(sA+a);paths+=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${a>Math.PI?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${sl.c}" opacity=".85"/>`;sA+=a;});pieSmall=`<svg viewBox="0 0 80 80" style="width:80px;height:80px;flex-shrink:0"><circle cx="40" cy="40" r="36" fill="#e2e8f0"/>${paths}</svg>`;}
@@ -9009,15 +8991,16 @@ async function calcPeriodReport(){
         </div>
         <!-- Lignes info -->
         <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
-          ${[['Ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Arrêts',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Perte cadence',pertRaw>0?'+'+Math.round(pertRaw)+' min':pertRaw<0?Math.abs(Math.round(pertRaw))+' min gain':'✓ 0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes / OF',d.nb_sessions+' / '+d.nb_of,'#0891b2'],['Chgt fibre',d.nb_fibre_chg||0,'#8b5cf6'],['Dépass. arrêts',(d.depassement_min||0)>0?'+'+Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
+          ${[['Ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Arrêts',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes',d.nb_sessions,'#0891b2'],['OF',d.nb_of,'#0891b2'],['Chgt fibre',d.nb_fibre_chg||0,'#8b5cf6'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
         </div>
       </div>
       <!-- Colonne droite : graphiques -->
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
-        ${chartTrsHtml}
-        ${chartCadHtml}
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          ${chartTrsHtml}
+          ${chartCadHtml}
+        </div>
         ${paretoRjHtml}
-        ${barHtml}
       </div>
     </div>
   `;
