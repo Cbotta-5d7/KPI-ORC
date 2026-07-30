@@ -1730,7 +1730,7 @@ def api_stop_degrade():
     of_num = _S.get("form",{}).get("of_num","") if _S.get("prod_active") else ""
     shift_dt = _S.get("shift_start") or start_dt_deg
     _row = [
-        motif, of_num,
+        motif, "Mode dégradé",
         start_dt_deg.strftime("%d/%m/%Y"), poste, pilot,
         "","","","","","","","","","","",
         start_dt_deg.strftime("%H:%M:%S"), end_dt_deg.strftime("%H:%M:%S"), fmt(dur_s),
@@ -1794,14 +1794,16 @@ def api_end_prod():
         _sh_dt = _S.get("shift_start") or _dg_of_start
         if _dg_dur_of >= 1:
             _degrade_end_row = [
-                _dg_motif, v.get("of_num",""),
+                _dg_motif, "Mode dégradé",
                 _dg_of_start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 "","","","","","","","","","","",
                 _dg_of_start.strftime("%H:%M:%S"), _dg_of_end.strftime("%H:%M:%S"), fmt(_dg_dur_of),
                 "","","","","","","","","","","","","","","","","","","","",
                 _sh_dt.strftime("%d/%m/%Y"),
             ]
-        # degrade_active / degrade_type / degrade_start_dt restent inchangés
+            # Avancer le start pour que api_stop_degrade ne couvre que la période restante
+            _S["degrade_start_dt"] = _dg_of_end
+        # degrade_active / degrade_type restent inchangés — l'utilisateur arrête explicitement
     t_stop_all()
     tl_close_all()
     end_dt = datetime.datetime.now()
@@ -5095,8 +5097,8 @@ select{cursor:default}
         </div>
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row">
-          <button class="act-btn act-stop" onclick="openStopModal()">⛔ Déclarer un arrêt</button>
-          <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="background:#fef9c3;border:1.5px solid #ca8a04;color:#854d0e;font-weight:700">🟡 Mode dégradé</button>
+          <button class="act-btn act-stop" onclick="openStopModal()" style="white-space:normal;line-height:1.2">⛔ Déclarer<br>un arrêt</button>
+          <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="background:#fef9c3;border:1.5px solid #ca8a04;color:#854d0e;font-weight:700;white-space:normal;line-height:1.2">🟡 Mode<br>dégradé</button>
           <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
           <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
           <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:var(--card);border:1.5px solid #8b5cf6;color:#7c3aed;font-weight:700;cursor:pointer">👥 Réunion</button>
@@ -6224,7 +6226,8 @@ function showApp(s) {
   loadCfg();
   goTab(s.prod_active ? 'prod' : 'main');
   const _today=new Date().toISOString().slice(0,10);
-  const _hf=document.getElementById('hist-from'); if(_hf&&!_hf.value)_hf.value=_today;
+  const _30ago=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+  const _hf=document.getElementById('hist-from'); if(_hf&&!_hf.value)_hf.value=_30ago;
   const _ht=document.getElementById('hist-to'); if(_ht&&!_ht.value)_ht.value=_today;
 }
 
@@ -9269,8 +9272,8 @@ function _kpiDualLineChart(containerId,items,series){
 function _kpiInitDates(){
   const fi=document.getElementById('kpi-from'),ti=document.getElementById('kpi-to');
   if(!fi||!ti)return;
-  if(!fi.value){const d=new Date();d.setDate(d.getDate()-1);fi.value=d.toISOString().slice(0,10);}
-  if(!ti.value){const d=new Date();d.setDate(d.getDate()-1);ti.value=d.toISOString().slice(0,10);}
+  if(!fi.value){const d=new Date();d.setMonth(d.getMonth()-6);fi.value=d.toISOString().slice(0,10);}
+  if(!ti.value){ti.value=new Date().toISOString().slice(0,10);}
 }
 
 async function loadKPI(){
@@ -9534,7 +9537,7 @@ async function loadHist(){
     if(da!==db) return db.localeCompare(da);
     return (b.debut||'').localeCompare(a.debut||'');
   });
-  hd.innerHTML='<th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
+  hd.innerHTML='<th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
   if(!allRows.length){bd.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
   window._rowMap=window._rowMap||{};
   window._histEvtsAll=evtsFiltered; // pour showHistRowDetail
@@ -9555,7 +9558,7 @@ async function loadHist(){
       <td>${tag}</td><td style="font-weight:700;color:#1e3a8a;text-decoration:underline;cursor:pointer" onclick="showHistRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||r.type||'—')}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600;cursor:${fbrH?'pointer':''}" title="${esc(fbrH)}" onclick="${fbrH?'showFibre(\''+esc(fbrH)+'\')':''}">${fbrShH}${fbrH.length>9?'…':''}</td>
       <td style="font-size:calc(10px*var(--zf,1))">${esc(r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
-      <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
+      <td>${esc(r.pilote||'')}</td><td style="text-align:center;font-size:calc(10px*var(--zf,1));color:#374151">${isProd?esc(r.nb_pers||''):'—'}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
       <td style="font-size:calc(11px*var(--zf,1))">${details}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
       <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:calc(15px*var(--zf,1));cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
@@ -9572,8 +9575,9 @@ async function reloadAndLoadRapports(){
 }
 async function loadRptJour(){
   const _rjf=document.getElementById('rj-from'),_rjt=document.getElementById('rj-to');
-  if(_rjf&&!_rjf.value){const d=new Date();d.setDate(d.getDate()-1);_rjf.value=d.toISOString().slice(0,10);}
-  if(_rjt&&!_rjt.value){const d=new Date();d.setDate(d.getDate()-1);_rjt.value=d.toISOString().slice(0,10);}
+  const _todayStr=new Date().toISOString().slice(0,10);
+  if(_rjf&&!_rjf.value)_rjf.value=_todayStr;
+  if(_rjt&&!_rjt.value)_rjt.value=_todayStr;
   // Populate pilot/poste selects from past_sessions
   const sessions=await apiFetch('/api/past_sessions');
   if(!sessions) return;
@@ -9589,6 +9593,8 @@ async function loadRptJour(){
     const cur=qSel.value;
     qSel.innerHTML='<option value="">Tous</option>'+postes.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('');
   }
+  // Auto-calculer au premier chargement
+  calcPeriodReport();
 }
 async function calcPeriodReport(){
   const from=document.getElementById('rj-from').value;
@@ -9614,7 +9620,7 @@ async function calcPeriodReport(){
   if(d.sessions_detail&&d.sessions_detail.length>0){
     const sd=d.sessions_detail;
     const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),100);
-    const CH=190,padT=20,padB=56,padL=4,padR=4;
+    const CH=280,padT=20,padB=56,padL=4,padR=4;
     const gH=CH-padT-padB;
     const n=sd.length;
     const WB=Math.max(22,Math.min(60,Math.floor((420-padL-padR-n*4)/n)));
@@ -9643,7 +9649,7 @@ async function calcPeriodReport(){
     const sd2=d.sessions_detail;
     const cadRef=Math.round((d.cadence_ref_pcs_min||0)*60);
     const maxCad=Math.max(...sd2.map(s=>s.cadence_h||0),cadRef,1);
-    const CH2=190,padT2=20,padB2=56,padL2=4,padR2=4;
+    const CH2=280,padT2=20,padB2=56,padL2=4,padR2=4;
     const gH2=CH2-padT2-padB2;
     const n2=sd2.length;
     const WB2=Math.max(22,Math.min(60,Math.floor((420-padL2-padR2-n2*4)/n2)));
@@ -9816,6 +9822,15 @@ async function loadSessionReport(date,pilot,poste,itemId){
   // Helper: compute net prod and stop overlap for each OF against evt_rows
   const _rptHmsMs=hm=>{if(!hm)return 0;const[h,m,s]=(hm+':0:0').split(':').map(Number);return(h||0)*3600000+(m||0)*60000+(s||0)*1000;};
   const _rptStEvts=(d.evt_rows||[]).filter(e=>!e.is_degrade).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(e=>e.e>e.s);
+  const _rptDgEvts=(d.evt_rows||[]).filter(e=>e.is_degrade).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(e=>e.e>e.s);
+  function _rptDegMin(debHm,finHm){
+    const dMs=_rptHmsMs(debHm),fMs=_rptHmsMs(finHm);
+    if(fMs<=dMs) return 0;
+    const ov=_rptDgEvts.map(sv=>({s:Math.max(sv.s,dMs),e:Math.min(sv.e,fMs)})).filter(o=>o.e>o.s);
+    ov.sort((a,b)=>a.s-b.s);
+    const mg=[];ov.forEach(o=>{if(mg.length&&o.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,o.e);else mg.push({...o});});
+    return Math.round(mg.reduce((a,o)=>a+(o.e-o.s),0)/60000);
+  }
   function _rptNetProd(debHm,finHm){
     const dMs=_rptHmsMs(debHm),fMs=_rptHmsMs(finHm);
     if(fMs<=dMs) return {netMin:0,stopMin:0};
@@ -9830,7 +9845,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
     const kitStr=(r.kit||'').toLowerCase();
     const kitDisp=kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
     const {netMin,stopMin}=_rptNetProd(r.debut,r.fin);
+    const degMinOf=_rptDegMin(r.debut,r.fin);
     const ofDurMin=r.debut&&r.fin?Math.round((_rptHmsMs(r.fin)-_rptHmsMs(r.debut))/60000):0;
+    const nbPers=r.nb_pers||'';
     const td='padding:4px 6px;text-align:center;font-size:calc(11px*var(--zf,1))';
     return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="showOfDetail(${ri})" title="Voir détail OF">
       <td style="${td};font-weight:700;color:#1e3a8a;text-decoration:underline">${esc(r.of||'')}</td>
@@ -9842,6 +9859,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <td style="${td};color:#94a3b8">${ofDurMin>0?ofDurMin+' min':'—'}</td>
       <td style="${td};color:#16a34a;font-weight:700">${netMin} min</td>
       <td style="${td};color:#dc2626;font-weight:700">${stopMin} min</td>
+      <td style="${td};color:${degMinOf>0?'#b45309':'#94a3b8'};font-weight:${degMinOf>0?'700':'400'}">${degMinOf>0?degMinOf+' min':'—'}</td>
+      <td style="${td};color:#374151;font-weight:600">${esc(String(nbPers))}</td>
       <td style="${td};font-weight:800;color:${tc}">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</td>
       <td style="padding:4px 6px;font-size:calc(10px*var(--zf,1));color:var(--gray)">${esc(r.comment||'')}</td>
     </tr>`;
@@ -9887,7 +9906,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       const tx=toX(tickT);
       const hr=new Date(tickT).getHours();
       html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`;
-      if(tx>20) html+=`<text x="${tx+2}" y="${Y+H2+9}" font-size="7" fill="#374151">${String(hr).padStart(2,'0')}h</text>`;
+      if(tx>20&&tx<W-40) html+=`<text x="${tx+2}" y="${Y+H2+9}" font-size="7" fill="#374151">${String(hr).padStart(2,'0')}h</text>`;
       tickT+=3600000;
     }
     html+=`<text x="2" y="${Y+H2+9}" font-size="8" fill="#374151">${fmt(tS)}</text>`;
@@ -9915,6 +9934,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
   // Perte cadence: [(tempsFonctionnement * cadenceRef) - nbEquiv] / cadenceRef
   const perteCadenceRaw=cadenceRefPcsMin>0?Math.round(((tempsFonctionnement*cadenceRefPcsMin)-(d.tot_equiv||0))/cadenceRefPcsMin):0;
   const perteCadenceHtml=perteCadenceRaw<0?`<span style="color:#16a34a;font-weight:800">${Math.abs(perteCadenceRaw)} min de gain</span>`:perteCadenceRaw>0?`<span style="color:#dc2626;font-weight:800">${perteCadenceRaw} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
+  const degMin=Math.round((d.degrade_s||0)/60);
   const tlDebut=d.model_debut||d.actual_debut;
   const tlFin=d.model_fin||d.actual_fin;
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
@@ -9939,8 +9959,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0">
         <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${d.model_debut&&d.model_fin?' — '+esc(d.model_debut)+' → '+esc(d.model_fin):''}</div>
         <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
-        <div style="font-size:calc(9px*var(--zf,1));opacity:.65;margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">TRS :</div>
-        <div style="font-size:calc(20px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
+        <div style="font-size:calc(9px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">TRS :</div>
+        <div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3)">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
       </div>
       <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px">
         <div style="text-align:center">
@@ -9964,6 +9984,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#059669">${tempsUtile} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${tempsFonctionnement} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#dc2626">${netStopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
+          ${degMin>0?`<div class="fp-card" style="padding:5px 6px;border-left:3px solid #ca8a04"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#b45309">${degMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en mode dégradé</div></div>`:''}
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${perteCadenceHtml}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
         </div>
       </div>
@@ -9984,9 +10005,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
         <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
           <th style="padding:4px 6px;text-align:center">OF</th><th style="padding:4px 6px;text-align:center">Taille</th>
           <th style="padding:4px 6px;text-align:center">Lots×2</th><th style="padding:4px 6px;text-align:center">Qté</th><th style="padding:4px 6px;text-align:center">Éq.</th>
-          <th style="padding:4px 6px;text-align:center">Heures</th><th style="padding:4px 6px;text-align:center;color:#94a3b8">Durée OF</th><th style="padding:4px 6px;text-align:center;color:#16a34a">Durée prod</th><th style="padding:4px 6px;text-align:center;color:#dc2626">Durée arrêts</th><th style="padding:4px 6px;text-align:center">TRS</th><th style="padding:4px 6px;text-align:left">Comm.</th>
+          <th style="padding:4px 6px;text-align:center">Heures</th><th style="padding:4px 6px;text-align:center;color:#94a3b8">Durée OF</th><th style="padding:4px 6px;text-align:center;color:#16a34a">Durée prod</th><th style="padding:4px 6px;text-align:center;color:#dc2626">Durée arrêts</th><th style="padding:4px 6px;text-align:center;color:#b45309">Dégradé</th><th style="padding:4px 6px;text-align:center">Nb pers</th><th style="padding:4px 6px;text-align:center">TRS</th><th style="padding:4px 6px;text-align:left">Comm.</th>
         </tr></thead>
-        <tbody>${prodsHtml||'<tr><td colspan="11" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
+        <tbody>${prodsHtml||'<tr><td colspan="13" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
       </table>
     </div>
     <!-- Pareto + Arrêts côte à côte -->
