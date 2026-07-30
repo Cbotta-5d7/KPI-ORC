@@ -1348,6 +1348,7 @@ def _state_json():
         "degrade_motifs": cfg.get("degrade_motifs", []),
         "budget_overrides": _S.get("budget_overrides", {}),
         "pers_pct_map": {str(k): round(v*100,1) for k,v in _pers_pct_map.items()},
+        "reunion_active": any(('reunion' in k.lower() or 'meeting' in k.lower()) and t.get("running") for k,t in _S["timers"].items()),
     }
 
 @flask_app.route('/')
@@ -2088,6 +2089,25 @@ def _toggle_pause_internal():
 def api_toggle_pause():
     _toggle_pause_internal()
     return jsonify({"ok":True,"paused":_S["is_paused"]})
+
+@flask_app.route('/api/toggle_reunion', methods=['POST'])
+def api_toggle_reunion():
+    # Find active réunion timer
+    running_key = next((k for k,t in _S["timers"].items() if t.get("running") and ('reunion' in k.lower() or 'meeting' in k.lower())), None)
+    if running_key:
+        t_stop(running_key)
+        tl_close(running_key, "")
+        reunion_active = False
+    else:
+        evts = get_events_list()
+        rev = next((e for e in evts if 'reunion' in (e.get('key','') or '').lower() or 'reunion' in (e.get('label','') or '').lower() or 'meeting' in (e.get('key','') or '').lower()), None)
+        rkey = rev['key'] if rev else 'reunion'
+        rcat = (rev.get('cat') or 'interposte') if rev else 'interposte'
+        t_start(rkey)
+        tl_open(rkey, rcat)
+        reunion_active = True
+    threading.Thread(target=generate_dashboard_html, daemon=True).start()
+    return jsonify({"ok": True, "reunion_active": reunion_active})
 
 @flask_app.route('/api/start_nettoyage', methods=['POST'])
 def api_start_nettoyage():
@@ -6604,6 +6624,9 @@ function applyState(s) {
   // Pause button text
   const pbtn=document.getElementById('btn-pause');
   if(pbtn) pbtn.textContent=s.is_paused?'▶ Reprendre':'⏸ Pause';
+  // Reunion button text (sync from server state)
+  const rbtn=document.getElementById('btn-reunion');
+  if(rbtn) rbtn.textContent=s.reunion_active?'✓ Fin réunion':'👥 Réunion';
 
   // TRS gauge
   updateGauge(s);
@@ -7449,31 +7472,10 @@ async function doPause(){
 }
 
 async function doReunion(){
-  // Cherche un événement réunion dans _evtsList (toute catégorie), clé ou label contenant reunion/meeting
-  function _isReunionEvt(e){
-    var kl=(e.key||'').toLowerCase();
-    var ll=(e.label||'').toLowerCase();
-    return kl.indexOf('reunion')>=0||kl.indexOf('meeting')>=0||ll.indexOf('reunion')>=0||ll.indexOf('meeting')>=0;
-  }
-  var reunionKeys=(_evtsList||[]).filter(_isReunionEvt).map(function(e){return e.key;});
-  // Ajouter la clé fallback 'reunion' (INTERPOSTE_CATS par défaut)
-  if(reunionKeys.indexOf('reunion')<0) reunionKeys.push('reunion');
-  var activeReunionKey=(ST.active_stops||[]).find(function(k){return reunionKeys.indexOf(k)>=0;});
-  if(activeReunionKey){
-    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:activeReunionKey,comment:''})});
-    toast('Fin réunion','ok');
-    var btn=document.getElementById('btn-reunion');
-    if(btn) btn.textContent='👥 Réunion';
-  } else {
-    var reunionEvt=(_evtsList||[]).find(_isReunionEvt);
-    // Fallback : clé par défaut INTERPOSTE_CATS
-    if(!reunionEvt) reunionEvt={key:'reunion',cat:'interposte'};
-    await fetch('/api/start_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:reunionEvt.key,cat:reunionEvt.cat||'interposte',comment:''})});
-    toast('Réunion commencée','ok');
-    var btn=document.getElementById('btn-reunion');
-    if(btn) btn.textContent='✓ Fin réunion';
-  }
+  try{await fetch('/api/toggle_reunion',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});}
+  catch(e){toast('Erreur connexion serveur','err');return;}
   await pollState();
+  if(_curTab==='main') loadMainDecl();
 }
 
 function doNettoyage(){
