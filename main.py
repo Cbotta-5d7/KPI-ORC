@@ -1272,8 +1272,14 @@ def load_postes_shift_map():
                 try:
                     deb_dt = datetime.datetime.fromisoformat(str(deb_v)) if not hasattr(deb_v, 'hour') else datetime.datetime.combine(datetime.date.today(), deb_v)
                     fin_dt = datetime.datetime.fromisoformat(str(fin_v)) if not hasattr(fin_v, 'hour') else datetime.datetime.combine(datetime.date.today(), fin_v)
+                    trs_raw = ws.cell(ri, 8).value   # col H: TRS Poste %
+                    perte_raw = ws.cell(ri, 23).value # col W: Perte cadence (min)
+                    try: trs_xl = float(str(trs_raw).replace('%','').replace(',','.')) if trs_raw not in (None,'') else None
+                    except: trs_xl = None
+                    try: perte_xl = float(str(perte_raw).replace(',','.')) if perte_raw not in (None,'') else None
+                    except: perte_xl = None
                     pk = (str(pilot_v).strip().lower(), deb_dt.strftime("%d/%m/%Y"))
-                    result[pk] = (deb_dt, fin_dt)
+                    result[pk] = (deb_dt, fin_dt, trs_xl, perte_xl)
                 except: pass
             wb.close()
     except: pass
@@ -2867,7 +2873,7 @@ def api_period_report():
     cadence_ref = round(prod_ref/480, 4) if prod_ref > 0 else 0.0
     for key, s in sessions.items():
         _pk = (s['pilot'].lower(), s['date'])
-        _pdeb, _pfin = postes_map[_pk]
+        _pdeb, _pfin, _xl_trs, _xl_perte = postes_map[_pk]
         model_dur_s = max(0.0, (_pfin - _pdeb).total_seconds())
         # Arrondir comme le JS (Math.round) pour correspondre exactement à l'onglet Rapports postes
         ouv_min = round(model_dur_s / 60, 1)
@@ -2910,7 +2916,11 @@ def api_period_report():
                     _cap_pr = min(_dur_pr, _plan_bdata_pr[_bk_pr] - _plan_used_pr[_bk_pr])
                     _plan_ivs_pr.append((_ds_pr, _ds_pr + _cap_pr))
                 _plan_used_pr[_bk_pr] += _dur_pr
-        if _pers_pct_map and s.get('prod_raws'):
+        if _xl_trs is not None and _xl_trs > 0:
+            _trs_s = _xl_trs
+            _sum_exp_pr = s['tot_equiv'] * 100.0 / _xl_trs
+            perte = _xl_perte if _xl_perte is not None else 0.0
+        elif _pers_pct_map and s.get('prod_raws'):
             _trs_s, _sum_exp_pr = _option_b_trs(s['prod_raws'], _deg_ivs_pr, prod_ref, _plan_ivs_pr)
             perte = round((_sum_exp_pr - s['tot_equiv']) / cadence_ref, 1) if cadence_ref > 0 and _sum_exp_pr > 0 else 0.0
         else:
