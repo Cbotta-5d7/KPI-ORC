@@ -2060,6 +2060,7 @@ def api_events_list():
                 "duree": str(r[18] or ""),
                 "comment": str(r[35] or ""),
                 "hors_trs": hors=="OUI",
+                "is_degrade": _is_degrade_type(type_str),
             })
         except: pass
     return jsonify(list(reversed(rows)))
@@ -2447,24 +2448,33 @@ def api_history_today():
     prod_ref = get_prod_ref()
     shift_s = get_shift_duration_s(poste, shift_date)
     rows = []
-    tot_eq=0.0; tot_s=0.0
+    tot_eq=0.0; tot_s=0.0; _htd_ded_s=0.0; _htd_deg_s=0.0
     for rn,r in _decl_cache:
-        if str(r[0] or "").strip().lower() not in ("production","prod",""): continue
         rd = _row_date(r[2])
         if rd != shift_date_str and rd != today: continue
         if str(r[4] or "") != pilot: continue
-        eq=float(str(r[21] or 0).replace(",",".") or 0)
-        s=_hms_to_sec(str(r[18] or "00:00:00"))
-        tot_eq+=eq; tot_s+=s
-        trs_of=-1
-        try:
-            trs_col=str(r[24] or "")
-            if trs_col: trs_of=round(float(trs_col.replace(",",".")),1)
-            elif prod_ref>0 and s>0: trs_of=round(eq/(prod_ref*s/28800)*100,1)
-        except: pass
-        rows.append({"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"trs":trs_of,"equiv":eq,"qte_fab":str(r[19] or "")})
+        _rtype_htd = str(r[0] or "").strip().lower()
+        if _rtype_htd in ("production","prod",""):
+            eq=float(str(r[21] or 0).replace(",",".") or 0)
+            s=_hms_to_sec(str(r[18] or "00:00:00"))
+            tot_eq+=eq; tot_s+=s
+            trs_of=-1
+            try:
+                trs_col=str(r[24] or "")
+                if trs_col: trs_of=round(float(trs_col.replace(",",".")),1)
+                elif prod_ref>0 and s>0: trs_of=round(eq/(prod_ref*s/28800)*100,1)
+            except: pass
+            rows.append({"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"trs":trs_of,"equiv":eq,"qte_fab":str(r[19] or "")})
+        elif _is_degrade_type(str(r[0] or "").strip()):
+            _htd_deg_s += _hms_to_sec(str(r[18] or "00:00:00"))
+        else:
+            _rtype_full = str(r[0] or "").strip()
+            if any(k in _rtype_full.lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]):
+                _htd_ded_s += _hms_to_sec(str(r[18] or "00:00:00"))
     trs_shift=-1.0
-    if prod_ref>0 and shift_s>0: trs_shift=round(tot_eq/(prod_ref*shift_s/28800)*100,1)
+    if prod_ref>0 and shift_s>0 and tot_eq>0:
+        _htd_adj = max(1.0, shift_s - _htd_ded_s - _htd_deg_s / 2.0)
+        trs_shift=round(tot_eq/(prod_ref*_htd_adj/28800)*100,1)
     trs_of_time=-1.0
     if prod_ref>0 and tot_s>0: trs_of_time=round(tot_eq/(prod_ref*tot_s/28800)*100,1)
     return jsonify({"rows":rows,"trs_shift":trs_shift,"trs_of":trs_of_time,"tot_eq":round(tot_eq,1),"shift_s":shift_s})
@@ -2518,8 +2528,9 @@ def api_past_sessions():
                 _mdur2 = max(0.0, (_pfin - _pdeb).total_seconds())
             else:
                 _mdur2 = get_shift_duration_s(s["poste"], date_obj)
+            _deg_ps = sum(_hms_to_sec(str(re[18] or "00:00:00")) for _, re in session_evts.get(key, []) if _is_degrade_type(str(re[0] or "")))
             if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
-                _el2 = max(1.0, _mdur2 - planned_ded)
+                _el2 = max(1.0, _mdur2 - planned_ded - _deg_ps / 2.0)
                 trs = round(s["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
         _pk_check = (s["pilot"].lower(), s["date"])
         if _pk_check not in postes_map:
@@ -4024,10 +4035,12 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         except: _do2 = None
         _deb2, _ = _get_model_day_cfg(_s_r["poste"], _do2)
         _mds2 = hms2s(_deb2) if _deb2 else None
-        _ded2 = sum(hms2s(_er[18]) for _er in _sess_evts_map_r.get(_sk_r,[]) if any(k in str(_er[0] or "").lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
+        _sess_evts2 = _sess_evts_map_r.get(_sk_r, [])
+        _ded2 = sum(hms2s(_er[18]) for _er in _sess_evts2 if any(k in str(_er[0] or "").lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
+        _deg2 = sum(hms2s(_er[18]) for _er in _sess_evts2 if _is_degrade_type(str(_er[0] or "")))
         _mdur2 = get_shift_duration_s(_s_r["poste"], _do2)
         if _mdur2 > 0 and prod_ref > 0 and _s_r["tot_equiv"] > 0:
-            _el2 = max(1.0, _mdur2 - _ded2)
+            _el2 = max(1.0, _mdur2 - _ded2 - _deg2 / 2.0)
             _trs_r = round(_s_r["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
         _embedded_sessions_list.append({"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"nb_of":_s_r["nb_of"],"tot_equiv":round(_s_r["tot_equiv"],1),"trs":_trs_r})
     _embedded_sessions_list.sort(key=lambda x: (lambda p: (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0))(x["date"].split('/')), reverse=True)
@@ -4049,7 +4062,9 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
                     _eq3 = float(str(_r3[21] or 0).replace(",","."))
                     _ds3 = hms2s(_r3[16]); _fs3b = hms2s(_r3[17])
                     _dur3 = _fs3b - _ds3 if _fs3b > _ds3 else hms2s(_r3[18])
-                    _trs3 = round(_eq3/(prod_ref*_dur3/28800)*100,1) if prod_ref>0 and _dur3>0 and _eq3>0 else -1
+                    try: _r3_24=float(str(_r3[24] if len(_r3)>24 else '').strip() or '-1')
+                    except: _r3_24=-1.0
+                    _trs3 = _r3_24 if _r3_24>=0 else (round(_eq3/(prod_ref*_dur3/28800)*100,1) if prod_ref>0 and _dur3>0 and _eq3>0 else -1)
                     _teq3 += _eq3; _ts3 += _dur3
                     if _fs3b > _mfs3: _mfs3 = _fs3b
                     _pr3.append({"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"kit":str(_r3[15] or ""),"qte_fab":str(_r3[19] or ""),"equiv":str(_r3[21] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"trs":_trs3,"comment":str(_r3[35] or "")})
@@ -4057,7 +4072,8 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             else:
                 try:
                     _durs3 = hms2s(_r3[18]); _sts3 += _durs3
-                    _er3.append({"type":str(_r3[0] or ""),"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"comment":str(_r3[35] or "")})
+                    _is_deg3 = _is_degrade_type(str(_r3[0] or "").strip())
+                    _er3.append({"type":str(_r3[0] or ""),"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"comment":str(_r3[35] or ""),"is_degrade":_is_deg3})
                 except: pass
         _acd3 = _sec_to_hm(min(_ads3)) if _ads3 else ""
         _acf3 = _sec_to_hm(max(_afs3)) if _afs3 else ""
@@ -4067,11 +4083,12 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         _mdeb3, _mfin3 = _get_model_day_cfg(_s_r["poste"], _dpo3)
         _mds3b = hms2s(_mdeb3) if _mdeb3 else None
         _ded3 = sum(hms2s(_e3r.get("duree","")) for _e3r in _er3 if any(k in str(_e3r.get("type","")).lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
+        _deg3 = sum(hms2s(_e3r.get("duree","")) for _e3r in _er3 if _e3r.get("is_degrade"))
         _mdur3 = get_shift_duration_s(_s_r["poste"], _dpo3)
         _ecart3 = max(0.0, _mdur3 - (_ts3 + _sts3))
         _trs_sh3 = -1.0
         if _mdur3 > 0 and prod_ref > 0 and _teq3 > 0:
-            _el3 = max(1.0, _mdur3 - _ded3)
+            _el3 = max(1.0, _mdur3 - _ded3 - _deg3 / 2.0)
             _trs_sh3 = round(_teq3/(prod_ref*_el3/28800)*100,1)
         _trs_of3 = round(_teq3/(prod_ref*_ts3/28800)*100,1) if prod_ref>0 and _ts3>0 and _teq3>0 else -1
         _rpt_key3 = f"{_s_r['date']}|{_s_r['pilot']}|{_s_r['poste']}"
@@ -6275,12 +6292,12 @@ function applyState(s) {
   window._degradePeriodsIso=s.degrade_periods_iso||[];
   if(s.degrade_active){
     if(ds){ds.textContent='🟡 MODE DÉGRADÉ EN COURS : '+esc(s.degrade_type||'')+' — Cliquer pour désactiver';ds.style.display='block';ds.onclick=stopDegrade;}
-    if(bdAcc){bdAcc.style.background='#ca8a04';bdAcc.style.color='#fff';bdAcc.textContent='🟡 Désactiver dégradé';}
-    if(bdProd){bdProd.style.background='#ca8a04';bdProd.style.color='#fff';bdProd.textContent='🟡 Désactiver dégradé';}
+    if(bdAcc){bdAcc.style.background='#ca8a04';bdAcc.style.color='#fff';bdAcc.textContent='🟡 Désactiver dégradé';bdAcc.style.animation='blink .85s step-start infinite';}
+    if(bdProd){bdProd.style.background='#ca8a04';bdProd.style.color='#fff';bdProd.textContent='🟡 Désactiver dégradé';bdProd.style.animation='blink .85s step-start infinite';}
   } else {
     if(ds){ds.style.display='none';ds.onclick=null;}
-    if(bdAcc){bdAcc.style.background='#fef9c3';bdAcc.style.color='#854d0e';bdAcc.textContent='🟡 Mode dégradé';}
-    if(bdProd){bdProd.style.background='#fef9c3';bdProd.style.color='#854d0e';bdProd.textContent='🟡 Mode dégradé';}
+    if(bdAcc){bdAcc.style.background='#fef9c3';bdAcc.style.color='#854d0e';bdAcc.textContent='🟡 Mode dégradé';bdAcc.style.animation='none';}
+    if(bdProd){bdProd.style.background='#fef9c3';bdProd.style.color='#854d0e';bdProd.textContent='🟡 Mode dégradé';bdProd.style.animation='none';}
   }
   // Afficher bouton ✏️ budget si pilote connecté
   const _showBov=!!(s.pilot);
@@ -6519,7 +6536,7 @@ async function loadMainDecl() {
     window._rowMap[String(key)]=r;
     const isProd=r._rowType==='prod';
     const t=parseFloat(r.trs||0);
-    const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.type&&r.type.toLowerCase().includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>');
+    const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.is_degrade?'<span class="row-tag tag-e" style="border-color:#ca8a04;color:#ca8a04">🟡 Dégradé</span>':(r.type&&r.type.toLowerCase().includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>'));
     const details=isProd?esc(r.taille||''):esc(r.type||'');
     const qty=isProd?esc(String(r.qte_fab||'')):esc(r.duree||'');
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
@@ -7832,7 +7849,9 @@ function drawTL(svgId,tlEvts,debutHMS,finHMS){
   const svg=document.getElementById(svgId);
   if(!svg) return;
   const W=800,Y=4,H2=28,H=52;
-  let html=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
+  const _dpId='dpat_'+svgId;
+  let html=`<defs><pattern id="${_dpId}" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#16a34a"/><rect x="4" y="0" width="4" height="8" fill="#fef08a"/></pattern></defs>`;
+  html+=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
   if(!debutHMS||!finHMS){svg.innerHTML=html;return;}
   const base=new Date();base.setHours(0,0,0,0);
   const pHMS=s=>{const[h,m,sec]=(s||'').split(':');return base.getTime()+(+h||0)*3600000+(+m||0)*60000+(+sec||0)*1000;};
@@ -7848,6 +7867,21 @@ function drawTL(svgId,tlEvts,debutHMS,finHMS){
     html+=`<rect x="${x1}" y="${Y}" width="${Math.max(1,x2-x1)}" height="${H2}" fill="${STOP_COL[cat]||'#94a3b8'}" rx="2" opacity=".9"/>`;
     cur+=(e.dur_s||0)*1000;
   });
+  // Dégradé overlay (periodes closes + active)
+  const _ofStartMs=ST.of_start_iso?new Date(ST.of_start_iso).getTime():tS;
+  (window._degradePeriodsIso||[]).forEach(function(p){
+    if(!p.start||!p.end) return;
+    const _d0=Math.max(new Date(p.start).getTime(),_ofStartMs);
+    const _d1=new Date(p.end).getTime();
+    if(_d1<=_d0) return;
+    const x1=toX(_d0),x2=toX(_d1);
+    if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="url(#${_dpId})" rx="2" opacity=".85"/>`;
+  });
+  if(window._degradeActive&&ST.degrade_start_iso){
+    const _d0=Math.max(new Date(ST.degrade_start_iso).getTime(),_ofStartMs);
+    const _d1=Date.now();
+    if(_d1>_d0){const x1=toX(_d0),x2=toX(_d1);if(x2>x1)html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="url(#${_dpId})" rx="2" opacity=".85"/>`;}
+  }
   html+=`<text x="2" y="${H-2}" font-size="10" fill="#374151" font-weight="600">${debutHMS.slice(0,5)}</text>`;
   html+=`<text x="${W-36}" y="${H-2}" font-size="10" fill="#374151" font-weight="600">${finHMS.slice(0,5)}</text>`;
   svg.innerHTML=html;
@@ -7857,7 +7891,9 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
   const svg=document.getElementById(svgId);
   if(!svg) return;
   const W=800,Y=4,H2=28,H=52;
-  let html=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
+  const _dpId='dpat_'+svgId;
+  let html=`<defs><pattern id="${_dpId}" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#16a34a"/><rect x="4" y="0" width="4" height="8" fill="#fef08a"/></pattern></defs>`;
+  html+=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
   const tS=new Date(startIso).getTime(),tE=new Date(endIso).getTime();
   const span=tE-tS;if(span<=0){svg.innerHTML=html;return;}
   const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
@@ -7884,7 +7920,8 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
     const x1=toX(t1),x2=toX(t2||tE);
     if(x2<=x1) return;
     const cat=ev.cat||'autre';
-    html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${STOP_COL[cat]||'#94a3b8'}" rx="2" opacity=".85"/>`;
+    const fillCol=ev.is_degrade?`url(#${_dpId})`:(STOP_COL[cat]||'#94a3b8');
+    html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${fillCol}" rx="2" opacity=".85"/>`;
   });
   // Current live stop
   if(_curStopKey&&_curStopKey!=='_pause'&&ST.prod_active){
@@ -7892,6 +7929,21 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
     const sT=tE-se*1000;
     const x1=toX(sT),x2=toX(tE);
     if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${STOP_COL.pb||'#b91c1c'}" rx="2" opacity=".9"/>`;
+  }
+  // Dégradé overlay (periodes closes + active)
+  const _ofStartMsTL=ST.of_start_iso?new Date(ST.of_start_iso).getTime():tS;
+  (window._degradePeriodsIso||[]).forEach(function(p){
+    if(!p.start||!p.end) return;
+    const _d0=Math.max(new Date(p.start).getTime(),_ofStartMsTL);
+    const _d1=new Date(p.end).getTime();
+    if(_d1<=_d0) return;
+    const x1=toX(_d0),x2=toX(_d1);
+    if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="url(#${_dpId})" rx="2" opacity=".85"/>`;
+  });
+  if(window._degradeActive&&ST.degrade_start_iso&&ST.prod_active){
+    const _d0=Math.max(new Date(ST.degrade_start_iso).getTime(),_ofStartMsTL);
+    const _d1=Date.now();
+    if(_d1>_d0){const x1=toX(_d0),x2=toX(_d1);if(x2>x1)html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="url(#${_dpId})" rx="2" opacity=".85"/>`;}
   }
   const fT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
   // Hourly tick marks
@@ -8780,11 +8832,13 @@ function _kpiNoData(arcId,pctId,pArc){
 function _drawKpiTL(svgId,evts,startISO,endISO,isCurrent){
   const svg=document.getElementById(svgId);if(!svg)return;
   const H=isCurrent?50:36,W=800;
+  const _dpId='dpat_'+svgId;
   const tS=new Date(startISO).getTime(),tE=new Date(endISO).getTime();
   const span=tE-tS;
   if(span<=0){svg.innerHTML=`<rect x="0" y="0" width="${W}" height="${H}" fill="#1e293b" rx="4"/>`;return;}
   const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
-  let html=`<rect x="0" y="0" width="${W}" height="${H}" fill="#1e2d48" rx="4"/>`;
+  let html=`<defs><pattern id="${_dpId}" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#16a34a"/><rect x="4" y="0" width="4" height="8" fill="#fef08a"/></pattern></defs>`;
+  html+=`<rect x="0" y="0" width="${W}" height="${H}" fill="#1e2d48" rx="4"/>`;
   // Prod background (green)
   html+=`<rect x="0" y="0" width="${W}" height="${H}" fill="#166534" rx="4" opacity=".65"/>`;
   // Events (stops)
@@ -8792,7 +8846,8 @@ function _drawKpiTL(svgId,evts,startISO,endISO,isCurrent){
     const t1=parseHMStoT(ev.debut,ev.date),t2=parseHMStoT(ev.fin,ev.date);
     if(!t1) return;
     const x1=toX(t1),x2=toX(t2||(t1+300000));if(x2<=x1)return;
-    const cat=ev.cat||'autre';const col=STOP_COL[cat]||'#94a3b8';
+    const cat=ev.cat||'autre';
+    const col=ev.is_degrade?`url(#${_dpId})`:(STOP_COL[cat]||'#94a3b8');
     html+=`<rect x="${x1}" y="0" width="${Math.max(2,x2-x1)}" height="${H}" fill="${col}" rx="2" opacity=".9"/>`;
   });
   // Current live stop for active session
@@ -8801,6 +8856,21 @@ function _drawKpiTL(svgId,evts,startISO,endISO,isCurrent){
     const sT=tE-se*1000;
     const x1=toX(sT),x2=toX(tE);
     if(x2>x1) html+=`<rect x="${x1}" y="0" width="${x2-x1}" height="${H}" fill="#dc2626" rx="2" opacity=".9"/>`;
+  }
+  // Dégradé overlay
+  const _ofStartMsKpi=ST.of_start_iso?new Date(ST.of_start_iso).getTime():tS;
+  (window._degradePeriodsIso||[]).forEach(function(p){
+    if(!p.start||!p.end) return;
+    const _d0=Math.max(new Date(p.start).getTime(),_ofStartMsKpi);
+    const _d1=new Date(p.end).getTime();
+    if(_d1<=_d0) return;
+    const x1=toX(_d0),x2=toX(_d1);
+    if(x2>x1) html+=`<rect x="${x1}" y="0" width="${x2-x1}" height="${H}" fill="url(#${_dpId})" rx="2" opacity=".85"/>`;
+  });
+  if(isCurrent&&window._degradeActive&&ST.degrade_start_iso&&ST.prod_active){
+    const _d0=Math.max(new Date(ST.degrade_start_iso).getTime(),_ofStartMsKpi);
+    const _d1=Date.now();
+    if(_d1>_d0){const x1=toX(_d0),x2=toX(_d1);if(x2>x1)html+=`<rect x="${x1}" y="0" width="${x2-x1}" height="${H}" fill="url(#${_dpId})" rx="2" opacity=".85"/>`;}
   }
   const fT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
   const fs=isCurrent?11:9;
@@ -9245,7 +9315,7 @@ async function loadHist(){
     const rt=String(r.type||'').toLowerCase();
     const hftype=isProd?'prod':rt||'arret';
     const t=parseFloat(r.trs||0);
-    const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(rt.includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':rt.includes('pause')?'<span class="row-tag tag-n" style="border-color:#f59e0b;color:#f59e0b">⏸ Pause</span>':(rt.includes('réunion')||rt.includes('reunion'))?'<span class="row-tag tag-n" style="border-color:#8b5cf6;color:#8b5cf6">👥 Réunion</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>');
+    const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.is_degrade?'<span class="row-tag tag-e" style="border-color:#ca8a04;color:#ca8a04">🟡 Dégradé</span>':(rt.includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':rt.includes('pause')?'<span class="row-tag tag-n" style="border-color:#f59e0b;color:#f59e0b">⏸ Pause</span>':(rt.includes('réunion')||rt.includes('reunion'))?'<span class="row-tag tag-n" style="border-color:#8b5cf6;color:#8b5cf6">👥 Réunion</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>'));
     const details=isProd?esc(r.taille||''):esc(r.type||'');
     const qty=isProd?esc(String(r.qte_fab||'')):esc(r.duree||'');
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
@@ -9563,7 +9633,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
     if(!tS||!tE||tE<=tS) return `<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
     const span=tE-tS;
     const toX=t=>Math.max(0,Math.min(W,(t-tS)/span*W));
-    let html=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
+    let html=`<defs><pattern id="dpat_rpt" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#16a34a"/><rect x="4" y="0" width="4" height="8" fill="#fef08a"/></pattern></defs>`;
+    html+=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
     prodRows.forEach(r=>{
       const t1=hm2ms(r.debut),t2=hm2ms(r.fin);
       if(!t1) return;
@@ -9576,7 +9647,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       const x1=toX(t1),x2=toX(t2||t1+1800000);
       if(x2<=x1) return;
       const tl=(r.type||'').toLowerCase();
-      const col=tl.includes('nett')?'#38bdf8':tl.includes('pause')?'#94a3b8':tl.includes('ratt')?'#f59e0b':'#dc2626';
+      const col=r.is_degrade?'url(#dpat_rpt)':(tl.includes('nett')?'#38bdf8':tl.includes('pause')?'#94a3b8':tl.includes('ratt')?'#f59e0b':'#dc2626');
       html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${col}" rx="2" opacity=".75"/>`;
     });
     const fmt=ms=>{const d=new Date(ms);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
