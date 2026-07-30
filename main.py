@@ -404,7 +404,7 @@ def _option_b_trs(prod_raw_rows, deg_ivs, prod_ref, plan_ivs=None):
             pct = get_pct_cadence(nb_p)
             ovl = _deg_overlap_s(deb_s, fin_s, deg_ivs)
             plan_ovl = _deg_overlap_s(deb_s, fin_s, plan_ivs) if plan_ivs else 0.0
-            adj_s = max(1.0, dur_s - ovl - plan_ovl)
+            adj_s = max(1.0, dur_s - plan_ovl)
             sum_expected += prod_ref * pct * adj_s / 28800
             tot_equiv += eq
         except: pass
