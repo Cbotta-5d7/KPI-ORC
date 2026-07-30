@@ -5771,14 +5771,6 @@ select{cursor:default}
       <button style="background:none;border:none;cursor:pointer;color:#fff;font-size:calc(16px*var(--zf,1))" onclick="closeM('m-stop')">✕</button>
     </div>
     <div class="mbody">
-      <div class="stop-section-lbl" style="color:#92400e">⏱ Arrêts prévus</div>
-      <div class="stops-grid" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px">
-        <button style="background:#64748b;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer" onclick="closeM('m-stop');doPause()">⏸ Pause</button>
-        <button style="background:#64748b;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer" onclick="closeM('m-stop');doReunion()">👥 Réunion</button>
-        <button style="background:#78350f;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('court')">🧹 Nettoyage court</button>
-        <button style="background:#92400e;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('long')">🧹 Nettoyage long</button>
-        <button style="background:#a16207;color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer" onclick="closeM('m-stop');doStartNettoyage('grand')">🧹 Nettoyage très long</button>
-      </div>
       <div class="stop-section-lbl">🔄 Rattrapage</div>
       <div class="stops-grid ratt" id="sgrid-ratt"></div>
       <div class="stop-section-lbl">🔧 PB Technique</div>
