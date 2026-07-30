@@ -4802,6 +4802,18 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .act-pause{background:radial-gradient(ellipse at 50% 25%,#cbd5e1 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
 .act-cancel{background:radial-gradient(ellipse at 50% 25%,#94a3b8 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.3)}
 .act-endprod{background:radial-gradient(ellipse at 50% 25%,#4ade80 0%,#16a34a 55%,#14532d 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
+.act-icon{font-size:calc(26px*var(--zf,1));line-height:1;display:block;margin-bottom:2px}
+/* Accueil 3D buttons */
+.acc-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:none;border-radius:16px;padding:14px 22px;min-height:80px;min-width:130px;cursor:pointer;font-size:calc(14px*var(--zf,1));font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.4);box-shadow:0 8px 0 rgba(0,0,0,.3),0 10px 16px rgba(0,0,0,.25),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.2);transform:translateY(0);transition:transform .1s,box-shadow .1s;position:relative;overflow:hidden}
+.acc-btn::before{content:'';position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 100%);border-radius:16px 16px 0 0;pointer-events:none}
+.acc-btn:hover{filter:brightness(1.08)}
+.acc-btn:active{transform:translateY(6px);box-shadow:0 2px 0 rgba(0,0,0,.3),0 3px 6px rgba(0,0,0,.2),inset 0 1px 2px rgba(255,255,255,.2),inset 0 -1px 3px rgba(0,0,0,.15)}
+.acc-green{background:radial-gradient(ellipse at 50% 25%,#4ade80 0%,#16a34a 55%,#14532d 100%)}
+.acc-red{background:radial-gradient(ellipse at 50% 25%,#f87171 0%,#dc2626 55%,#991b1b 100%)}
+.acc-amber{background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%)}
+/* Field highlight when form incomplete */
+@keyframes flash-field{0%{box-shadow:0 0 0 3px rgba(220,38,38,0.1);}50%{box-shadow:0 0 0 4px rgba(220,38,38,0.7);}100%{box-shadow:0 0 0 3px rgba(220,38,38,0.35);}}
+.field-missing{border-color:#dc2626!important;background:#fff0f0!important;box-shadow:0 0 0 3px rgba(220,38,38,0.35)!important;animation:flash-field 0.6s ease 3;}
 /* 3-col form zones */
 .form-3col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 .fzone{border-radius:7px;padding:8px}
@@ -5081,11 +5093,10 @@ select{cursor:default}
     </div>
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0" id="main-action-btns">
-        <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:calc(15px*var(--zf,1));padding:18px 28px;font-weight:800;min-height:72px;box-shadow:0 7px 0 #14532d,0 10px 14px rgba(0,0,0,.25);transform:translateY(0);transition:all .1s;border-radius:12px" onmousedown="this.style.transform='translateY(5px)';this.style.boxShadow='0 2px 0 #14532d,0 4px 6px rgba(0,0,0,.15)'" onmouseup="this.style.transform='';this.style.boxShadow=''" onmouseleave="this.style.transform='';this.style.boxShadow=''">▶ Démarrer production</button>
-        <button class="btn btn-danger" onclick="openStopModal()" style="font-size:calc(15px*var(--zf,1));padding:18px 28px;font-weight:800;min-height:72px;box-shadow:0 7px 0 #7f1d1d,0 10px 14px rgba(0,0,0,.25);transform:translateY(0);transition:all .1s;border-radius:12px" onmousedown="this.style.transform='translateY(5px)';this.style.boxShadow='0 2px 0 #7f1d1d,0 4px 6px rgba(0,0,0,.15)'" onmouseup="this.style.transform='';this.style.boxShadow=''" onmouseleave="this.style.transform='';this.style.boxShadow=''">⛔ Déclarer un arrêt</button>
-        <button id="btn-degrade-acc" class="btn" onclick="toggleDegrade()" style="font-size:calc(13px*var(--zf,1));padding:14px 20px;font-weight:800;min-height:72px;background:#fef9c3;border:2px solid #ca8a04;color:#854d0e;box-shadow:0 7px 0 #92400e,0 10px 14px rgba(0,0,0,.2);transform:translateY(0);transition:all .1s;border-radius:12px" onmousedown="this.style.transform='translateY(5px)';this.style.boxShadow='0 2px 0 #92400e,0 4px 6px rgba(0,0,0,.1)'" onmouseup="this.style.transform='';this.style.boxShadow=''" onmouseleave="this.style.transform='';this.style.boxShadow=''">🟡 Mode dégradé</button>
-        <button class="btn btn-amber" onclick="doFinPoste()" style="font-size:calc(15px*var(--zf,1));padding:18px 28px;font-weight:800;min-height:72px;box-shadow:0 7px 0 #78350f,0 10px 14px rgba(0,0,0,.25);transform:translateY(0);transition:all .1s;border-radius:12px" onmousedown="this.style.transform='translateY(5px)';this.style.boxShadow='0 2px 0 #78350f,0 4px 6px rgba(0,0,0,.15)'" onmouseup="this.style.transform='';this.style.boxShadow=''" onmouseleave="this.style.transform='';this.style.boxShadow=''">🏁 Fin de poste</button>
-
+        <button class="acc-btn acc-green" id="btn-start" onclick="doStartProd()"><span class="act-icon">▶</span>Démarrer production</button>
+        <button class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon">🛑</span>Déclarer un arrêt</button>
+        <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span>Mode dégradé</button>
+        <button class="acc-btn acc-amber" onclick="doFinPoste()"><span class="act-icon">🏁</span>Fin de poste</button>
       </div>
     </div>
     <!-- KPI accueil — POSTE ACTUEL -->
@@ -5272,13 +5283,13 @@ select{cursor:default}
         </div>
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row">
-          <button class="act-btn act-stop" onclick="openStopModal()" style="white-space:normal;line-height:1.2">⛔ Déclarer<br>un arrêt</button>
-          <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none;white-space:normal;line-height:1.2">🟡 Mode<br>dégradé</button>
-          <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
-          <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
-          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none;cursor:pointer">👥 Réunion</button>
-          <button class="act-btn act-cancel" onclick="doCancelProd()">✖ Annuler prod</button>
-          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()" title="Remplir le formulaire">🏁 Fin d'OF/prod</button>
+          <button class="act-btn act-stop" onclick="openStopModal()"><span class="act-icon">🛑</span>Déclarer un arrêt</button>
+          <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span>Mode dégradé</button>
+          <button class="act-btn act-nett" onclick="doNettoyage()"><span class="act-icon">🧹</span>Nettoyage</button>
+          <button class="act-btn act-pause" id="btn-pause" onclick="doPause()"><span class="act-icon">☕</span>Pause</button>
+          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span>Réunion</button>
+          <button class="act-btn act-cancel" onclick="doCancelProd()"><span class="act-icon">✖</span>Annuler prod</button>
+          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()" title="Remplir le formulaire"><span class="act-icon">✅</span>Fin d'OF/prod</button>
         </div>
       </div>
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
@@ -6533,6 +6544,7 @@ function goTab(tab) {
   if(tab==='rapports'){loadRapports();rptBackToList();}
   if(tab==='rpt-jour') loadRptJour();
   if(tab==='main') { loadMainDecl(); }
+  if(tab!=='prod') _clearFieldHighlights();
   if(tab==='kpi') loadKPI();
   if(tab==='settings') {
     _settingsUnlocked = false;
@@ -6727,10 +6739,9 @@ function applyState(s) {
   window._budgetOverrides=s.budget_overrides||{};
   // Pause button text
   const pbtn=document.getElementById('btn-pause');
-  if(pbtn) pbtn.textContent=s.is_paused?'▶ Reprendre':'⏸ Pause';
-  // Reunion button text (sync from server state)
+  if(pbtn){pbtn.innerHTML=s.is_paused?'<span class="act-icon">▶</span>Reprendre':'<span class="act-icon">☕</span>Pause';}
   const rbtn=document.getElementById('btn-reunion');
-  if(rbtn) rbtn.textContent=s.reunion_active?'✓ Fin réunion':'👥 Réunion';
+  if(rbtn){rbtn.innerHTML=s.reunion_active?'<span class="act-icon">✓</span>Fin réunion':'<span class="act-icon">🗣️</span>Réunion';}
 
   // TRS gauge
   updateGauge(s);
@@ -7778,9 +7789,18 @@ function _checkEndProdBtn(){
   const req=['f-of_num','f-code_prod','f-type_prod','f-nb_pers','f-qte_fab','f-qte_emb','f-poids','f-taille','f-fibre'];
   const ok=req.every(id=>{const el=document.getElementById(id);return el&&(el.value||'').trim()!==''&&el.value!=='0';});
   const btn=document.getElementById('btn-endprod'); if(!btn) return;
-  btn.disabled=!ok;
   btn.style.opacity=ok?'1':'0.38';
-  btn.style.cursor=ok?'pointer':'not-allowed';
+  btn.style.cursor=ok?'pointer':'default';
+  // Auto-clear highlight when field is now filled
+  req.forEach(id=>{
+    const el=document.getElementById(id);
+    if(el&&(el.value||'').trim()!==''&&el.value!=='0') el.classList.remove('field-missing');
+  });
+}
+function _clearFieldHighlights(){
+  ['f-of_num','f-code_prod','f-type_prod','f-nb_pers','f-qte_fab','f-qte_emb','f-poids','f-taille','f-fibre'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.classList.remove('field-missing');
+  });
 }
 function scheduleAutoSave(){
   clearTimeout(_autoSaveTimer);
@@ -7794,6 +7814,13 @@ function scheduleAutoSave(){
 
 // ── END PROD ──
 async function doEndProdPreview(){
+  const req=['f-of_num','f-code_prod','f-type_prod','f-nb_pers','f-qte_fab','f-qte_emb','f-poids','f-taille','f-fibre'];
+  const missing=req.filter(id=>{const el=document.getElementById(id);return !el||(el.value||'').trim()===''||el.value==='0';});
+  if(missing.length){
+    missing.forEach(id=>{const el=document.getElementById(id);if(el){el.classList.remove('field-missing');void el.offsetWidth;el.classList.add('field-missing');}});
+    toast('⚠ Formulaire incomplet','err',1000);
+    return;
+  }
   const f=collectForm();
   const r=await fetch('/api/preview_end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
   if(!r||!r.ok){confirmEndProd();return;}
@@ -10672,11 +10699,11 @@ function fmtDurMS(s){s=Math.round(s||0);const m=Math.floor(s/60),sec=s%60;return
 function fmtDurShort(s){s=Math.round(s||0);const m=Math.floor(s/60),sec=s%60;return m>0?m+'m'+(sec?' '+String(sec).padStart(2,'0')+'s':''):sec+'s';}
 function fmtTRS(v){return(v===null||v===undefined||isNaN(v))?'--%':parseFloat(v).toFixed(1)+'%';}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-function toast(msg,type){
+function toast(msg,type,dur){
   let t=document.getElementById('_toast');
   if(!t){t=document.createElement('div');t.id='_toast';t.style.cssText='position:fixed;bottom:16px;right:16px;padding:8px 14px;border-radius:7px;font-size:calc(13px*var(--zf,1));font-weight:600;z-index:999;transition:opacity .3s;box-shadow:0 4px 12px rgba(0,0,0,.18)';document.body.appendChild(t);}
-  t.textContent=msg;t.style.background=type==='ok'?'#16a34a':'#dc2626';t.style.color='#fff';t.style.opacity='1';
-  clearTimeout(t._to);t._to=setTimeout(()=>t.style.opacity='0',3000);
+  t.textContent=msg;t.style.background=type==='ok'?'#16a34a':type==='warn'?'#d97706':'#dc2626';t.style.color='#fff';t.style.opacity='1';
+  clearTimeout(t._to);t._to=setTimeout(()=>t.style.opacity='0',dur||3000);
 }
 </script>
 </body>
