@@ -2773,14 +2773,17 @@ def api_past_sessions():
             except: date_obj = None
             planned_ded = _compute_planned_deduction_s(session_evts.get(key, []))
             _pk = (s["pilot"].lower(), s["date"])
+            _xl_trs_ps = None
             if _pk in postes_map:
-                _pdeb, _pfin, *_ = postes_map[_pk]
+                _pdeb, _pfin, _xl_trs_ps, _xl_perte_ps = postes_map[_pk]
                 _mdur2 = max(0.0, (_pfin - _pdeb).total_seconds())
             else:
                 _mdur2 = get_shift_duration_s(s["poste"], date_obj)
             _evts_ps = session_evts.get(key, [])
             _prod_raws_ps = s.get("prod_raws", [])
-            if _pers_pct_map and _prod_raws_ps:
+            if _xl_trs_ps is not None and _xl_trs_ps > 0:
+                trs = _xl_trs_ps
+            elif _pers_pct_map and _prod_raws_ps:
                 _deg_ivs_ps = _merged_degrade_ivs([re for _, re in _evts_ps])
                 trs, _ = _option_b_trs(_prod_raws_ps, _deg_ivs_ps, prod_ref)
             else:
@@ -3054,8 +3057,10 @@ def api_session_report():
     planned_ded = _compute_planned_deduction_s(evt_rows)
     _postes_map2 = load_postes_shift_map()
     _pk2 = (pilot.lower(), date_str)
+    _xl_trs_sr = None
+    _xl_perte_sr = None
     if _pk2 in _postes_map2:
-        _pdeb2, _pfin2, *_ = _postes_map2[_pk2]
+        _pdeb2, _pfin2, _xl_trs_sr, _xl_perte_sr = _postes_map2[_pk2]
         model_dur_s = max(0.0, (_pfin2 - _pdeb2).total_seconds())
         if not debut_str:
             debut_str = _pdeb2.strftime("%H:%M")
@@ -3065,7 +3070,15 @@ def api_session_report():
     ecart_s = max(0.0, model_dur_s - (tot_s + stop_s))
     trs_shift = -1.0
     perte_cadence_s = 0.0
-    if _pers_pct_map and _prod_raws_sr and tot_eq > 0:
+    if _xl_trs_sr is not None and _xl_trs_sr > 0 and tot_eq > 0:
+        trs_shift = _xl_trs_sr
+        _cadence_ref_s = prod_ref / 28800
+        if _cadence_ref_s > 0:
+            _sum_exp_xl = tot_eq * 100.0 / _xl_trs_sr
+            perte_cadence_s = (_sum_exp_xl - tot_eq) / _cadence_ref_s
+            if _xl_perte_sr is not None:
+                perte_cadence_s = _xl_perte_sr * 60.0
+    elif _pers_pct_map and _prod_raws_sr and tot_eq > 0:
         trs_shift, _sum_exp_sr = _option_b_trs(_prod_raws_sr, _deg_mg_sr, prod_ref)
         _cadence_ref_s = prod_ref / 28800
         if _cadence_ref_s > 0 and _sum_exp_sr > 0:
@@ -3586,7 +3599,7 @@ def generate_dashboard_html():
                 dt = datetime.datetime.strptime(f"{today_str} {t}", "%d/%m/%Y %H:%M:%S")
                 return max(0, min(W, int((dt-win_start).total_seconds()/span*W)))
             except: return 0
-        catcol = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7","reunion":"#8b5cf6","degrade":"url(#deg-pat)"}
+        catcol = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#f97316","pause":"#64748b","organisation":"#3b82f6","reunion":"#8b5cf6","degrade":"url(#deg-pat)"}
         svg = f'<svg width="100%" viewBox="0 0 {W} {H}" style="display:block" preserveAspectRatio="none">'
         svg += '<defs><pattern id="deg-pat" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#16a34a"/><rect x="4" y="0" width="4" height="8" fill="#fef08a"/></pattern></defs>'
         svg += f'<rect x="0" y="{Y}" width="{W}" height="{BH}" fill="#e2e8f0" rx="4"/>'
@@ -3611,7 +3624,7 @@ def generate_dashboard_html():
             col = catcol["pb"] if ("pb" in t or "panne" in t or "technique" in t) else catcol["ratt"] if "ratt" in t else catcol["nettoyage"] if "nett" in t else catcol["reunion"] if ("réunion" in t or "reunion" in t or "meeting" in t) else catcol["pause"] if "pause" in t else catcol["degrade"] if ("dégr" in t or "degrad" in t or "mode" in t) else "#94a3b8"
             svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="{col}" rx="2" opacity="0.95"/>'
         # Live events from _S (in-memory, not yet in Excel)
-        _catcol2 = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7","reunion":"#8b5cf6"}
+        _catcol2 = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#f97316","pause":"#64748b","organisation":"#3b82f6","reunion":"#8b5cf6"}
         for _dp in (_S.get("degrade_periods") or []):
             _d0 = _dp.get("start"); _d1 = _dp.get("end") or now_ts
             if _d0:
@@ -3656,7 +3669,7 @@ def generate_dashboard_html():
         max_dur = pareto[0][1]
         for lbl, dur in pareto:
             pct = dur / max_dur * 100 if max_dur > 0 else 0
-            col = "#ef4444" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#38bdf8" if "nett" in lbl.lower() else "#a855f7"
+            col = "#ef4444" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#f97316" if "nett" in lbl.lower() else "#8b5cf6" if any(x in lbl.lower() for x in ["réunion","reunion","meeting"]) else "#3b82f6"
             pareto_html += f'''<div style="margin-bottom:4px">
               <div style="display:flex;justify-content:space-between;font-size:calc(12px*var(--zf,1));color:#475569;margin-bottom:2px">
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%">{lbl[:30]}</span>
@@ -3676,7 +3689,7 @@ def generate_dashboard_html():
         _sf = str(_sr[17] or "")[:5]
         _sdur = str(_sr[18] or "")
         _scmt = str(_sr[35] or "").strip()
-        _scol = "#ef4444" if any(x in _st.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in _st.lower() else "#38bdf8" if "nett" in _st.lower() else "#a855f7"
+        _scol = "#ef4444" if any(x in _st.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in _st.lower() else "#f97316" if "nett" in _st.lower() else "#8b5cf6" if any(x in _st.lower() for x in ["réunion","reunion","meeting"]) else "#3b82f6"
         _stop_list_html += (f'<tr>'
             f'<td style="padding:3px 6px;font-size:calc(11px*var(--zf,1));font-weight:700;color:{_scol};white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis">{_st}</td>'
             f'<td style="padding:3px 6px;font-size:calc(11px*var(--zf,1));color:#64748b;white-space:nowrap">{_sd}→{_sf}</td>'
@@ -4109,8 +4122,9 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
       <span><i style="background:#4ade80"></i>OF en cours</span>
       <span><i style="background:#ef4444"></i>PB Technique</span>
       <span><i style="background:#f59e0b"></i>Rattrapage</span>
-      <span><i style="background:#38bdf8"></i>Nettoyage</span>
+      <span><i style="background:#f97316"></i>Nettoyage</span>
       <span><i style="background:#64748b"></i>Pause</span>
+      <span><i style="background:#8b5cf6"></i>Réunion</span>
       <span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Mode dégradé</span>
     </div>
   </div>
@@ -4784,8 +4798,8 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .act-btn:hover{filter:brightness(1.08)}
 .act-btn:active{transform:translateY(6px);box-shadow:0 2px 0 rgba(0,0,0,.3),0 3px 6px rgba(0,0,0,.2),inset 0 1px 2px rgba(255,255,255,.2),inset 0 -1px 3px rgba(0,0,0,.15)}
 .act-stop{background:radial-gradient(ellipse at 50% 25%,#f87171 0%,#dc2626 55%,#991b1b 100%);color:#fff;font-size:calc(16px*var(--zf,1));font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
-.act-nett{background:radial-gradient(ellipse at 50% 25%,#7dd3fc 0%,#0ea5e9 55%,#075985 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
-.act-pause{background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#7c3aed 55%,#4c1d95 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
+.act-nett{background:radial-gradient(ellipse at 50% 25%,#fdba74 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
+.act-pause{background:radial-gradient(ellipse at 50% 25%,#cbd5e1 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
 .act-cancel{background:radial-gradient(ellipse at 50% 25%,#94a3b8 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.3)}
 .act-endprod{background:radial-gradient(ellipse at 50% 25%,#4ade80 0%,#16a34a 55%,#14532d 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
 /* 3-col form zones */
@@ -5254,7 +5268,7 @@ select{cursor:default}
           <svg id="tl-svg" viewBox="0 0 800 52" preserveAspectRatio="none" style="width:100%;height:52px;display:block">
             <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
           </svg>
-          <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Prod dégradé</span></div>
+          <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Prod dégradé</span></div>
         </div>
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row">
@@ -5262,9 +5276,9 @@ select{cursor:default}
           <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none;white-space:normal;line-height:1.2">🟡 Mode<br>dégradé</button>
           <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
           <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
-          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#a78bfa 0%,#7c3aed 55%,#4c1d95 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none;cursor:pointer">👥 Réunion</button>
+          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none;cursor:pointer">👥 Réunion</button>
           <button class="act-btn act-cancel" onclick="doCancelProd()">✖ Annuler prod</button>
-          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()">🏁 Fin d'OF/prod</button>
+          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()" title="Remplir le formulaire">🏁 Fin d'OF/prod</button>
         </div>
       </div>
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
@@ -5368,7 +5382,7 @@ select{cursor:default}
       <svg id="fp-tl" viewBox="0 0 800 52" preserveAspectRatio="none" style="width:100%;height:52px;display:block">
         <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
       </svg>
-      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
+      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
     </div>
     <!-- Corps défilant : productions + arrêts côte à côte -->
     <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -5930,6 +5944,7 @@ select{cursor:default}
     <div class="mhdr"><h2>✏ Modifier l'arrêt</h2></div>
     <div class="mbody">
       <input type="hidden" id="es-key">
+      <div class="fr" style="margin-bottom:10px"><label style="font-weight:800;color:#dc2626">🔑 Mot de passe admin</label><input type="password" id="es-pw" placeholder="Mot de passe requis"></div>
       <div class="fr" style="margin-bottom:8px"><label>Type</label><select id="es-type"></select></div>
       <div class="fr" style="margin-bottom:8px"><label>Heure début</label><input type="time" id="es-deb" step="60"></div>
       <div class="fr" style="margin-bottom:8px"><label>Heure fin</label><input type="time" id="es-fin" step="60"></div>
@@ -6085,9 +6100,10 @@ const EVENTS = [
 
 const STOP_COL = {
   ratt:"#dc2626",pb:"#dc2626",autre:"#64748b",
-  nettoyage:"#f59e0b",
+  nettoyage:"#f97316",
   organisation:"#3b82f6",
   manquants:"#9333ea",
+  reunion:"#8b5cf6",
   "_pause":"#94a3b8","Pause":"#94a3b8"
 };
 const _STOP_GRAD = {
@@ -6095,10 +6111,11 @@ const _STOP_GRAD = {
   pb:          ['#f87171','#dc2626','#991b1b'],
   manquants:   ['#d8b4fe','#9333ea','#6b21a8'],
   organisation:['#93c5fd','#3b82f6','#1d4ed8'],
-  nettoyage:   ['#fcd34d','#f59e0b','#b45309'],
+  nettoyage:   ['#fdba74','#f97316','#c2410c'],
   autre:       ['#94a3b8','#64748b','#334155'],
-  _pause:      ['#94a3b8','#64748b','#334155'],
-  Pause:       ['#94a3b8','#64748b','#334155'],
+  _pause:      ['#cbd5e1','#64748b','#334155'],
+  Pause:       ['#cbd5e1','#64748b','#334155'],
+  reunion:     ['#c4b5fd','#8b5cf6','#5b21b6'],
 };
 
 function getStopColor(key, cat) {
@@ -7503,7 +7520,7 @@ function rebuildStopGrids(){
     items.forEach(e=>{
       const [lt,md,dk]=_STOP_GRAD[e.cat]||_STOP_GRAD.autre;
       const b=document.createElement('button');
-      b.style.cssText=`color:#fff;border:none;border-radius:14px;padding:14px 8px;min-height:54px;width:100%;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;background:radial-gradient(ellipse at 50% 25%,${lt} 0%,${md} 55%,${dk} 100%);box-shadow:${_bs0};transition:transform .12s,box-shadow .12s;position:relative;overflow:hidden;text-shadow:0 1px 3px rgba(0,0,0,.4)`;
+      b.style.cssText=`color:#fff;border:none;border-radius:12px;padding:10px 6px;min-height:44px;width:100%;font-size:calc(10px*var(--zf,1));font-weight:700;cursor:pointer;background:radial-gradient(ellipse at 50% 25%,${lt} 0%,${md} 55%,${dk} 100%);box-shadow:${_bs0};transition:transform .12s,box-shadow .12s;position:relative;overflow:hidden;text-shadow:0 1px 3px rgba(0,0,0,.4)`;
       const sheen=document.createElement('span');
       sheen.style.cssText='position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,rgba(255,255,255,.28) 0%,rgba(255,255,255,0) 100%);border-radius:14px 14px 0 0;pointer-events:none';
       const txt=document.createElement('span');
@@ -8293,30 +8310,38 @@ function openEditStop(key){
   const ev=window._evMap[key];
   if(!ev) return;
   document.getElementById('es-key').value=key;
+  document.getElementById('es-pw').value='';
   document.getElementById('es-type').value=ev.type||key||'';
   const d=ev.debut||'',f2=ev.fin||'';
   document.getElementById('es-deb').value=d.length>=5?d.slice(0,5):d;
   document.getElementById('es-fin').value=f2.length>=5?f2.slice(0,5):f2;
   document.getElementById('es-cmt').value=ev.comment||'';
   openM('m-editstop');
+  setTimeout(()=>{const pw=document.getElementById('es-pw');if(pw)pw.focus();},80);
 }
 
 async function saveEditStop(){
   const key=document.getElementById('es-key').value;
   const ev=window._evMap[key];
   if(!ev) return;
-  const data={row_num:ev.row_num,type:document.getElementById('es-type').value,heure_debut:document.getElementById('es-deb').value,heure_fin:document.getElementById('es-fin').value,comment:document.getElementById('es-cmt').value};
+  const pw=document.getElementById('es-pw').value||'';
+  const data={pw,row_num:ev.row_num,type:document.getElementById('es-type').value,heure_debut:document.getElementById('es-deb').value,heure_fin:document.getElementById('es-fin').value,comment:document.getElementById('es-cmt').value};
   const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Modifié','ok');}
-  else toast('Erreur','err');
+  const d=r?await r.json():{};
+  if(d&&d.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Modifié','ok');}
+  else toast(d?.error||'Mot de passe incorrect','err');
 }
 
 async function deleteStop(){
   const key=document.getElementById('es-key').value;
   const ev=window._evMap[key];
   if(!ev) return;
-  const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:ev.row_num})});
-  if(r&&r.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Supprimé','ok');}
+  const pw=document.getElementById('es-pw').value||'';
+  if(!pw){toast('Mot de passe requis','err');return;}
+  const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Supprimé','ok');}
+  else toast(d?.error||'Mot de passe incorrect','err');
 }
 
 // ── TIMELINE ──
@@ -10253,7 +10278,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       const x1=toX(t1),x2=toX(t2||t1+1800000);
       if(x2<=x1) return;
       const tl=(r.type||'').toLowerCase();
-      const col=r.is_degrade?'url(#dpat_rpt)':(tl.includes('nett')?'#38bdf8':tl.includes('pause')?'#94a3b8':tl.includes('ratt')?'#f59e0b':'#dc2626');
+      const col=r.is_degrade?'url(#dpat_rpt)':(tl.includes('nett')?'#f97316':tl.includes('pause')?'#94a3b8':(tl.includes('réunion')||tl.includes('reunion')||tl.includes('meeting'))?'#8b5cf6':tl.includes('ratt')?'#f59e0b':'#dc2626');
       html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${col}" rx="2" opacity=".75"/>`;
     });
     const fmt=ms=>{const d=new Date(ms);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
