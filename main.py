@@ -4896,6 +4896,29 @@ select{cursor:default}
     <div style="margin-top:10px;text-align:center;font-size:calc(11px*var(--zf,1));color:#94a3b8">
       Prod bloquée ? <a href="/reset" style="color:#dc2626;font-weight:700">Cliquer ici pour réinitialiser</a>
     </div>
+    <div style="margin-top:8px;text-align:right">
+      <button onclick="openExcelModal()" title="Configurer le fichier Excel" style="background:none;border:none;cursor:pointer;color:rgba(255,255,255,.3);font-size:calc(13px*var(--zf,1));padding:2px 4px;line-height:1" onmouseover="this.style.color='rgba(255,255,255,.7)'" onmouseout="this.style.color='rgba(255,255,255,.3)'">&#x1F4C1;</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ MODAL EXCEL ════ -->
+<div id="modal-excel" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#1e293b;border-radius:12px;padding:24px;width:90%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+    <div style="color:#e2e8f0;font-size:calc(15px*var(--zf,1));font-weight:700;margin-bottom:14px">&#x1F4C1; Fichier Excel</div>
+    <div style="margin-bottom:10px">
+      <label style="color:#94a3b8;font-size:calc(11px*var(--zf,1));display:block;margin-bottom:4px">Chemin complet du fichier Excel</label>
+      <input id="excel-path-inp" type="text" placeholder="C:\...\fichier.xlsx" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:calc(12px*var(--zf,1));outline:none">
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="color:#94a3b8;font-size:calc(11px*var(--zf,1));display:block;margin-bottom:4px">Mot de passe superviseur</label>
+      <input id="excel-pw-inp" type="password" placeholder="••••" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:calc(12px*var(--zf,1));outline:none">
+    </div>
+    <div id="excel-modal-err" style="color:#f87171;font-size:calc(11px*var(--zf,1));min-height:16px;margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="closeExcelModal()" style="padding:7px 16px;border-radius:6px;border:1px solid #334155;background:none;color:#94a3b8;cursor:pointer;font-size:calc(12px*var(--zf,1))">Annuler</button>
+      <button onclick="saveExcelPath()" style="padding:7px 16px;border-radius:6px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:calc(12px*var(--zf,1));font-weight:600">Enregistrer</button>
+    </div>
   </div>
 </div>
 
@@ -6171,6 +6194,37 @@ async function doLogin() {
   }
 }
 
+function openExcelModal(){
+  var m=document.getElementById('modal-excel');
+  document.getElementById('excel-modal-err').textContent='';
+  document.getElementById('excel-pw-inp').value='';
+  fetch('/api/config').then(function(r){return r.json();}).then(function(d){
+    document.getElementById('excel-path-inp').value=d.db_path||'';
+  }).catch(function(){});
+  m.style.display='flex';
+}
+function closeExcelModal(){
+  document.getElementById('modal-excel').style.display='none';
+}
+function saveExcelPath(){
+  var path=document.getElementById('excel-path-inp').value.trim();
+  var pw=document.getElementById('excel-pw-inp').value;
+  var errEl=document.getElementById('excel-modal-err');
+  errEl.textContent='';
+  if(!path){errEl.textContent='Chemin requis';return;}
+  fetch('/api/set_db',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:path,pw:pw})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.ok){
+        closeExcelModal();
+        if(typeof loadLists==='function') loadLists();
+        toast('Fichier Excel chargé','ok');
+      } else {
+        errEl.textContent=d.error||'Erreur';
+      }
+    })
+    .catch(function(){errEl.textContent='Erreur réseau';});
+}
 function doGuestLogin(){
   window._guestMode=true;
   document.getElementById('v-login').classList.remove('on');
