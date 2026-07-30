@@ -1817,6 +1817,13 @@ def api_end_prod():
         # degrade_active / degrade_type restent inchangés — l'utilisateur arrête explicitement
     t_stop_all()
     tl_close_all()
+    # Arrêter la pause si elle est encore active (non gérée par tl_events)
+    if _S.get("is_paused") and _S.get("pause_start"):
+        _pnow = datetime.datetime.now()
+        _S["pause_total_s"] += (_pnow - _S["pause_start"]).total_seconds()
+        _S["pause_periods"].append((_S["pause_start"], _pnow))
+        _S["is_paused"] = False
+        _S["pause_start"] = None
     end_dt = datetime.datetime.now()
     of_s_brut = (end_dt-_S["of_start"]).total_seconds()
     # Budget arrêts prévus — calculé après tl_close_all (tous les événements sont terminés)
@@ -1939,6 +1946,8 @@ def api_end_prod():
     _S["interposte_s"] = 0.0
     _S["pause_total_s"] = 0.0
     _S["pause_periods"] = []
+    _S["is_paused"] = False
+    _S["pause_start"] = None
     _S["form"] = {}
     _S["degrade_periods"] = []
     save_session()
