@@ -8450,7 +8450,7 @@ function _csKeydown(e){
   if(/^[0-9]$/.test(e.key)){
     e.preventDefault();
     const pos=_csDigits.findIndex(d=>!d);
-    if(pos!==-1){_csDigits[pos]=e.key;_csRender();}
+    if(pos!==-1){_csDigits[pos]=e.key;_csRender();if(_csDigits.every(d=>d))setTimeout(_codeInputConfirm,80);}
   } else if(e.key==='Backspace'){
     e.preventDefault();
     let pos=_csDigits.findIndex(d=>!d);
