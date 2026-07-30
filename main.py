@@ -1233,6 +1233,7 @@ def write_poste_row(data, row_num=None):
                     round(float(data.get("cadence_ref_pcs_min",0) or 0),4),      # col 22 (V) Réf cadence
                     round(float(data.get("perte_cadence_min",0) or 0),1),        # col 23 (W) Perte cadence
                     round(float(data.get("degrade_min",0) or 0),1),              # col 24 (X) Temps en mode dégradé
+                    round(float(data.get("pcs_theorique",0) or 0),1),             # col 25 (Y) Pièces théoriques
                 ]
                 if row_num and row_num > 1:
                     for ci, v in enumerate(vals, start=1):
@@ -1302,6 +1303,8 @@ def load_postes_shift_map():
                     'arret_min':     _flt(ws.cell(ri, 21).value),  # col U: Temps arret
                     'perte_min':     _flt(ws.cell(ri, 23).value),  # col W: Perte cadence (min)
                     'degrade_min':   _flt(ws.cell(ri, 24).value),  # col X: Temps degrade
+                    'pcs_theorique': _flt(ws.cell(ri, 25).value),  # col Y: Pièces théoriques
+                    'depassement_min': _flt(ws.cell(ri, 13).value), # col M: Dépassement arrêts
                     'row_idx':       ri,
                 }
             wb.close()
@@ -2669,7 +2672,7 @@ def api_fin_poste_data():
             trs_poste_shift = round(tot_eq / (prod_ref * _adj_fp / 28800) * 100, 1)
         perte_cadence_fp = round((prod_ref * _adj_fp / 28800 - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 else 0.0
     tot_pcs_fp = sum(float(str(r[19] or 0).replace(",",".") or 0) for r in _filtered_prod_raw_fp)
-    cadence_h_fp = round(tot_pcs_fp / _elapsed_fp * 3600) if _elapsed_fp > 0 and tot_pcs_fp > 0 else 0
+    cadence_h_fp = round(tot_eq * 60 / temps_utile_fp) if temps_utile_fp > 0 else 0
     _sorted_of_fib = sorted([o for o in of_list if o.get("fibre")], key=lambda x: x.get("debut",""))
     nb_fibre_chg_fp = sum(1 for i in range(1, len(_sorted_of_fib)) if _sorted_of_fib[i]["fibre"] != _sorted_of_fib[i-1]["fibre"])
     return jsonify({
@@ -2695,6 +2698,7 @@ def api_fin_poste_data():
         "perte_cadence_min": perte_cadence_fp,
         "degrade_min": round(_degrade_s_fp / 60, 1),
         "cadence_h": cadence_h_fp,
+        "pcs_theorique": round(_sum_exp_fp, 1) if '_sum_exp_fp' in dir() else round(prod_ref * max(1.0, model_dur_s - planned_ded) / 28800, 1),
         "reunion_min": reunion_min_fp,
         "depassement_min": depassement_min_fp,
         "nb_fibre_chg": nb_fibre_chg_fp,
@@ -2885,6 +2889,12 @@ def api_period_report():
             )
             if _ev_key:
                 sessions[_ev_key]['evt_rows'].append((rn, r))
+    # Exclure la session en cours si demandé
+    if request.args.get('skip_current') and _S.get('pilot') and _S.get('shift_debut_dt'):
+        _cur_pilot_l = _S.get('pilot','').lower()
+        _cur_date_str = _S['shift_debut_dt'].strftime('%d/%m/%Y')
+        sessions = {k: v for k, v in sessions.items()
+                    if not (v.get('pilot','').lower() == _cur_pilot_l and v.get('date') == _cur_date_str)}
     # Limiter aux N sessions les plus récentes si max_sessions > 0
     if max_sessions > 0 and len(sessions) > max_sessions:
         def _key_row(kv):
@@ -2895,6 +2905,7 @@ def api_period_report():
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
     agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_elapsed_s=0.0; agg_sum_expected=0.0
+    agg_sum_theorique=0.0
     agg_fibre_chg=0; agg_depassement=0.0; agg_degrade_min=0.0; stop_by_type={}; sessions_detail=[]
     jours=set(); pilotes=set(); postes_set=set()
     trs_by_day = {}
@@ -2983,8 +2994,12 @@ def api_period_report():
         _of_rows_sd = [{"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"fibre":str(r[11] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"nb_pers":str(r[6] or ""),"trs":str(r[24] or ""),"degrade_min":round(_deg_overlap_s(_hms_to_sec(str(r[16] or "00:00:00")),_hms_to_sec(str(r[17] or "00:00:00")),_deg_ivs_pr)/60,1)} for r in s.get('prod_raws',[])]
         _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or ""))} for _rn2, re2 in s.get('evt_rows',[])]
         agg_degrade_min += (_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s / 60.0)
+        _xl_theorique = _xl.get('pcs_theorique') or _sum_exp_pr
+        agg_sum_theorique += _xl_theorique
+        agg_depassement += (_xl.get('depassement_min') if _xl.get('depassement_min') is not None else depassement)
         sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd})
-    trs_periode = round(agg_equiv/agg_sum_expected*100,1) if agg_sum_expected>0 and agg_equiv>0 else -1.0
+    _trs_denom = agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected
+    trs_periode = round(agg_equiv/_trs_denom*100,1) if _trs_denom>0 and agg_equiv>0 else -1.0
     def _sort_dmy(d):
         try: p=d.split('/'); return (int(p[2]),int(p[1]),int(p[0]))
         except: return (0,0,0)
@@ -2992,8 +3007,9 @@ def api_period_report():
         {'date':day,'trs':round(v['equiv']/v['sum_expected']*100,1) if v['sum_expected']>0 and v['equiv']>0 else -1.0}
         for day,v in sorted(trs_by_day.items(), key=lambda x:_sort_dmy(x[0]))
     ]
-    cadence_h = round(agg_equiv/agg_fonct*60) if agg_fonct>0 else 0
+    cadence_h = round(agg_equiv*60/agg_utile) if agg_utile>0 else 0
     sessions_detail_sorted = sorted(sessions_detail, key=lambda x: _sort_dmy(x['date']))
+    _agg_perte_xl = round((agg_sum_theorique - agg_equiv) / cadence_ref, 1) if cadence_ref > 0 and agg_sum_theorique > 0 else round(agg_perte, 1)
     return jsonify({
         'ok':True,
         'trs_periode':trs_periode,
@@ -3009,12 +3025,12 @@ def api_period_report():
         'temps_fonctionnement_min':round(agg_fonct,1),
         'net_stop_min':round(agg_stop,1),
         'tot_degrade_min':round(agg_degrade_min,1),
-        'perte_cadence_min':round(agg_perte,1),
+        'perte_cadence_min':_agg_perte_xl,
         'cadence_ref_pcs_min':cadence_ref,
         'cadence_h':cadence_h,
         'trs_by_day':trs_by_day_list,
         'nb_fibre_chg':agg_fibre_chg,
-        'depassement_min':round(agg_depassement,1),
+        'depassement_min':round(agg_depassement,1),  # sum col M
         'sessions_detail':sessions_detail_sorted,
         'degrade_min_total': round(sum(_merged_degrade_s([re2 for _, re2 in s['evt_rows']]) for s in sessions.values()) / 60, 1),
         'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])[:15]],
@@ -4742,10 +4758,10 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 body.stop-on #app-hdr{background:linear-gradient(90deg,#fff 0px,#fee2e2 160px,#7f0000 280px,#7f0000 100%)!important;border-color:#b91c1c}
 
 /* ── HEADER ── */
-#app-hdr{height:var(--hdr-h);background:linear-gradient(90deg,#ffffff 0px,#ffffff 150px,#dde4f7 230px,var(--navy) 320px,var(--navy) 100%);display:flex;align-items:flex-end;padding:0 14px;gap:10px;flex-shrink:0;border-bottom:3px solid var(--navy2);box-shadow:0 4px 18px rgba(26,31,94,.32),inset 0 -1px 0 rgba(255,255,255,.12)}
+#app-hdr{height:var(--hdr-h);background:linear-gradient(90deg,#ffffff 0px,#ffffff 150px,#dde4f7 230px,var(--navy) 320px,var(--navy) 100%);display:flex;align-items:flex-end;padding:0 14px;gap:10px;flex-shrink:0;box-shadow:0 4px 18px rgba(26,31,94,.32),inset 0 -1px 0 rgba(255,255,255,.12)}
 .hdr-logo{display:none}
 .hdr-tabs{display:flex;gap:4px;flex:1;align-self:flex-end}
-.htab{background:linear-gradient(180deg,rgba(255,255,255,.18) 0%,rgba(255,255,255,.06) 100%);border:1.5px solid rgba(255,255,255,.22);border-bottom:3px solid transparent;color:rgba(255,255,255,.65);padding:7px 16px 9px;border-radius:8px 8px 0 0;cursor:pointer;font-size:calc(12px*var(--zf,1));font-weight:700;white-space:nowrap;transition:all .15s;position:relative;top:3px;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 -2px 6px rgba(0,0,0,.15)}
+.htab{background:rgba(26,31,94,0.72);border:1.5px solid rgba(255,255,255,.25);border-bottom:3px solid transparent;color:rgba(255,255,255,.82);padding:7px 16px 9px;border-radius:8px 8px 0 0;cursor:pointer;font-size:calc(12px*var(--zf,1));font-weight:700;white-space:nowrap;transition:all .15s;position:relative;top:3px;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 -2px 6px rgba(0,0,0,.15)}
 .htab:hover{background:linear-gradient(180deg,rgba(255,255,255,.28) 0%,rgba(255,255,255,.12) 100%);border-color:rgba(255,255,255,.42);border-bottom-color:transparent;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 -3px 8px rgba(0,0,0,.2)}
 .htab.on{background:linear-gradient(180deg,#fff 0%,#f0f4ff 100%);color:#1e3a8a;font-weight:800;border-color:rgba(255,255,255,.5);border-bottom:3px solid #fff;box-shadow:0 -4px 10px rgba(0,0,0,.15),inset 0 1px 0 #fff,inset 0 -1px 0 rgba(30,58,138,.1)}
 .htab.prod-on{background:var(--green)!important;color:#fff!important;font-weight:800;animation:pt 1.4s ease-in-out infinite;border-color:transparent!important;border-bottom-color:transparent!important;letter-spacing:.3px}
@@ -4829,8 +4845,8 @@ body.stop-on #app-hdr{background:linear-gradient(90deg,#fff 0px,#fee2e2 160px,#7
 /* CENTER form col (now left) */
 .form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
 /* Action buttons row below timeline */
-.prod-act-row{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10}
-.act-btn{flex:1;min-width:100px;border:none;border-radius:14px;padding:24px 6px;cursor:pointer;font-size:calc(16px*var(--zf,1));font-weight:700;text-align:center;transition:all .12s;white-space:nowrap;min-height:80px;display:flex;align-items:center;justify-content:center;gap:4px;flex-direction:column;line-height:1.3;box-shadow:0 8px 0 rgba(0,0,0,.3),0 10px 16px rgba(0,0,0,.25),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.2);transform:translateY(0);position:relative;overflow:hidden}
+.prod-act-row{display:flex;gap:10px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10}
+.act-btn{flex:1;min-width:100px;border:none;border-radius:14px;padding:8px 6px 10px;cursor:pointer;font-size:calc(14px*var(--zf,1));font-weight:700;text-align:center;transition:all .12s;white-space:nowrap;min-height:56px;display:flex;align-items:center;justify-content:flex-start;padding-top:12px;gap:3px;flex-direction:column;line-height:1.25;box-shadow:0 8px 0 rgba(0,0,0,.3),0 10px 16px rgba(0,0,0,.25),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.2);transform:translateY(0);position:relative;overflow:hidden}
 .act-btn::before{content:'';position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 100%);border-radius:14px 14px 0 0;pointer-events:none}
 .act-btn:hover{filter:brightness(1.08)}
 .act-btn:active{transform:translateY(6px);box-shadow:0 2px 0 rgba(0,0,0,.3),0 3px 6px rgba(0,0,0,.2),inset 0 1px 2px rgba(255,255,255,.2),inset 0 -1px 3px rgba(0,0,0,.15)}
@@ -4839,9 +4855,9 @@ body.stop-on #app-hdr{background:linear-gradient(90deg,#fff 0px,#fee2e2 160px,#7
 .act-pause{background:radial-gradient(ellipse at 50% 25%,#cbd5e1 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
 .act-cancel{background:radial-gradient(ellipse at 50% 25%,#94a3b8 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.3)}
 .act-endprod{background:radial-gradient(ellipse at 50% 25%,#4ade80 0%,#16a34a 55%,#14532d 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
-.act-icon{font-size:calc(26px*var(--zf,1));line-height:1;display:block;margin-bottom:2px}
+.act-icon{font-size:calc(34px*var(--zf,1));line-height:1;display:block;margin-bottom:3px}
 /* Accueil 3D buttons */
-.acc-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:none;border-radius:16px;padding:14px 22px;min-height:80px;min-width:130px;cursor:pointer;font-size:calc(14px*var(--zf,1));font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.4);box-shadow:0 8px 0 rgba(0,0,0,.3),0 10px 16px rgba(0,0,0,.25),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.2);transform:translateY(0);transition:transform .1s,box-shadow .1s;position:relative;overflow:hidden}
+.acc-btn{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:12px;gap:4px;border:none;border-radius:16px;padding:14px 22px;min-height:80px;min-width:130px;cursor:pointer;font-size:calc(14px*var(--zf,1));font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.4);box-shadow:0 8px 0 rgba(0,0,0,.3),0 10px 16px rgba(0,0,0,.25),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.2);transform:translateY(0);transition:transform .1s,box-shadow .1s;position:relative;overflow:hidden}
 .acc-btn::before{content:'';position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 100%);border-radius:16px 16px 0 0;pointer-events:none}
 .acc-btn:hover{filter:brightness(1.08)}
 .acc-btn:active{transform:translateY(6px);box-shadow:0 2px 0 rgba(0,0,0,.3),0 3px 6px rgba(0,0,0,.2),inset 0 1px 2px rgba(255,255,255,.2),inset 0 -1px 3px rgba(0,0,0,.15)}
@@ -5130,10 +5146,10 @@ select{cursor:default}
     </div>
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0" id="main-action-btns">
-        <button class="acc-btn acc-green" id="btn-start" onclick="doStartProd()"><span class="act-icon">▶</span>Démarrer production</button>
-        <button class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon">🛑</span>Déclarer un arrêt</button>
-        <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span>Mode dégradé</button>
-        <button class="acc-btn acc-amber" onclick="doFinPoste()"><span class="act-icon">🏁</span>Fin de poste</button>
+        <button class="acc-btn acc-green" id="btn-start" onclick="doStartProd()"><span class="act-icon">▶</span><span>Démarrer production</span></button>
+        <button class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon">🛑✕</span><span>Déclarer un arrêt</span></button>
+        <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
+        <button class="acc-btn acc-amber" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
       </div>
     </div>
     <!-- KPI accueil — POSTE ACTUEL -->
@@ -5320,11 +5336,11 @@ select{cursor:default}
         </div>
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row" style="justify-content:center">
-          <button class="act-btn act-stop" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px)" onclick="openStopModal()"><span class="act-icon">🛑</span>Déclarer un arrêt</button>
-          <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px);background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span>Mode dégradé</button>
-          <button class="act-btn act-nett" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px)" onclick="doNettoyage()"><span class="act-icon">🧹</span>Nettoyage</button>
-          <button class="act-btn act-pause" id="btn-pause" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px)" onclick="doPause()"><span class="act-icon">☕</span>Pause</button>
-          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px);background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span>Réunion</button>
+          <button class="act-btn act-stop" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px)" onclick="openStopModal()"><span class="act-icon">🛑✕</span><span>Déclarer un arrêt</span></button>
+          <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px);background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
+          <button class="act-btn act-nett" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px)" onclick="doNettoyage()"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
+          <button class="act-btn act-pause" id="btn-pause" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px)" onclick="doPause()"><span class="act-icon">☕</span><span>Pause</span></button>
+          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px);background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         </div>
       </div>
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
@@ -5371,7 +5387,7 @@ select{cursor:default}
         <!-- Bottom action buttons -->
         <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0;background:var(--card)">
           <button class="act-btn act-cancel" onclick="doCancelProd()" style="width:100%;min-height:44px;padding:8px 12px;font-size:calc(14px*var(--zf,1))"><span class="act-icon" style="font-size:calc(18px*var(--zf,1))">✖</span>Annuler prod</button>
-          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()" title="Remplir le formulaire" style="width:100%;min-height:55px;padding:10px 12px;font-size:calc(20px*var(--zf,1))"><span class="act-icon" style="font-size:calc(33px*var(--zf,1))">✅</span>Fin d'OF/prod</button>
+          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()" title="Remplir le formulaire" style="width:100%;min-height:69px;padding:10px 12px;font-size:calc(20px*var(--zf,1));margin-top:8px"><span class="act-icon" style="font-size:calc(33px*var(--zf,1))">✅</span>Fin d'OF/prod</button>
         </div>
       </div>
     </div>
@@ -9411,6 +9427,7 @@ async function confirmFinPoste(){
     cadence_ref_pcs_min:fpData&&fpData.cadence_ref_pcs_min||0,
     perte_cadence_min:fpData&&fpData.perte_cadence_min||0,
     degrade_min:fpData&&fpData.degrade_min||0,
+    pcs_theorique:fpData&&fpData.pcs_theorique||0,
   };
   await fetch('/api/save_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posteRow)});
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
@@ -10005,7 +10022,7 @@ async function calcPeriodReport(autoLoad){
   if(to)   url+='date_to='+encodeURIComponent(to)+'&';
   if(pilot) url+='pilot='+encodeURIComponent(pilot)+'&';
   if(poste) url+='poste='+encodeURIComponent(poste)+'&';
-  if(autoLoad) url+='max_sessions=3&';
+  if(autoLoad) url+='max_sessions=3&skip_current=1&';
   const d=await apiFetch(url);
   if(!d||!d.ok){resultEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur ou aucune donnée</div>';return;}
   if(d.nb_sessions===0){resultEl.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">🔍</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Aucun poste trouvé pour cette période</div></div>';return;}
@@ -10207,7 +10224,7 @@ async function calcPeriodReport(autoLoad){
         </div>
         <!-- Lignes info -->
         <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
-          ${[['Ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Arrêts',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Dégradé',Math.round(d.tot_degrade_min||0)+' min','#f59e0b'],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes',d.nb_sessions,'#0891b2'],['OF',d.nb_of,'#0891b2'],['Chgt fibre',d.nb_fibre_chg||0,'#8b5cf6'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
+          ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min','#f59e0b'],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes',d.nb_sessions,'#0891b2'],['OF',d.nb_of,'#0891b2'],['Chgt fibre',d.nb_fibre_chg||0,'#8b5cf6'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
         </div>
       </div>
       <!-- Colonne droite : graphiques -->
@@ -10468,7 +10485,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#8b5cf6;font-weight:900">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?((d.actual_debut||d.model_debut)+'→'+(d.actual_fin||d.model_fin)):('—')}</div>${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?`<div style="font-size:calc(9px*var(--zf,1));color:#64748b;text-align:center">${ouvertureMin} min</div>`:''}<div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#374151">${ouvertureMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#059669">${tempsUtile} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${tempsFonctionnement} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#dc2626">${netStopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
