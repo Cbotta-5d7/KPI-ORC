@@ -1204,12 +1204,12 @@ def write_poste_row(data, row_num=None):
                     round(float(data.get("prod_total",0) or 0),0),               # col 6  (F) Prod Total
                     round(float(data.get("tot_equiv",0) or 0),1),                # col 7  (G) Prod Equiv
                     data.get("trs_shift",""),                                     # col 8  (H) TRS Poste %
-                    round(float(data.get("arret_min",0) or 0),1),                # col 9  (I) Total Arrets
+                    round(float(data.get("cadence_h",0) or 0),0),               # col 9  (I) Cadence/h
                     round(float(data.get("pause_min",0) or 0),1),                # col 10 (J) Total Pauses
                     round(float(data.get("nett_min",0) or 0),1),                 # col 11 (K) Nettoyage
-                    round(float(data.get("dur_prod_total_min",0) or 0),1),       # col 12 (L) Durée Prod Totale
-                    round(float(data.get("dur_prod_sans_arret_min",0) or 0),1),  # col 13 (M) Durée Prod Sans Arrêt
-                    round(float(data.get("dur_poste_theorique_min",0) or 0),1),  # col 14 (N) Durée poste théorique
+                    round(float(data.get("reunion_min",0) or 0),1),              # col 12 (L) Temps en réunion (min)
+                    round(float(data.get("depassement_min",0) or 0),1),          # col 13 (M) Temps hors budget (min)
+                    int(data.get("nb_fibre_chg",0) or 0),                        # col 14 (N) Nb changements fibre
                     data.get("comment",""),                                       # col 15 (O) Commentaire
                     None,                                                          # col 16 (P) Début Poste — géré par write_poste_login_row/update_poste_horaires
                     None,                                                          # col 17 (Q) Fin Poste   — géré par write_poste_login_row/update_poste_horaires
@@ -2544,6 +2544,8 @@ def api_fin_poste_data():
             _bdata[_bk2]['used_min'] += _bs2/60
     arrets_prevu_fp = sum(min(v['budget_min'], v['used_min']) for v in _bdata.values())
     temps_utile_fp = round(max(0.0, ouverture_min_fp - arrets_prevu_fp), 1)
+    reunion_min_fp = round(_bdata.get("meeting_tol_min", {}).get("used_min", 0.0), 1)
+    depassement_min_fp = round(sum(max(0.0, v["used_min"] - v["budget_min"]) for v in _bdata.values()), 1)
     cadence_ref_fp = round(prod_ref / 480, 4) if prod_ref > 0 else 0.0
     _elapsed_fp = max(1.0, model_dur_s - arrets_prevu_fp * 60)
     _adj_fp = max(1.0, _elapsed_fp - _degrade_s_fp / 2.0)
@@ -2555,6 +2557,10 @@ def api_fin_poste_data():
         if prod_ref > 0 and _adj_fp > 0 and tot_eq > 0:
             trs_poste_shift = round(tot_eq / (prod_ref * _adj_fp / 28800) * 100, 1)
         perte_cadence_fp = round((prod_ref * _adj_fp / 28800 - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 else 0.0
+    tot_pcs_fp = sum(float(str(r[19] or 0).replace(",",".") or 0) for r in _filtered_prod_raw_fp)
+    cadence_h_fp = round(tot_pcs_fp / _elapsed_fp * 3600) if _elapsed_fp > 0 and tot_pcs_fp > 0 else 0
+    _sorted_of_fib = sorted([o for o in of_list if o.get("fibre")], key=lambda x: x.get("debut",""))
+    nb_fibre_chg_fp = sum(1 for i in range(1, len(_sorted_of_fib)) if _sorted_of_fib[i]["fibre"] != _sorted_of_fib[i-1]["fibre"])
     return jsonify({
         "pilot":pilot,"date":today,
         "nb_of":len(of_list),"trs":trs_poste,"trs_shift":trs_poste_shift,
@@ -2577,6 +2583,10 @@ def api_fin_poste_data():
         "cadence_ref_pcs_min": cadence_ref_fp,
         "perte_cadence_min": perte_cadence_fp,
         "degrade_min": round(_degrade_s_fp / 60, 1),
+        "cadence_h": cadence_h_fp,
+        "reunion_min": reunion_min_fp,
+        "depassement_min": depassement_min_fp,
+        "nb_fibre_chg": nb_fibre_chg_fp,
     })
 
 @flask_app.route('/api/history_today')
@@ -9033,12 +9043,12 @@ async function confirmFinPoste(){
     prod_total,
     tot_equiv:fpData?fpData.tot_equiv||0:0,
     trs_shift:fpData?fpData.trs_shift||0:0,
-    arret_min:Math.round(arret_s/60),
+    cadence_h:fpData&&fpData.cadence_h||0,
     pause_min:Math.round(pause_s/60),
     nett_min:Math.round(nett_s/60),
-    dur_prod_total_min:Math.round(dur_prod_total_s/60),
-    dur_prod_sans_arret_min:Math.round(dur_prod_sans_arret_s/60),
-    dur_poste_theorique_min:fpData&&fpData.model_dur_s?Math.round(fpData.model_dur_s/60):0,
+    reunion_min:fpData&&fpData.reunion_min||0,
+    depassement_min:fpData&&fpData.depassement_min||0,
+    nb_fibre_chg:fpData&&fpData.nb_fibre_chg||0,
     comment:'',
     temps_ouverture_min:fpData&&fpData.ouverture_min||0,
     temps_utile_min:fpData&&fpData.temps_utile_min||0,
