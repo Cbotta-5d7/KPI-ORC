@@ -6492,7 +6492,7 @@ function applyState(s) {
   window._degradeMotifs=s.degrade_motifs||[];
   window._degradePeriodsIso=s.degrade_periods_iso||[];
   if(s.degrade_active){
-    if(ds){ds.textContent='🟡 MODE DÉGRADÉ EN COURS : '+esc(s.degrade_type||'')+' — Cliquer pour désactiver';ds.style.display='block';ds.onclick=stopDegrade;}
+    if(ds){ds.textContent='🟡 MODE DÉGRADÉ EN COURS : '+esc(s.degrade_type||'');ds.style.display='block';ds.onclick=stopDegrade;}
     if(bdAcc){bdAcc.style.background='#ca8a04';bdAcc.style.color='#fff';bdAcc.textContent='🟡 Désactiver dégradé';bdAcc.style.animation='blink .85s step-start infinite';}
     if(bdProd){bdProd.style.background='#ca8a04';bdProd.style.color='#fff';bdProd.textContent='🟡 Désactiver dégradé';bdProd.style.animation='blink .85s step-start infinite';}
   } else {
@@ -8526,6 +8526,11 @@ async function skipMissingDecl(){
 // ── FIN DE POSTE ──
 async function doFinPoste(){
   if(ST.prod_active){toast('Terminer la production en cours avant de finir le poste','err');return;}
+  // Arrêt automatique du mode dégradé s'il est actif
+  if(window._degradeActive){
+    const rd=await fetch('/api/stop_degrade',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(rd&&rd.ok){window._degradeActive=false;toast('Mode dégradé arrêté automatiquement','ok');}
+  }
   const fpd=await apiFetch('/api/fin_poste_data');
   if(fpd){
     window._ecartFpData=fpd;
