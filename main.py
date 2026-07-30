@@ -2724,6 +2724,7 @@ def api_period_report():
     date_to_str   = request.args.get('date_to',   '').strip()
     filter_pilot  = request.args.get('pilot', '').strip().lower()
     filter_poste  = request.args.get('poste', '').strip().lower()
+    max_sessions  = int(request.args.get('max_sessions', 0) or 0)  # 0 = pas de limite
     def _parse_ymd(s):
         try: p=s.split('-'); return datetime.date(int(p[0]),int(p[1]),int(p[2]))
         except: return None
@@ -2767,6 +2768,12 @@ def api_period_report():
             except: pass
         else:
             sessions[key]['evt_rows'].append((rn, r))
+    # Limiter aux N sessions les plus récentes si max_sessions > 0
+    if max_sessions > 0 and len(sessions) > max_sessions:
+        def _key_date(kv):
+            try: p=kv[1]['date'].split('/'); return (int(p[2]),int(p[1]),int(p[0]))
+            except: return (0,0,0)
+        sessions = dict(sorted(sessions.items(), key=_key_date, reverse=True)[:max_sessions])
     # ── Aggregate ──
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
@@ -4090,6 +4097,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
       <button onclick="calcPeriodReport()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">Calculer</button>
       <button onclick="resetPeriodReport()" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;font-size:calc(12px*var(--zf,1));color:#64748b;cursor:pointer">✕ Réinitialiser</button>
     </div>
+    <div id="rj-auto-banner" style="display:none;padding:5px 16px;background:#eff6ff;border-bottom:1px solid #bfdbfe;flex-shrink:0"></div>
     <div id="rj-result" style="flex:1;overflow-y:auto;padding:12px 16px">
       <div style="padding:60px;text-align:center;color:#94a3b8">
         <div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📅</div>
@@ -5884,7 +5892,7 @@ select{cursor:default}
 
 <div id="m-degrade" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:5100;align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-degrade')">
   <div class="mbox" style="max-width:380px;padding:20px" onclick="event.stopPropagation()">
-    <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0;background:#854d0e;color:#ffffff"><h2 id="m-degrade-title">🟡 Mode dégradé</h2></div>
+    <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0;background:#854d0e"><h2 id="m-degrade-title" style="color:#fff">🟡 Mode dégradé</h2></div>
     <div id="m-degrade-body" style="margin-bottom:14px"></div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-prim" id="m-degrade-confirm" onclick="_confirmDegrade()" style="background:#854d0e;border-color:#854d0e">✓ Confirmer</button>
@@ -6452,9 +6460,12 @@ function applyState(s) {
   const ebb=document.getElementById('excel-busy-bar');
   if(ebb) ebb.style.display=s.excel_busy?'block':'none';
 
-  // Main btn-start
+  // Main btn-start: texte + action selon état prod
   const bs=document.getElementById('btn-start');
-  if(bs) bs.disabled=s.prod_active;
+  if(bs){
+    if(s.prod_active){bs.innerHTML='▶ Production en cours';bs.onclick=()=>goTab('prod');}
+    else{bs.innerHTML='▶ Démarrer production';bs.onclick=doStartProd;}
+  }
 
   // POB (pilot/OF banner)
   if(s.prod_active&&s.form) {
@@ -9620,25 +9631,26 @@ async function loadRptJour(){
     const cur=qSel.value;
     qSel.innerHTML='<option value="">Tous</option>'+postes.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('');
   }
-  // Auto-load: trouver les 3 derniers postes et ajuster la plage de dates
+  // Auto-load: trouver les 3 derniers postes et stocker pour bandeau + limit API
+  window._rjAutoLast3=[];
   if(sessions&&sessions.length){
     const _sorted=[...sessions].sort((a,b)=>{
       const _dmy=s=>{try{const p=(s.date||'').split('/');return new Date(p[2]+'-'+p[1]+'-'+p[0]).getTime();}catch(e){return 0;}};
       return _dmy(b)-_dmy(a);
     });
-    const _last3=_sorted.slice(0,3);
-    if(_last3.length){
-      const _dates=_last3.map(s=>s.date).filter(Boolean);
-      const _toDate=_last3[0].date;
-      const _fromDate=_last3[_last3.length-1].date;
+    window._rjAutoLast3=_sorted.slice(0,3);
+    if(window._rjAutoLast3.length){
+      const _toDate=window._rjAutoLast3[0].date;
+      const _fromDate=window._rjAutoLast3[window._rjAutoLast3.length-1].date;
       const _toISO=_toDate?_toDate.split('/').reverse().join('-'):'';
       const _fromISO=_fromDate?_fromDate.split('/').reverse().join('-'):'';
       if(_rjf&&_fromISO)_rjf.value=_fromISO;
       if(_rjt&&_toISO)_rjt.value=_toISO;
     }
   }
-  calcPeriodReport();
+  calcPeriodReport(true);
 }
+async function calcPeriodReport(autoLoad){
 async function calcPeriodReport(){
   const from=document.getElementById('rj-from').value;
   const to=document.getElementById('rj-to').value;
@@ -9652,6 +9664,7 @@ async function calcPeriodReport(){
   if(to)   url+='date_to='+encodeURIComponent(to)+'&';
   if(pilot) url+='pilot='+encodeURIComponent(pilot)+'&';
   if(poste) url+='poste='+encodeURIComponent(poste)+'&';
+  if(autoLoad) url+='max_sessions=3&';
   const d=await apiFetch(url);
   if(!d||!d.ok){resultEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur ou aucune donnée</div>';return;}
   if(d.nb_sessions===0){resultEl.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">🔍</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Aucun poste trouvé pour cette période</div></div>';return;}
@@ -9783,6 +9796,17 @@ async function calcPeriodReport(){
   // Pie compact (80px)
   let pieSmall='';
   if(pieTotal>0){const r=36,cx=40,cy=40;let sA=-Math.PI/2,paths='';[{v:fonctMin,c:'#16a34a'},{v:stopMin,c:'#dc2626'}].forEach(sl=>{const a=sl.v/pieTotal*2*Math.PI;const x1=cx+r*Math.cos(sA),y1=cy+r*Math.sin(sA);const x2=cx+r*Math.cos(sA+a),y2=cy+r*Math.sin(sA+a);paths+=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${a>Math.PI?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${sl.c}" opacity=".85"/>`;sA+=a;});pieSmall=`<svg viewBox="0 0 80 80" style="width:80px;height:80px;flex-shrink:0"><circle cx="40" cy="40" r="36" fill="#e2e8f0"/>${paths}</svg>`;}
+  // Bandeau postes chargés (auto-load)
+  const _rjBanner=document.getElementById('rj-auto-banner');
+  if(_rjBanner){
+    if(autoLoad&&d.sessions_detail&&d.sessions_detail.length){
+      const _lbls=d.sessions_detail.map(s=>esc(s.poste)+' '+esc(s.date)+(s.pilot?' ('+esc(s.pilot)+')':'')).join(' · ');
+      _rjBanner.innerHTML=`<span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1">📋 ${d.sessions_detail.length} dernier${d.sessions_detail.length>1?'s':''} poste${d.sessions_detail.length>1?'s':''} chargé${d.sessions_detail.length>1?'s':''} :</span> <span style="font-size:calc(10px*var(--zf,1));color:#374151">${_lbls}</span>`;
+      _rjBanner.style.display='block';
+    } else {
+      _rjBanner.style.display='none';
+    }
+  }
   resultEl.innerHTML=`
     <div style="display:flex;gap:10px;height:100%;min-height:0;align-items:stretch">
       <!-- Colonne gauche : KPI synthèse — 320px -->
