@@ -4897,13 +4897,13 @@ select{cursor:default}
       Prod bloquée ? <a href="/reset" style="color:#dc2626;font-weight:700">Cliquer ici pour réinitialiser</a>
     </div>
     <div style="margin-top:8px;text-align:right">
-      <button onclick="openExcelModal()" title="Configurer le fichier Excel" style="background:none;border:none;cursor:pointer;color:rgba(255,255,255,.3);font-size:calc(13px*var(--zf,1));padding:2px 4px;line-height:1" onmouseover="this.style.color='rgba(255,255,255,.7)'" onmouseout="this.style.color='rgba(255,255,255,.3)'">&#x1F4C1;</button>
+      <button onclick="openExcelModal()" title="Configurer le fichier Excel" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:calc(13px*var(--zf,1));padding:2px 4px;line-height:1;opacity:.5">&#x1F4C1;</button>
     </div>
   </div>
 </div>
 
 <!-- ════ MODAL EXCEL ════ -->
-<div id="modal-excel" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
+<div id="modal-excel" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
   <div style="background:#1e293b;border-radius:12px;padding:24px;width:90%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
     <div style="color:#e2e8f0;font-size:calc(15px*var(--zf,1));font-weight:700;margin-bottom:14px">&#x1F4C1; Fichier Excel</div>
     <div style="margin-bottom:10px">
@@ -6196,12 +6196,16 @@ async function doLogin() {
 
 function openExcelModal(){
   var m=document.getElementById('modal-excel');
-  document.getElementById('excel-modal-err').textContent='';
-  document.getElementById('excel-pw-inp').value='';
-  fetch('/api/config').then(function(r){return r.json();}).then(function(d){
-    document.getElementById('excel-path-inp').value=d.db_path||'';
-  }).catch(function(){});
+  if(!m) return;
   m.style.display='flex';
+  var errEl=document.getElementById('excel-modal-err');
+  if(errEl) errEl.textContent='';
+  var pwEl=document.getElementById('excel-pw-inp');
+  if(pwEl) pwEl.value='';
+  fetch('/api/config').then(function(r){return r.json();}).then(function(d){
+    var pathEl=document.getElementById('excel-path-inp');
+    if(pathEl) pathEl.value=d.db_path||'';
+  }).catch(function(){});
 }
 function closeExcelModal(){
   document.getElementById('modal-excel').style.display='none';
