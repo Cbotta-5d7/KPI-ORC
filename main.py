@@ -1988,20 +1988,20 @@ def api_history():
             if d_to and row_d and row_d > d_to: continue
             trs = -1
             try:
-                equiv_v = float(str(r[21] or 0).replace(",","."))
-                pr = get_prod_ref()
-                row_type = str(r[0] or "").strip().lower()
-                if row_type in ("production","prod",""):
+                # r[24] = TRS stocké par api_end_prod (avec correction dégradé)
+                trs_col = str(r[24] or "")
+                if trs_col:
+                    try: trs = round(float(trs_col.replace(",",".")),1)
+                    except: pass
+                if trs < 0:
+                    # Fallback : calcul depuis timing (anciens enregistrements sans r[24])
+                    equiv_v = float(str(r[21] or 0).replace(",","."))
+                    pr = get_prod_ref()
                     debut_s = _hms_to_sec(str(r[16] or "00:00:00"))
                     fin_s = _hms_to_sec(str(r[17] or "00:00:00"))
                     brut_s = fin_s - debut_s if fin_s > debut_s else _hms_to_sec(str(r[18] or "00:00:00"))
                     if pr>0 and brut_s>0 and equiv_v>0:
                         trs = round(equiv_v/(pr*brut_s/28800)*100,1)
-                else:
-                    trs_col = str(r[24] or "")
-                    if trs_col:
-                        try: trs = round(float(trs_col.replace(",",".")),1)
-                        except: pass
             except: pass
             rows.append({
                 "row_num": rn,
