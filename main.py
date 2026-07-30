@@ -4682,6 +4682,7 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 #alert-strip{background:#b91c1c;color:#fff;text-align:center;padding:4px;font-weight:700;font-size:calc(12px*var(--zf,1));flex-shrink:0;display:none;animation:blink .85s step-start infinite}
 #alert-strip.on{display:block}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes rpt-arr{0%,100%{background:#e5e7eb}50%{background:#f9fafb}}
 
 /* ── VIEWS ── */
 .view{display:none;flex:1;flex-direction:column;overflow:hidden}
@@ -5733,9 +5734,10 @@ select{cursor:default}
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:8px;border-radius:7px;border:1px solid var(--border)">
           <input id="ev-new-label" placeholder="Nom de l'arrêt" style="flex:1;min-width:120px;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
           <select id="ev-new-cat" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
-            <option value="pb">🔴 Panne</option>
+            <option value="manquants">🟣 Manquants</option>
             <option value="ratt">🟠 Rattrapage</option>
-            <option value="organisation">🔵 Organisation</option>
+            <option value="organisation">🔵 Organisationnel</option>
+            <option value="pb">🔴 Technique</option>
             <option value="autre">⚫ Autre</option>
           </select>
           <button class="btn btn-green" style="font-size:calc(11px*var(--zf,1));padding:5px 12px" onclick="addEvtItem()">+ Ajouter</button>
@@ -5778,7 +5780,7 @@ select{cursor:default}
       </div>
       <div class="ss">
         <h3>🟡 Mode dégradé</h3>
-        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Configurez les motifs disponibles pour le mode dégradé.<br>Quand ce mode est actif, la cadence cible est divisée par 2 (le TRS est ajusté en conséquence).</div>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Configurez les motifs disponibles pour le mode dégradé. La durée est enregistrée par OF pour suivi.</div>
         <div id="degrade-list-ui" style="margin-bottom:10px"></div>
         <div style="display:flex;gap:6px;margin-bottom:10px">
           <input id="deg-new-label" placeholder="Nouveau motif dégradé" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))">
@@ -6473,7 +6475,7 @@ function goTab(tab) {
   if(tab==='history') loadHist();
   else if(_prevTab==='history') _resetHistFilters();
   if(tab==='finposte') loadFPData();
-  if(tab==='rapports') loadRapports();
+  if(tab==='rapports'){loadRapports();rptBackToList();}
   if(tab==='rpt-jour') loadRptJour();
   if(tab==='main') { loadMainDecl(); }
   if(tab==='kpi') loadKPI();
@@ -7469,7 +7471,7 @@ function renderEvtListUI(){
 
 function _renderEvtListHTML(){
   const c=document.getElementById('events-list-ui');if(!c) return;
-  const catLbl={pb:'🔴 Panne',ratt:'🟠 Rattrapage',nettoyage:'🟡 Nettoyage',organisation:'🔵 Organisation',autre:'⚫ Autre'};
+  const catLbl={pb:'🔴 Technique',ratt:'🟠 Rattrapage',nettoyage:'🟡 Nettoyage',organisation:'🔵 Organisationnel',manquants:'🟣 Manquants',autre:'⚫ Autre'};
   c.innerHTML=_evtsEditing.map((e,i)=>`
     <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1))">
       <span style="flex:1;font-weight:600">${esc(e.label)}</span>
@@ -7908,7 +7910,7 @@ function renderDegradeList(motifs){
   const ul=document.getElementById('degrade-list-ui');if(!ul)return;
   if(!motifs||!motifs.length){ul.innerHTML='<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:6px 0">Aucun motif configuré.</div>';return;}
   ul.innerHTML=motifs.map(function(m,i){
-    return `<div style="display:flex;align-items:center;gap:6px;background:#fef9c3;border:1px solid #ca8a04;border-radius:6px;padding:5px 10px;margin-bottom:4px"><span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:600;color:#854d0e">${esc(m)}</span><button onclick="removeDegradeItem(${i})" style="background:#fee2e2;border:none;border-radius:4px;color:#dc2626;font-weight:900;padding:2px 7px;cursor:pointer">×</button></div>`;
+    return `<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1))"><span style="flex:1;font-weight:600">${esc(m)}</span><button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="removeDegradeItem(${i})">✕</button></div>`;
   }).join('');
 }
 function addDegradeItem(){
@@ -10185,9 +10187,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
     leftKpi.innerHTML=`
       <!-- Fine bande retour (gauche) -->
       <div onclick="rptBackToList()" title="Retour à la liste"
-        style="width:28px;background:#4f46e5;border-right:2px solid #3730a3;cursor:pointer;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:background .15s;box-shadow:2px 0 6px rgba(79,70,229,.25);animation:blink .85s step-start infinite"
-        onmouseenter="this.style.background='#4338ca';this.style.animation='none'" onmouseleave="this.style.background='#4f46e5';this.style.animation='blink .85s step-start infinite'">
-        <span style="font-size:20px;color:#fff;user-select:none;line-height:1;font-weight:900">❮</span>
+        style="width:28px;background:#e5e7eb;border-right:2px solid #d1d5db;cursor:pointer;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:background .15s;animation:rpt-arr .9s step-start infinite"
+        onmouseenter="this.style.background='#f9fafb';this.style.animation='none'" onmouseleave="this.style.background='#e5e7eb';this.style.animation='rpt-arr .9s step-start infinite'">
+        <span style="font-size:20px;color:#374151;user-select:none;line-height:1;font-weight:900">❮</span>
       </div>
       <!-- Contenu KPI -->
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
