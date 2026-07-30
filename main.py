@@ -2827,12 +2827,12 @@ def api_period_report():
         if d_obj is None: continue
         if dt_from and d_obj < dt_from: continue
         if dt_to   and d_obj > dt_to:   continue
-        key = f"{date_str}||{pilot}||{poste}"
-        if key not in sessions:
-            sessions[key] = {'date':date_str,'pilot':pilot,'poste':poste,
-                             'nb_of':0,'tot_equiv':0.0,'tot_pcs':0,'evt_rows':[],'prod_rows':[],'prod_raws':[]}
         row_type = str(r[0] or '').strip().lower()
+        key = f"{date_str}||{pilot}||{poste}"
         if row_type in ('production','prod',''):
+            if key not in sessions:
+                sessions[key] = {'date':date_str,'pilot':pilot,'poste':poste,
+                                 'nb_of':0,'tot_equiv':0.0,'tot_pcs':0,'evt_rows':[],'prod_rows':[],'prod_raws':[]}
             try:
                 eq  = float(str(r[21] or 0).replace(',','.'))
                 pcs = float(str(r[19] or 0).replace(',','.'))
@@ -2845,7 +2845,12 @@ def api_period_report():
                 sessions[key]['prod_raws'].append(r)
             except: pass
         else:
-            sessions[key]['evt_rows'].append((rn, r))
+            # Event rows may have empty/different poste → attach to matching prod session by date+pilot
+            _ev_key = key if key in sessions else next(
+                (k for k in sessions if k.startswith(f"{date_str}||{pilot}||")), None
+            )
+            if _ev_key:
+                sessions[_ev_key]['evt_rows'].append((rn, r))
     # Limiter aux N sessions les plus récentes si max_sessions > 0
     if max_sessions > 0 and len(sessions) > max_sessions:
         def _key_date(kv):
