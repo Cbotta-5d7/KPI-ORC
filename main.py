@@ -2114,10 +2114,8 @@ def api_toggle_reunion():
                     _sh.strftime("%d/%m/%Y"),
                 ]
                 write_excel_bg([], [_row])
-                try:
-                    _nrn = max((rn for rn,_ in _decl_cache), default=1)+1
-                    _decl_cache.append((_nrn, tuple(_row)+('',)*max(0,40-len(_row))))
-                except: pass
+                # Pas de _decl_cache.append ici : l'événement est encore dans tl_events
+                # → évite le double comptage dans _compute_budget_state_now
     else:
         t_start("reunion")
         tl_open("reunion", "reunion")
