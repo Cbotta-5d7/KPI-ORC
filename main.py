@@ -49,6 +49,7 @@ DECL_HEADERS = [
     "","Manquant MP","Manquant Personnel/Reunion",
     "","Commentaire","Prevu/Hors TRS",
     "Duree Arrets","Duree Prod Pure","Date_poste",
+    "","Degrade_min",
 ]
 
 POSTES = ["Matin","Midi","Nuit","Jour"]
@@ -991,6 +992,8 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
             hors_trs,                           # 36 Prevu/Hors TRS
             "","",                              # 37-38 Duree Arrets, Duree Prod Pure
             shift_date_str,                     # 39 Date_poste
+            "",                                 # 40 AO
+            "",                                 # 41 Degrade_min AP
         ]
     for ev in tl_events:
         if ev.get("cat") not in ("ratt","pb","nettoyage","reunion","autre","interposte"): continue
@@ -1070,7 +1073,7 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
         _S.get("poste",""),pilot,"","","","","","","","","","","",
         start_dt.strftime("%H:%M:%S"),end_dt.strftime("%H:%M:%S"),fmt(dur_s),
         "","","","","","","","","","","","","","","","",comment,
-        "","","",shift_date_str,
+        "","","",shift_date_str,"","",
     ]
     def _bg():
         try:
@@ -1871,7 +1874,7 @@ def api_end_prod():
         # Dégradé actif pendant cet OF — valeur déjà calculée avant l'avance du pointeur
         _deg_s += _dg_dur_for_trs
         _eff_s = max(1.0, of_s_brut - _of_planned_ded_s)
-        _adj_s = max(1.0, _eff_s - _deg_s / 2.0)
+        _adj_s = max(1.0, _eff_s)
         _pct_ep = get_pct_cadence(v.get("nb_pers", 1))
         trs = round(equiv/(prod_ref*_pct_ep*_adj_s/28800)*100,1)
         trs_str = str(trs)
@@ -1920,6 +1923,8 @@ def api_end_prod():
         fmt(stop_s),
         fmt(max(0, of_s_brut - stop_s)),
         _shift_date_str,
+        "",
+        round(_deg_s / 60.0, 2),
     ]
     evt_rows = build_decl_rows(
         dict(v, pilote=v.get("pilote",_S["pilot"] or ""), poste=v.get("poste",_S["poste"] or "")),
@@ -2009,7 +2014,7 @@ def api_preview_end_prod():
         if _S.get("degrade_active") and _S.get("degrade_start_dt"):
             _d0 = max(_S["degrade_start_dt"], _S["of_start"])
             _prev_deg_s += max(0.0, (now - _d0).total_seconds())
-        _adj_s_prev = max(1.0, _eff_s - _prev_deg_s / 2.0)
+        _adj_s_prev = max(1.0, _eff_s)
         _pct_prv = get_pct_cadence(_S.get("form",{}).get("nb_pers",1))
         trs=round(equiv/(prod_ref*_pct_prv*_adj_s_prev/28800)*100,1)
     return jsonify({
@@ -2617,7 +2622,7 @@ def api_fin_poste_data():
     depassement_min_fp = round(sum(max(0.0, v["used_min"] - v["budget_min"]) for v in _bdata.values()), 1)
     cadence_ref_fp = round(prod_ref / 480, 4) if prod_ref > 0 else 0.0
     _elapsed_fp = max(1.0, model_dur_s - arrets_prevu_fp * 60)
-    _adj_fp = max(1.0, _elapsed_fp - _degrade_s_fp / 2.0)
+    _adj_fp = max(1.0, _elapsed_fp)
     if _pers_pct_map and _filtered_prod_raw_fp:
         _deg_ivs_fp = _merged_degrade_ivs([r_s for _, r_s in shift_evt_rows])
         trs_poste_shift, _sum_exp_fp = _option_b_trs(_filtered_prod_raw_fp, _deg_ivs_fp, prod_ref)
@@ -2703,7 +2708,7 @@ def api_history_today():
     if _pers_pct_map and _htd_prod_raw and tot_eq > 0:
         trs_shift, _ = _option_b_trs(_htd_prod_raw, _htd_deg_mg, prod_ref)
     elif prod_ref>0 and shift_s>0 and tot_eq>0:
-        _htd_adj = max(1.0, shift_s - _htd_ded_s - _htd_deg_s / 2.0)
+        _htd_adj = max(1.0, shift_s - _htd_ded_s)
         trs_shift=round(tot_eq/(prod_ref*_htd_adj/28800)*100,1)
     trs_of_time=-1.0
     if prod_ref>0 and tot_s>0: trs_of_time=round(tot_eq/(prod_ref*tot_s/28800)*100,1)
@@ -2767,7 +2772,7 @@ def api_past_sessions():
             else:
                 _deg_ps = _merged_degrade_s([re for _, re in _evts_ps])
                 if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
-                    _el2 = max(1.0, _mdur2 - planned_ded - _deg_ps / 2.0)
+                    _el2 = max(1.0, _mdur2 - planned_ded)
                     trs = round(s["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
         _pk_check = (s["pilot"].lower(), s["date"])
         if _pk_check not in postes_map:
@@ -2843,7 +2848,7 @@ def api_period_report():
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
     agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_elapsed_s=0.0; agg_sum_expected=0.0
-    agg_fibre_chg=0; agg_depassement=0.0; stop_by_type={}; sessions_detail=[]
+    agg_fibre_chg=0; agg_depassement=0.0; agg_degrade_min=0.0; stop_by_type={}; sessions_detail=[]
     jours=set(); pilotes=set(); postes_set=set()
     trs_by_day = {}
     cadence_ref = round(prod_ref/480, 4) if prod_ref > 0 else 0.0
@@ -2881,7 +2886,7 @@ def api_period_report():
         utile_min = round(max(0.0, ouv_min - arrets_prevu), 1)
         planned_ded = _compute_planned_deduction_s(s['evt_rows'])
         elapsed_s = max(1.0, model_dur_s - planned_ded)
-        adj_s = max(1.0, elapsed_s - _deg_s / 2.0)
+        adj_s = max(1.0, elapsed_s)
         if _pers_pct_map and s.get('prod_raws'):
             _deg_ivs_pr = _merged_degrade_ivs([re2 for _, re2 in s['evt_rows']])
             _trs_s, _sum_exp_pr = _option_b_trs(s['prod_raws'], _deg_ivs_pr, prod_ref)
@@ -2918,8 +2923,9 @@ def api_period_report():
         trs_by_day[day]['elapsed_s'] += elapsed_s
         trs_by_day[day]['sum_expected'] += _sum_exp_pr
         _cad_s = round(s['tot_equiv']/fonct_min*60) if fonct_min>0 else 0
-        _of_rows_sd = [{"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"fibre":str(r[11] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"nb_pers":str(r[6] or ""),"trs":str(r[24] or "")} for r in s.get('prod_raws',[])]
-        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'of_rows':_of_rows_sd})
+        _of_rows_sd = [{"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"fibre":str(r[11] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"nb_pers":str(r[6] or ""),"trs":str(r[24] or ""),"degrade_min":round(float(str(r[41] or 0).replace(",",".")) if len(r)>41 and r[41] else 0,1)} for r in s.get('prod_raws',[])]
+        agg_degrade_min += _deg_s / 60.0
+        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_deg_s/60.0,1),'of_rows':_of_rows_sd})
     trs_periode = round(agg_equiv/agg_sum_expected*100,1) if agg_sum_expected>0 and agg_equiv>0 else -1.0
     def _sort_dmy(d):
         try: p=d.split('/'); return (int(p[2]),int(p[1]),int(p[0]))
@@ -2944,6 +2950,7 @@ def api_period_report():
         'temps_utile_min':round(agg_utile,1),
         'temps_fonctionnement_min':round(agg_fonct,1),
         'net_stop_min':round(agg_stop,1),
+        'tot_degrade_min':round(agg_degrade_min,1),
         'perte_cadence_min':round(agg_perte,1),
         'cadence_ref_pcs_min':cadence_ref,
         'cadence_h':cadence_h,
@@ -3033,7 +3040,7 @@ def api_session_report():
             perte_cadence_s = (_sum_exp_sr - tot_eq) / _cadence_ref_s
     elif model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
         elapsed_s = max(1.0, model_dur_s - planned_ded)
-        adj_s = max(1.0, elapsed_s - degrade_s / 2.0)
+        adj_s = max(1.0, elapsed_s)
         trs_shift = round(tot_eq/(prod_ref*adj_s/28800)*100,1)
         _cadence_ref_s = prod_ref / 28800
         if _cadence_ref_s > 0:
@@ -4310,7 +4317,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         elif _mdur2 > 0 and prod_ref > 0 and _s_r["tot_equiv"] > 0:
             _ded2 = sum(hms2s(_er[18]) for _er in _sess_evts2 if any(k in str(_er[0] or "").lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
             _deg2 = _merged_degrade_s(_sess_evts2)
-            _el2 = max(1.0, _mdur2 - _ded2 - _deg2 / 2.0)
+            _el2 = max(1.0, _mdur2 - _ded2)
             _trs_r = round(_s_r["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
         _embedded_sessions_list.append({"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"nb_of":_s_r["nb_of"],"tot_equiv":round(_s_r["tot_equiv"],1),"trs":_trs_r})
     _embedded_sessions_list.sort(key=lambda x: (lambda p: (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0))(x["date"].split('/')), reverse=True)
@@ -4365,7 +4372,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             _trs_sh3, _ = _option_b_trs(_pr3_raw, _deg_mg3, prod_ref)
         elif _mdur3 > 0 and prod_ref > 0 and _teq3 > 0:
             _deg3 = sum(hms2s(_e3r.get("duree","")) for _e3r in _er3 if _e3r.get("is_degrade"))
-            _el3 = max(1.0, _mdur3 - _ded3 - _deg3 / 2.0)
+            _el3 = max(1.0, _mdur3 - _ded3)
             _trs_sh3 = round(_teq3/(prod_ref*_el3/28800)*100,1)
         _trs_of3 = round(_teq3/(prod_ref*_ts3/28800)*100,1) if prod_ref>0 and _ts3>0 and _teq3>0 else -1
         _rpt_key3 = f"{_s_r['date']}|{_s_r['pilot']}|{_s_r['poste']}"
@@ -9868,8 +9875,9 @@ async function calcPeriodReport(autoLoad){
       <td style="padding:4px 6px;text-align:right;font-weight:700">${esc(r.qte_fab)}</td>
       <td style="padding:4px 6px;text-align:right">${esc(r.equiv)}</td>
       <td style="padding:4px 6px;text-align:right;font-weight:700;color:${r.trs&&parseFloat(r.trs)>=90?'#16a34a':r.trs&&parseFloat(r.trs)>=70?'#f59e0b':'#dc2626'}">${r.trs?parseFloat(r.trs).toFixed(1)+'%':'—'}</td>
+      <td style="padding:4px 6px;text-align:right;color:${r.degrade_min>0?'#f59e0b':'#94a3b8'}">${r.degrade_min>0?Math.round(r.degrade_min)+' min':'—'}</td>
     </tr>`).join('');
-    ofListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px;overflow-x:auto"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">📋 Liste des OF fabriqués</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">Pilote</th><th style="padding:4px 6px;text-align:left">Fibre</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Qté</th><th style="padding:4px 6px;text-align:right">Équiv</th><th style="padding:4px 6px;text-align:right">TRS</th></tr></thead><tbody>${ofRows}</tbody></table></div>`;
+    ofListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px;overflow-x:auto"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">📋 Liste des OF fabriqués</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">Pilote</th><th style="padding:4px 6px;text-align:left">Fibre</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Qté</th><th style="padding:4px 6px;text-align:right">Équiv</th><th style="padding:4px 6px;text-align:right">TRS</th><th style="padding:4px 6px;text-align:right">Dégradé</th></tr></thead><tbody>${ofRows}</tbody></table></div>`;
   }
   // Pie chart: fonctionnement vs arrêts
   const fonctMin=d.temps_fonctionnement_min||0;
@@ -9931,7 +9939,7 @@ async function calcPeriodReport(autoLoad){
         </div>
         <!-- Lignes info -->
         <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
-          ${[['Ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Arrêts',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes',d.nb_sessions,'#0891b2'],['OF',d.nb_of,'#0891b2'],['Chgt fibre',d.nb_fibre_chg||0,'#8b5cf6'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
+          ${[['Ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Arrêts',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Dégradé',Math.round(d.tot_degrade_min||0)+' min','#f59e0b'],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes',d.nb_sessions,'#0891b2'],['OF',d.nb_of,'#0891b2'],['Chgt fibre',d.nb_fibre_chg||0,'#8b5cf6'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
         </div>
       </div>
       <!-- Colonne droite : graphiques -->
