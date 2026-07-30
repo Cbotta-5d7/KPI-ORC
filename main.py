@@ -390,7 +390,7 @@ def _deg_overlap_s(of_start_s, of_end_s, deg_ivs):
         if o1 > o0: total += o1 - o0
     return total
 
-def _option_b_trs(prod_raw_rows, deg_ivs, prod_ref):
+def _option_b_trs(prod_raw_rows, deg_ivs, prod_ref, plan_ivs=None):
     """Option B TRS: per-OF adjusted time × pct_cadence(nb_pers).
     Returns (trs_float, sum_expected_equiv)."""
     if prod_ref <= 0: return -1.0, 0.0
@@ -405,7 +405,8 @@ def _option_b_trs(prod_raw_rows, deg_ivs, prod_ref):
             nb_p = r[6] if len(r) > 6 else 1
             pct = get_pct_cadence(nb_p)
             ovl = _deg_overlap_s(deb_s, fin_s, deg_ivs)
-            adj_s = max(1.0, dur_s)
+            plan_ovl = _deg_overlap_s(deb_s, fin_s, plan_ivs) if plan_ivs else 0.0
+            adj_s = max(1.0, dur_s - ovl - plan_ovl)
             sum_expected += prod_ref * pct * adj_s / 28800
             tot_equiv += eq
         except: pass
@@ -2580,10 +2581,10 @@ def api_fin_poste_data():
         covered = md_s
         for s2, e2 in merged:
             s2 = max(s2, md_s); e2 = min(e2, mf_s)
-            if s2 >= covered + 60:
+            if s2 >= covered + 120:
                 gap_intervals.append({"debut": _sec_to_hm(covered), "fin": _sec_to_hm(s2), "duree_min": round((s2-covered)/60)})
             covered = max(covered, e2)
-        if mf_s >= covered + 60:
+        if mf_s >= covered + 120:
             gap_intervals.append({"debut": _sec_to_hm(covered), "fin": _sec_to_hm(mf_s), "duree_min": round((mf_s-covered)/60)})
     else:
         overflow_s = 0.0
@@ -2623,9 +2624,22 @@ def api_fin_poste_data():
     cadence_ref_fp = round(prod_ref / 480, 4) if prod_ref > 0 else 0.0
     _elapsed_fp = max(1.0, model_dur_s - arrets_prevu_fp * 60)
     _adj_fp = max(1.0, _elapsed_fp)
+    _plan_bdata_fp = {bk: float(cfg.get(bk, 0) or 0) * 60 for bk in _blab}
+    _plan_used_fp = {bk: 0.0 for bk in _blab}
+    _plan_ivs_fp = []
+    for _, r_e2 in shift_evt_rows:
+        _bk_p = _get_arret_budget_key(str(r_e2[0] or ''))
+        if _bk_p and _bk_p in _plan_bdata_fp:
+            _ds_p = _hms_to_sec(str(r_e2[16] or '00:00:00'))
+            _fs_p = _hms_to_sec(str(r_e2[17] or '00:00:00'))
+            _dur_p = _fs_p - _ds_p
+            if _dur_p > 0 and _plan_used_fp[_bk_p] < _plan_bdata_fp[_bk_p]:
+                _cap_p = min(_dur_p, _plan_bdata_fp[_bk_p] - _plan_used_fp[_bk_p])
+                _plan_ivs_fp.append((_ds_p, _ds_p + _cap_p))
+            _plan_used_fp[_bk_p] += _dur_p
     if _pers_pct_map and _filtered_prod_raw_fp:
         _deg_ivs_fp = _merged_degrade_ivs([r_s for _, r_s in shift_evt_rows])
-        trs_poste_shift, _sum_exp_fp = _option_b_trs(_filtered_prod_raw_fp, _deg_ivs_fp, prod_ref)
+        trs_poste_shift, _sum_exp_fp = _option_b_trs(_filtered_prod_raw_fp, _deg_ivs_fp, prod_ref, _plan_ivs_fp)
         perte_cadence_fp = round((_sum_exp_fp - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 and _sum_exp_fp > 0 else 0.0
     else:
         if prod_ref > 0 and _adj_fp > 0 and tot_eq > 0:
@@ -2887,9 +2901,22 @@ def api_period_report():
         planned_ded = _compute_planned_deduction_s(s['evt_rows'])
         elapsed_s = max(1.0, model_dur_s - planned_ded)
         adj_s = max(1.0, elapsed_s)
+        _deg_ivs_pr = _merged_degrade_ivs([re2 for _, re2 in s['evt_rows']])
+        _plan_bdata_pr = {bk: float(cfg.get(bk, 0) or 0) * 60 for bk in _blab}
+        _plan_used_pr = {bk: 0.0 for bk in _blab}
+        _plan_ivs_pr = []
+        for _, re_ev in s['evt_rows']:
+            _bk_pr = _get_arret_budget_key(str(re_ev[0] or ''))
+            if _bk_pr and _bk_pr in _plan_bdata_pr:
+                _ds_pr = _hms_to_sec(str(re_ev[16] or '00:00:00'))
+                _fs_pr = _hms_to_sec(str(re_ev[17] or '00:00:00'))
+                _dur_pr = _fs_pr - _ds_pr
+                if _dur_pr > 0 and _plan_used_pr[_bk_pr] < _plan_bdata_pr[_bk_pr]:
+                    _cap_pr = min(_dur_pr, _plan_bdata_pr[_bk_pr] - _plan_used_pr[_bk_pr])
+                    _plan_ivs_pr.append((_ds_pr, _ds_pr + _cap_pr))
+                _plan_used_pr[_bk_pr] += _dur_pr
         if _pers_pct_map and s.get('prod_raws'):
-            _deg_ivs_pr = _merged_degrade_ivs([re2 for _, re2 in s['evt_rows']])
-            _trs_s, _sum_exp_pr = _option_b_trs(s['prod_raws'], _deg_ivs_pr, prod_ref)
+            _trs_s, _sum_exp_pr = _option_b_trs(s['prod_raws'], _deg_ivs_pr, prod_ref, _plan_ivs_pr)
             perte = round((_sum_exp_pr - s['tot_equiv']) / cadence_ref, 1) if cadence_ref > 0 and _sum_exp_pr > 0 else 0.0
         else:
             _sum_exp_pr = prod_ref * adj_s / 28800
@@ -2923,7 +2950,7 @@ def api_period_report():
         trs_by_day[day]['elapsed_s'] += elapsed_s
         trs_by_day[day]['sum_expected'] += _sum_exp_pr
         _cad_s = round(s['tot_equiv']/fonct_min*60) if fonct_min>0 else 0
-        _of_rows_sd = [{"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"fibre":str(r[11] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"nb_pers":str(r[6] or ""),"trs":str(r[24] or ""),"degrade_min":round(float(str(r[41] or 0).replace(",",".")) if len(r)>41 and r[41] else 0,1)} for r in s.get('prod_raws',[])]
+        _of_rows_sd = [{"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"fibre":str(r[11] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"nb_pers":str(r[6] or ""),"trs":str(r[24] or ""),"degrade_min":round(_deg_overlap_s(_hms_to_sec(str(r[16] or "00:00:00")),_hms_to_sec(str(r[17] or "00:00:00")),_deg_ivs_pr)/60,1)} for r in s.get('prod_raws',[])]
         agg_degrade_min += _deg_s / 60.0
         sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_deg_s/60.0,1),'of_rows':_of_rows_sd})
     trs_periode = round(agg_equiv/agg_sum_expected*100,1) if agg_sum_expected>0 and agg_equiv>0 else -1.0
@@ -5045,7 +5072,7 @@ select{cursor:default}
     <div style="background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;padding:4px 8px;display:flex;gap:6px;align-items:stretch;flex-wrap:wrap">
 
       <!-- POSTE ACTUEL encart principal -->
-      <div style="flex:3;min-width:260px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column;gap:3px">
+      <div style="flex:1.5;min-width:220px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column;gap:3px">
         <!-- Titre + TRS jauge + valeur -->
         <div style="display:flex;align-items:center;gap:8px">
           <div style="flex-shrink:0;text-align:center">
@@ -5094,13 +5121,13 @@ select{cursor:default}
       </div>
 
       <!-- Poste précédent -->
-      <div class="skpi" style="flex:1;min-width:75px;max-width:120px">
+      <div class="skpi" style="flex:1;min-width:100px;max-width:180px">
         <div class="sk-lbl" id="kpi1-lbl">Poste précédent</div>
         <div class="sk-val" id="kpi1-trs">--%</div>
         <div class="sk-sub" id="kpi1-date" style="font-size:calc(10px*var(--zf,1));opacity:.85"></div>
         <div class="sk-sub" id="kpi1-sub">0 OF</div>
       </div>
-      <div class="skpi" style="flex:1;min-width:75px;max-width:120px">
+      <div class="skpi" style="flex:1;min-width:100px;max-width:180px">
         <div class="sk-lbl" id="kpi2-lbl">Avant-dernier</div>
         <div class="sk-val" id="kpi2-trs">--%</div>
         <div class="sk-sub" id="kpi2-date" style="font-size:calc(10px*var(--zf,1));opacity:.85"></div>
@@ -5191,9 +5218,9 @@ select{cursor:default}
           <!-- Zone Production -->
           <div class="fzone zp">
             <h4>🏭 Production</h4>
-            <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
             <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
             <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
@@ -5574,7 +5601,7 @@ select{cursor:default}
 
   <!-- ════ RAPPORTS JOUR ════ -->
   <div id="v-rpt-jour" class="view" style="flex-direction:column;overflow:hidden">
-    <div style="background:#1e3a8a;color:#fff;text-align:center;padding:9px 14px;font-size:calc(15px*var(--zf,1));font-weight:800;letter-spacing:.4px;flex-shrink:0">📅 Rapport des 3 derniers postes</div>
+    <div id="rj-period-banner" style="background:#1e3a8a;color:#fff;text-align:center;padding:9px 14px;font-size:calc(15px*var(--zf,1));font-weight:800;letter-spacing:.4px;flex-shrink:0">📅 Rapport des 3 derniers postes</div>
     <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap">
       <span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:var(--navy)">Rapports jour</span>
       <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Du <input type="date" id="rj-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
@@ -8464,14 +8491,14 @@ function _codeInputConfirm() {
   if(_csFormat==='9'){
     if(!/^[0-9]{9}$/.test(all)){toast('Format requis : 9 chiffres (ex : 123456789)','err');return;}
     const field=document.getElementById('f-'+_codeInputTarget);
-    if(field){field.value=all;scheduleAutoSave();}
+    if(field){field.value=all;scheduleAutoSave();field.blur();}
   } else {
     const d6=_csDigits.slice(0,6).join('');
     const d3=_csDigits.slice(6,9).join('');
     const v=d6+'_'+d3;
     if(!/^[0-9]{6}_[0-9]{3}$/.test(v)){toast('Format requis : 6 chiffres_3 chiffres (ex : 123456_789)','err');return;}
     const field=document.getElementById('f-'+_codeInputTarget);
-    if(field){field.value=v;scheduleAutoSave();}
+    if(field){field.value=v;scheduleAutoSave();field.blur();}
   }
   closeM('m-code-input');
   _checkFormAutoConfirm();
@@ -9793,6 +9820,8 @@ async function calcPeriodReport(autoLoad){
   const poste=document.getElementById('rj-poste').value;
   const resultEl=document.getElementById('rj-result');
   if(!resultEl) return;
+  if(autoLoad){_rjSetBanner('Rapport des 3 derniers postes');}
+  else if(from||to){const _fp=from?from.split('-').reverse().join('/'):'…';const _tp=to?to.split('-').reverse().join('/'):'…';_rjSetBanner('Rapport du '+_fp+' au '+_tp);}
   resultEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--gray)">Calcul en cours…</div>';
   let url='/api/period_report?';
   if(from) url+='date_from='+encodeURIComponent(from)+'&';
@@ -9980,11 +10009,13 @@ async function calcPeriodReport(autoLoad){
     </div>
   `;
 }
+function _rjSetBanner(txt){const b=document.getElementById('rj-period-banner');if(b)b.textContent='📅 '+txt;}
 function rjLast3(){
   document.getElementById('rj-from').value='';
   document.getElementById('rj-to').value='';
   document.getElementById('rj-pilot').value='';
   document.getElementById('rj-poste').value='';
+  _rjSetBanner('Rapport des 3 derniers postes');
   loadRptJour();
 }
 function rjLast7Days(){
@@ -9992,6 +10023,7 @@ function rjLast7Days(){
   _f.setDate(_t.getDate()-6);
   document.getElementById('rj-from').value=_f.toISOString().slice(0,10);
   document.getElementById('rj-to').value=_t.toISOString().slice(0,10);
+  _rjSetBanner('Rapport des 7 derniers jours');
   calcPeriodReport(false);
 }
 function resetPeriodReport(){
@@ -10217,7 +10249,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#8b5cf6;font-weight:900">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?((d.actual_debut||d.model_debut)+'→'+(d.actual_fin||d.model_fin)):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?((d.actual_debut||d.model_debut)+'→'+(d.actual_fin||d.model_fin)):('—')}</div>${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?`<div style="font-size:calc(9px*var(--zf,1));color:#64748b;text-align:center">${Math.round((d.model_dur_s||0)/60)} min</div>`:''}<div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#059669">${tempsUtile} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${tempsFonctionnement} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#dc2626">${netStopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
