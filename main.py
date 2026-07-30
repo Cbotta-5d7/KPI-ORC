@@ -991,7 +991,7 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
             shift_date_str,                     # 39 Date_poste
         ]
     for ev in tl_events:
-        if ev.get("cat") not in ("ratt","pb","nettoyage","autre"): continue
+        if ev.get("cat") not in ("ratt","pb","nettoyage","autre","interposte"): continue
         if not ev.get("key") or ev["key"].startswith("_"): continue
         if of_start and ev["start"] < of_start and ev.get("key")!="arret_interposte": continue
         start = ev["start"]
@@ -1001,6 +1001,9 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
             label = {"court":"Nettoyage court","long":"Nettoyage long","grand":"Grand nettoyage"}.get(ntype,"Nettoyage court")
         elif ev["cat"]=="autre":
             label = ev["key"]  # Custom stop name typed by user
+        elif ev["cat"]=="interposte":
+            lbl = next((e[0] for e in EVENTS if e[1]==ev["key"]), ev["key"])
+            label = lbl
         else:
             cat_name = "Rattrapage" if ev["cat"]=="ratt" else "PB Technique"
             lbl = next((e[0] for e in EVENTS if e[1]==ev["key"]),ev["key"])
