@@ -1219,6 +1219,7 @@ def write_poste_row(data, row_num=None):
                     round(float(data.get("temps_arret_min",0) or 0),1),          # col 21 (U) Temps en arrêt
                     round(float(data.get("cadence_ref_pcs_min",0) or 0),4),      # col 22 (V) Réf cadence
                     round(float(data.get("perte_cadence_min",0) or 0),1),        # col 23 (W) Perte cadence
+                    round(float(data.get("degrade_min",0) or 0),1),              # col 24 (X) Temps en mode dégradé
                 ]
                 if row_num and row_num > 1:
                     for ci, v in enumerate(vals, start=1):
@@ -9045,6 +9046,7 @@ async function confirmFinPoste(){
     temps_arret_min:fpData&&fpData.net_stop_min||0,
     cadence_ref_pcs_min:fpData&&fpData.cadence_ref_pcs_min||0,
     perte_cadence_min:fpData&&fpData.perte_cadence_min||0,
+    degrade_min:fpData&&fpData.degrade_min||0,
   };
   await fetch('/api/save_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posteRow)});
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
