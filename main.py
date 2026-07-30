@@ -1091,30 +1091,33 @@ def write_poste_row(data, row_num=None):
                 if wb is None: return
                 ws = _ensure_postes_sheet(wb)
                 vals = [
-                    data.get("date",""),
-                    data.get("pilot",""),
-                    data.get("copilote",""),
-                    data.get("poste",""),
-                    data.get("nb_of",0),
-                    round(float(data.get("prod_total",0) or 0),0),
-                    round(float(data.get("tot_equiv",0) or 0),1),
-                    data.get("trs_shift",""),
-                    round(float(data.get("arret_min",0) or 0),1),
-                    round(float(data.get("pause_min",0) or 0),1),
-                    round(float(data.get("nett_min",0) or 0),1),
-                    round(float(data.get("dur_prod_total_min",0) or 0),1),
-                    round(float(data.get("dur_prod_sans_arret_min",0) or 0),1),
-                    round(float(data.get("dur_poste_theorique_min",0) or 0),1),
-                    data.get("comment",""),
-                    round(float(data.get("temps_ouverture_min",0) or 0),1),
-                    round(float(data.get("temps_utile_min",0) or 0),1),
-                    round(float(data.get("temps_fonctionnement_min",0) or 0),1),
-                    round(float(data.get("temps_arret_min",0) or 0),1),
-                    round(float(data.get("cadence_ref_pcs_min",0) or 0),4),
-                    round(float(data.get("perte_cadence_min",0) or 0),1),
+                    data.get("date",""),                                          # col 1  (A) Date
+                    data.get("pilot",""),                                         # col 2  (B) Pilote
+                    data.get("copilote",""),                                      # col 3  (C) Co-Pilote
+                    data.get("poste",""),                                         # col 4  (D) Poste
+                    data.get("nb_of",0),                                          # col 5  (E) Nb OF
+                    round(float(data.get("prod_total",0) or 0),0),               # col 6  (F) Prod Total
+                    round(float(data.get("tot_equiv",0) or 0),1),                # col 7  (G) Prod Equiv
+                    data.get("trs_shift",""),                                     # col 8  (H) TRS Poste %
+                    round(float(data.get("arret_min",0) or 0),1),                # col 9  (I) Total Arrets
+                    round(float(data.get("pause_min",0) or 0),1),                # col 10 (J) Total Pauses
+                    round(float(data.get("nett_min",0) or 0),1),                 # col 11 (K) Nettoyage
+                    round(float(data.get("dur_prod_total_min",0) or 0),1),       # col 12 (L) Durée Prod Totale
+                    round(float(data.get("dur_prod_sans_arret_min",0) or 0),1),  # col 13 (M) Durée Prod Sans Arrêt
+                    round(float(data.get("dur_poste_theorique_min",0) or 0),1),  # col 14 (N) Durée poste théorique
+                    data.get("comment",""),                                       # col 15 (O) Commentaire
+                    None,                                                          # col 16 (P) Début Poste — géré par write_poste_login_row/update_poste_horaires
+                    None,                                                          # col 17 (Q) Fin Poste   — géré par write_poste_login_row/update_poste_horaires
+                    round(float(data.get("temps_ouverture_min",0) or 0),1),      # col 18 (R) Temps ouverture
+                    round(float(data.get("temps_utile_min",0) or 0),1),          # col 19 (S) Temps utile
+                    round(float(data.get("temps_fonctionnement_min",0) or 0),1), # col 20 (T) Temps fonctionnement
+                    round(float(data.get("temps_arret_min",0) or 0),1),          # col 21 (U) Temps en arrêt
+                    round(float(data.get("cadence_ref_pcs_min",0) or 0),4),      # col 22 (V) Réf cadence
+                    round(float(data.get("perte_cadence_min",0) or 0),1),        # col 23 (W) Perte cadence
                 ]
                 if row_num and row_num > 1:
                     for ci, v in enumerate(vals, start=1):
+                        if ci in (16, 17): continue  # Début/Fin Poste: ne pas écraser les timestamps
                         ws.cell(row_num, ci).value = v
                     _format_row(ws, row_num)
                 else:
@@ -1806,6 +1809,14 @@ def api_end_prod():
     _S["degrade_periods"] = []
     save_session()
     _extra_evt_rows = [_degrade_end_row] if _degrade_end_row else []
+    # Mise à jour immédiate de _decl_cache avant write_excel_bg (évite race condition avec generate_dashboard_html)
+    try:
+        _next_rn_ep = max((rn for rn, _ in _decl_cache), default=0) + 1
+        for _ep_row in ([prod_row] if prod_row else []) + evt_rows + _extra_evt_rows:
+            _padded_ep = tuple(_ep_row) + ("",) * max(0, 40 - len(_ep_row))
+            _decl_cache.append((_next_rn_ep, _padded_ep))
+            _next_rn_ep += 1
+    except: pass
     write_excel_bg(prod_row, evt_rows + _extra_evt_rows)
     threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True,"recap":recap})
@@ -4008,7 +4019,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
     import json as _json_rpt
     _sess_map_r = {}
     _sess_evts_map_r = {}
-    for _r in decl_rows:
+    for _, _r in _decl_cache:  # utilise _decl_cache (toujours à jour) au lieu de decl_rows (Excel potentiellement en retard)
         _dkey = str(_r[39] if len(_r) > 39 else "").strip() or _row_date(_r[2])
         if not _dkey: continue
         _pilot_r = str(_r[4] or ""); _poste_r = str(_r[3] or "")
@@ -4049,7 +4060,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
     for _s_r in _embedded_sessions_list:
         _sk3 = f"{_s_r['date']}||{_s_r['pilot']}||{_s_r['poste']}"
         _pr3=[]; _er3=[]; _teq3=0.0; _ts3=0.0; _mfs3=0.0; _sts3=0.0; _ads3=[]; _afs3=[]
-        for _r3 in decl_rows:
+        for _, _r3 in _decl_cache:  # utilise _decl_cache (toujours à jour)
             _dk3 = str(_r3[39] if len(_r3)>39 else "").strip() or _row_date(_r3[2])
             if _dk3 != _s_r["date"] or str(_r3[4] or "") != _s_r["pilot"]: continue
             if _s_r["poste"] and str(_r3[3] or "") != _s_r["poste"]: continue
