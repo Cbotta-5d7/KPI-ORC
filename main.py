@@ -1727,8 +1727,12 @@ def api_stop_degrade():
     dur_s = max(0, (end_dt_deg - start_dt_deg).total_seconds())
     _S["degrade_periods"].append({"start": start_dt_deg, "end": end_dt_deg, "type": motif})
     _S["degrade_active"] = False; _S["degrade_type"] = ""; _S["degrade_start_dt"] = None
+    # Si durée < 30s (ex: fin de poste juste après fin d'OF), on ne génère pas de ligne parasite
+    if dur_s < 30:
+        save_session()
+        threading.Thread(target=generate_dashboard_html, daemon=True).start()
+        return jsonify({"ok":True})
     pilot = _S.get("pilot",""); poste = _S.get("poste","")
-    of_num = _S.get("form",{}).get("of_num","") if _S.get("prod_active") else ""
     shift_dt = _S.get("shift_start") or start_dt_deg
     _row = [
         motif, "Mode dégradé",
@@ -1787,11 +1791,13 @@ def api_end_prod():
     # Mode dégradé : enregistrer la portion de CET OF uniquement — NE PAS fermer le mode
     # Le dégradé persiste jusqu'à ce que l'utilisateur l'arrête explicitement
     _degrade_end_row = None
+    _dg_dur_for_trs = 0.0  # durée dégradé dans cet OF, pour calcul TRS ci-dessous
     if _S.get("degrade_active") and _S.get("degrade_start_dt"):
         _dg_of_start = max(_S["degrade_start_dt"], _S["of_start"])
         _dg_of_end = datetime.datetime.now()
         _dg_motif = _S["degrade_type"]
         _dg_dur_of = max(0.0, (_dg_of_end - _dg_of_start).total_seconds())
+        _dg_dur_for_trs = _dg_dur_of  # sauvegarde AVANT d'avancer le pointeur
         _sh_dt = _S.get("shift_start") or _dg_of_start
         if _dg_dur_of >= 1:
             _degrade_end_row = [
@@ -1837,10 +1843,8 @@ def api_end_prod():
                 _d0 = max(_dp["start"], _S["of_start"])
                 _d1 = min(_dp["end"], end_dt)
                 if _d1 > _d0: _deg_s += (_d1 - _d0).total_seconds()
-        # Dégradé encore actif — portion dans cet OF (de of_start à end_dt)
-        if _S.get("degrade_active") and _S.get("degrade_start_dt"):
-            _d0 = max(_S["degrade_start_dt"], _S["of_start"])
-            if end_dt > _d0: _deg_s += (end_dt - _d0).total_seconds()
+        # Dégradé actif pendant cet OF — valeur déjà calculée avant l'avance du pointeur
+        _deg_s += _dg_dur_for_trs
         _eff_s = max(1.0, of_s_brut - _of_planned_ded_s)
         _adj_s = max(1.0, _eff_s - _deg_s / 2.0)
         _pct_ep = get_pct_cadence(v.get("nb_pers", 1))
@@ -5084,7 +5088,7 @@ select{cursor:default}
             <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-duree_mq_mp" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>MQ PERSONNEL (Seulement si arrêt d'une partie de la ligne) (min)</label><input id="f-manquant_pers" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr" style="display:none"><input id="f-manquant_pers" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
           </div>
           <!-- Zone Qualité -->
           <div class="fzone zq">
