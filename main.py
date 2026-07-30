@@ -3554,8 +3554,9 @@ def generate_dashboard_html():
                 dt = datetime.datetime.strptime(f"{today_str} {t}", "%d/%m/%Y %H:%M:%S")
                 return max(0, min(W, int((dt-win_start).total_seconds()/span*W)))
             except: return 0
-        catcol = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7"}
+        catcol = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7","degrade":"url(#deg-pat)"}
         svg = f'<svg width="100%" viewBox="0 0 {W} {H}" style="display:block" preserveAspectRatio="none">'
+        svg += '<defs><pattern id="deg-pat" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#16a34a"/><rect x="4" y="0" width="4" height="8" fill="#fef08a"/></pattern></defs>'
         svg += f'<rect x="0" y="{Y}" width="{W}" height="{BH}" fill="#e2e8f0" rx="4"/>'
         for r in today_prod:
             x1 = to_x(str(r[16] or ""))
@@ -3575,10 +3576,18 @@ def generate_dashboard_html():
             x1 = to_x(str(r[16] or ""))
             x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*W)
             x2 = max(x2, x1+3)
-            col = catcol["pb"] if ("pb" in t or "panne" in t or "technique" in t) else catcol["ratt"] if "ratt" in t else catcol["nettoyage"] if "nett" in t else catcol["pause"] if "pause" in t else "#94a3b8"
+            col = catcol["pb"] if ("pb" in t or "panne" in t or "technique" in t) else catcol["ratt"] if "ratt" in t else catcol["nettoyage"] if "nett" in t else catcol["pause"] if "pause" in t else catcol["degrade"] if ("dégr" in t or "degrad" in t or "mode" in t) else "#94a3b8"
             svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="{col}" rx="2" opacity="0.95"/>'
         # Live events from _S (in-memory, not yet in Excel)
         _catcol2 = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7"}
+        for _dp in (_S.get("degrade_periods") or []):
+            _d0 = _dp.get("start"); _d1 = _dp.get("end") or now_ts
+            if _d0:
+                x1 = to_x(_d0); x2 = to_x(_d1); x2 = max(x2, x1+3)
+                svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="url(#deg-pat)" rx="2" opacity="0.85"/>'
+        if _S.get("degrade_active") and _S.get("degrade_start_dt"):
+            x1 = to_x(_S["degrade_start_dt"]); x2 = int((now_ts-win_start).total_seconds()/span*W); x2 = max(x2, x1+3)
+            svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="url(#deg-pat)" rx="2" opacity="0.85"/>'
         for _ev in (_S.get("tl_events") or []):
             _key = _ev.get("key","")
             if not _key or _key.startswith("_"): continue
@@ -4070,6 +4079,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
       <span><i style="background:#f59e0b"></i>Rattrapage</span>
       <span><i style="background:#38bdf8"></i>Nettoyage</span>
       <span><i style="background:#64748b"></i>Pause</span>
+      <span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Mode dégradé</span>
     </div>
   </div>
 
@@ -4166,7 +4176,7 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
       <select id="rj-pilot" style="font-size:calc(12px*var(--zf,1));padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;background:#fff"><option value="">Tous</option></select>
       <label>Poste :</label>
       <select id="rj-poste" style="font-size:calc(12px*var(--zf,1));padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;background:#fff"><option value="">Tous</option></select>
-      <button onclick="calcPeriodReport()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">Calculer</button>
+      <button onclick="calcPeriodReport()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">🔄 Actualiser</button>
       <button onclick="resetPeriodReport()" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;font-size:calc(12px*var(--zf,1));color:#64748b;cursor:pointer">✕ Réinitialiser</button>
     </div>
     <div id="rj-auto-banner" style="display:none;padding:5px 16px;background:#eff6ff;border-bottom:1px solid #bfdbfe;flex-shrink:0"></div>
@@ -4659,10 +4669,10 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .htab{background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);border-bottom:3px solid var(--navy);color:rgba(255,255,255,.6);padding:6px 15px 8px;border-radius:8px 8px 0 0;cursor:pointer;font-size:calc(12px*var(--zf,1));font-weight:700;white-space:nowrap;transition:all .15s;position:relative;top:3px}
 .htab:hover{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.35);border-bottom-color:var(--navy);color:#fff}
 .htab.on{background:#fff;color:#1e3a8a;font-weight:800;border-color:rgba(255,255,255,.3);border-bottom:3px solid #fff;box-shadow:0 -3px 8px rgba(0,0,0,.12)}
-.htab.prod-on{background:var(--green)!important;color:#fff!important;font-weight:700;animation:pt 2s infinite;border-color:var(--green)!important;border-bottom-color:var(--green)!important;box-shadow:none!important}
+.htab.prod-on{background:var(--green)!important;color:#fff!important;font-weight:800;animation:pt 1.4s ease-in-out infinite;border-color:transparent!important;border-bottom-color:transparent!important;letter-spacing:.3px}
 #ht-prod{display:none}
 #ht-prod.prod-visible{display:inline-block!important}
-@keyframes pt{0%,100%{opacity:1}50%{opacity:.75}}
+@keyframes pt{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 5px 2px rgba(34,197,94,.4)}50%{opacity:.45;transform:scale(1.08);box-shadow:0 0 16px 6px rgba(34,197,94,.9)}}
 #hdr-right{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:calc(11px*var(--zf,1));color:rgba(255,255,255,.75);align-self:center}
 #hdr-pilot-lbl{font-weight:800;color:#fff;font-size:calc(18px*var(--zf,1));letter-spacing:.3px}
 #ht-guest-badge{display:none!important}
@@ -5169,18 +5179,18 @@ select{cursor:default}
           <div class="fzone zi">
             <h4>📋 Identification</h4>
             <div class="fr"><label>N° OF *</label><input id="f-of_num" oninput="scheduleAutoSave()" onfocus="openCodeInput('of_num','N° OF','9')"></div>
+            <div class="fr"><label>Code Produit</label><input id="f-code_prod" oninput="scheduleAutoSave()" onfocus="openCodeInput('code_prod','Code Produit')"></div>
+            <div class="fr"><label>Type Produit</label><select id="f-type_prod" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr ro"><label>Date</label><input id="f-date" readonly></div>
             <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
             <div class="fr"><label>Co-Pilote</label><select id="f-copilote" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Code Produit</label><input id="f-code_prod" oninput="scheduleAutoSave()" onfocus="openCodeInput('code_prod','Code Produit')"></div>
-            <div class="fr"><label>Type Produit</label><select id="f-type_prod" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
           </div>
           <!-- Zone Production -->
           <div class="fzone zp">
             <h4>🏭 Production</h4>
+            <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
             <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
             <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
@@ -5210,7 +5220,7 @@ select{cursor:default}
           <svg id="tl-svg" viewBox="0 0 800 52" preserveAspectRatio="none" style="width:100%;height:52px;display:block">
             <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
           </svg>
-          <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
+          <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Prod dégradé</span></div>
         </div>
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row">
@@ -5563,14 +5573,19 @@ select{cursor:default}
 
   <!-- ════ RAPPORTS JOUR ════ -->
   <div id="v-rpt-jour" class="view" style="flex-direction:column;overflow:hidden">
+    <div style="background:#1e3a8a;color:#fff;text-align:center;padding:9px 14px;font-size:calc(15px*var(--zf,1));font-weight:800;letter-spacing:.4px;flex-shrink:0">📅 Rapport des 3 derniers postes</div>
     <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap">
       <span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:var(--navy)">Rapports jour</span>
       <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Du <input type="date" id="rj-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
       <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Au <input type="date" id="rj-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
       <select id="rj-pilot" style="font-size:calc(12px*var(--zf,1));padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--card)"><option value="">Tous les pilotes</option></select>
       <select id="rj-poste" style="font-size:calc(12px*var(--zf,1));padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--card)"><option value="">Tous les postes</option></select>
-      <button onclick="calcPeriodReport()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">Calculer</button>
+      <button onclick="calcPeriodReport()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">🔄 Actualiser</button>
       <button onclick="resetPeriodReport()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:5px 12px;font-size:calc(12px*var(--zf,1));color:var(--gray);cursor:pointer">✕ Réinitialiser</button>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button onclick="rjLast3()" style="background:#0369a1;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">3 derniers postes</button>
+        <button onclick="rjLast7Days()" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">7 derniers jours</button>
+      </div>
     </div>
     <div id="rj-result" style="flex:1;overflow-y:auto;padding:14px 18px">
       <div style="padding:60px;text-align:center;color:var(--gray)">
@@ -7574,7 +7589,7 @@ function collectForm(){
   FORM_FIELDS.forEach(k=>{
     const el=document.getElementById('f-'+k);
     if(!el) return;
-    f[k]=el.type==='number'?(parseFloat(el.value)||0):el.value;
+    f[k]=el.type==='number'?(el.value===''?'':parseFloat(el.value)||0):el.value;
   });
   f.pilote=document.getElementById('f-pilote')?.value||ST.pilot||'';
   f.poste=document.getElementById('f-poste')?.value||ST.poste||'';
@@ -8457,6 +8472,15 @@ function _codeInputConfirm() {
     if(field){field.value=v;scheduleAutoSave();}
   }
   closeM('m-code-input');
+  _checkFormAutoConfirm();
+}
+function _checkFormAutoConfirm(){
+  if(window.ST&&window.ST.prod_active) return;
+  const ofVal=(document.getElementById('f-of_num')||{}).value||'';
+  const cpVal=(document.getElementById('f-code_prod')||{}).value||'';
+  if(/^[0-9]{9}$/.test(ofVal)&&/^[0-9]{6}_[0-9]{3}$/.test(cpVal)){
+    setTimeout(doStartProd,500);
+  }
 }
 
 // ── OF DETAIL REPORT ──
@@ -9799,11 +9823,11 @@ async function calcPeriodReport(autoLoad){
       const by=padT+gH-bh;
       const col=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgB+=`<rect x="${x}" y="${by}" width="${WB}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(s.trs>=0)svgB+=`<text x="${x+WB/2}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${s.trs.toFixed(0)}%</text>`;
+      if(s.trs>=0)svgB+=`<text x="${x+WB/2}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${s.trs.toFixed(0)}%</text>`;
       const dp=s.date.split('/');
-      svgL+=`<text x="${x+WB/2}" y="${padT+gH+14}" text-anchor="middle" font-size="10" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
-      svgL+=`<text x="${x+WB/2}" y="${padT+gH+27}" text-anchor="middle" font-size="9" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
-      svgL+=`<text x="${x+WB/2}" y="${padT+gH+40}" text-anchor="middle" font-size="9" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
+      svgL+=`<text x="${x+WB/2}" y="${padT+gH+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
+      svgL+=`<text x="${x+WB/2}" y="${padT+gH+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
+      svgL+=`<text x="${x+WB/2}" y="${padT+gH+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
     });
     const yBase=padT+gH;
     chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex:1;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">📈 TRS par équipe</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgB}${svgL}</svg></div></div>`;
@@ -9829,11 +9853,11 @@ async function calcPeriodReport(autoLoad){
       const by=padT2+gH2-bh;
       const col=v>=cadRef?'#16a34a':'#f59e0b';
       svgB2+=`<rect x="${x}" y="${by}" width="${WB2}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(v>0)svgB2+=`<text x="${x+WB2/2}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${v}</text>`;
+      if(v>0)svgB2+=`<text x="${x+WB2/2}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${v}</text>`;
       const dp=s.date.split('/');
-      svgL2+=`<text x="${x+WB2/2}" y="${padT2+gH2+14}" text-anchor="middle" font-size="10" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
-      svgL2+=`<text x="${x+WB2/2}" y="${padT2+gH2+27}" text-anchor="middle" font-size="9" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
-      svgL2+=`<text x="${x+WB2/2}" y="${padT2+gH2+40}" text-anchor="middle" font-size="9" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
+      svgL2+=`<text x="${x+WB2/2}" y="${padT2+gH2+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
+      svgL2+=`<text x="${x+WB2/2}" y="${padT2+gH2+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
+      svgL2+=`<text x="${x+WB2/2}" y="${padT2+gH2+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
     });
     const yBase2=padT2+gH2;
     const tLine=tY!==null?`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#dc2626" stroke-width="2" stroke-dasharray="6,3"/>`:'';
@@ -9953,6 +9977,20 @@ async function calcPeriodReport(autoLoad){
       </div>
     </div>
   `;
+}
+function rjLast3(){
+  document.getElementById('rj-from').value='';
+  document.getElementById('rj-to').value='';
+  document.getElementById('rj-pilot').value='';
+  document.getElementById('rj-poste').value='';
+  loadRptJour();
+}
+function rjLast7Days(){
+  const _t=new Date(),_f=new Date(_t);
+  _f.setDate(_t.getDate()-6);
+  document.getElementById('rj-from').value=_f.toISOString().slice(0,10);
+  document.getElementById('rj-to').value=_t.toISOString().slice(0,10);
+  calcPeriodReport(false);
 }
 function resetPeriodReport(){
   document.getElementById('rj-from').value='';
