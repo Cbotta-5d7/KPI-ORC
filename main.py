@@ -3586,7 +3586,7 @@ def generate_dashboard_html():
                 dt = datetime.datetime.strptime(f"{today_str} {t}", "%d/%m/%Y %H:%M:%S")
                 return max(0, min(W, int((dt-win_start).total_seconds()/span*W)))
             except: return 0
-        catcol = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7","degrade":"url(#deg-pat)"}
+        catcol = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7","reunion":"#8b5cf6","degrade":"url(#deg-pat)"}
         svg = f'<svg width="100%" viewBox="0 0 {W} {H}" style="display:block" preserveAspectRatio="none">'
         svg += '<defs><pattern id="deg-pat" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#16a34a"/><rect x="4" y="0" width="4" height="8" fill="#fef08a"/></pattern></defs>'
         svg += f'<rect x="0" y="{Y}" width="{W}" height="{BH}" fill="#e2e8f0" rx="4"/>'
@@ -3608,10 +3608,10 @@ def generate_dashboard_html():
             x1 = to_x(str(r[16] or ""))
             x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*W)
             x2 = max(x2, x1+3)
-            col = catcol["pb"] if ("pb" in t or "panne" in t or "technique" in t) else catcol["ratt"] if "ratt" in t else catcol["nettoyage"] if "nett" in t else catcol["pause"] if "pause" in t else catcol["degrade"] if ("dégr" in t or "degrad" in t or "mode" in t) else "#94a3b8"
+            col = catcol["pb"] if ("pb" in t or "panne" in t or "technique" in t) else catcol["ratt"] if "ratt" in t else catcol["nettoyage"] if "nett" in t else catcol["reunion"] if ("réunion" in t or "reunion" in t or "meeting" in t) else catcol["pause"] if "pause" in t else catcol["degrade"] if ("dégr" in t or "degrad" in t or "mode" in t) else "#94a3b8"
             svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="{col}" rx="2" opacity="0.95"/>'
         # Live events from _S (in-memory, not yet in Excel)
-        _catcol2 = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7"}
+        _catcol2 = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#38bdf8","pause":"#64748b","organisation":"#a855f7","reunion":"#8b5cf6"}
         for _dp in (_S.get("degrade_periods") or []):
             _d0 = _dp.get("start"); _d1 = _dp.get("end") or now_ts
             if _d0:
@@ -5263,7 +5263,7 @@ select{cursor:default}
           <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
           <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:var(--card);border:1.5px solid #8b5cf6;color:#7c3aed;font-weight:700;cursor:pointer">👥 Réunion</button>
           <button class="act-btn act-cancel" onclick="doCancelProd()">✖ Annuler prod</button>
-          <button class="act-btn act-endprod" onclick="doEndProdPreview()">🏁 Fin d'OF/prod</button>
+          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()">🏁 Fin d'OF/prod</button>
         </div>
       </div>
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
@@ -6086,7 +6086,18 @@ const STOP_COL = {
   ratt:"#dc2626",pb:"#dc2626",autre:"#64748b",
   nettoyage:"#f59e0b",
   organisation:"#3b82f6",
+  manquants:"#9333ea",
   "_pause":"#94a3b8","Pause":"#94a3b8"
+};
+const _STOP_GRAD = {
+  ratt:        ['#f87171','#dc2626','#991b1b'],
+  pb:          ['#f87171','#dc2626','#991b1b'],
+  manquants:   ['#d8b4fe','#9333ea','#6b21a8'],
+  organisation:['#93c5fd','#3b82f6','#1d4ed8'],
+  nettoyage:   ['#fcd34d','#f59e0b','#b45309'],
+  autre:       ['#94a3b8','#64748b','#334155'],
+  _pause:      ['#94a3b8','#64748b','#334155'],
+  Pause:       ['#94a3b8','#64748b','#334155'],
 };
 
 function getStopColor(key, cat) {
@@ -6511,6 +6522,7 @@ function goTab(tab) {
     document.getElementById('v-settings-content').style.display = 'none';
     document.getElementById('lock-pw').value='';
     document.getElementById('lock-err').textContent='';
+    setTimeout(()=>document.getElementById('lock-pw')?.focus(), 80);
   }
 }
 
@@ -7464,14 +7476,45 @@ async function loadEvtsList(){
 function rebuildStopGrids(){
   const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
   const g=document.getElementById('sgrid-all'); if(!g) return;
+  g.style.cssText='display:block;margin-bottom:6px';
   g.innerHTML='';
-  evts.forEach(e=>{
-    const b=document.createElement('button');
-    const col=STOP_COL[e.cat]||'#64748b';
-    b.style.cssText=`background:${col};color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer`;
-    b.textContent=e.label;
-    b.onclick=()=>{closeM('m-stop');doStartStop(e.key,e.cat);};
-    g.appendChild(b);
+  const CAT_ORDER=[
+    {key:'manquants',label:'🟣 Manquants',col:'#9333ea'},
+    {key:'ratt',label:'🟠 Rattrapage',col:'#dc2626'},
+    {key:'organisation',label:'🔵 Organisationnel',col:'#3b82f6'},
+    {key:'pb',label:'🔴 Technique',col:'#dc2626'},
+    {key:'nettoyage',label:'🧹 Nettoyage',col:'#f59e0b'},
+    {key:'autre',label:'⚫ Autre',col:'#64748b'},
+  ];
+  const bycat={};
+  evts.forEach(e=>{const c=e.cat||'autre';if(!bycat[c])bycat[c]=[];bycat[c].push(e);});
+  const _bs0='0 8px 20px rgba(0,0,0,.35),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.25)';
+  const _bs1='0 3px 10px rgba(0,0,0,.3),inset 0 1px 2px rgba(255,255,255,.2),inset 0 -1px 3px rgba(0,0,0,.2)';
+  let first=true;
+  CAT_ORDER.forEach(({key,label,col})=>{
+    const items=bycat[key]; if(!items||!items.length) return;
+    const hdr=document.createElement('div');
+    hdr.style.cssText=`font-size:calc(10px*var(--zf,1));font-weight:800;color:${col};text-transform:uppercase;letter-spacing:.07em;padding:4px 2px;border-bottom:2px solid ${col}40;margin-bottom:6px;${first?'':'margin-top:10px;'}`;
+    hdr.textContent=label; g.appendChild(hdr); first=false;
+    const grid=document.createElement('div');
+    grid.style.cssText='display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:4px';
+    items.forEach(e=>{
+      const [lt,md,dk]=_STOP_GRAD[e.cat]||_STOP_GRAD.autre;
+      const b=document.createElement('button');
+      b.style.cssText=`color:#fff;border:none;border-radius:14px;padding:14px 8px;min-height:54px;width:100%;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;background:radial-gradient(ellipse at 50% 25%,${lt} 0%,${md} 55%,${dk} 100%);box-shadow:${_bs0};transition:transform .12s,box-shadow .12s;position:relative;overflow:hidden;text-shadow:0 1px 3px rgba(0,0,0,.4)`;
+      const sheen=document.createElement('span');
+      sheen.style.cssText='position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,rgba(255,255,255,.28) 0%,rgba(255,255,255,0) 100%);border-radius:14px 14px 0 0;pointer-events:none';
+      const txt=document.createElement('span');
+      txt.style.cssText='position:relative;display:block;text-align:center';
+      txt.textContent=e.label;
+      b.appendChild(sheen); b.appendChild(txt);
+      b.onmousedown=()=>{b.style.transform='scale(.95)';b.style.boxShadow=_bs1;};
+      b.onmouseup=()=>{b.style.transform='';b.style.boxShadow=_bs0;};
+      b.onmouseleave=()=>{b.style.transform='';b.style.boxShadow=_bs0;};
+      b.onclick=()=>{closeM('m-stop');doStartStop(e.key,e.cat);};
+      grid.appendChild(b);
+    });
+    g.appendChild(grid);
   });
 }
 
@@ -7696,8 +7739,17 @@ function restoreFormFromStorage(){
   fillTracaUI(document.getElementById('f-traca')?.value||'');
 }
 
+function _checkEndProdBtn(){
+  const req=['f-of_num','f-code_prod','f-type_prod','f-nb_pers','f-qte_fab','f-qte_emb','f-poids','f-taille','f-fibre'];
+  const ok=req.every(id=>{const el=document.getElementById(id);return el&&(el.value||'').trim()!==''&&el.value!=='0';});
+  const btn=document.getElementById('btn-endprod'); if(!btn) return;
+  btn.disabled=!ok;
+  btn.style.opacity=ok?'1':'0.38';
+  btn.style.cursor=ok?'pointer':'not-allowed';
+}
 function scheduleAutoSave(){
   clearTimeout(_autoSaveTimer);
+  _checkEndProdBtn();
   _autoSaveTimer=setTimeout(()=>{
     const f=collectForm();
     fetch('/api/save_form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});
