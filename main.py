@@ -1340,6 +1340,7 @@ def _state_json():
         "degrade_periods_iso": [{"start": _dt_str(p["start"]), "end": _dt_str(p["end"]), "type": p["type"]} for p in _S.get("degrade_periods", [])],
         "degrade_motifs": cfg.get("degrade_motifs", []),
         "budget_overrides": _S.get("budget_overrides", {}),
+        "pers_pct_map": {str(k): round(v*100,1) for k,v in _pers_pct_map.items()},
     }
 
 @flask_app.route('/')
@@ -6425,6 +6426,8 @@ async function pollEvts() {
 }
 
 function applyState(s) {
+  // Sync pers_pct_map depuis state (toujours à jour)
+  if(s.pers_pct_map) _persPctMapLocal=s.pers_pct_map;
   // Header
   const hp=document.getElementById('hdr-pilot-lbl');
   if(hp&&s.pilot) hp.textContent=`${s.pilot} — ${s.poste||''}`;
