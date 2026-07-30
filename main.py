@@ -2942,14 +2942,14 @@ def api_session_report():
         trs_shift, _sum_exp_sr = _option_b_trs(_prod_raws_sr, _deg_mg_sr, prod_ref)
         _cadence_ref_s = prod_ref / 28800
         if _cadence_ref_s > 0 and _sum_exp_sr > 0:
-            perte_cadence_s = max(0.0, _sum_exp_sr - tot_eq) / _cadence_ref_s
+            perte_cadence_s = (_sum_exp_sr - tot_eq) / _cadence_ref_s
     elif model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
         elapsed_s = max(1.0, model_dur_s - planned_ded)
         adj_s = max(1.0, elapsed_s - degrade_s / 2.0)
         trs_shift = round(tot_eq/(prod_ref*adj_s/28800)*100,1)
         _cadence_ref_s = prod_ref / 28800
         if _cadence_ref_s > 0:
-            perte_cadence_s = max(0.0, prod_ref * adj_s / 28800 - tot_eq) / _cadence_ref_s
+            perte_cadence_s = (prod_ref * adj_s / 28800 - tot_eq) / _cadence_ref_s
     trs_of = round(tot_eq/(prod_ref*tot_s/28800)*100,1) if prod_ref>0 and tot_s>0 and tot_eq>0 else -1
     _budget_labels = {"pause_min":"Pause","meeting_tol_min":"Réunion","clean_short_min":"Nettoyage court","clean_long_min":"Nettoyage long","clean_grand_min":"Nettoyage très long"}
     budget_data = {bk:{"label":bl,"budget_min":float(cfg.get(bk,0) or 0),"used_min":0.0} for bk,bl in _budget_labels.items()}
@@ -9931,8 +9931,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const budgetData=d.budget_data||{};
   const arretsPrevu=Object.values(budgetData).reduce((a,b)=>a+Math.min(b.budget_min||0,b.used_min||0),0);
   const tempsUtile=Math.max(0,ouvertureMin-Math.round(arretsPrevu));
-  // Perte cadence: [(tempsFonctionnement * cadenceRef) - nbEquiv] / cadenceRef
-  const perteCadenceRaw=cadenceRefPcsMin>0?Math.round(((tempsFonctionnement*cadenceRefPcsMin)-(d.tot_equiv||0))/cadenceRefPcsMin):0;
+  // Perte cadence: utilise la valeur serveur (Option B, tient compte dégradé + nb_pers)
+  const perteCadenceRaw=Math.round(d.perte_cadence_min||0);
   const perteCadenceHtml=perteCadenceRaw<0?`<span style="color:#16a34a;font-weight:800">${Math.abs(perteCadenceRaw)} min de gain</span>`:perteCadenceRaw>0?`<span style="color:#dc2626;font-weight:800">${perteCadenceRaw} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
   const degMin=Math.round((d.degrade_s||0)/60);
   const tlDebut=d.model_debut||d.actual_debut;
