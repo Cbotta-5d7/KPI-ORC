@@ -480,6 +480,8 @@ def _compute_budget_state_now():
             ntype = ev.get("nettoyage_type","court")
             bk = {"court":"clean_short_min","long":"clean_long_min","grand":"clean_grand_min"}.get(ntype,"clean_short_min")
             return BUDGET_KEYS.get(bk)
+        if cat == "reunion":
+            return BUDGET_KEYS.get("meeting_tol_min")
         lbl = _key_lbl.get(ev.get("key",""), ev.get("key",""))
         bk = _get_arret_budget_key(lbl)
         return BUDGET_KEYS.get(bk)
@@ -2096,7 +2098,14 @@ def api_toggle_pause():
 def api_toggle_reunion():
     if t_running("reunion"):
         t_stop("reunion")
-        tl_close("reunion", "")
+        # Fermer tous les événements réunion ouverts (gère les clés legacy)
+        now = datetime.datetime.now()
+        for ev in _S["tl_events"]:
+            k = ev.get("key","")
+            if ("reunion" in k.lower() or "meeting" in k.lower()) and not ev.get("end"):
+                ev["end"] = now
+                ev["comment"] = ""
+        save_session()
         reunion_active = False
         # Écrire en Excel si hors production (en prod : écrit à la fin de l'OF via build_decl_rows)
         if not _S.get("prod_active"):
