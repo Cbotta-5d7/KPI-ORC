@@ -2774,7 +2774,7 @@ def api_past_sessions():
             planned_ded = _compute_planned_deduction_s(session_evts.get(key, []))
             _pk = (s["pilot"].lower(), s["date"])
             if _pk in postes_map:
-                _pdeb, _pfin = postes_map[_pk]
+                _pdeb, _pfin, *_ = postes_map[_pk]
                 _mdur2 = max(0.0, (_pfin - _pdeb).total_seconds())
             else:
                 _mdur2 = get_shift_duration_s(s["poste"], date_obj)
@@ -3055,7 +3055,7 @@ def api_session_report():
     _postes_map2 = load_postes_shift_map()
     _pk2 = (pilot.lower(), date_str)
     if _pk2 in _postes_map2:
-        _pdeb2, _pfin2 = _postes_map2[_pk2]
+        _pdeb2, _pfin2, *_ = _postes_map2[_pk2]
         model_dur_s = max(0.0, (_pfin2 - _pdeb2).total_seconds())
         if not debut_str:
             debut_str = _pdeb2.strftime("%H:%M")
@@ -4779,14 +4779,15 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
 /* Action buttons row below timeline */
 .prod-act-row{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10}
-.act-btn{flex:1;min-width:100px;border:none;border-radius:8px;padding:24px 6px;cursor:pointer;font-size:calc(16px*var(--zf,1));font-weight:700;text-align:center;transition:all .1s;white-space:nowrap;min-height:80px;display:flex;align-items:center;justify-content:center;gap:4px;flex-direction:column;line-height:1.3;box-shadow:0 6px 0 rgba(0,0,0,.25),0 8px 12px rgba(0,0,0,.2);transform:translateY(0);border-bottom:none}
-.act-btn:hover{filter:brightness(1.05)}
-.act-btn:active{transform:translateY(4px);box-shadow:0 2px 0 rgba(0,0,0,.25),0 2px 4px rgba(0,0,0,.15)}
-.act-stop{background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;font-size:calc(16px*var(--zf,1));font-weight:800;box-shadow:0 3px 8px rgba(185,28,28,.3)}
-.act-nett{background:#e0f2fe;color:var(--blue)}
-.act-pause{background:#f3e8ff;color:var(--purple)}
-.act-cancel{background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1}
-.act-endprod{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;font-weight:800;box-shadow:0 3px 8px rgba(22,163,74,.35)}
+.act-btn{flex:1;min-width:100px;border:none;border-radius:14px;padding:24px 6px;cursor:pointer;font-size:calc(16px*var(--zf,1));font-weight:700;text-align:center;transition:all .12s;white-space:nowrap;min-height:80px;display:flex;align-items:center;justify-content:center;gap:4px;flex-direction:column;line-height:1.3;box-shadow:0 8px 0 rgba(0,0,0,.3),0 10px 16px rgba(0,0,0,.25),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.2);transform:translateY(0);position:relative;overflow:hidden}
+.act-btn::before{content:'';position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 100%);border-radius:14px 14px 0 0;pointer-events:none}
+.act-btn:hover{filter:brightness(1.08)}
+.act-btn:active{transform:translateY(6px);box-shadow:0 2px 0 rgba(0,0,0,.3),0 3px 6px rgba(0,0,0,.2),inset 0 1px 2px rgba(255,255,255,.2),inset 0 -1px 3px rgba(0,0,0,.15)}
+.act-stop{background:radial-gradient(ellipse at 50% 25%,#f87171 0%,#dc2626 55%,#991b1b 100%);color:#fff;font-size:calc(16px*var(--zf,1));font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
+.act-nett{background:radial-gradient(ellipse at 50% 25%,#7dd3fc 0%,#0ea5e9 55%,#075985 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
+.act-pause{background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#7c3aed 55%,#4c1d95 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
+.act-cancel{background:radial-gradient(ellipse at 50% 25%,#94a3b8 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.3)}
+.act-endprod{background:radial-gradient(ellipse at 50% 25%,#4ade80 0%,#16a34a 55%,#14532d 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
 /* 3-col form zones */
 .form-3col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 .fzone{border-radius:7px;padding:8px}
@@ -5258,10 +5259,10 @@ select{cursor:default}
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row">
           <button class="act-btn act-stop" onclick="openStopModal()" style="white-space:normal;line-height:1.2">⛔ Déclarer<br>un arrêt</button>
-          <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="background:#fef9c3;border:1.5px solid #ca8a04;color:#854d0e;font-weight:700;white-space:normal;line-height:1.2">🟡 Mode<br>dégradé</button>
+          <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none;white-space:normal;line-height:1.2">🟡 Mode<br>dégradé</button>
           <button class="act-btn act-nett" onclick="doNettoyage()">🧹 Nettoyage</button>
           <button class="act-btn act-pause" id="btn-pause" onclick="doPause()">⏸ Pause</button>
-          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:var(--card);border:1.5px solid #8b5cf6;color:#7c3aed;font-weight:700;cursor:pointer">👥 Réunion</button>
+          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#a78bfa 0%,#7c3aed 55%,#4c1d95 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none;cursor:pointer">👥 Réunion</button>
           <button class="act-btn act-cancel" onclick="doCancelProd()">✖ Annuler prod</button>
           <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()">🏁 Fin d'OF/prod</button>
         </div>
@@ -6572,6 +6573,7 @@ async function pollState() {
   }
 
   applyState(s);
+  _checkEndProdBtn();
   if(_curTab==='main') loadMainDecl();
   if(_curTab==='kpi') loadKPI();
 }
@@ -9824,9 +9826,12 @@ async function reloadAndLoadRapports(){
 }
 async function loadRptJour(){
   const _rjf=document.getElementById('rj-from'),_rjt=document.getElementById('rj-to');
-  const _todayStr=new Date().toISOString().slice(0,10);
-  if(_rjf&&!_rjf.value)_rjf.value=_todayStr;
-  if(_rjt&&!_rjt.value)_rjt.value=_todayStr;
+  // Toujours réinitialiser les filtres à l'ouverture de l'onglet
+  if(_rjf) _rjf.value='';
+  if(_rjt) _rjt.value='';
+  const _pSel=document.getElementById('rj-pilot'); if(_pSel) _pSel.value='';
+  const _qSel=document.getElementById('rj-poste'); if(_qSel) _qSel.value='';
+  _rjSetBanner('Rapport des 3 derniers postes');
   // Populate pilot/poste selects from past_sessions
   const sessions=await apiFetch('/api/past_sessions');
   if(!sessions) return;
