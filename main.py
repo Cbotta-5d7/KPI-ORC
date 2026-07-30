@@ -356,6 +356,61 @@ def _merged_degrade_s(rows):
         else: mg.append((s, f))
     return sum(f - s for s, f in mg)
 
+_pers_pct_map = {}  # {nb_pers_int: pct_float}  e.g. {1: 0.10, 10: 1.00}
+
+def _merged_degrade_ivs(rows):
+    """Returns merged dégradé intervals [(start_s, end_s)] from raw rows."""
+    ivs = sorted(
+        (s, f) for s, f in (
+            (_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00")))
+            for r in rows if _is_degrade_type(str(r[0] or ""))
+        ) if f > s
+    )
+    mg = []
+    for s, f in ivs:
+        if mg and s <= mg[-1][1]: mg[-1] = (mg[-1][0], max(mg[-1][1], f))
+        else: mg.append((s, f))
+    return mg
+
+def get_pct_cadence(nb_pers):
+    """Returns pct_cadence factor for nb_pers (1.0 = 100% cadence). Falls back to 1.0."""
+    if not _pers_pct_map: return 1.0
+    try:
+        n = int(float(str(nb_pers or 1)))
+        if n in _pers_pct_map: return float(_pers_pct_map[n])
+    except: pass
+    return 1.0
+
+def _deg_overlap_s(of_start_s, of_end_s, deg_ivs):
+    """Returns seconds of dégradé overlap with OF interval [of_start_s, of_end_s]."""
+    total = 0.0
+    for ds, df in deg_ivs:
+        o0 = max(ds, of_start_s); o1 = min(df, of_end_s)
+        if o1 > o0: total += o1 - o0
+    return total
+
+def _option_b_trs(prod_raw_rows, deg_ivs, prod_ref):
+    """Option B TRS: per-OF adjusted time × pct_cadence(nb_pers).
+    Returns (trs_float, sum_expected_equiv)."""
+    if prod_ref <= 0: return -1.0, 0.0
+    tot_equiv = 0.0; sum_expected = 0.0
+    for r in prod_raw_rows:
+        try:
+            eq = float(str(r[21] or 0).replace(",", "."))
+            deb_s = _hms_to_sec(str(r[16] or "00:00:00"))
+            fin_s = _hms_to_sec(str(r[17] or "00:00:00"))
+            dur_s = fin_s - deb_s if fin_s > deb_s else _hms_to_sec(str(r[18] or "00:00:00"))
+            if dur_s <= 0: continue
+            nb_p = r[6] if len(r) > 6 else 1
+            pct = get_pct_cadence(nb_p)
+            ovl = _deg_overlap_s(deb_s, fin_s, deg_ivs)
+            adj_s = max(1.0, dur_s - ovl / 2.0)
+            sum_expected += prod_ref * pct * adj_s / 28800
+            tot_equiv += eq
+        except: pass
+    if sum_expected <= 0: return -1.0, 0.0
+    return round(tot_equiv / sum_expected * 100, 1), sum_expected
+
 def _compute_planned_deduction_s(evt_rows):
     """Calcule les secondes à déduire de l'elapsed TRS pour les arrêts planifiés.
     evt_rows : liste de tuples (rn, r) issus de _decl_cache OU liste de dicts {"type","duree"}.
@@ -749,7 +804,41 @@ def load_lists():
             if _deg_motifs:
                 cfg["degrade_motifs"] = _deg_motifs
                 save_cfg_data()
+            # Col P (16) = nb_pers, Col Q (17) = % cadence attendu
+            _pers_map_new = {}
+            for ri in range(2, ws.max_row+1):
+                _pv = ws.cell(ri, 16).value
+                _qv = ws.cell(ri, 17).value
+                if _pv is None and _qv is None: continue
+                try:
+                    _np = int(float(str(_pv or "").strip()))
+                    _pct_raw = float(str(_qv or "").strip().replace(",",".").replace("%","").strip())
+                    if 1 <= _np <= 10 and 0 < _pct_raw <= 200:
+                        _pers_map_new[_np] = _pct_raw / 100.0 if _pct_raw > 2 else _pct_raw
+                except: pass
+            if _pers_map_new:
+                _pers_pct_map.clear(); _pers_pct_map.update(_pers_map_new)
         wb.close()
+    except: pass
+
+def write_pers_pct_to_excel():
+    """Persiste _pers_pct_map dans l'onglet Listes, colonnes P (16) et Q (17)."""
+    path = cfg.get("db_path", "")
+    if not path or not os.path.exists(path): return
+    try:
+        wb = load_workbook(path, read_only=False, data_only=False)
+        if "Listes" not in wb.sheetnames: wb.close(); return
+        ws = wb["Listes"]
+        if not ws.cell(1, 16).value: ws.cell(1, 16).value = "Nombre de personne"
+        if not ws.cell(1, 17).value: ws.cell(1, 17).value = "% cadence attendu"
+        for ri in range(2, 15):
+            ws.cell(ri, 16).value = None; ws.cell(ri, 17).value = None
+        ri = 2
+        for np_k in sorted(_pers_pct_map.keys()):
+            ws.cell(ri, 16).value = np_k
+            ws.cell(ri, 17).value = round(_pers_pct_map[np_k] * 100, 1)
+            ri += 1
+        wb.save(path); wb.close()
     except: pass
 
 def get_list(h):
@@ -1669,6 +1758,23 @@ def api_save_degrade_list():
     write_degrade_list_to_excel()
     return jsonify({"ok":True})
 
+@flask_app.route('/api/save_pers_pct', methods=['POST'])
+def api_save_pers_pct():
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw): return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    entries = data.get("entries",[])
+    _pers_pct_map.clear()
+    for e in entries:
+        try:
+            np_k = int(e.get("nb_pers",0))
+            pct_raw = float(e.get("pct",0))
+            if 1 <= np_k <= 10 and 0 < pct_raw <= 200:
+                _pers_pct_map[np_k] = pct_raw / 100.0 if pct_raw > 2 else pct_raw
+        except: pass
+    write_pers_pct_to_excel()
+    return jsonify({"ok":True})
+
 @flask_app.route('/api/end_prod', methods=['POST'])
 def api_end_prod():
     if not _S["prod_active"] or not _S["of_start"]:
@@ -1733,8 +1839,9 @@ def api_end_prod():
             _d0 = max(_S["degrade_start_dt"], _S["of_start"])
             if end_dt > _d0: _deg_s += (end_dt - _d0).total_seconds()
         _eff_s = max(1.0, of_s_brut - _of_planned_ded_s)
-        _adj_s = max(1.0, _eff_s - _deg_s / 2.0)  # dégradé = cadence / 2
-        trs = round(equiv/(prod_ref*_adj_s/28800)*100,1)
+        _adj_s = max(1.0, _eff_s - _deg_s / 2.0)
+        _pct_ep = get_pct_cadence(v.get("nb_pers", 1))
+        trs = round(equiv/(prod_ref*_pct_ep*_adj_s/28800)*100,1)
         trs_str = str(trs)
 
     # Ligne Production (40 cols, format unifié)
@@ -1869,7 +1976,8 @@ def api_preview_end_prod():
             _d0 = max(_S["degrade_start_dt"], _S["of_start"])
             _prev_deg_s += max(0.0, (now - _d0).total_seconds())
         _adj_s_prev = max(1.0, _eff_s - _prev_deg_s / 2.0)
-        trs=round(equiv/(prod_ref*_adj_s_prev/28800)*100,1)
+        _pct_prv = get_pct_cadence(_S.get("form",{}).get("nb_pers",1))
+        trs=round(equiv/(prod_ref*_pct_prv*_adj_s_prev/28800)*100,1)
     return jsonify({
         "ok":True,
         "of_s":round(of_s,0),"of_s_brut":round(of_s_brut,0),
@@ -2136,6 +2244,8 @@ def api_config():
         "modeles_horaires": _apply_model_overrides(cfg.get("modeles_horaires",[])),
         "modeles_horaires_base": cfg.get("modeles_horaires",[]),
         "pilot_passwords": cfg.get("pilot_passwords",{}),
+        "degrade_motifs": cfg.get("degrade_motifs",[]),
+        "pers_pct_map": {str(k): round(v*100,1) for k,v in _pers_pct_map.items()},
     })
 
 @flask_app.route('/api/settings', methods=['POST'])
@@ -2295,7 +2405,7 @@ def api_fin_poste_data():
     pilot_poste = _S["poste"] or ""
     prod_ref = get_prod_ref()
     tot_eq=0.0; tot_s=0.0
-    of_list=[]
+    of_list=[]; _filtered_prod_raw_fp=[]
     prod_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() in ("production","prod","")]
     for rn, r in prod_rows:
         try:
@@ -2307,6 +2417,7 @@ def api_fin_poste_data():
             fin_s=_hms_to_sec(str(r[17] or "00:00:00"))
             s = fin_s - debut_s if fin_s > debut_s else _hms_to_sec(str(r[18] or "00:00:00"))
             tot_eq+=eq; tot_s+=s
+            _filtered_prod_raw_fp.append(r)
             try: _r24fp=float(str(r[24] if len(r)>24 else '').strip() or '-1')
             except: _r24fp=-1.0
             trs = _r24fp if _r24fp>=0 else (round(eq/(prod_ref*s/28800)*100,1) if prod_ref>0 and s>0 and eq>0 else -1)
@@ -2316,6 +2427,7 @@ def api_fin_poste_data():
                 "qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),
                 "debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],
                 "duree":str(r[18] or ""),"trs":trs,"fibre":str(r[11] or ""),
+                "nb_pers":str(r[6] or ""),
             })
         except: pass
     trs_poste=-1.0
@@ -2430,13 +2542,16 @@ def api_fin_poste_data():
     arrets_prevu_fp = sum(min(v['budget_min'], v['used_min']) for v in _bdata.values())
     temps_utile_fp = round(max(0.0, ouverture_min_fp - arrets_prevu_fp), 1)
     cadence_ref_fp = round(prod_ref / 480, 4) if prod_ref > 0 else 0.0
-    # TRS ajusté pour le dégradé (Interp. B : cadence divisée par 2 pendant dégradé)
     _elapsed_fp = max(1.0, model_dur_s - arrets_prevu_fp * 60)
     _adj_fp = max(1.0, _elapsed_fp - _degrade_s_fp / 2.0)
-    # Réécrire trs_poste_shift avec l'ajustement dégradé
-    if prod_ref > 0 and _adj_fp > 0 and tot_eq > 0:
-        trs_poste_shift = round(tot_eq / (prod_ref * _adj_fp / 28800) * 100, 1)
-    perte_cadence_fp = round((prod_ref * _adj_fp / 28800 - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 else 0.0
+    if _pers_pct_map and _filtered_prod_raw_fp:
+        _deg_ivs_fp = _merged_degrade_ivs([r_s for _, r_s in shift_evt_rows])
+        trs_poste_shift, _sum_exp_fp = _option_b_trs(_filtered_prod_raw_fp, _deg_ivs_fp, prod_ref)
+        perte_cadence_fp = round((_sum_exp_fp - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 and _sum_exp_fp > 0 else 0.0
+    else:
+        if prod_ref > 0 and _adj_fp > 0 and tot_eq > 0:
+            trs_poste_shift = round(tot_eq / (prod_ref * _adj_fp / 28800) * 100, 1)
+        perte_cadence_fp = round((prod_ref * _adj_fp / 28800 - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 else 0.0
     return jsonify({
         "pilot":pilot,"date":today,
         "nb_of":len(of_list),"trs":trs_poste,"trs_shift":trs_poste_shift,
@@ -2471,7 +2586,7 @@ def api_history_today():
     poste = _S["poste"] or ""
     prod_ref = get_prod_ref()
     shift_s = get_shift_duration_s(poste, shift_date)
-    rows = []
+    rows = []; _htd_prod_raw = []
     tot_eq=0.0; tot_s=0.0; _htd_ded_s=0.0; _htd_deg_ivs=[]
     for rn,r in _decl_cache:
         rd = _row_date(r[2])
@@ -2482,6 +2597,7 @@ def api_history_today():
             eq=float(str(r[21] or 0).replace(",",".") or 0)
             s=_hms_to_sec(str(r[18] or "00:00:00"))
             tot_eq+=eq; tot_s+=s
+            _htd_prod_raw.append(r)
             trs_of=-1
             try:
                 trs_col=str(r[24] or "")
@@ -2502,7 +2618,9 @@ def api_history_today():
         else: _htd_deg_mg.append((_s, _f))
     _htd_deg_s = sum(_f - _s for _s, _f in _htd_deg_mg)
     trs_shift=-1.0
-    if prod_ref>0 and shift_s>0 and tot_eq>0:
+    if _pers_pct_map and _htd_prod_raw and tot_eq > 0:
+        trs_shift, _ = _option_b_trs(_htd_prod_raw, _htd_deg_mg, prod_ref)
+    elif prod_ref>0 and shift_s>0 and tot_eq>0:
         _htd_adj = max(1.0, shift_s - _htd_ded_s - _htd_deg_s / 2.0)
         trs_shift=round(tot_eq/(prod_ref*_htd_adj/28800)*100,1)
     trs_of_time=-1.0
@@ -2522,7 +2640,7 @@ def api_past_sessions():
         row_type = str(r[0] or "").strip().lower()
         key = f"{date_str}||{pilot}||{poste}"
         if key not in sessions:
-            sessions[key] = {"date":date_str,"pilot":pilot,"poste":poste,"nb_of":0,"tot_equiv":0.0,"max_fin_s":0.0,"max_rn":0}
+            sessions[key] = {"date":date_str,"pilot":pilot,"poste":poste,"nb_of":0,"tot_equiv":0.0,"max_fin_s":0.0,"max_rn":0,"prod_raws":[]}
         if rn > sessions[key]["max_rn"]: sessions[key]["max_rn"] = rn
         if row_type in ("production","prod",""):
             try:
@@ -2530,6 +2648,7 @@ def api_past_sessions():
                 fin_s = _hms_to_sec(str(r[17] or "00:00:00"))
                 sessions[key]["nb_of"] += 1
                 sessions[key]["tot_equiv"] += eq
+                sessions[key]["prod_raws"].append(r)
                 if fin_s > sessions[key]["max_fin_s"]: sessions[key]["max_fin_s"] = fin_s
             except: pass
     # Also gather stop events per session for planned deduction
@@ -2558,10 +2677,16 @@ def api_past_sessions():
                 _mdur2 = max(0.0, (_pfin - _pdeb).total_seconds())
             else:
                 _mdur2 = get_shift_duration_s(s["poste"], date_obj)
-            _deg_ps = _merged_degrade_s([re for _, re in session_evts.get(key, [])])
-            if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
-                _el2 = max(1.0, _mdur2 - planned_ded - _deg_ps / 2.0)
-                trs = round(s["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
+            _evts_ps = session_evts.get(key, [])
+            _prod_raws_ps = s.get("prod_raws", [])
+            if _pers_pct_map and _prod_raws_ps:
+                _deg_ivs_ps = _merged_degrade_ivs([re for _, re in _evts_ps])
+                trs, _ = _option_b_trs(_prod_raws_ps, _deg_ivs_ps, prod_ref)
+            else:
+                _deg_ps = _merged_degrade_s([re for _, re in _evts_ps])
+                if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
+                    _el2 = max(1.0, _mdur2 - planned_ded - _deg_ps / 2.0)
+                    trs = round(s["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
         _pk_check = (s["pilot"].lower(), s["date"])
         if _pk_check not in postes_map:
             continue
@@ -2609,7 +2734,7 @@ def api_period_report():
         key = f"{date_str}||{pilot}||{poste}"
         if key not in sessions:
             sessions[key] = {'date':date_str,'pilot':pilot,'poste':poste,
-                             'nb_of':0,'tot_equiv':0.0,'tot_pcs':0,'evt_rows':[],'prod_rows':[]}
+                             'nb_of':0,'tot_equiv':0.0,'tot_pcs':0,'evt_rows':[],'prod_rows':[],'prod_raws':[]}
         row_type = str(r[0] or '').strip().lower()
         if row_type in ('production','prod',''):
             try:
@@ -2621,13 +2746,14 @@ def api_period_report():
                 _deb_f = _hms_to_sec(str(r[16] or '00:00:00'))
                 _fib_f = str(r[11] or '').strip()
                 sessions[key]['prod_rows'].append((_deb_f, _fib_f))
+                sessions[key]['prod_raws'].append(r)
             except: pass
         else:
             sessions[key]['evt_rows'].append((rn, r))
     # ── Aggregate ──
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
-    agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_elapsed_s=0.0
+    agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_elapsed_s=0.0; agg_sum_expected=0.0
     agg_fibre_chg=0; agg_depassement=0.0; stop_by_type={}; sessions_detail=[]
     jours=set(); pilotes=set(); postes_set=set()
     trs_by_day = {}
@@ -2667,7 +2793,15 @@ def api_period_report():
         planned_ded = _compute_planned_deduction_s(s['evt_rows'])
         elapsed_s = max(1.0, model_dur_s - planned_ded)
         adj_s = max(1.0, elapsed_s - _deg_s / 2.0)
-        perte = round((prod_ref * adj_s / 28800 - s['tot_equiv']) / cadence_ref, 1) if cadence_ref>0 else 0.0
+        if _pers_pct_map and s.get('prod_raws'):
+            _deg_ivs_pr = _merged_degrade_ivs([re2 for _, re2 in s['evt_rows']])
+            _trs_s, _sum_exp_pr = _option_b_trs(s['prod_raws'], _deg_ivs_pr, prod_ref)
+            perte = round((_sum_exp_pr - s['tot_equiv']) / cadence_ref, 1) if cadence_ref > 0 and _sum_exp_pr > 0 else 0.0
+        else:
+            _sum_exp_pr = prod_ref * adj_s / 28800
+            _trs_s = round(s['tot_equiv']/(prod_ref*adj_s/28800)*100,1) if prod_ref>0 and adj_s>0 and s['tot_equiv']>0 else -1.0
+            perte = round((_sum_exp_pr - s['tot_equiv']) / cadence_ref, 1) if cadence_ref>0 else 0.0
+        agg_sum_expected += _sum_exp_pr
         depassement = sum(max(0.0, v['used_min'] - v['budget_min']) for v in _bdata.values())
         agg_depassement += depassement
         _pf = sorted(s.get('prod_rows', []), key=lambda x: x[0])
@@ -2690,18 +2824,18 @@ def api_period_report():
         agg_elapsed_s += adj_s
         jours.add(s['date']); pilotes.add(s['pilot']); postes_set.add(s['poste'])
         day = s['date']
-        if day not in trs_by_day: trs_by_day[day]={'equiv':0.0,'elapsed_s':0.0}
+        if day not in trs_by_day: trs_by_day[day]={'equiv':0.0,'elapsed_s':0.0,'sum_expected':0.0}
         trs_by_day[day]['equiv']    += s['tot_equiv']
         trs_by_day[day]['elapsed_s'] += elapsed_s
-        _trs_s = round(s['tot_equiv']/(prod_ref*adj_s/28800)*100,1) if prod_ref>0 and adj_s>0 and s['tot_equiv']>0 else -1.0
+        trs_by_day[day]['sum_expected'] += _sum_exp_pr
         _cad_s = round(s['tot_equiv']/fonct_min*60) if fonct_min>0 else 0
         sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1)})
-    trs_periode = round(agg_equiv/(prod_ref*agg_elapsed_s/28800)*100,1) if prod_ref>0 and agg_elapsed_s>0 and agg_equiv>0 else -1.0
+    trs_periode = round(agg_equiv/agg_sum_expected*100,1) if agg_sum_expected>0 and agg_equiv>0 else -1.0
     def _sort_dmy(d):
         try: p=d.split('/'); return (int(p[2]),int(p[1]),int(p[0]))
         except: return (0,0,0)
     trs_by_day_list = [
-        {'date':day,'trs':round(v['equiv']/(prod_ref*v['elapsed_s']/28800)*100,1) if prod_ref>0 and v['elapsed_s']>0 and v['equiv']>0 else -1.0}
+        {'date':day,'trs':round(v['equiv']/v['sum_expected']*100,1) if v['sum_expected']>0 and v['equiv']>0 else -1.0}
         for day,v in sorted(trs_by_day.items(), key=lambda x:_sort_dmy(x[0]))
     ]
     cadence_h = round(agg_equiv/agg_fonct*60) if agg_fonct>0 else 0
@@ -2737,7 +2871,7 @@ def api_session_report():
     pilot = request.args.get('pilot','')
     poste = request.args.get('poste','')
     prod_ref = get_prod_ref()
-    prod_rows = []; evt_rows = []; tot_eq = 0.0; tot_s = 0.0; max_fin_s = 0.0; stop_s = 0.0; _deg_ivs_sr = []
+    prod_rows = []; evt_rows = []; tot_eq = 0.0; tot_s = 0.0; max_fin_s = 0.0; stop_s = 0.0; _deg_ivs_sr = []; _prod_raws_sr = []
     all_debut_s = []; all_fin_s = []
     for rn, r in _decl_cache:
         row_date_key = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
@@ -2761,6 +2895,7 @@ def api_session_report():
                 trs = _r24 if _r24>=0 else (round(eq/(prod_ref*dur_s/28800)*100,1) if prod_ref>0 and dur_s>0 and eq>0 else -1)
                 tot_eq += eq; tot_s += dur_s
                 if fin_s > max_fin_s: max_fin_s = fin_s
+                _prod_raws_sr.append(r)
                 prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),"traca":str(r[13] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),"qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"trs":trs,"comment":str(r[35] or ""),"nb_pers":str(r[6] or ""),"copilote":str(r[5] or ""),"qte_init_taie":str(r[25] if len(r)>25 else ""),"nb_taie2":str(r[26] if len(r)>26 else ""),"nb_def_cout":str(r[27] if len(r)>27 else ""),"mq_taie":str(r[28] if len(r)>28 else ""),"mq_housse":str(r[29] if len(r)>29 else ""),"nb_pp":str(r[30] if len(r)>30 else ""),"duree_mq_mp":str(r[32] if len(r)>32 else ""),"manquant_pers":str(r[33] if len(r)>33 else "")})
             except: pass
         elif _is_degrade_type(str(r[0] or "").strip()):
@@ -2801,11 +2936,16 @@ def api_session_report():
     ecart_s = max(0.0, model_dur_s - (tot_s + stop_s))
     trs_shift = -1.0
     perte_cadence_s = 0.0
-    if model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
+    if _pers_pct_map and _prod_raws_sr and tot_eq > 0:
+        trs_shift, _sum_exp_sr = _option_b_trs(_prod_raws_sr, _deg_mg_sr, prod_ref)
+        _cadence_ref_s = prod_ref / 28800
+        if _cadence_ref_s > 0 and _sum_exp_sr > 0:
+            perte_cadence_s = max(0.0, _sum_exp_sr - tot_eq) / _cadence_ref_s
+    elif model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
         elapsed_s = max(1.0, model_dur_s - planned_ded)
         adj_s = max(1.0, elapsed_s - degrade_s / 2.0)
         trs_shift = round(tot_eq/(prod_ref*adj_s/28800)*100,1)
-        _cadence_ref_s = prod_ref / 28800  # pcs par seconde
+        _cadence_ref_s = prod_ref / 28800
         if _cadence_ref_s > 0:
             perte_cadence_s = max(0.0, prod_ref * adj_s / 28800 - tot_eq) / _cadence_ref_s
     trs_of = round(tot_eq/(prod_ref*tot_s/28800)*100,1) if prod_ref>0 and tot_s>0 and tot_eq>0 else -1
@@ -4040,6 +4180,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
     import json as _json_rpt
     _sess_map_r = {}
     _sess_evts_map_r = {}
+    _sess_prods_map_r = {}
     for _, _r in _decl_cache:  # utilise _decl_cache (toujours à jour) au lieu de decl_rows (Excel potentiellement en retard)
         _dkey = str(_r[39] if len(_r) > 39 else "").strip() or _row_date(_r[2])
         if not _dkey: continue
@@ -4049,12 +4190,14 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         if _sk_r not in _sess_map_r:
             _sess_map_r[_sk_r] = {"date":_dkey,"pilot":_pilot_r,"poste":_poste_r,"nb_of":0,"tot_equiv":0.0,"max_fin_s":0.0}
             _sess_evts_map_r[_sk_r] = []
+            _sess_prods_map_r[_sk_r] = []
         if _rtype_r in ("production","prod",""):
             try:
                 _eq_r = float(str(_r[21] or 0).replace(",","."))
                 _fs_r = hms2s(_r[17])
                 _sess_map_r[_sk_r]["nb_of"] += 1
                 _sess_map_r[_sk_r]["tot_equiv"] += _eq_r
+                _sess_prods_map_r[_sk_r].append(_r)
                 if _fs_r > _sess_map_r[_sk_r]["max_fin_s"]: _sess_map_r[_sk_r]["max_fin_s"] = _fs_r
             except: pass
         else:
@@ -4068,10 +4211,14 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         _deb2, _ = _get_model_day_cfg(_s_r["poste"], _do2)
         _mds2 = hms2s(_deb2) if _deb2 else None
         _sess_evts2 = _sess_evts_map_r.get(_sk_r, [])
-        _ded2 = sum(hms2s(_er[18]) for _er in _sess_evts2 if any(k in str(_er[0] or "").lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
-        _deg2 = _merged_degrade_s(_sess_evts2)
+        _sess_prods2 = _sess_prods_map_r.get(_sk_r, [])
         _mdur2 = get_shift_duration_s(_s_r["poste"], _do2)
-        if _mdur2 > 0 and prod_ref > 0 and _s_r["tot_equiv"] > 0:
+        if _pers_pct_map and _sess_prods2 and _s_r["tot_equiv"] > 0:
+            _deg_ivs2 = _merged_degrade_ivs(_sess_evts2)
+            _trs_r, _ = _option_b_trs(_sess_prods2, _deg_ivs2, prod_ref)
+        elif _mdur2 > 0 and prod_ref > 0 and _s_r["tot_equiv"] > 0:
+            _ded2 = sum(hms2s(_er[18]) for _er in _sess_evts2 if any(k in str(_er[0] or "").lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
+            _deg2 = _merged_degrade_s(_sess_evts2)
             _el2 = max(1.0, _mdur2 - _ded2 - _deg2 / 2.0)
             _trs_r = round(_s_r["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
         _embedded_sessions_list.append({"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"nb_of":_s_r["nb_of"],"tot_equiv":round(_s_r["tot_equiv"],1),"trs":_trs_r})
@@ -4080,7 +4227,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
     _embedded_reports_dict = {}
     for _s_r in _embedded_sessions_list:
         _sk3 = f"{_s_r['date']}||{_s_r['pilot']}||{_s_r['poste']}"
-        _pr3=[]; _er3=[]; _teq3=0.0; _ts3=0.0; _mfs3=0.0; _sts3=0.0; _ads3=[]; _afs3=[]
+        _pr3=[]; _er3=[]; _pr3_raw=[]; _deg_ivs3=[]; _teq3=0.0; _ts3=0.0; _mfs3=0.0; _sts3=0.0; _ads3=[]; _afs3=[]
         for _, _r3 in _decl_cache:  # utilise _decl_cache (toujours à jour)
             _dk3 = str(_r3[39] if len(_r3)>39 else "").strip() or _row_date(_r3[2])
             if _dk3 != _s_r["date"] or str(_r3[4] or "") != _s_r["pilot"]: continue
@@ -4099,12 +4246,14 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
                     _trs3 = _r3_24 if _r3_24>=0 else (round(_eq3/(prod_ref*_dur3/28800)*100,1) if prod_ref>0 and _dur3>0 and _eq3>0 else -1)
                     _teq3 += _eq3; _ts3 += _dur3
                     if _fs3b > _mfs3: _mfs3 = _fs3b
-                    _pr3.append({"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"kit":str(_r3[15] or ""),"qte_fab":str(_r3[19] or ""),"equiv":str(_r3[21] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"trs":_trs3,"comment":str(_r3[35] or "")})
+                    _pr3_raw.append(_r3)
+                    _pr3.append({"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"kit":str(_r3[15] or ""),"qte_fab":str(_r3[19] or ""),"equiv":str(_r3[21] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"trs":_trs3,"comment":str(_r3[35] or ""),"nb_pers":str(_r3[6] or "")})
                 except: pass
             else:
                 try:
                     _durs3 = hms2s(_r3[18]); _sts3 += _durs3
                     _is_deg3 = _is_degrade_type(str(_r3[0] or "").strip())
+                    if _is_deg3 and _dbs3 >= 0 and _fbs3 > _dbs3: _deg_ivs3.append((_dbs3, _fbs3))
                     _er3.append({"type":str(_r3[0] or ""),"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"comment":str(_r3[35] or ""),"is_degrade":_is_deg3})
                 except: pass
         _acd3 = _sec_to_hm(min(_ads3)) if _ads3 else ""
@@ -4113,13 +4262,18 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
             _dp3 = _s_r["date"].split('/'); _dpo3 = datetime.date(int(_dp3[2]),int(_dp3[1]),int(_dp3[0]))
         except: _dpo3 = None
         _mdeb3, _mfin3 = _get_model_day_cfg(_s_r["poste"], _dpo3)
-        _mds3b = hms2s(_mdeb3) if _mdeb3 else None
         _ded3 = sum(hms2s(_e3r.get("duree","")) for _e3r in _er3 if any(k in str(_e3r.get("type","")).lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
-        _deg3 = sum(hms2s(_e3r.get("duree","")) for _e3r in _er3 if _e3r.get("is_degrade"))
         _mdur3 = get_shift_duration_s(_s_r["poste"], _dpo3)
         _ecart3 = max(0.0, _mdur3 - (_ts3 + _sts3))
         _trs_sh3 = -1.0
-        if _mdur3 > 0 and prod_ref > 0 and _teq3 > 0:
+        if _pers_pct_map and _pr3_raw and _teq3 > 0:
+            _deg_mg3 = []
+            for _si3, _fi3 in sorted(_deg_ivs3):
+                if _deg_mg3 and _si3 <= _deg_mg3[-1][1]: _deg_mg3[-1] = (_deg_mg3[-1][0], max(_deg_mg3[-1][1], _fi3))
+                else: _deg_mg3.append((_si3, _fi3))
+            _trs_sh3, _ = _option_b_trs(_pr3_raw, _deg_mg3, prod_ref)
+        elif _mdur3 > 0 and prod_ref > 0 and _teq3 > 0:
+            _deg3 = sum(hms2s(_e3r.get("duree","")) for _e3r in _er3 if _e3r.get("is_degrade"))
             _el3 = max(1.0, _mdur3 - _ded3 - _deg3 / 2.0)
             _trs_sh3 = round(_teq3/(prod_ref*_el3/28800)*100,1)
         _trs_of3 = round(_teq3/(prod_ref*_ts3/28800)*100,1) if prod_ref>0 and _ts3>0 and _teq3>0 else -1
@@ -5500,6 +5654,18 @@ select{cursor:default}
           <button class="btn btn-green" onclick="addDegradeItem()">+ Ajouter</button>
         </div>
         <button class="btn btn-prim" style="font-size:calc(12px*var(--zf,1))" onclick="saveDegradeList()">💾 Enregistrer liste dégradé</button>
+      </div>
+      <div class="ss">
+        <h3>👥 Influence nb opérateur</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Configurez le % de cadence attendu selon le nombre de personnes.<br>Données lues depuis les colonnes P/Q de l'onglet Listes du fichier Excel.</div>
+        <table id="pers-pct-table" style="width:100%;border-collapse:collapse;font-size:calc(12px*var(--zf,1));margin-bottom:10px">
+          <thead><tr style="background:#f1f5f9">
+            <th style="padding:6px 10px;text-align:left;border:1px solid var(--border)">Nb personnes</th>
+            <th style="padding:6px 10px;text-align:left;border:1px solid var(--border)">% cadence</th>
+          </tr></thead>
+          <tbody id="pers-pct-tbody"></tbody>
+        </table>
+        <button class="btn btn-prim" style="font-size:calc(12px*var(--zf,1))" onclick="savePersPct()">💾 Enregistrer</button>
       </div>
     </div>
   </div>
@@ -7611,7 +7777,37 @@ async function saveDegradeList(){
     else toast(d?.error||'Erreur','err');
   }catch(e){toast('Erreur connexion','err');}
 }
-// ── fin Mode dégradé JS ──────────────────────────────────────────────────────
+// ── Influence nb opérateur JS ────────────────────────────────────────────────
+let _persPctMapLocal={};
+function renderPersPctTable(){
+  const tb=document.getElementById('pers-pct-tbody');
+  if(!tb) return;
+  tb.innerHTML='';
+  for(let n=1;n<=10;n++){
+    const pct=_persPctMapLocal[String(n)]??'';
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="padding:5px 10px;border:1px solid var(--border);font-weight:600">${n} pers.</td>`+
+      `<td style="padding:5px 10px;border:1px solid var(--border)"><input type="number" id="pct-n-${n}" min="0" max="200" step="0.1" value="${pct}" style="width:80px;padding:3px 6px;border:1.5px solid var(--border);border-radius:4px;font-size:calc(12px*var(--zf,1))"> %</td>`;
+    tb.appendChild(tr);
+  }
+}
+async function savePersPct(){
+  const entries=[];
+  for(let n=1;n<=10;n++){
+    const el=document.getElementById('pct-n-'+n);
+    if(!el||!el.value) continue;
+    const pct=parseFloat(el.value);
+    if(isNaN(pct)||pct<=0) continue;
+    entries.push({nb_pers:n,pct:pct});
+  }
+  try{
+    const r=await fetch('/api/save_pers_pct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,entries})});
+    const d=await r.json();
+    if(d&&d.ok){toast('Tableau nb opérateur enregistré','ok');await loadCfg();}
+    else toast(d?.error||'Erreur','err');
+  }catch(e){toast('Erreur connexion','err');}
+}
+// ── fin Influence nb opérateur JS ────────────────────────────────────────────
 
 function updateGauge(s){
   const arc=document.getElementById('gauge-arc');
@@ -7645,9 +7841,11 @@ function updateGauge(s){
     if(_d1>_d0) _degS+=(_d1-_d0)/1000;
   });
   const _adjS=Math.max(1,effOfS-_degS/2);
+  const _nbPersLive=s.form?parseInt(s.form.nb_pers||1)||1:1;
+  const _pctLive=(_persPctMapLocal&&_persPctMapLocal[String(_nbPersLive)])?(_persPctMapLocal[String(_nbPersLive)]/100):1.0;
   let trs=-1;
   if(ofS>0&&prodRef>0&&equiv>0){
-    trs=Math.round(equiv/(prodRef*_adjS/28800)*100*10)/10;
+    trs=Math.round(equiv/(prodRef*_pctLive*_adjS/28800)*100*10)/10;
   }
   // Mise à jour barres budget accueil + prod en cours
   renderBudgetBars('budget-bars-acc',bs);
@@ -9897,6 +10095,8 @@ async function loadCfg(){
   // Arrêts prévus
   const apMap={'ap-clean-short':'clean_short_min','ap-clean-long':'clean_long_min','ap-clean-grand':'clean_grand_min','ap-meeting':'meeting_tol_min','ap-pause':'pause_min'};
   Object.entries(apMap).forEach(([elId,key])=>{const el=document.getElementById(elId);if(el)el.value=(_cfgArretsPrevus[key]||0);});
+  if(Array.isArray(d.degrade_motifs)){_degradeListLocal=d.degrade_motifs.slice();renderDegradeList(_degradeListLocal);}
+  if(d.pers_pct_map){_persPctMapLocal=d.pers_pct_map;renderPersPctTable();}
   renderPwdList();
   renderModelList();
   await loadEvtsList();
