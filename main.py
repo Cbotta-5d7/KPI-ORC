@@ -405,7 +405,7 @@ def _option_b_trs(prod_raw_rows, deg_ivs, prod_ref):
             nb_p = r[6] if len(r) > 6 else 1
             pct = get_pct_cadence(nb_p)
             ovl = _deg_overlap_s(deb_s, fin_s, deg_ivs)
-            adj_s = max(1.0, dur_s - ovl / 2.0)
+            adj_s = max(1.0, dur_s)
             sum_expected += prod_ref * pct * adj_s / 28800
             tot_equiv += eq
         except: pass
@@ -6825,7 +6825,7 @@ function startTicker() {
         const _d1=Math.min(new Date(p.end).getTime(),_nowMsT);
         if(_d1>_d0) _degST+=(_d1-_d0)/1000;
       });
-      const _adjEffOfElT=Math.max(1,effOfElT-_degST/2);
+      const _adjEffOfElT=Math.max(1,effOfElT);
       const _nbPersTheo=parseInt(document.getElementById('f-nb_pers')?.value||'1')||1;
       const _pctTheo=(_persPctMapLocal&&_persPctMapLocal[String(_nbPersTheo)]!=null)?(_persPctMapLocal[String(_nbPersTheo)]/100):1.0;
       const theo=Math.round(ST.prod_ref*_pctTheo*_adjEffOfElT/28800/coef);
