@@ -991,13 +991,15 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
             shift_date_str,                     # 39 Date_poste
         ]
     for ev in tl_events:
-        if ev.get("cat") not in ("ratt","pb","nettoyage","autre","interposte"): continue
+        if ev.get("cat") not in ("ratt","pb","nettoyage","reunion","autre","interposte"): continue
         if not ev.get("key") or ev["key"].startswith("_"): continue
         start = ev.get("start")
         if not start: continue  # event sans timestamp = invalide
         if of_start and start < of_start and ev.get("key")!="arret_interposte": continue
         end = ev.get("end") or datetime.datetime.now()
-        if ev["key"]=="nettoyage":
+        if ev["cat"]=="reunion":
+            label = "Réunion"
+        elif ev["key"]=="nettoyage":
             ntype = ev.get("nettoyage_type","court")
             label = {"court":"Nettoyage court","long":"Nettoyage long","grand":"Grand nettoyage"}.get(ntype,"Nettoyage court")
         elif ev["cat"]=="autre":
@@ -1348,7 +1350,7 @@ def _state_json():
         "degrade_motifs": cfg.get("degrade_motifs", []),
         "budget_overrides": _S.get("budget_overrides", {}),
         "pers_pct_map": {str(k): round(v*100,1) for k,v in _pers_pct_map.items()},
-        "reunion_active": any(('reunion' in k.lower() or 'meeting' in k.lower()) and t.get("running") for k,t in _S["timers"].items()),
+        "reunion_active": t_running("reunion"),
     }
 
 @flask_app.route('/')
@@ -2092,24 +2094,19 @@ def api_toggle_pause():
 
 @flask_app.route('/api/toggle_reunion', methods=['POST'])
 def api_toggle_reunion():
-    running_key = next((k for k,t in _S["timers"].items() if t.get("running") and ('reunion' in k.lower() or 'meeting' in k.lower())), None)
-    if running_key:
-        t_stop(running_key)
-        tl_close(running_key, "")
+    if t_running("reunion"):
+        t_stop("reunion")
+        tl_close("reunion", "")
         reunion_active = False
-        # Écrire en Excel si hors production (en prod : écrit à la fin de l'OF)
+        # Écrire en Excel si hors production (en prod : écrit à la fin de l'OF via build_decl_rows)
         if not _S.get("prod_active"):
-            ev = next((e for e in reversed(_S["tl_events"]) if e.get("key")==running_key and e.get("end")), None)
+            ev = next((e for e in reversed(_S["tl_events"]) if e.get("key")=="reunion" and e.get("end")), None)
             if ev and ev.get("start") and ev.get("end"):
                 _start = ev["start"]; _end = ev["end"]
                 _dur = max(0, (_end - _start).total_seconds())
-                _dyn = get_events_list()
-                _lbl = (next((e["label"] for e in _dyn if isinstance(e, dict) and e.get("key")==running_key), None)
-                        or next((e[0] for e in INTERPOSTE_CATS if e[1]==running_key), None)
-                        or running_key)
                 _sh = _S.get("shift_start") or _start
                 _row = [
-                    _lbl, _S.get("form",{}).get("of_num",""),
+                    "Réunion", _S.get("form",{}).get("of_num",""),
                     _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                     "","","","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
                     _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
@@ -2122,12 +2119,8 @@ def api_toggle_reunion():
                     _decl_cache.append((_nrn, tuple(_row)+('',)*max(0,40-len(_row))))
                 except: pass
     else:
-        evts = get_events_list()
-        rev = next((e for e in evts if 'reunion' in (e.get('key','') or '').lower() or 'reunion' in (e.get('label','') or '').lower() or 'meeting' in (e.get('key','') or '').lower()), None)
-        rkey = rev['key'] if rev else 'reunion'
-        rcat = (rev.get('cat') or 'interposte') if rev else 'interposte'
-        t_start(rkey)
-        tl_open(rkey, rcat)
+        t_start("reunion")
+        tl_open("reunion", "reunion")
         reunion_active = True
     threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok": True, "reunion_active": reunion_active})
