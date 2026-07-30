@@ -4896,28 +4896,25 @@ select{cursor:default}
     <div style="margin-top:10px;text-align:center;font-size:calc(11px*var(--zf,1));color:#94a3b8">
       Prod bloquée ? <a href="/reset" style="color:#dc2626;font-weight:700">Cliquer ici pour réinitialiser</a>
     </div>
-    <div style="margin-top:8px;text-align:right">
-      <button onclick="openExcelModal()" title="Configurer le fichier Excel" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:calc(13px*var(--zf,1));padding:2px 4px;line-height:1;opacity:.5">&#x1F4C1;</button>
-    </div>
-  </div>
-</div>
-
-<!-- ════ MODAL EXCEL ════ -->
-<div id="modal-excel" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:#1e293b;border-radius:12px;padding:24px;width:90%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
-    <div style="color:#e2e8f0;font-size:calc(15px*var(--zf,1));font-weight:700;margin-bottom:14px">&#x1F4C1; Fichier Excel</div>
-    <div style="margin-bottom:10px">
-      <label style="color:#94a3b8;font-size:calc(11px*var(--zf,1));display:block;margin-bottom:4px">Chemin complet du fichier Excel</label>
-      <input id="excel-path-inp" type="text" placeholder="C:\...\fichier.xlsx" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:calc(12px*var(--zf,1));outline:none">
-    </div>
-    <div style="margin-bottom:14px">
-      <label style="color:#94a3b8;font-size:calc(11px*var(--zf,1));display:block;margin-bottom:4px">Mot de passe superviseur</label>
-      <input id="excel-pw-inp" type="password" placeholder="••••" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:calc(12px*var(--zf,1));outline:none">
-    </div>
-    <div id="excel-modal-err" style="color:#f87171;font-size:calc(11px*var(--zf,1));min-height:16px;margin-bottom:10px"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button onclick="closeExcelModal()" style="padding:7px 16px;border-radius:6px;border:1px solid #334155;background:none;color:#94a3b8;cursor:pointer;font-size:calc(12px*var(--zf,1))">Annuler</button>
-      <button onclick="saveExcelPath()" style="padding:7px 16px;border-radius:6px;border:none;background:#2563eb;color:#fff;cursor:pointer;font-size:calc(12px*var(--zf,1));font-weight:600">Enregistrer</button>
+    <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:8px">
+      <div style="text-align:right;margin-bottom:4px">
+        <button id="btn-excel-toggle" onclick="toggleExcelPanel()" style="background:none;border:none;cursor:pointer;color:#64748b;font-size:calc(12px*var(--zf,1));padding:2px 6px">&#x1F4C1; Excel</button>
+      </div>
+      <div id="excel-panel" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px">
+        <div style="margin-bottom:8px">
+          <label style="color:#475569;font-size:calc(11px*var(--zf,1));display:block;margin-bottom:3px">Chemin du fichier Excel</label>
+          <input id="excel-path-inp" type="text" placeholder="C:\...\fichier.xlsx" style="width:100%;box-sizing:border-box;padding:7px 9px;border-radius:5px;border:1px solid #cbd5e1;font-size:calc(11px*var(--zf,1));outline:none;color:#1e293b">
+        </div>
+        <div style="margin-bottom:8px">
+          <label style="color:#475569;font-size:calc(11px*var(--zf,1));display:block;margin-bottom:3px">Mot de passe superviseur</label>
+          <input id="excel-pw-inp" type="password" placeholder="1234" style="width:100%;box-sizing:border-box;padding:7px 9px;border-radius:5px;border:1px solid #cbd5e1;font-size:calc(11px*var(--zf,1));outline:none;color:#1e293b">
+        </div>
+        <div id="excel-panel-err" style="color:#dc2626;font-size:calc(11px*var(--zf,1));min-height:14px;margin-bottom:6px"></div>
+        <div style="display:flex;gap:6px;justify-content:flex-end">
+          <button onclick="toggleExcelPanel()" style="padding:5px 12px;border-radius:5px;border:1px solid #cbd5e1;background:#fff;color:#64748b;cursor:pointer;font-size:calc(11px*var(--zf,1))">Fermer</button>
+          <button onclick="saveExcelPath()" style="padding:5px 12px;border-radius:5px;border:none;background:#1d4ed8;color:#fff;cursor:pointer;font-size:calc(11px*var(--zf,1));font-weight:600">OK</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -6194,40 +6191,38 @@ async function doLogin() {
   }
 }
 
-function openExcelModal(){
-  var m=document.getElementById('modal-excel');
-  if(!m) return;
-  m.style.display='flex';
-  var errEl=document.getElementById('excel-modal-err');
-  if(errEl) errEl.textContent='';
-  var pwEl=document.getElementById('excel-pw-inp');
-  if(pwEl) pwEl.value='';
-  fetch('/api/config').then(function(r){return r.json();}).then(function(d){
-    var pathEl=document.getElementById('excel-path-inp');
-    if(pathEl) pathEl.value=d.db_path||'';
-  }).catch(function(){});
-}
-function closeExcelModal(){
-  document.getElementById('modal-excel').style.display='none';
+function toggleExcelPanel(){
+  var p=document.getElementById('excel-panel');
+  if(!p) return;
+  if(p.style.display==='none'){
+    p.style.display='block';
+    fetch('/api/config').then(function(r){return r.json();}).then(function(d){
+      var inp=document.getElementById('excel-path-inp');
+      if(inp) inp.value=d.db_path||'';
+    }).catch(function(){});
+  } else {
+    p.style.display='none';
+  }
 }
 function saveExcelPath(){
   var path=document.getElementById('excel-path-inp').value.trim();
   var pw=document.getElementById('excel-pw-inp').value;
-  var errEl=document.getElementById('excel-modal-err');
-  errEl.textContent='';
-  if(!path){errEl.textContent='Chemin requis';return;}
+  var errEl=document.getElementById('excel-panel-err');
+  if(errEl) errEl.textContent='';
+  if(!path){if(errEl) errEl.textContent='Chemin requis';return;}
   fetch('/api/set_db',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:path,pw:pw})})
     .then(function(r){return r.json();})
     .then(function(d){
       if(d.ok){
-        closeExcelModal();
+        var p=document.getElementById('excel-panel');
+        if(p) p.style.display='none';
         if(typeof loadLists==='function') loadLists();
-        toast('Fichier Excel chargé','ok');
+        toast('Excel OK','ok');
       } else {
-        errEl.textContent=d.error||'Erreur';
+        if(errEl) errEl.textContent=d.error||'Erreur';
       }
     })
-    .catch(function(){errEl.textContent='Erreur réseau';});
+    .catch(function(){if(errEl) errEl.textContent='Erreur';});
 }
 function doGuestLogin(){
   window._guestMode=true;
