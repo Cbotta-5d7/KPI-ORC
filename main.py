@@ -1003,7 +1003,10 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
         elif ev["cat"]=="autre":
             label = ev["key"]  # Custom stop name typed by user
         elif ev["cat"]=="interposte":
-            lbl = next((e[0] for e in EVENTS if e[1]==ev["key"]), ev["key"])
+            _dyn = get_events_list()
+            lbl = (next((e["label"] for e in _dyn if isinstance(e,dict) and e.get("key")==ev["key"]), None)
+                   or next((e[0] for e in INTERPOSTE_CATS if e[1]==ev["key"]), None)
+                   or ev["key"])
             label = lbl
         else:
             cat_name = "Rattrapage" if ev["cat"]=="ratt" else "PB Technique"
@@ -1380,9 +1383,14 @@ def api_state():
 
 @flask_app.route('/api/lists')
 def api_lists():
+    try:
+        _pp = cfg.get("pilot_passwords", {})
+        _pp_keys = list(_pp.keys()) if isinstance(_pp, dict) else []
+    except Exception:
+        _pp_keys = []
     return jsonify({
-        "pilotes": get_list("Pilotes") or get_list("pilotes") or get_list("Pilote") or get_list("pilote") or list(cfg.get("pilot_passwords",{}).keys()),
-        "copilotes": get_list("copilotes") or get_list("Co-Pilote") or get_list("Copilote") or get_list("Pilotes") or get_list("pilotes") or list(cfg.get("pilot_passwords",{}).keys()),
+        "pilotes": get_list("Pilotes") or get_list("pilotes") or get_list("Pilote") or get_list("pilote") or _pp_keys,
+        "copilotes": get_list("copilotes") or get_list("Co-Pilote") or get_list("Copilote") or get_list("Pilotes") or get_list("pilotes") or _pp_keys,
         "tailles": get_list("tailles_col") or get_list("Tailles") or get_list("taille"),
         "types_prod": get_list("types_prod_col") or get_list("Type produit") or get_list("types_prod"),
         "fibres": get_list("fibres_col") or get_list("Fibres") or get_list("fibre"),
@@ -6047,15 +6055,10 @@ async function loadLists() {
   // Clear existing options (except first placeholder)
   while(sel.options.length>1) sel.remove(1);
   pil.forEach(p => { const o=document.createElement('option'); o.value=p; o.textContent=p; sel.appendChild(o); });
-  // If no pilots yet, retry after 1.5s (Excel may still be loading)
+  // If no pilots yet, retry (Excel may still be loading)
   if(!pil.length){
-    setTimeout(async()=>{
-      const d2=await apiFetch('/api/lists');
-      if(!d2) return;
-      const pil2=d2.pilotes||[];
-      while(sel.options.length>1) sel.remove(1);
-      pil2.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o);});
-    },1500);
+    const _retryPil=async(ms)=>{await new Promise(r=>setTimeout(r,ms));const d2=await apiFetch('/api/lists');if(!d2)return;const p2=d2.pilotes||[];while(sel.options.length>1)sel.remove(1);p2.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o);});return p2.length;};
+    _retryPil(1500).then(n=>{if(!n)_retryPil(3500).then(n2=>{if(!n2)_retryPil(8000);});});
   }
   // Load models for login select
   await loadModelsForLogin();
