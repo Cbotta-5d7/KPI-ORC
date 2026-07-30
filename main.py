@@ -6559,12 +6559,6 @@ function applyState(s) {
   // Pause button text
   const pbtn=document.getElementById('btn-pause');
   if(pbtn) pbtn.textContent=s.is_paused?'▶ Reprendre':'⏸ Pause';
-  // Reunion button text — synchronisé avec l'état serveur
-  const rbtn=document.getElementById('btn-reunion');
-  if(rbtn){
-    const _rk=(s.active_stops||[]).find(k=>{const ev=(_evtsList||[]).find(e=>e.key===k);return ev&&/réunion|reunion|meeting/i.test(ev.label||'');});
-    rbtn.textContent=_rk?'✓ Fin réunion':'👥 Réunion';
-  }
 
   // TRS gauge
   updateGauge(s);
@@ -7410,24 +7404,22 @@ async function doPause(){
 }
 
 async function doReunion(){
-  // Cherche si une réunion est déjà active (par la clé courante dans active_stops)
-  const activeReunionKey=(ST.active_stops||[]).find(k=>{
-    const ev=(_evtsList||[]).find(e=>e.key===k);
-    return ev&&/réunion|reunion|meeting/i.test(ev.label||'');
-  });
+  const reunionKeys=(_evtsList||[]).filter(function(e){return e.cat==='interposte'&&(e.key.indexOf('reunion')>=0||e.key.indexOf('meeting')>=0);}).map(function(e){return e.key;});
+  const activeReunionKey=(ST.active_stops||[]).find(function(k){return reunionKeys.indexOf(k)>=0;});
   if(activeReunionKey){
-    // Arrêter la réunion en cours avec la MÊME clé qui avait servi à démarrer
     await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:activeReunionKey,comment:''})});
-    toast('Réunion terminée','ok');
+    toast('Fin réunion','ok');
+    const btn=document.getElementById('btn-reunion');
+    if(btn) btn.textContent='👥 Réunion';
   } else {
-    // Démarrer une réunion
-    const reunionEvt=_evtsList.find(e=>/réunion|reunion|meeting/i.test(e.label||''));
+    const reunionEvt=(_evtsList||[]).find(function(e){return e.cat==='interposte'&&(e.key.indexOf('reunion')>=0||e.key.indexOf('meeting')>=0);});
     if(!reunionEvt){toast('Type Réunion non trouvé dans paramètres','err');return;}
     await fetch('/api/start_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:reunionEvt.key,cat:reunionEvt.cat||'ratt',comment:''})});
     toast('Réunion commencée','ok');
+    const btn=document.getElementById('btn-reunion');
+    if(btn) btn.textContent='✓ Fin réunion';
   }
   await pollState();
-  // Le texte du bouton est mis à jour par applyState() via pollState()
 }
 
 function doNettoyage(){
