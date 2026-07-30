@@ -1254,9 +1254,23 @@ def get_current_shift_duration_s():
     return get_shift_duration_s(_S.get("poste",""))
 
 def load_postes_shift_map():
+    """Lit l'onglet Postes et retourne un dict (pilot_lower, date_dmy) -> dict de toutes les valeurs Excel."""
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return {}
     result = {}
+    def _flt(v):
+        try: return float(str(v).replace('%','').replace(',','.').strip()) if v not in (None,'') else None
+        except: return None
+    def _parse_dt(v):
+        if v is None: return None
+        if isinstance(v, datetime.datetime): return v
+        if isinstance(v, datetime.date): return datetime.datetime.combine(v, datetime.time())
+        s = str(v).strip()
+        for fmt in ('%Y-%m-%d %H:%M:%S','%Y-%m-%dT%H:%M:%S','%Y-%m-%d %H:%M','%d/%m/%Y %H:%M'):
+            try: return datetime.datetime.strptime(s, fmt)
+            except: pass
+        try: return datetime.datetime.fromisoformat(s)
+        except: return None
     try:
         with _excel_lock:
             wb = _get_wb(path)
@@ -1265,22 +1279,31 @@ def load_postes_shift_map():
                 wb.close(); return {}
             ws = wb["Postes"]
             for ri in range(2, ws.max_row + 1):
-                pilot_v = ws.cell(ri, 2).value
-                deb_v = ws.cell(ri, 16).value
-                fin_v = ws.cell(ri, 17).value
-                if not pilot_v or not deb_v or not fin_v: continue
-                try:
-                    deb_dt = datetime.datetime.fromisoformat(str(deb_v)) if not hasattr(deb_v, 'hour') else datetime.datetime.combine(datetime.date.today(), deb_v)
-                    fin_dt = datetime.datetime.fromisoformat(str(fin_v)) if not hasattr(fin_v, 'hour') else datetime.datetime.combine(datetime.date.today(), fin_v)
-                    trs_raw = ws.cell(ri, 8).value   # col H: TRS Poste %
-                    perte_raw = ws.cell(ri, 23).value # col W: Perte cadence (min)
-                    try: trs_xl = float(str(trs_raw).replace('%','').replace(',','.')) if trs_raw not in (None,'') else None
-                    except: trs_xl = None
-                    try: perte_xl = float(str(perte_raw).replace(',','.')) if perte_raw not in (None,'') else None
-                    except: perte_xl = None
-                    pk = (str(pilot_v).strip().lower(), deb_dt.strftime("%d/%m/%Y"))
-                    result[pk] = (deb_dt, fin_dt, trs_xl, perte_xl)
-                except: pass
+                pilot_v = ws.cell(ri, 2).value   # col B: Pilote
+                deb_v   = ws.cell(ri, 16).value  # col P: Debut Poste (datetime)
+                if not pilot_v or not deb_v: continue
+                deb_dt = _parse_dt(deb_v)
+                if deb_dt is None: continue
+                fin_v  = ws.cell(ri, 17).value   # col Q: Fin Poste (datetime)
+                fin_dt = _parse_dt(fin_v)
+                date_str = deb_dt.strftime("%d/%m/%Y")
+                pk = (str(pilot_v).strip().lower(), date_str)
+                result[pk] = {
+                    'deb_dt':        deb_dt,
+                    'fin_dt':        fin_dt,
+                    'date_str':      date_str,
+                    'pilot':         str(pilot_v).strip(),
+                    'poste':         str(ws.cell(ri, 4).value or '').strip(),  # col D
+                    'trs':           _flt(ws.cell(ri, 8).value),   # col H: TRS Poste %
+                    'cadence_h':     _flt(ws.cell(ri, 9).value),   # col I: Cadence/h
+                    'ouverture_min': _flt(ws.cell(ri, 18).value),  # col R: Temps ouverture
+                    'utile_min':     _flt(ws.cell(ri, 19).value),  # col S: Temps utile
+                    'fonct_min':     _flt(ws.cell(ri, 20).value),  # col T: Temps fonctionnement
+                    'arret_min':     _flt(ws.cell(ri, 21).value),  # col U: Temps arret
+                    'perte_min':     _flt(ws.cell(ri, 23).value),  # col W: Perte cadence (min)
+                    'degrade_min':   _flt(ws.cell(ri, 24).value),  # col X: Temps degrade
+                    'row_idx':       ri,
+                }
             wb.close()
     except: pass
     return result
@@ -2775,8 +2798,10 @@ def api_past_sessions():
             _pk = (s["pilot"].lower(), s["date"])
             _xl_trs_ps = None
             if _pk in postes_map:
-                _pdeb, _pfin, _xl_trs_ps, _xl_perte_ps = postes_map[_pk]
-                _mdur2 = max(0.0, (_pfin - _pdeb).total_seconds())
+                _pm_ps = postes_map[_pk]
+                _xl_trs_ps = _pm_ps.get('trs')
+                _pdeb_ps = _pm_ps['deb_dt']; _pfin_ps = _pm_ps['fin_dt']
+                _mdur2 = max(0.0, (_pfin_ps - _pdeb_ps).total_seconds()) if _pfin_ps else get_shift_duration_s(s["poste"], date_obj)
             else:
                 _mdur2 = get_shift_duration_s(s["poste"], date_obj)
             _evts_ps = session_evts.get(key, [])
@@ -2862,10 +2887,10 @@ def api_period_report():
                 sessions[_ev_key]['evt_rows'].append((rn, r))
     # Limiter aux N sessions les plus récentes si max_sessions > 0
     if max_sessions > 0 and len(sessions) > max_sessions:
-        def _key_date(kv):
-            try: p=kv[1]['date'].split('/'); return (int(p[2]),int(p[1]),int(p[0]))
-            except: return (0,0,0)
-        sessions = dict(sorted(sessions.items(), key=_key_date, reverse=True)[:max_sessions])
+        def _key_row(kv):
+            _pk3 = (kv[1]['pilot'].lower(), kv[1]['date'])
+            return postes_map.get(_pk3, {}).get('row_idx', 0)
+        sessions = dict(sorted(sessions.items(), key=_key_row, reverse=True)[:max_sessions])
     # ── Aggregate ──
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
@@ -2876,22 +2901,20 @@ def api_period_report():
     cadence_ref = round(prod_ref/480, 4) if prod_ref > 0 else 0.0
     for key, s in sessions.items():
         _pk = (s['pilot'].lower(), s['date'])
-        _pdeb, _pfin, _xl_trs, _xl_perte = postes_map[_pk]
-        model_dur_s = max(0.0, (_pfin - _pdeb).total_seconds())
-        # Arrondir comme le JS (Math.round) pour correspondre exactement à l'onglet Rapports postes
-        ouv_min = round(model_dur_s / 60, 1)
-        # Merged stop intervals (excl. dégradé)
+        if _pk not in postes_map: continue
+        _xl = postes_map[_pk]
+        _pdeb = _xl['deb_dt']; _pfin = _xl['fin_dt']
+        model_dur_s = max(0.0, (_pfin - _pdeb).total_seconds()) if _pfin else 0.0
+        # Lire directement depuis Excel (colonnes R, S, T, U)
+        ouv_min   = _xl['ouverture_min'] if _xl.get('ouverture_min') is not None else round(model_dur_s / 60, 1)
+        fonct_min = _xl['fonct_min']     if _xl.get('fonct_min')     is not None else round(max(0.0, ouv_min), 1)
+        utile_min = _xl['utile_min']     if _xl.get('utile_min')     is not None else ouv_min
+        net_stop_min = _xl['arret_min'] if _xl.get('arret_min') is not None else round(max(0.0, ouv_min - fonct_min), 1)
+        _xl_trs   = _xl.get('trs')
+        _xl_perte = _xl.get('perte_min')
+        # Merged degrade for evt_rows (still needed for perte/TRS fallback)
         _deg_s = _merged_degrade_s([re2 for _, re2 in s['evt_rows']])
-        _ivs_raw = [(_hms_to_sec(str(re2[16] or '00:00:00')), _hms_to_sec(str(re2[17] or '00:00:00')))
-                    for _, re2 in s['evt_rows'] if not _is_degrade_type(str(re2[0] or ''))]
-        _ivs = sorted((ds2, _norm_fin(ds2, fs2)) for ds2, fs2 in _ivs_raw if _norm_fin(ds2, fs2) > ds2)
-        _mg = []
-        for ds, fs in _ivs:
-            if _mg and ds <= _mg[-1][1]: _mg[-1] = (_mg[-1][0], max(_mg[-1][1], fs))
-            else: _mg.append((ds, fs))
-        net_stop_min = round(sum(f - d for d, f in _mg) / 60, 1)
-        fonct_min = round(max(0.0, ouv_min - net_stop_min), 1)
-        # Planned stops: min(budget, used) per category per session
+        # Planned stops budget tracking (for budget_data display)
         _bdata = {bk:{'budget_min':float(cfg.get(bk,0) or 0),'used_min':0.0} for bk in _blab}
         for _, re3 in s['evt_rows']:
             _bk2 = _get_arret_budget_key(str(re3[0] or '') or str(re3[35] if len(re3)>35 else ''))
@@ -2901,7 +2924,6 @@ def api_period_report():
                 except: _bs2=0
                 _bdata[_bk2]['used_min'] += _bs2/60
         arrets_prevu = sum(min(v['budget_min'],v['used_min']) for v in _bdata.values())
-        utile_min = round(max(0.0, ouv_min - arrets_prevu), 1)
         planned_ded = _compute_planned_deduction_s(s['evt_rows'])
         elapsed_s = max(1.0, model_dur_s - planned_ded)
         adj_s = max(1.0, elapsed_s)
@@ -2957,11 +2979,11 @@ def api_period_report():
         trs_by_day[day]['equiv']    += s['tot_equiv']
         trs_by_day[day]['elapsed_s'] += elapsed_s
         trs_by_day[day]['sum_expected'] += _sum_exp_pr
-        _cad_s = round(s['tot_equiv']/fonct_min*60) if fonct_min>0 else 0
+        _cad_s = _xl.get('cadence_h') or (round(s['tot_equiv']/fonct_min*60) if fonct_min>0 else 0)
         _of_rows_sd = [{"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"fibre":str(r[11] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"nb_pers":str(r[6] or ""),"trs":str(r[24] or ""),"degrade_min":round(_deg_overlap_s(_hms_to_sec(str(r[16] or "00:00:00")),_hms_to_sec(str(r[17] or "00:00:00")),_deg_ivs_pr)/60,1)} for r in s.get('prod_raws',[])]
         _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or ""))} for _rn2, re2 in s.get('evt_rows',[])]
-        agg_degrade_min += _deg_s / 60.0
-        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_deg_s/60.0,1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd})
+        agg_degrade_min += (_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s / 60.0)
+        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd})
     trs_periode = round(agg_equiv/agg_sum_expected*100,1) if agg_sum_expected>0 and agg_equiv>0 else -1.0
     def _sort_dmy(d):
         try: p=d.split('/'); return (int(p[2]),int(p[1]),int(p[0]))
@@ -3061,11 +3083,14 @@ def api_session_report():
     _xl_trs_sr = None
     _xl_perte_sr = None
     if _pk2 in _postes_map2:
-        _pdeb2, _pfin2, _xl_trs_sr, _xl_perte_sr = _postes_map2[_pk2]
-        model_dur_s = max(0.0, (_pfin2 - _pdeb2).total_seconds())
+        _pm2 = _postes_map2[_pk2]
+        _pdeb2 = _pm2['deb_dt']; _pfin2 = _pm2['fin_dt']
+        _xl_trs_sr = _pm2.get('trs')
+        _xl_perte_sr = _pm2.get('perte_min')
+        model_dur_s = max(0.0, (_pfin2 - _pdeb2).total_seconds()) if _pfin2 else 0.0
         if not debut_str:
             debut_str = _pdeb2.strftime("%H:%M")
-            fin_str = _pfin2.strftime("%H:%M")
+            fin_str = _pfin2.strftime("%H:%M") if _pfin2 else ''
     else:
         model_dur_s = get_shift_duration_s(poste)
     ecart_s = max(0.0, model_dur_s - (tot_s + stop_s))
@@ -3101,6 +3126,7 @@ def api_session_report():
             try: _bs = int(_pp[0] or 0)*3600+int(_pp[1] or 0)*60+int(_pp[2] or 0)
             except: _bs = 0
             budget_data[_bk]['used_min'] += _bs/60
+    _pm2_xl = _postes_map2.get(_pk2, {})
     return jsonify({"date":date_str,"pilot":pilot,"poste":poste,"prod_rows":prod_rows,"evt_rows":evt_rows,"budget_data":budget_data,
                     "trs_shift":trs_shift,"trs":trs_of,"tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
                     "stop_s":round(stop_s,0),"nb_of":len(prod_rows),
@@ -3109,7 +3135,13 @@ def api_session_report():
                     "model_debut":debut_str or "","model_fin":fin_str or "",
                     "actual_debut":actual_debut,"actual_fin":actual_fin,
                     "ecart_s":round(ecart_s,0),"model_dur_s":round(model_dur_s,0),
-                    "planned_ded_s":round(planned_ded,0),"prod_ref":round(prod_ref,1)})
+                    "planned_ded_s":round(planned_ded,0),"prod_ref":round(prod_ref,1),
+                    "ouverture_min":_pm2_xl.get('ouverture_min'),
+                    "utile_min":_pm2_xl.get('utile_min'),
+                    "fonct_min":_pm2_xl.get('fonct_min'),
+                    "arret_min":_pm2_xl.get('arret_min'),
+                    "degrade_min":_pm2_xl.get('degrade_min'),
+                    "cadence_h":_pm2_xl.get('cadence_h')})
 
 @flask_app.route('/api/add_stop_decl', methods=['POST'])
 def api_add_stop_decl():
@@ -10369,28 +10401,28 @@ async function loadSessionReport(date,pilot,poste,itemId){
     html+=`<text x="${W-30}" y="${Y+H2+9}" font-size="8" fill="#374151">${fmt(tE)}</text>`;
     return html;
   }
-  // Métriques supplémentaires
+  // Métriques supplémentaires — priorité aux valeurs Excel (onglet Postes)
   const totQteFab=(d.prod_rows||[]).reduce((s,r)=>s+parseFloat(r.qte_fab||0),0);
   const elapsedEffS=Math.max(1,(d.model_dur_s||0)-(d.planned_ded_s||0));
-  const cadenceH=elapsedEffS>0?Math.round(totQteFab/elapsedEffS*3600):0;
+  const cadenceH=(d.cadence_h!=null&&d.cadence_h>0)?Math.round(d.cadence_h):(elapsedEffS>0?Math.round(totQteFab/elapsedEffS*3600):0);
   const sortedProdF=(d.prod_rows||[]).filter(r=>r.fibre).sort((a,b)=>(a.debut||'').localeCompare(b.debut||''));
   let nbChangFibre=0;for(let i=1;i<sortedProdF.length;i++){if(sortedProdF[i].fibre!==sortedProdF[i-1].fibre)nbChangFibre++;}
   const prodRef=d.prod_ref||200;
   const cadenceRefPcsMin=prodRef/480;
-  const ouvertureMin=Math.round((d.model_dur_s||0)/60);
-  // Intervalles fusionnés (arrêts sans chevauchement)
+  const ouvertureMin=(d.ouverture_min!=null)?Math.round(d.ouverture_min):Math.round((d.model_dur_s||0)/60);
+  // Intervalles fusionnés (arrêts sans chevauchement) — fallback si Excel absent
   const _allEvtIv=(d.evt_rows||[]).filter(e=>!e.is_degrade).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(o=>o.e>o.s).sort((a,b)=>a.s-b.s);
   const _merged=[];_allEvtIv.forEach(iv=>{if(_merged.length&&iv.s<=_merged[_merged.length-1].e)_merged[_merged.length-1].e=Math.max(_merged[_merged.length-1].e,iv.e);else _merged.push({s:iv.s,e:iv.e});});
-  const netStopMin=Math.round(_merged.reduce((a,o)=>a+(o.e-o.s),0)/60000);
-  const tempsFonctionnement=Math.max(0,ouvertureMin-netStopMin);
-  // Temps utile: ouverture - min(limite_paramètre, déclaré) par catégorie prévue
+  const netStopMin=(d.arret_min!=null)?Math.round(d.arret_min):Math.round(_merged.reduce((a,o)=>a+(o.e-o.s),0)/60000);
+  const tempsFonctionnement=(d.fonct_min!=null)?Math.round(d.fonct_min):Math.max(0,ouvertureMin-netStopMin);
+  // Temps utile depuis Excel ou calcul budget
   const budgetData=d.budget_data||{};
   const arretsPrevu=Object.values(budgetData).reduce((a,b)=>a+Math.min(b.budget_min||0,b.used_min||0),0);
-  const tempsUtile=Math.max(0,ouvertureMin-Math.round(arretsPrevu));
+  const tempsUtile=(d.utile_min!=null)?Math.round(d.utile_min):Math.max(0,ouvertureMin-Math.round(arretsPrevu));
   // Perte cadence: utilise la valeur serveur (Option B, tient compte dégradé + nb_pers)
   const perteCadenceRaw=Math.round(d.perte_cadence_min||0);
   const perteCadenceHtml=perteCadenceRaw<0?`<span style="color:#16a34a;font-weight:800">${Math.abs(perteCadenceRaw)} min de gain</span>`:perteCadenceRaw>0?`<span style="color:#dc2626;font-weight:800">${perteCadenceRaw} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
-  const degMin=Math.round((d.degrade_s||0)/60);
+  const degMin=(d.degrade_min!=null)?Math.round(d.degrade_min):Math.round((d.degrade_s||0)/60);
   const tlDebut=d.actual_debut||d.model_debut;
   const tlFin=d.actual_fin||d.model_fin;
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
@@ -10436,7 +10468,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#8b5cf6;font-weight:900">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?((d.actual_debut||d.model_debut)+'→'+(d.actual_fin||d.model_fin)):('—')}</div>${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?`<div style="font-size:calc(9px*var(--zf,1));color:#64748b;text-align:center">${Math.round((d.model_dur_s||0)/60)} min</div>`:''}<div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?((d.actual_debut||d.model_debut)+'→'+(d.actual_fin||d.model_fin)):('—')}</div>${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?`<div style="font-size:calc(9px*var(--zf,1));color:#64748b;text-align:center">${ouvertureMin} min</div>`:''}<div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#059669">${tempsUtile} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${tempsFonctionnement} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#dc2626">${netStopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
