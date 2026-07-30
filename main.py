@@ -6055,10 +6055,9 @@ async function loadLists() {
   // Clear existing options (except first placeholder)
   while(sel.options.length>1) sel.remove(1);
   pil.forEach(p => { const o=document.createElement('option'); o.value=p; o.textContent=p; sel.appendChild(o); });
-  // If no pilots yet, retry (Excel may still be loading)
+  // If no pilots yet, retry after delays (Excel may still be loading)
   if(!pil.length){
-    const _retryPil=async(ms)=>{await new Promise(r=>setTimeout(r,ms));const d2=await apiFetch('/api/lists');if(!d2)return;const p2=d2.pilotes||[];while(sel.options.length>1)sel.remove(1);p2.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o);});return p2.length;};
-    _retryPil(1500).then(n=>{if(!n)_retryPil(3500).then(n2=>{if(!n2)_retryPil(8000);});});
+    setTimeout(function(){apiFetch('/api/lists').then(function(d2){if(!d2)return;var p2=d2.pilotes||[];var s2=document.getElementById('ln-pilot');if(!s2)return;while(s2.options.length>1)s2.remove(1);p2.forEach(function(p){var o=document.createElement('option');o.value=p;o.textContent=p;s2.appendChild(o);});if(!p2.length)setTimeout(function(){apiFetch('/api/lists').then(function(d3){if(!d3)return;var p3=d3.pilotes||[];var s3=document.getElementById('ln-pilot');if(!s3)return;while(s3.options.length>1)s3.remove(1);p3.forEach(function(p){var o=document.createElement('option');o.value=p;o.textContent=p;s3.appendChild(o);});});},5000);});},2000);
   }
   // Load models for login select
   await loadModelsForLogin();
