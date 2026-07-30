@@ -8792,7 +8792,7 @@ async function recalcFPTRS(){
 }
 
 async function confirmFinPoste(){
-  const stops=gEvts.filter(e=>e.type);
+  const stops=gEvts.filter(e=>e.type&&!e.is_degrade);
   const pSec=s=>s?s.split(':').reduce((a,v,i)=>a+(i===0?+v*3600:i===1?+v*60:+v),0):0;
   let arret_s=0,pause_s=0,nett_s=0;
   stops.forEach(e=>{
@@ -9597,7 +9597,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const totalMin=Math.round((d.tot_s||0)/60)+stopMin;
   // Pareto des arrêts
   const stopMap={};
-  (d.evt_rows||[]).forEach(r=>{
+  (d.evt_rows||[]).filter(r=>!r.is_degrade).forEach(r=>{
     const k=r.type||'Inconnu';
     if(!stopMap[k]) stopMap[k]=0;
     const p=r.duree?r.duree.split(':'):[0,0,0];
@@ -9617,7 +9617,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
   window._rptEvtRows = d.evt_rows || [];
   // Helper: compute net prod and stop overlap for each OF against evt_rows
   const _rptHmsMs=hm=>{if(!hm)return 0;const[h,m,s]=(hm+':0:0').split(':').map(Number);return(h||0)*3600000+(m||0)*60000+(s||0)*1000;};
-  const _rptStEvts=(d.evt_rows||[]).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(e=>e.e>e.s);
+  const _rptStEvts=(d.evt_rows||[]).filter(e=>!e.is_degrade).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(e=>e.e>e.s);
   function _rptNetProd(debHm,finHm){
     const dMs=_rptHmsMs(debHm),fMs=_rptHmsMs(finHm);
     if(fMs<=dMs) return {netMin:0,stopMin:0};
@@ -9706,7 +9706,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const cadenceRefPcsMin=prodRef/480;
   const ouvertureMin=Math.round((d.model_dur_s||0)/60);
   // Intervalles fusionnés (arrêts sans chevauchement)
-  const _allEvtIv=(d.evt_rows||[]).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(o=>o.e>o.s).sort((a,b)=>a.s-b.s);
+  const _allEvtIv=(d.evt_rows||[]).filter(e=>!e.is_degrade).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(o=>o.e>o.s).sort((a,b)=>a.s-b.s);
   const _merged=[];_allEvtIv.forEach(iv=>{if(_merged.length&&iv.s<=_merged[_merged.length-1].e)_merged[_merged.length-1].e=Math.max(_merged[_merged.length-1].e,iv.e);else _merged.push({s:iv.s,e:iv.e});});
   const netStopMin=Math.round(_merged.reduce((a,o)=>a+(o.e-o.s),0)/60000);
   const tempsFonctionnement=Math.max(0,ouvertureMin-netStopMin);
@@ -9831,7 +9831,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
             <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Durée</th>
             <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Commentaire</th>
           </tr></thead>
-          <tbody>${(d.evt_rows||[]).map(r=>`<tr style="border-bottom:1px solid var(--border)">
+          <tbody>${(d.evt_rows||[]).filter(r=>!r.is_degrade).map(r=>`<tr style="border-bottom:1px solid var(--border)">
             <td style="padding:4px 5px;font-weight:600;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis">${esc(r.type||'')}</td>
             <td style="padding:4px 5px;color:#0369a1;font-weight:700">${esc(r.of||'—')}</td>
             <td style="padding:4px 5px;color:var(--text)">${esc(r.type_prod||'—')}</td>
