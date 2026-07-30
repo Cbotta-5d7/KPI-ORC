@@ -2092,12 +2092,35 @@ def api_toggle_pause():
 
 @flask_app.route('/api/toggle_reunion', methods=['POST'])
 def api_toggle_reunion():
-    # Find active réunion timer
     running_key = next((k for k,t in _S["timers"].items() if t.get("running") and ('reunion' in k.lower() or 'meeting' in k.lower())), None)
     if running_key:
         t_stop(running_key)
         tl_close(running_key, "")
         reunion_active = False
+        # Écrire en Excel si hors production (en prod : écrit à la fin de l'OF)
+        if not _S.get("prod_active"):
+            ev = next((e for e in reversed(_S["tl_events"]) if e.get("key")==running_key and e.get("end")), None)
+            if ev and ev.get("start") and ev.get("end"):
+                _start = ev["start"]; _end = ev["end"]
+                _dur = max(0, (_end - _start).total_seconds())
+                _dyn = get_events_list()
+                _lbl = (next((e["label"] for e in _dyn if isinstance(e, dict) and e.get("key")==running_key), None)
+                        or next((e[0] for e in INTERPOSTE_CATS if e[1]==running_key), None)
+                        or running_key)
+                _sh = _S.get("shift_start") or _start
+                _row = [
+                    _lbl, _S.get("form",{}).get("of_num",""),
+                    _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
+                    "","","","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+                    _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
+                    "","","","","","","","","","","","","","","","","","",
+                    _sh.strftime("%d/%m/%Y"),
+                ]
+                write_excel_bg([], [_row])
+                try:
+                    _nrn = max((rn for rn,_ in _decl_cache), default=1)+1
+                    _decl_cache.append((_nrn, tuple(_row)+('',)*max(0,40-len(_row))))
+                except: pass
     else:
         evts = get_events_list()
         rev = next((e for e in evts if 'reunion' in (e.get('key','') or '').lower() or 'reunion' in (e.get('label','') or '').lower() or 'meeting' in (e.get('key','') or '').lower()), None)
@@ -5718,7 +5741,7 @@ select{cursor:default}
             <span style="font-size:calc(11px*var(--zf,1));color:var(--gray)">min</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--border);border-radius:7px;padding:7px 10px">
-            <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:600;color:#374151">📋 Réunion quotidienne</span>
+            <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:600;color:#374151">📋 Réunion</span>
             <input type="number" id="ap-meeting" min="0" max="120" style="width:70px;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(13px*var(--zf,1));text-align:right">
             <span style="font-size:calc(11px*var(--zf,1));color:var(--gray)">min</span>
           </div>
