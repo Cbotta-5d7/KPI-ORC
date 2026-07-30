@@ -722,12 +722,14 @@ def load_lists():
                             cfg[k] = float(val)
                     except: pass
             save_cfg_data()
-            # Col O (15) : motifs mode dégradé
+            # Col O (15) : motifs mode dégradé (depuis row 1 pour accepter saisie manuelle)
             _deg_motifs = []
-            for ri in range(2, ws.max_row+1):
+            for ri in range(1, ws.max_row+1):
                 _ov2 = ws.cell(ri, 15).value
-                if _ov2 is not None and str(_ov2).strip():
-                    _deg_motifs.append(str(_ov2).strip())
+                if _ov2 is None: continue
+                _ov2_s = str(_ov2).strip()
+                if not _ov2_s or _ov2_s.lower() in ("mode dégradé", "mode degrade"): continue
+                _deg_motifs.append(_ov2_s)
             if _deg_motifs:
                 cfg["degrade_motifs"] = _deg_motifs
                 save_cfg_data()
@@ -1463,7 +1465,7 @@ def api_start_prod():
         _S["interposte_s"] = gap_s
         ip_debut_hms = model_debut_str
         ip_debut_iso = model_debut_dt.isoformat()
-        if gap_s >= 60:
+        if gap_s >= 120:
             shift_model_start_str = model_debut_str
             shift_model_start_iso = model_debut_dt.isoformat()
             gaps = _get_uncovered_gaps(model_debut_dt, now, pilot)
@@ -1472,7 +1474,7 @@ def api_start_prod():
         gap_s = (now - _S["last_of_end"]).total_seconds()
         ip_debut_hms = _S["last_of_end"].strftime("%H:%M")
         ip_debut_iso = _S["last_of_end"].isoformat()
-        if gap_s >= 60:
+        if gap_s >= 120:
             gaps = _get_uncovered_gaps(_S["last_of_end"], now, pilot)
     return jsonify({"ok":True,"gap_s":round(gap_s,0),
                     "pre_shift_gap_s":round(pre_shift_gap_s,0),
@@ -1656,24 +1658,25 @@ def api_end_prod():
     v = data.get("form",{})
     if _S["is_paused"]:
         _toggle_pause_internal()
-    # Fermer le mode dégradé actif si en cours
+    # Mode dégradé : enregistrer la portion de CET OF uniquement — NE PAS fermer le mode
+    # Le dégradé persiste jusqu'à ce que l'utilisateur l'arrête explicitement
     _degrade_end_row = None
     if _S.get("degrade_active") and _S.get("degrade_start_dt"):
-        _dg_end = datetime.datetime.now()
-        _dg_start = _S["degrade_start_dt"]
+        _dg_of_start = max(_S["degrade_start_dt"], _S["of_start"])
+        _dg_of_end = datetime.datetime.now()
         _dg_motif = _S["degrade_type"]
-        _dg_dur = max(0, (_dg_end - _dg_start).total_seconds())
-        _S["degrade_periods"].append({"start": _dg_start, "end": _dg_end, "type": _dg_motif})
-        _S["degrade_active"] = False; _S["degrade_type"] = ""; _S["degrade_start_dt"] = None
-        _sh_dt = _S.get("shift_start") or _dg_start
-        _degrade_end_row = [
-            _dg_motif, data.get("form",{}).get("of_num",""),
-            _dg_start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
-            "","","","","","","","","","","",
-            _dg_start.strftime("%H:%M:%S"), _dg_end.strftime("%H:%M:%S"), fmt(_dg_dur),
-            "","","","","","","","","","","","","","","","","","","","","",
-            _sh_dt.strftime("%d/%m/%Y"),
-        ]
+        _dg_dur_of = max(0.0, (_dg_of_end - _dg_of_start).total_seconds())
+        _sh_dt = _S.get("shift_start") or _dg_of_start
+        if _dg_dur_of >= 1:
+            _degrade_end_row = [
+                _dg_motif, v.get("of_num",""),
+                _dg_of_start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
+                "","","","","","","","","","","",
+                _dg_of_start.strftime("%H:%M:%S"), _dg_of_end.strftime("%H:%M:%S"), fmt(_dg_dur_of),
+                "","","","","","","","","","","","","","","","","","","","","",
+                _sh_dt.strftime("%d/%m/%Y"),
+            ]
+        # degrade_active / degrade_type / degrade_start_dt restent inchangés
     t_stop_all()
     tl_close_all()
     end_dt = datetime.datetime.now()
@@ -1706,6 +1709,10 @@ def api_end_prod():
                 _d0 = max(_dp["start"], _S["of_start"])
                 _d1 = min(_dp["end"], end_dt)
                 if _d1 > _d0: _deg_s += (_d1 - _d0).total_seconds()
+        # Dégradé encore actif — portion dans cet OF (de of_start à end_dt)
+        if _S.get("degrade_active") and _S.get("degrade_start_dt"):
+            _d0 = max(_S["degrade_start_dt"], _S["of_start"])
+            if end_dt > _d0: _deg_s += (end_dt - _d0).total_seconds()
         _eff_s = max(1.0, of_s_brut - _of_planned_ded_s)
         _adj_s = max(1.0, _eff_s - _deg_s / 2.0)  # dégradé = cadence / 2
         trs = round(equiv/(prod_ref*_adj_s/28800)*100,1)
@@ -6809,7 +6816,7 @@ async function doStartProd() {
   _pendingGapIdx=0;
   _isFirstOfGaps=!!(d.shift_model_start);
   // Fallback : si _get_uncovered_gaps n'a rien renvoyé mais gap > 1 min, créer un gap synthétique
-  if(_pendingGaps.length===0 && _pendingGapS>=60){
+  if(_pendingGaps.length===0 && _pendingGapS>=120){
     _pendingGaps=[{debut:d.ip_debut_hms||'',fin:d.ip_fin_hms||'',duree_s:_pendingGapS}];
   }
   _showNextGap();
