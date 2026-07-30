@@ -1629,7 +1629,7 @@ def api_stop_degrade():
         start_dt_deg.strftime("%d/%m/%Y"), poste, pilot,
         "","","","","","","","","","","",
         start_dt_deg.strftime("%H:%M:%S"), end_dt_deg.strftime("%H:%M:%S"), fmt(dur_s),
-        "","","","","","","","","","","","","","","","","","","","","",
+        "","","","","","","","","","","","","","","","","","","","",
         shift_dt.strftime("%d/%m/%Y"),
     ]
     write_excel_bg([], [_row])
