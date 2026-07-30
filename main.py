@@ -9728,7 +9728,6 @@ async function loadRptJour(){
   calcPeriodReport(true);
 }
 async function calcPeriodReport(autoLoad){
-async function calcPeriodReport(){
   const from=document.getElementById('rj-from').value;
   const to=document.getElementById('rj-to').value;
   const pilot=document.getElementById('rj-pilot').value;
