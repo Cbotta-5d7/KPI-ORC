@@ -5627,6 +5627,7 @@ select{cursor:default}
         <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);text-transform:uppercase">Filtrer :</span>
         <button class="hf-btn" data-hf="production" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #16a34a;color:#16a34a;background:none;cursor:pointer;font-weight:700;transition:all .15s">🏭 Production</button>
         <button class="hf-btn" data-hf="arret" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #dc2626;color:#dc2626;background:none;cursor:pointer;font-weight:700;transition:all .15s">⛔ Arrêts</button>
+        <button class="hf-btn" data-hf="degrade" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #ca8a04;color:#ca8a04;background:none;cursor:pointer;font-weight:700;transition:all .15s">🟡 Mode dégradé</button>
         <button class="hf-btn" data-hf="nettoyage" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #0891b2;color:#0891b2;background:none;cursor:pointer;font-weight:700;transition:all .15s">🧹 Nettoyage</button>
         <button class="hf-btn" data-hf="pause" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #f59e0b;color:#f59e0b;background:none;cursor:pointer;font-weight:700;transition:all .15s">⏸ Pause</button>
         <button class="hf-btn" data-hf="reunion" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #8b5cf6;color:#8b5cf6;background:none;cursor:pointer;font-weight:700;transition:all .15s">👥 Réunion</button>
@@ -5855,14 +5856,7 @@ select{cursor:default}
       <button style="background:none;border:none;cursor:pointer;color:#fff;font-size:calc(16px*var(--zf,1))" onclick="closeM('m-stop')">✕</button>
     </div>
     <div class="mbody">
-      <div class="stop-section-lbl">🔄 Rattrapage</div>
-      <div class="stops-grid ratt" id="sgrid-ratt"></div>
-      <div class="stop-section-lbl">🔧 PB Technique</div>
-      <div class="stops-grid pb" id="sgrid-pb"></div>
-      <div class="stop-section-lbl" id="sgrid-nett-lbl" style="display:none">🟡 Nettoyage</div>
-      <div class="stops-grid" id="sgrid-nettoyage" style="display:none"></div>
-      <div class="stop-section-lbl" id="sgrid-org-lbl" style="display:none">🔵 Organisation</div>
-      <div class="stops-grid" id="sgrid-organisation" style="display:none"></div>
+      <div id="sgrid-all" style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:6px"></div>
       <div class="stop-section-lbl">✏ Arrêt libre / autre</div>
       <div class="custom-row">
         <input id="custom-stop-input" placeholder="Nom de l'arrêt…" maxlength="60">
@@ -7454,20 +7448,15 @@ async function loadEvtsList(){
 
 function rebuildStopGrids(){
   const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
-  const GRIDS={ratt:'sgrid-ratt',pb:'sgrid-pb',nettoyage:'sgrid-nettoyage',organisation:'sgrid-organisation'};
-  const LABELS={nettoyage:'sgrid-nett-lbl',organisation:'sgrid-org-lbl'};
-  Object.values(GRIDS).forEach(id=>{const g=document.getElementById(id);if(g)g.innerHTML='';});
+  const g=document.getElementById('sgrid-all'); if(!g) return;
+  g.innerHTML='';
   evts.forEach(e=>{
-    const gid=GRIDS[e.cat]; if(!gid) return;
-    const g=document.getElementById(gid); if(!g) return;
     const b=document.createElement('button');
     const col=STOP_COL[e.cat]||'#64748b';
     b.style.cssText=`background:${col};color:#fff;border:none;border-radius:6px;padding:7px 10px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer`;
     b.textContent=e.label;
     b.onclick=()=>{closeM('m-stop');doStartStop(e.key,e.cat);};
     g.appendChild(b);
-    g.style.display='';
-    if(LABELS[e.cat]){const l=document.getElementById(LABELS[e.cat]);if(l)l.style.display='';}
   });
 }
 
@@ -9669,13 +9658,15 @@ function _applyHistFilter(){
     if(tr.dataset.searchHidden==='1'){tr.style.display='none';return;}
     const t=tr.dataset.hftype||'';
     const isProd=t==='prod';
+    const isDegrade=t==='degrade';
     const isNett=t.includes('nettoyage')||t.includes('nett');
     const isPause=t.includes('pause');
     const isReunion=t.includes('réunion')||t.includes('reunion')||t.includes('meeting');
-    const isArret=!isProd&&!isNett&&!isPause&&!isReunion;
+    const isArret=!isProd&&!isDegrade&&!isNett&&!isPause&&!isReunion;
     let show=!_histFilters.size;
     if(!show){
       if(_histFilters.has('production')&&isProd) show=true;
+      if(_histFilters.has('degrade')&&isDegrade) show=true;
       if(_histFilters.has('nettoyage')&&isNett) show=true;
       if(_histFilters.has('pause')&&isPause) show=true;
       if(_histFilters.has('reunion')&&isReunion) show=true;
@@ -9737,7 +9728,7 @@ async function loadHist(){
     window._rowMap[String(key)]=r;
     const isProd=r._rowType==='prod';
     const rt=String(r.type||'').toLowerCase();
-    const hftype=isProd?'prod':rt||'arret';
+    const hftype=isProd?'prod':(r.is_degrade?'degrade':rt||'arret');
     const t=parseFloat(r.trs||0);
     const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.is_degrade?'<span class="row-tag tag-e" style="border-color:#ca8a04;color:#ca8a04">🟡 Dégradé</span>':(rt.includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':rt.includes('pause')?'<span class="row-tag tag-n" style="border-color:#f59e0b;color:#f59e0b">⏸ Pause</span>':(rt.includes('réunion')||rt.includes('reunion'))?'<span class="row-tag tag-n" style="border-color:#8b5cf6;color:#8b5cf6">👥 Réunion</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>'));
     const details=isProd?esc(r.taille||''):esc(r.type||'');
