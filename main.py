@@ -2846,7 +2846,8 @@ def api_period_report():
         trs_by_day[day]['elapsed_s'] += elapsed_s
         trs_by_day[day]['sum_expected'] += _sum_exp_pr
         _cad_s = round(s['tot_equiv']/fonct_min*60) if fonct_min>0 else 0
-        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1)})
+        _of_rows_sd = [{"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"fibre":str(r[11] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"nb_pers":str(r[6] or ""),"trs":str(r[24] or "")} for r in s.get('prod_raws',[])]
+        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'of_rows':_of_rows_sd})
     trs_periode = round(agg_equiv/agg_sum_expected*100,1) if agg_sum_expected>0 and agg_equiv>0 else -1.0
     def _sort_dmy(d):
         try: p=d.split('/'); return (int(p[2]),int(p[1]),int(p[0]))
@@ -4117,7 +4118,7 @@ function _renderDashOf(r){{
     ['Qté Init Taie',r.qte_init_taie||''],['Nb Taie 2nd',r.nb_taie2_choix||''],
     ['Nb déf. coût',r.nb_def_cout||''],['Mq taie',r.mq_taie||''],
     ['Mq housse',r.mq_housse_encart||''],['PP cousu emb.',r.nb_pp_cousue||''],
-    ['Durée MQ MP',r.duree_mq_mp||''],['Manquant pers.',r.manquant_pers||''],
+    ['Durée MQ MP',r.duree_mq_mp||''],
     ['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':''],
   ];
   chips=chips.filter(function(c){{return c[1]&&c[1]!=='—'&&c[1]!==''||c[0]==='TRS OF';}});
@@ -4655,8 +4656,9 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
 /* Action buttons row below timeline */
 .prod-act-row{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10}
-.act-btn{flex:1;min-width:100px;border:none;border-radius:8px;padding:24px 6px;cursor:pointer;font-size:calc(16px*var(--zf,1));font-weight:700;text-align:center;transition:all .15s;white-space:nowrap;min-height:80px;display:flex;align-items:center;justify-content:center;gap:4px;flex-direction:column;line-height:1.3}
-.act-btn:hover{filter:brightness(.9)}
+.act-btn{flex:1;min-width:100px;border:none;border-radius:8px;padding:24px 6px;cursor:pointer;font-size:calc(16px*var(--zf,1));font-weight:700;text-align:center;transition:all .1s;white-space:nowrap;min-height:80px;display:flex;align-items:center;justify-content:center;gap:4px;flex-direction:column;line-height:1.3;box-shadow:0 6px 0 rgba(0,0,0,.25),0 8px 12px rgba(0,0,0,.2);transform:translateY(0);border-bottom:none}
+.act-btn:hover{filter:brightness(1.05)}
+.act-btn:active{transform:translateY(4px);box-shadow:0 2px 0 rgba(0,0,0,.25),0 2px 4px rgba(0,0,0,.15)}
 .act-stop{background:linear-gradient(135deg,#b91c1c,#7f0000);color:#fff;font-size:calc(16px*var(--zf,1));font-weight:800;box-shadow:0 3px 8px rgba(185,28,28,.3)}
 .act-nett{background:#e0f2fe;color:var(--blue)}
 .act-pause{background:#f3e8ff;color:var(--purple)}
@@ -4921,10 +4923,10 @@ select{cursor:default}
     </div>
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0" id="main-action-btns">
-        <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:calc(15px*var(--zf,1));padding:18px 24px;font-weight:800;min-height:64px">▶ Démarrer production</button>
-        <button class="btn btn-danger" onclick="openStopModal()" style="font-size:calc(15px*var(--zf,1));padding:18px 24px;font-weight:800;min-height:64px">⛔ Déclarer un arrêt</button>
-        <button id="btn-degrade-acc" class="btn" onclick="toggleDegrade()" style="font-size:calc(13px*var(--zf,1));padding:14px 20px;font-weight:800;min-height:64px;background:#fef9c3;border:2px solid #ca8a04;color:#854d0e">🟡 Mode dégradé</button>
-        <button class="btn btn-amber" onclick="doFinPoste()" style="font-size:calc(15px*var(--zf,1));padding:18px 24px;font-weight:800;min-height:64px">🏁 Fin de poste</button>
+        <button class="btn btn-green" id="btn-start" onclick="doStartProd()" style="font-size:calc(15px*var(--zf,1));padding:18px 28px;font-weight:800;min-height:72px;box-shadow:0 7px 0 #14532d,0 10px 14px rgba(0,0,0,.25);transform:translateY(0);transition:all .1s;border-radius:12px" onmousedown="this.style.transform='translateY(5px)';this.style.boxShadow='0 2px 0 #14532d,0 4px 6px rgba(0,0,0,.15)'" onmouseup="this.style.transform='';this.style.boxShadow=''" onmouseleave="this.style.transform='';this.style.boxShadow=''">▶ Démarrer production</button>
+        <button class="btn btn-danger" onclick="openStopModal()" style="font-size:calc(15px*var(--zf,1));padding:18px 28px;font-weight:800;min-height:72px;box-shadow:0 7px 0 #7f1d1d,0 10px 14px rgba(0,0,0,.25);transform:translateY(0);transition:all .1s;border-radius:12px" onmousedown="this.style.transform='translateY(5px)';this.style.boxShadow='0 2px 0 #7f1d1d,0 4px 6px rgba(0,0,0,.15)'" onmouseup="this.style.transform='';this.style.boxShadow=''" onmouseleave="this.style.transform='';this.style.boxShadow=''">⛔ Déclarer un arrêt</button>
+        <button id="btn-degrade-acc" class="btn" onclick="toggleDegrade()" style="font-size:calc(13px*var(--zf,1));padding:14px 20px;font-weight:800;min-height:72px;background:#fef9c3;border:2px solid #ca8a04;color:#854d0e;box-shadow:0 7px 0 #92400e,0 10px 14px rgba(0,0,0,.2);transform:translateY(0);transition:all .1s;border-radius:12px" onmousedown="this.style.transform='translateY(5px)';this.style.boxShadow='0 2px 0 #92400e,0 4px 6px rgba(0,0,0,.1)'" onmouseup="this.style.transform='';this.style.boxShadow=''" onmouseleave="this.style.transform='';this.style.boxShadow=''">🟡 Mode dégradé</button>
+        <button class="btn btn-amber" onclick="doFinPoste()" style="font-size:calc(15px*var(--zf,1));padding:18px 28px;font-weight:800;min-height:72px;box-shadow:0 7px 0 #78350f,0 10px 14px rgba(0,0,0,.25);transform:translateY(0);transition:all .1s;border-radius:12px" onmousedown="this.style.transform='translateY(5px)';this.style.boxShadow='0 2px 0 #78350f,0 4px 6px rgba(0,0,0,.15)'" onmouseup="this.style.transform='';this.style.boxShadow=''" onmouseleave="this.style.transform='';this.style.boxShadow=''">🏁 Fin de poste</button>
 
       </div>
     </div>
@@ -5133,36 +5135,33 @@ select{cursor:default}
           </div>
           <div id="budget-bars-prod"></div>
         </div>
-        <!-- TRS OF gauge -->
-        <div class="gauge-box" style="padding:8px 4px 4px;border-top:1px solid var(--border);flex-shrink:0">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;align-items:center">
-            <div style="text-align:center">
-              <svg viewBox="0 0 100 56" style="width:100%;max-width:140px">
-                <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
-                <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
-                <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
-              </svg>
-              <div class="gauge-lbl">TRS OF</div>
-            </div>
-            <div style="text-align:center">
-              <svg viewBox="0 0 100 56" style="width:100%;max-width:140px">
-                <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
-                <path id="gauge-poste-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#0891b2" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
-                <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#0c4a6e" id="gauge-poste-pct">—</text>
-              </svg>
-              <div class="gauge-lbl" id="gauge-poste-lbl">TRS Poste</div>
-            </div>
+        <!-- Gauges + Pies: left=OF, right=Poste, separated -->
+        <div style="padding:4px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 3px 1fr;gap:0;flex-shrink:0">
+          <!-- Left: OF -->
+          <div style="display:flex;flex-direction:column;align-items:center;padding:2px 4px">
+            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;margin-bottom:1px;letter-spacing:.4px">OF en cours</div>
+            <svg viewBox="0 0 100 56" style="width:100%;max-width:130px">
+              <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
+              <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
+              <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
+            </svg>
+            <div class="gauge-lbl">TRS OF</div>
+            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:4px;margin-bottom:1px">Prod / Arrêts OF</div>
+            <svg id="pie-of" viewBox="0 0 130 140" style="width:100%;height:auto;display:block"></svg>
           </div>
-        </div>
-        <!-- Pie charts -->
-        <div style="padding:4px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:4px">
-          <div style="text-align:center">
-            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">Poste — Prod/Arrêts</div>
-            <svg id="pie-poste" viewBox="0 0 130 115" style="width:100%;height:auto;display:block"></svg>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px">OF en cours</div>
-            <svg id="pie-of" viewBox="0 0 130 115" style="width:100%;height:auto;display:block"></svg>
+          <!-- Separator -->
+          <div style="background:var(--border);margin:4px 0;border-radius:2px"></div>
+          <!-- Right: Poste -->
+          <div style="display:flex;flex-direction:column;align-items:center;padding:2px 4px">
+            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#0891b2;margin-bottom:1px;letter-spacing:.4px">Poste entier</div>
+            <svg viewBox="0 0 100 56" style="width:100%;max-width:130px">
+              <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
+              <path id="gauge-poste-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#0891b2" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
+              <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#0c4a6e" id="gauge-poste-pct">—</text>
+            </svg>
+            <div class="gauge-lbl" id="gauge-poste-lbl">TRS Poste</div>
+            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:4px;margin-bottom:1px">Prod / Arrêts Poste</div>
+            <svg id="pie-poste" viewBox="0 0 130 140" style="width:100%;height:auto;display:block"></svg>
           </div>
         </div>
       </div>
@@ -5860,7 +5859,7 @@ select{cursor:default}
           <div class="fr"><label>Mq Housse/Encart</label><input type="number" id="er-mqhousse"></div>
           <div class="fr"><label>PP cousu et emballé</label><input type="number" id="er-nbpp"></div>
           <div class="fr"><label>Duree MQ MP (min)</label><input type="number" id="er-dureemq"></div>
-          <div class="fr"><label>Manquant Personnel (min)</label><input type="number" id="er-manqpers"></div>
+          <div class="fr" style="display:none"><input type="number" id="er-manqpers"></div>
         </div>
         <div class="fr comment-big"><label>💬 Commentaire</label><textarea id="er-comment-prod" style="height:60px;resize:none;width:100%;padding:4px 6px;border:2px solid #f59e0b;border-radius:4px;font-size:calc(12px*var(--zf,1));background:#fffbeb"></textarea></div>
       </div>
@@ -5962,7 +5961,7 @@ function getStopColor(key, cat) {
   return '#94a3b8';
 }
 
-const FORM_FIELDS = ["of_num","copilote","nb_pers","taille","code_prod","type_prod","poids","fibre","of_taie","traca","ref_taie","kit","qte_fab","qte_emb","qte_init_taie","nb_taie2_choix","nb_def_cout","mq_taie","mq_housse_encart","nb_pp_cousue","duree_mq_mp","manquant_pers","comment"];
+const FORM_FIELDS = ["of_num","copilote","nb_pers","taille","code_prod","type_prod","poids","fibre","of_taie","traca","ref_taie","kit","qte_fab","qte_emb","qte_init_taie","nb_taie2_choix","nb_def_cout","mq_taie","mq_housse_encart","nb_pp_cousue","duree_mq_mp","comment"];
 
 // ── State ──
 let ST = {};
@@ -6299,6 +6298,8 @@ function resetToLogin() {
   _settingsUnlocked = false;
   // Restaurer les éléments cachés en mode invité
   const actionBtns=document.getElementById('main-action-btns');if(actionBtns) actionBtns.style.display='';
+  const _btnStart=document.getElementById('btn-start');
+  if(_btnStart){if(ST.prod_active){_btnStart.innerHTML='▶ Production en cours';_btnStart.onclick=()=>goTab('prod');}else{_btnStart.innerHTML='▶ Démarrer production';_btnStart.onclick=doStartProd;}}
   const prodTab=document.getElementById('ht-prod');if(prodTab) prodTab.style.display='';
   const guestBadge=document.getElementById('ht-guest-badge');if(guestBadge) guestBadge.style.display='none';
   // Reset horaires login aux valeurs config
@@ -9619,7 +9620,23 @@ async function loadRptJour(){
     const cur=qSel.value;
     qSel.innerHTML='<option value="">Tous</option>'+postes.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('');
   }
-  // Auto-calculer au premier chargement
+  // Auto-load: trouver les 3 derniers postes et ajuster la plage de dates
+  if(sessions&&sessions.length){
+    const _sorted=[...sessions].sort((a,b)=>{
+      const _dmy=s=>{try{const p=(s.date||'').split('/');return new Date(p[2]+'-'+p[1]+'-'+p[0]).getTime();}catch(e){return 0;}};
+      return _dmy(b)-_dmy(a);
+    });
+    const _last3=_sorted.slice(0,3);
+    if(_last3.length){
+      const _dates=_last3.map(s=>s.date).filter(Boolean);
+      const _toDate=_last3[0].date;
+      const _fromDate=_last3[_last3.length-1].date;
+      const _toISO=_toDate?_toDate.split('/').reverse().join('-'):'';
+      const _fromISO=_fromDate?_fromDate.split('/').reverse().join('-'):'';
+      if(_rjf&&_fromISO)_rjf.value=_fromISO;
+      if(_rjt&&_toISO)_rjt.value=_toISO;
+    }
+  }
   calcPeriodReport();
 }
 async function calcPeriodReport(){
@@ -9720,6 +9737,25 @@ async function calcPeriodReport(){
     }).join('');
     paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex-shrink:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">🛑 Pareto des arrêts</div>${rows3}</div>`;
   }
+  // OF list table
+  let ofListHtml='';
+  const allOfs=[];
+  (d.sessions_detail||[]).forEach(s=>{
+    (s.of_rows||[]).forEach(r=>{allOfs.push({...r,date:s.date,poste:s.poste,pilot:s.pilot});});
+  });
+  if(allOfs.length){
+    const ofRows=allOfs.map(r=>`<tr style="border-bottom:1px solid var(--border);font-size:calc(10px*var(--zf,1))">
+      <td style="padding:4px 6px;font-weight:700;color:#1d4ed8">${esc(r.of)}</td>
+      <td style="padding:4px 6px">${esc(r.date)} · ${esc(r.poste)}</td>
+      <td style="padding:4px 6px">${esc(r.pilot)}</td>
+      <td style="padding:4px 6px">${esc(r.fibre)}</td>
+      <td style="padding:4px 6px;text-align:center">${esc(r.debut)}→${esc(r.fin)}</td>
+      <td style="padding:4px 6px;text-align:right;font-weight:700">${esc(r.qte_fab)}</td>
+      <td style="padding:4px 6px;text-align:right">${esc(r.equiv)}</td>
+      <td style="padding:4px 6px;text-align:right;font-weight:700;color:${r.trs&&parseFloat(r.trs)>=90?'#16a34a':r.trs&&parseFloat(r.trs)>=70?'#f59e0b':'#dc2626'}">${r.trs?parseFloat(r.trs).toFixed(1)+'%':'—'}</td>
+    </tr>`).join('');
+    ofListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px;overflow-x:auto"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">📋 Liste des OF fabriqués</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">Pilote</th><th style="padding:4px 6px;text-align:left">Fibre</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Qté</th><th style="padding:4px 6px;text-align:right">Équiv</th><th style="padding:4px 6px;text-align:right">TRS</th></tr></thead><tbody>${ofRows}</tbody></table></div>`;
+  }
   // Pie chart: fonctionnement vs arrêts
   const fonctMin=d.temps_fonctionnement_min||0;
   const stopMin=d.net_stop_min||0;
@@ -9779,6 +9815,7 @@ async function calcPeriodReport(){
           ${chartCadHtml}
         </div>
         ${paretoRjHtml}
+        ${ofListHtml}
       </div>
     </div>
   `;
