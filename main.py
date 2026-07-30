@@ -4818,11 +4818,11 @@ body.stop-on #app-hdr{background:#7f0000!important;border-color:#b91c1c}
 .form-3col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 .fzone{border-radius:7px;padding:8px}
 .fzone h4{font-size:calc(9px*var(--zf,1));text-transform:uppercase;letter-spacing:.7px;font-weight:700;margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid rgba(0,0,0,.08)}
-.zi{background:#eef2ff;border:1px solid #c7d2fe}.zi h4{color:#3730a3}
-.zp{background:#f0fdf4;border:1px solid #bbf7d0}.zp h4{color:#166534}
-.zq{background:#fff7ed;border:1px solid #fed7aa}.zq h4{color:#9a3412}
+.zi{background:#d4ddff;border:1px solid #a5b4fc}.zi h4{color:#3730a3}
+.zp{background:#bbf7d0;border:1px solid #86efac}.zp h4{color:#166534}
+.zq{background:#fed7aa;border:1px solid #fb923c}.zq h4{color:#9a3412}
 .fr{display:flex;flex-direction:column;margin-bottom:4px}
-.fr label{font-size:calc(9px*var(--zf,1));font-weight:700;color:var(--gray);margin-bottom:2px;text-transform:uppercase;letter-spacing:.2px}
+.fr label{font-size:calc(11px*var(--zf,1));font-weight:700;color:var(--gray);margin-bottom:2px;text-transform:uppercase;letter-spacing:.2px}
 .fr input,.fr select,.fr textarea{padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(12px*var(--zf,1));background:var(--card);color:var(--text);width:100%;outline:none;transition:border .15s}
 .fr input:focus,.fr select:focus{border-color:#6366f1}
 .fr textarea{resize:none;height:42px}
@@ -5282,14 +5282,12 @@ select{cursor:default}
           <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Prod dégradé</span></div>
         </div>
         <!-- Action buttons row (below timeline) -->
-        <div class="prod-act-row">
-          <button class="act-btn act-stop" onclick="openStopModal()"><span class="act-icon">🛑</span>Déclarer un arrêt</button>
-          <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span>Mode dégradé</button>
-          <button class="act-btn act-nett" onclick="doNettoyage()"><span class="act-icon">🧹</span>Nettoyage</button>
-          <button class="act-btn act-pause" id="btn-pause" onclick="doPause()"><span class="act-icon">☕</span>Pause</button>
-          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span>Réunion</button>
-          <button class="act-btn act-cancel" onclick="doCancelProd()"><span class="act-icon">✖</span>Annuler prod</button>
-          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()" title="Remplir le formulaire"><span class="act-icon">✅</span>Fin d'OF/prod</button>
+        <div class="prod-act-row" style="justify-content:center">
+          <button class="act-btn act-stop" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px)" onclick="openStopModal()"><span class="act-icon">🛑</span>Déclarer un arrêt</button>
+          <button id="btn-degrade-prod" class="act-btn" onclick="toggleDegrade()" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px);background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span>Mode dégradé</button>
+          <button class="act-btn act-nett" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px)" onclick="doNettoyage()"><span class="act-icon">🧹</span>Nettoyage</button>
+          <button class="act-btn act-pause" id="btn-pause" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px)" onclick="doPause()"><span class="act-icon">☕</span>Pause</button>
+          <button class="act-btn" id="btn-reunion" onclick="doReunion()" style="aspect-ratio:1;flex:0 0 auto;width:calc(20% - 5px);background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span>Réunion</button>
         </div>
       </div>
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
@@ -5332,6 +5330,11 @@ select{cursor:default}
             <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:4px;margin-bottom:1px">Prod / Arrêts Poste</div>
             <svg id="pie-poste" viewBox="0 0 130 140" style="width:100%;height:auto;display:block"></svg>
           </div>
+        </div>
+        <!-- Bottom action buttons -->
+        <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0;background:var(--card)">
+          <button class="act-btn act-cancel" onclick="doCancelProd()" style="width:100%;min-height:44px;padding:8px 12px;font-size:calc(14px*var(--zf,1))"><span class="act-icon" style="font-size:calc(18px*var(--zf,1))">✖</span>Annuler prod</button>
+          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()" title="Remplir le formulaire" style="width:100%;min-height:55px;padding:10px 12px;font-size:calc(20px*var(--zf,1))"><span class="act-icon" style="font-size:calc(33px*var(--zf,1))">✅</span>Fin d'OF/prod</button>
         </div>
       </div>
     </div>
