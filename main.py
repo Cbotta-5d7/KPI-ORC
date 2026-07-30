@@ -7457,19 +7457,28 @@ async function doPause(){
 }
 
 async function doReunion(){
-  const reunionKeys=(_evtsList||[]).filter(function(e){return e.cat==='interposte'&&(e.key.indexOf('reunion')>=0||e.key.indexOf('meeting')>=0);}).map(function(e){return e.key;});
-  const activeReunionKey=(ST.active_stops||[]).find(function(k){return reunionKeys.indexOf(k)>=0;});
+  // Cherche un événement réunion dans _evtsList (toute catégorie), clé ou label contenant reunion/meeting
+  function _isReunionEvt(e){
+    var kl=(e.key||'').toLowerCase();
+    var ll=(e.label||'').toLowerCase();
+    return kl.indexOf('reunion')>=0||kl.indexOf('meeting')>=0||ll.indexOf('reunion')>=0||ll.indexOf('meeting')>=0;
+  }
+  var reunionKeys=(_evtsList||[]).filter(_isReunionEvt).map(function(e){return e.key;});
+  // Ajouter la clé fallback 'reunion' (INTERPOSTE_CATS par défaut)
+  if(reunionKeys.indexOf('reunion')<0) reunionKeys.push('reunion');
+  var activeReunionKey=(ST.active_stops||[]).find(function(k){return reunionKeys.indexOf(k)>=0;});
   if(activeReunionKey){
     await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:activeReunionKey,comment:''})});
     toast('Fin réunion','ok');
-    const btn=document.getElementById('btn-reunion');
+    var btn=document.getElementById('btn-reunion');
     if(btn) btn.textContent='👥 Réunion';
   } else {
-    const reunionEvt=(_evtsList||[]).find(function(e){return e.cat==='interposte'&&(e.key.indexOf('reunion')>=0||e.key.indexOf('meeting')>=0);});
-    if(!reunionEvt){toast('Type Réunion non trouvé dans paramètres','err');return;}
-    await fetch('/api/start_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:reunionEvt.key,cat:reunionEvt.cat||'ratt',comment:''})});
+    var reunionEvt=(_evtsList||[]).find(_isReunionEvt);
+    // Fallback : clé par défaut INTERPOSTE_CATS
+    if(!reunionEvt) reunionEvt={key:'reunion',cat:'interposte'};
+    await fetch('/api/start_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:reunionEvt.key,cat:reunionEvt.cat||'interposte',comment:''})});
     toast('Réunion commencée','ok');
-    const btn=document.getElementById('btn-reunion');
+    var btn=document.getElementById('btn-reunion');
     if(btn) btn.textContent='✓ Fin réunion';
   }
   await pollState();
