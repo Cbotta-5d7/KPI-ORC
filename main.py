@@ -5021,7 +5021,7 @@ select{cursor:default}
   <!-- ════ PRODUCTION VIEW ════ -->
   <div id="v-prod" class="view" style="flex-direction:column">
     <!-- Pilot/OF banner -->
-    <div class="pob">
+    <div class="pob" style="display:none">
       <div class="pob-item">
         <div class="pob-lbl">Pilote</div>
         <div class="pob-val" id="pob-pilot">—</div>
@@ -5716,7 +5716,7 @@ select{cursor:default}
 
 <!-- ════ MODAL: Déclarer un arrêt ════ -->
 <div class="overlay" id="m-stop">
-  <div class="mbox">
+  <div class="mbox" style="width:70%;max-width:70vw">
     <div class="mhdr red">
       <h2>⛔ Déclarer un arrêt</h2>
       <button style="background:none;border:none;cursor:pointer;color:#fff;font-size:calc(16px*var(--zf,1))" onclick="closeM('m-stop')">✕</button>
@@ -5885,7 +5885,7 @@ select{cursor:default}
 
 <div id="m-degrade" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:5100;align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-degrade')">
   <div class="mbox" style="max-width:380px;padding:20px" onclick="event.stopPropagation()">
-    <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0;background:#854d0e;color:#fef9c3"><h2 id="m-degrade-title">🟡 Mode dégradé</h2></div>
+    <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0;background:#854d0e;color:#ffffff"><h2 id="m-degrade-title">🟡 Mode dégradé</h2></div>
     <div id="m-degrade-body" style="margin-bottom:14px"></div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-prim" id="m-degrade-confirm" onclick="_confirmDegrade()" style="background:#854d0e;border-color:#854d0e">✓ Confirmer</button>
@@ -6677,7 +6677,9 @@ function startTicker() {
         if(_d1>_d0) _degST+=(_d1-_d0)/1000;
       });
       const _adjEffOfElT=Math.max(1,effOfElT-_degST/2);
-      const theo=Math.round(ST.prod_ref*_adjEffOfElT/28800/coef);
+      const _nbPersTheo=parseInt(document.getElementById('f-nb_pers')?.value||'1')||1;
+      const _pctTheo=(_persPctMapLocal&&_persPctMapLocal[String(_nbPersTheo)]!=null)?(_persPctMapLocal[String(_nbPersTheo)]/100):1.0;
+      const theo=Math.round(ST.prod_ref*_pctTheo*_adjEffOfElT/28800/coef);
       thEl.textContent=theo>0?theo+' pièces':'—';
     }
     // Mise à jour bannière accueil (durée OF et arrêts)
@@ -8196,15 +8198,18 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
   const fT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
   // Hourly tick marks
   let tickT=Math.ceil(tS/3600000)*3600000;
+  let _lastTickX=-100;
+  const _firstTickX=toX(Math.ceil(tS/3600000)*3600000);
   while(tickT<tE){
     const tx=toX(tickT);
     const hr=new Date(tickT).getHours();
+    _lastTickX=tx;
     html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`;
     html+=`<text x="${tx+2}" y="${Y+H2+14}" font-size="9" fill="#374151" font-weight="600">${String(hr).padStart(2,'0')}h</text>`;
     tickT+=3600000;
   }
-  html+=`<text x="2" y="${Y+H2+14}" font-size="10" fill="#374151" font-weight="600">${fT(tS)}</text>`;
-  html+=`<text x="${W-36}" y="${Y+H2+14}" font-size="10" fill="#374151" font-weight="600">${fT(tE)}</text>`;
+  if(_firstTickX>32) html+=`<text x="2" y="${Y+H2+14}" font-size="10" fill="#374151" font-weight="600">${fT(tS)}</text>`;
+  if(W-_lastTickX>40) html+=`<text x="${W-36}" y="${Y+H2+14}" font-size="10" fill="#374151" font-weight="600">${fT(tE)}</text>`;
   svg.innerHTML=html;
 }
 
@@ -9956,8 +9961,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const perteCadenceRaw=Math.round(d.perte_cadence_min||0);
   const perteCadenceHtml=perteCadenceRaw<0?`<span style="color:#16a34a;font-weight:800">${Math.abs(perteCadenceRaw)} min de gain</span>`:perteCadenceRaw>0?`<span style="color:#dc2626;font-weight:800">${perteCadenceRaw} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
   const degMin=Math.round((d.degrade_s||0)/60);
-  const tlDebut=d.model_debut||d.actual_debut;
-  const tlFin=d.model_fin||d.actual_fin;
+  const tlDebut=d.actual_debut||d.model_debut;
+  const tlFin=d.actual_fin||d.model_fin;
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
   const plageStr=(tlDebut&&tlFin)?(' · '+esc(tlDebut)+' → '+esc(tlFin)):'';
   // ── Panneau gauche : passe en mode KPI ──
@@ -9978,7 +9983,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <!-- Contenu KPI -->
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
       <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0">
-        <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${d.model_debut&&d.model_fin?' — '+esc(d.model_debut)+' → '+esc(d.model_fin):''}</div>
+        <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?' — '+(d.actual_debut||d.model_debut)+' → '+(d.actual_fin||d.model_fin):''}</div>
         <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
         <div style="font-size:calc(9px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">TRS :</div>
         <div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3)">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
@@ -9986,7 +9991,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px">
         <div style="text-align:center">
           <svg id="rpt-pie" viewBox="0 0 130 130" style="width:150px;height:150px;display:block;margin:0 auto"></svg>
-          ${(d.model_debut&&d.model_fin)?`<div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:3px;font-weight:600">${esc(d.model_debut)} → ${esc(d.model_fin)}</div>`:''}
+          ${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?`<div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:3px;font-weight:600">${esc(d.actual_debut||d.model_debut)} → ${esc(d.actual_fin||d.model_fin)}</div>`:''}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Pièces</div></div>
@@ -10001,7 +10006,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#8b5cf6;font-weight:900">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${(d.model_debut&&d.model_fin)?(d.model_debut+'→'+d.model_fin):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?((d.actual_debut||d.model_debut)+'→'+(d.actual_fin||d.model_fin)):(Math.round((d.model_dur_s||0)/60)+' min')}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#059669">${tempsUtile} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${tempsFonctionnement} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#dc2626">${netStopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
