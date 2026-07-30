@@ -1676,7 +1676,7 @@ def api_end_prod():
                 _dg_of_start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 "","","","","","","","","","","",
                 _dg_of_start.strftime("%H:%M:%S"), _dg_of_end.strftime("%H:%M:%S"), fmt(_dg_dur_of),
-                "","","","","","","","","","","","","","","","","","","","","",
+                "","","","","","","","","","","","","","","","","","","","",
                 _sh_dt.strftime("%d/%m/%Y"),
             ]
         # degrade_active / degrade_type / degrade_start_dt restent inchangés
