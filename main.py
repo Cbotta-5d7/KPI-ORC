@@ -341,16 +341,17 @@ def _is_degrade_type(t):
     motifs = cfg.get("degrade_motifs", [])
     return bool(motifs) and str(t or "").strip() in motifs
 
+def _norm_fin(deb_s, fin_s):
+    """Normalise fin_s pour les événements chevauchant minuit (fin < deb → +86400)."""
+    return fin_s + 86400 if fin_s < deb_s else fin_s
+
 def _merged_degrade_s(rows):
     """Retourne les secondes de dégradé dédupliquées en fusionnant les intervalles qui se chevauchent.
     Évite le double-comptage quand api_stop_degrade ET build_decl_rows écrivent des lignes Formation pour la même période.
     rows : liste de lignes brutes (pas de paires (rn, row))."""
-    ivs = sorted(
-        (s, f) for s, f in (
-            (_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00")))
-            for r in rows if _is_degrade_type(str(r[0] or ""))
-        ) if f > s
-    )
+    raw = [(_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00")))
+           for r in rows if _is_degrade_type(str(r[0] or ""))]
+    ivs = sorted((s, _norm_fin(s, f)) for s, f in raw if _norm_fin(s, f) > s)
     mg = []
     for s, f in ivs:
         if mg and s <= mg[-1][1]: mg[-1] = (mg[-1][0], max(mg[-1][1], f))
@@ -361,12 +362,9 @@ _pers_pct_map = {}  # {nb_pers_int: pct_float}  e.g. {1: 0.10, 10: 1.00}
 
 def _merged_degrade_ivs(rows):
     """Returns merged dégradé intervals [(start_s, end_s)] from raw rows."""
-    ivs = sorted(
-        (s, f) for s, f in (
-            (_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00")))
-            for r in rows if _is_degrade_type(str(r[0] or ""))
-        ) if f > s
-    )
+    raw = [(_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00")))
+           for r in rows if _is_degrade_type(str(r[0] or ""))]
+    ivs = sorted((s, _norm_fin(s, f)) for s, f in raw if _norm_fin(s, f) > s)
     mg = []
     for s, f in ivs:
         if mg and s <= mg[-1][1]: mg[-1] = (mg[-1][0], max(mg[-1][1], f))
@@ -399,7 +397,7 @@ def _option_b_trs(prod_raw_rows, deg_ivs, prod_ref, plan_ivs=None):
         try:
             eq = float(str(r[21] or 0).replace(",", "."))
             deb_s = _hms_to_sec(str(r[16] or "00:00:00"))
-            fin_s = _hms_to_sec(str(r[17] or "00:00:00"))
+            fin_s = _norm_fin(deb_s, _hms_to_sec(str(r[17] or "00:00:00")))
             dur_s = fin_s - deb_s if fin_s > deb_s else _hms_to_sec(str(r[18] or "00:00:00"))
             if dur_s <= 0: continue
             nb_p = r[6] if len(r) > 6 else 1
@@ -2565,7 +2563,7 @@ def api_fin_poste_data():
             if rd2 != shift_date_str and rd2 != today: continue
             if str(r2[4] or "") != pilot: continue
             ds2 = _hms_to_sec(str(r2[16] or "00:00:00"))
-            fs2 = _hms_to_sec(str(r2[17] or "00:00:00"))
+            fs2 = _norm_fin(ds2, _hms_to_sec(str(r2[17] or "00:00:00")))
             if fs2 > ds2 and ds2 >= 0: all_slots.append([ds2, fs2])
         all_slots.sort()
         merged = []
@@ -2591,13 +2589,9 @@ def api_fin_poste_data():
     # ── Nouvelles métriques pour l'onglet Postes Excel ──
     # Intervalles d'arrêts fusionnés (sans chevauchement, hors dégradé)
     _degrade_s_fp = _merged_degrade_s([r_s for _, r_s in shift_evt_rows])
-    _stop_ivs = sorted(
-        [(s2, f2) for s2, f2 in (
-            (_hms_to_sec(str(r_s[16] or "00:00:00")), _hms_to_sec(str(r_s[17] or "00:00:00")))
-            for _, r_s in shift_evt_rows
-            if not _is_degrade_type(str(r_s[0] or ""))
-        ) if f2 > s2]
-    )
+    _stop_raw = [(_hms_to_sec(str(r_s[16] or "00:00:00")), _hms_to_sec(str(r_s[17] or "00:00:00")))
+                 for _, r_s in shift_evt_rows if not _is_degrade_type(str(r_s[0] or ""))]
+    _stop_ivs = sorted((s2, _norm_fin(s2, f2)) for s2, f2 in _stop_raw if _norm_fin(s2, f2) > s2)
     _merged_s = []
     for _ds, _fs in _stop_ivs:
         if _merged_s and _ds <= _merged_s[-1][1]:
@@ -2631,7 +2625,7 @@ def api_fin_poste_data():
         _bk_p = _get_arret_budget_key(str(r_e2[0] or ''))
         if _bk_p and _bk_p in _plan_bdata_fp:
             _ds_p = _hms_to_sec(str(r_e2[16] or '00:00:00'))
-            _fs_p = _hms_to_sec(str(r_e2[17] or '00:00:00'))
+            _fs_p = _norm_fin(_ds_p, _hms_to_sec(str(r_e2[17] or '00:00:00')))
             _dur_p = _fs_p - _ds_p
             if _dur_p > 0 and _plan_used_fp[_bk_p] < _plan_bdata_fp[_bk_p]:
                 _cap_p = min(_dur_p, _plan_bdata_fp[_bk_p] - _plan_used_fp[_bk_p])
@@ -2874,13 +2868,9 @@ def api_period_report():
         ouv_min = round(model_dur_s / 60, 1)
         # Merged stop intervals (excl. dégradé)
         _deg_s = _merged_degrade_s([re2 for _, re2 in s['evt_rows']])
-        _ivs = sorted(
-            [(ds2, fs2) for ds2, fs2 in (
-                (_hms_to_sec(str(re2[16] or '00:00:00')), _hms_to_sec(str(re2[17] or '00:00:00')))
-                for _, re2 in s['evt_rows']
-                if not _is_degrade_type(str(re2[0] or ''))
-            ) if fs2 > ds2]
-        )
+        _ivs_raw = [(_hms_to_sec(str(re2[16] or '00:00:00')), _hms_to_sec(str(re2[17] or '00:00:00')))
+                    for _, re2 in s['evt_rows'] if not _is_degrade_type(str(re2[0] or ''))]
+        _ivs = sorted((ds2, _norm_fin(ds2, fs2)) for ds2, fs2 in _ivs_raw if _norm_fin(ds2, fs2) > ds2)
         _mg = []
         for ds, fs in _ivs:
             if _mg and ds <= _mg[-1][1]: _mg[-1] = (_mg[-1][0], max(_mg[-1][1], fs))
@@ -2909,7 +2899,7 @@ def api_period_report():
             _bk_pr = _get_arret_budget_key(str(re_ev[0] or ''))
             if _bk_pr and _bk_pr in _plan_bdata_pr:
                 _ds_pr = _hms_to_sec(str(re_ev[16] or '00:00:00'))
-                _fs_pr = _hms_to_sec(str(re_ev[17] or '00:00:00'))
+                _fs_pr = _norm_fin(_ds_pr, _hms_to_sec(str(re_ev[17] or '00:00:00')))
                 _dur_pr = _fs_pr - _ds_pr
                 if _dur_pr > 0 and _plan_used_pr[_bk_pr] < _plan_bdata_pr[_bk_pr]:
                     _cap_pr = min(_dur_pr, _plan_bdata_pr[_bk_pr] - _plan_used_pr[_bk_pr])
