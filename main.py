@@ -340,6 +340,22 @@ def _is_degrade_type(t):
     motifs = cfg.get("degrade_motifs", [])
     return bool(motifs) and str(t or "").strip() in motifs
 
+def _merged_degrade_s(rows):
+    """Retourne les secondes de dégradé dédupliquées en fusionnant les intervalles qui se chevauchent.
+    Évite le double-comptage quand api_stop_degrade ET build_decl_rows écrivent des lignes Formation pour la même période.
+    rows : liste de lignes brutes (pas de paires (rn, row))."""
+    ivs = sorted(
+        (s, f) for s, f in (
+            (_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00")))
+            for r in rows if _is_degrade_type(str(r[0] or ""))
+        ) if f > s
+    )
+    mg = []
+    for s, f in ivs:
+        if mg and s <= mg[-1][1]: mg[-1] = (mg[-1][0], max(mg[-1][1], f))
+        else: mg.append((s, f))
+    return sum(f - s for s, f in mg)
+
 def _compute_planned_deduction_s(evt_rows):
     """Calcule les secondes à déduire de l'elapsed TRS pour les arrêts planifiés.
     evt_rows : liste de tuples (rn, r) issus de _decl_cache OU liste de dicts {"type","duree"}.
@@ -2384,10 +2400,7 @@ def api_fin_poste_data():
         overflow_s = 0.0
     # ── Nouvelles métriques pour l'onglet Postes Excel ──
     # Intervalles d'arrêts fusionnés (sans chevauchement, hors dégradé)
-    _degrade_s_fp = sum(
-        max(0.0, _hms_to_sec(str(r_s[17] or "00:00:00")) - _hms_to_sec(str(r_s[16] or "00:00:00")))
-        for _, r_s in shift_evt_rows if _is_degrade_type(str(r_s[0] or ""))
-    )
+    _degrade_s_fp = _merged_degrade_s([r_s for _, r_s in shift_evt_rows])
     _stop_ivs = sorted(
         [(s2, f2) for s2, f2 in (
             (_hms_to_sec(str(r_s[16] or "00:00:00")), _hms_to_sec(str(r_s[17] or "00:00:00")))
@@ -2459,7 +2472,7 @@ def api_history_today():
     prod_ref = get_prod_ref()
     shift_s = get_shift_duration_s(poste, shift_date)
     rows = []
-    tot_eq=0.0; tot_s=0.0; _htd_ded_s=0.0; _htd_deg_s=0.0
+    tot_eq=0.0; tot_s=0.0; _htd_ded_s=0.0; _htd_deg_ivs=[]
     for rn,r in _decl_cache:
         rd = _row_date(r[2])
         if rd != shift_date_str and rd != today: continue
@@ -2477,11 +2490,17 @@ def api_history_today():
             except: pass
             rows.append({"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"trs":trs_of,"equiv":eq,"qte_fab":str(r[19] or "")})
         elif _is_degrade_type(str(r[0] or "").strip()):
-            _htd_deg_s += _hms_to_sec(str(r[18] or "00:00:00"))
+            _htd_deg_ivs.append((_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00"))))
         else:
             _rtype_full = str(r[0] or "").strip()
             if any(k in _rtype_full.lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]):
                 _htd_ded_s += _hms_to_sec(str(r[18] or "00:00:00"))
+    _htd_deg_ivs_s = sorted((s, f) for s, f in _htd_deg_ivs if f > s)
+    _htd_deg_mg = []
+    for _s, _f in _htd_deg_ivs_s:
+        if _htd_deg_mg and _s <= _htd_deg_mg[-1][1]: _htd_deg_mg[-1] = (_htd_deg_mg[-1][0], max(_htd_deg_mg[-1][1], _f))
+        else: _htd_deg_mg.append((_s, _f))
+    _htd_deg_s = sum(_f - _s for _s, _f in _htd_deg_mg)
     trs_shift=-1.0
     if prod_ref>0 and shift_s>0 and tot_eq>0:
         _htd_adj = max(1.0, shift_s - _htd_ded_s - _htd_deg_s / 2.0)
@@ -2539,7 +2558,7 @@ def api_past_sessions():
                 _mdur2 = max(0.0, (_pfin - _pdeb).total_seconds())
             else:
                 _mdur2 = get_shift_duration_s(s["poste"], date_obj)
-            _deg_ps = sum(_hms_to_sec(str(re[18] or "00:00:00")) for _, re in session_evts.get(key, []) if _is_degrade_type(str(re[0] or "")))
+            _deg_ps = _merged_degrade_s([re for _, re in session_evts.get(key, [])])
             if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
                 _el2 = max(1.0, _mdur2 - planned_ded - _deg_ps / 2.0)
                 trs = round(s["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
@@ -2620,10 +2639,7 @@ def api_period_report():
         # Arrondir comme le JS (Math.round) pour correspondre exactement à l'onglet Rapports postes
         ouv_min = round(model_dur_s / 60, 1)
         # Merged stop intervals (excl. dégradé)
-        _deg_s = sum(
-            max(0.0, _hms_to_sec(str(re2[17] or '00:00:00')) - _hms_to_sec(str(re2[16] or '00:00:00')))
-            for _, re2 in s['evt_rows'] if _is_degrade_type(str(re2[0] or ''))
-        )
+        _deg_s = _merged_degrade_s([re2 for _, re2 in s['evt_rows']])
         _ivs = sorted(
             [(ds2, fs2) for ds2, fs2 in (
                 (_hms_to_sec(str(re2[16] or '00:00:00')), _hms_to_sec(str(re2[17] or '00:00:00')))
@@ -2711,7 +2727,7 @@ def api_period_report():
         'nb_fibre_chg':agg_fibre_chg,
         'depassement_min':round(agg_depassement,1),
         'sessions_detail':sessions_detail_sorted,
-        'degrade_min_total': round(sum(sum(max(0.0, _hms_to_sec(str(re2[17] or '00:00:00')) - _hms_to_sec(str(re2[16] or '00:00:00'))) for _, re2 in s['evt_rows'] if _is_degrade_type(str(re2[0] or ''))) for s in sessions.values()) / 60, 1),
+        'degrade_min_total': round(sum(_merged_degrade_s([re2 for _, re2 in s['evt_rows']]) for s in sessions.values()) / 60, 1),
         'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])[:15]],
     })
 
@@ -2721,7 +2737,7 @@ def api_session_report():
     pilot = request.args.get('pilot','')
     poste = request.args.get('poste','')
     prod_ref = get_prod_ref()
-    prod_rows = []; evt_rows = []; tot_eq = 0.0; tot_s = 0.0; max_fin_s = 0.0; stop_s = 0.0; degrade_s = 0.0
+    prod_rows = []; evt_rows = []; tot_eq = 0.0; tot_s = 0.0; max_fin_s = 0.0; stop_s = 0.0; _deg_ivs_sr = []
     all_debut_s = []; all_fin_s = []
     for rn, r in _decl_cache:
         row_date_key = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
@@ -2749,8 +2765,7 @@ def api_session_report():
             except: pass
         elif _is_degrade_type(str(r[0] or "").strip()):
             try:
-                dur_s = _hms_to_sec(str(r[18] or "00:00:00"))
-                degrade_s += dur_s
+                _deg_ivs_sr.append((_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00"))))
                 evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or ""),"is_degrade":True})
             except: pass
         else:
@@ -2759,6 +2774,12 @@ def api_session_report():
                 stop_s += dur_s
                 evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or ""),"is_degrade":False})
             except: pass
+    _deg_ivs_sr_s = sorted((s, f) for s, f in _deg_ivs_sr if f > s)
+    _deg_mg_sr = []
+    for _s, _f in _deg_ivs_sr_s:
+        if _deg_mg_sr and _s <= _deg_mg_sr[-1][1]: _deg_mg_sr[-1] = (_deg_mg_sr[-1][0], max(_deg_mg_sr[-1][1], _f))
+        else: _deg_mg_sr.append((_s, _f))
+    degrade_s = sum(_f - _s for _s, _f in _deg_mg_sr)
     actual_debut = _sec_to_hm(min(all_debut_s)) if all_debut_s else ""
     actual_fin = _sec_to_hm(max(all_fin_s)) if all_fin_s else ""
     try:
@@ -4048,7 +4069,7 @@ setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},150
         _mds2 = hms2s(_deb2) if _deb2 else None
         _sess_evts2 = _sess_evts_map_r.get(_sk_r, [])
         _ded2 = sum(hms2s(_er[18]) for _er in _sess_evts2 if any(k in str(_er[0] or "").lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
-        _deg2 = sum(hms2s(_er[18]) for _er in _sess_evts2 if _is_degrade_type(str(_er[0] or "")))
+        _deg2 = _merged_degrade_s(_sess_evts2)
         _mdur2 = get_shift_duration_s(_s_r["poste"], _do2)
         if _mdur2 > 0 and prod_ref > 0 and _s_r["tot_equiv"] > 0:
             _el2 = max(1.0, _mdur2 - _ded2 - _deg2 / 2.0)
