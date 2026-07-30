@@ -7535,11 +7535,27 @@ function renderEvtListUI(){
   _renderEvtListHTML();
 }
 
+// ── Drag-to-reorder shared state ──
+let _dIdx=null;
+// Arrêts list drag
+function _edDS(i){_dIdx=i;}
+function _edDO(e){e.preventDefault();}
+function _edDrop(i){if(_dIdx===null||_dIdx===i)return;const m=_evtsEditing.splice(_dIdx,1)[0];_evtsEditing.splice(i,0,m);_dIdx=null;_renderEvtListHTML();}
+// Dégradé list drag
+function _ddDS(i){_dIdx=i;}
+function _ddDO(e){e.preventDefault();}
+function _ddDrop(i){if(_dIdx===null||_dIdx===i)return;const m=_degradeListLocal.splice(_dIdx,1)[0];_degradeListLocal.splice(i,0,m);_dIdx=null;renderDegradeList(_degradeListLocal);}
+// Pwd list drag
+function _pdDS(i){_dIdx=i;}
+function _pdDO(e){e.preventDefault();}
+function _pdDrop(i){if(_dIdx===null||_dIdx===i)return;const keys=Object.keys(_cfgPwds);const[rm]=keys.splice(_dIdx,1);keys.splice(i,0,rm);const nw={};keys.forEach(k=>{nw[k]=_cfgPwds[k];});_cfgPwds=nw;_dIdx=null;renderPwdList();}
+
 function _renderEvtListHTML(){
   const c=document.getElementById('events-list-ui');if(!c) return;
   const catLbl={pb:'🔴 Technique',ratt:'🟠 Rattrapage',nettoyage:'🟡 Nettoyage',organisation:'🔵 Organisationnel',manquants:'🟣 Manquants',autre:'⚫ Autre'};
   c.innerHTML=_evtsEditing.map((e,i)=>`
-    <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1))">
+    <div draggable="true" ondragstart="_edDS(${i})" ondragover="_edDO(event)" ondrop="_edDrop(${i})" style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1));cursor:default">
+      <span style="cursor:grab;color:#94a3b8;font-size:16px;padding:0 2px;user-select:none" title="Déplacer">⠿</span>
       <span style="flex:1;font-weight:600">${esc(e.label)}</span>
       <span style="font-size:calc(10px*var(--zf,1));color:var(--gray)">${catLbl[e.cat]||e.cat}</span>
       <button class="btn btn-ghost" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="editEvtItem(${i})">✏</button>
@@ -7985,7 +8001,7 @@ function renderDegradeList(motifs){
   const ul=document.getElementById('degrade-list-ui');if(!ul)return;
   if(!motifs||!motifs.length){ul.innerHTML='<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:6px 0">Aucun motif configuré.</div>';return;}
   ul.innerHTML=motifs.map(function(m,i){
-    return `<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1))"><span style="flex:1;font-weight:600">${esc(m)}</span><button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="removeDegradeItem(${i})">✕</button></div>`;
+    return `<div draggable="true" ondragstart="_ddDS(${i})" ondragover="_ddDO(event)" ondrop="_ddDrop(${i})" style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1));cursor:default"><span style="cursor:grab;color:#94a3b8;font-size:16px;padding:0 2px;user-select:none" title="Déplacer">⠿</span><span style="flex:1;font-weight:600">${esc(m)}</span><button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="removeDegradeItem(${i})">✕</button></div>`;
   }).join('');
 }
 function addDegradeItem(){
@@ -9867,10 +9883,12 @@ async function loadRptJour(){
   calcPeriodReport(true);
 }
 async function calcPeriodReport(autoLoad){
-  const from=document.getElementById('rj-from').value;
-  const to=document.getElementById('rj-to').value;
-  const pilot=document.getElementById('rj-pilot').value;
-  const poste=document.getElementById('rj-poste').value;
+  // En mode autoLoad, on n'utilise PAS les filtres date/pilote/poste
+  // On laisse l'API renvoyer les max_sessions=3 derniers postes sans restriction de date
+  const from=autoLoad?'':document.getElementById('rj-from').value;
+  const to=autoLoad?'':document.getElementById('rj-to').value;
+  const pilot=autoLoad?'':document.getElementById('rj-pilot').value;
+  const poste=autoLoad?'':document.getElementById('rj-poste').value;
   const resultEl=document.getElementById('rj-result');
   if(!resultEl) return;
   if(autoLoad){_rjSetBanner('Rapport des 3 derniers postes');}
@@ -10011,9 +10029,26 @@ async function calcPeriodReport(autoLoad){
     </div>`;
   }
   // TRS par jour supprimé
-  // Pie compact (80px)
+  // Pie compact avec titre + légende
   let pieSmall='';
-  if(pieTotal>0){const r=36,cx=40,cy=40;let sA=-Math.PI/2,paths='';[{v:fonctMin,c:'#16a34a'},{v:stopMin,c:'#dc2626'}].forEach(sl=>{const a=sl.v/pieTotal*2*Math.PI;const x1=cx+r*Math.cos(sA),y1=cy+r*Math.sin(sA);const x2=cx+r*Math.cos(sA+a),y2=cy+r*Math.sin(sA+a);paths+=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${a>Math.PI?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${sl.c}" opacity=".85"/>`;sA+=a;});pieSmall=`<svg viewBox="0 0 80 80" style="width:80px;height:80px;flex-shrink:0"><circle cx="40" cy="40" r="36" fill="#e2e8f0"/>${paths}</svg>`;}
+  if(pieTotal>0){
+    const r=34,cx=38,cy=38;let sA=-Math.PI/2,paths='';
+    [{v:fonctMin,c:'#16a34a'},{v:stopMin,c:'#dc2626'}].forEach(sl=>{
+      const a=sl.v/pieTotal*2*Math.PI;
+      const x1=cx+r*Math.cos(sA),y1=cy+r*Math.sin(sA);
+      const x2=cx+r*Math.cos(sA+a),y2=cy+r*Math.sin(sA+a);
+      paths+=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${a>Math.PI?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${sl.c}" opacity=".85"/>`;
+      sA+=a;
+    });
+    pieSmall=`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0">
+      <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#374151;white-space:nowrap">Prod / Arrêts</div>
+      <svg viewBox="0 0 76 76" style="width:74px;height:74px"><circle cx="38" cy="38" r="34" fill="#e2e8f0"/>${paths}</svg>
+      <div style="font-size:calc(10px*var(--zf,1));display:flex;flex-direction:column;gap:2px;align-self:flex-start">
+        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#16a34a;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Prod : <b>${Math.round(fonctMin)} min</b></span></div>
+        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#dc2626;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Arrêts : <b>${Math.round(stopMin)} min</b></span></div>
+      </div>
+    </div>`;
+  }
   // Bandeau postes chargés (auto-load)
   const _rjBanner=document.getElementById('rj-auto-banner');
   if(_rjBanner){
@@ -10489,8 +10524,9 @@ async function saveArretsPrevus(){
 function renderPwdList(){
   const c=document.getElementById('pwd-list');
   if(!c) return;
-  c.innerHTML=Object.entries(_cfgPwds).map(([nm,pw])=>`
-    <div class="pr">
+  c.innerHTML=Object.entries(_cfgPwds).map(([nm,pw],i)=>`
+    <div class="pr" draggable="true" ondragstart="_pdDS(${i})" ondragover="_pdDO(event)" ondrop="_pdDrop(${i})" style="cursor:default">
+      <span style="cursor:grab;color:#94a3b8;font-size:16px;padding:0 2px;user-select:none;flex-shrink:0" title="Déplacer">⠿</span>
       <div class="pn">${esc(nm)}</div>
       <input type="password" id="pwi-${esc(nm)}" value="${esc(String(pw))}" data-n="${esc(nm)}">
       <button class="btn-eye" onclick="toggleEye('pwi-${esc(nm)}')">👁</button>
