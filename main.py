@@ -4848,8 +4848,8 @@ body.stop-on #app-hdr{background:linear-gradient(90deg,#fff 0px,#fee2e2 160px,#7
 /* Action buttons row below timeline */
 .prod-act-row{display:flex;gap:4px;flex-wrap:nowrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10}
 .act-btn{flex:1;min-width:100px;border:none;border-radius:14px;padding:8px 6px 10px;cursor:pointer;font-size:calc(14px*var(--zf,1));font-weight:700;text-align:center;transition:all .12s;white-space:nowrap;min-height:56px;display:flex;align-items:center;justify-content:center;gap:3px;flex-direction:column;line-height:1.25;box-shadow:0 8px 0 rgba(0,0,0,.3),0 10px 16px rgba(0,0,0,.25),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.2);transform:translateY(0);position:relative;overflow:hidden}
-.act-btn-sm{aspect-ratio:1!important;min-height:0!important;min-width:0!important;padding:3px 2px!important;font-size:calc(9px*var(--zf,1))!important}
-.act-btn-sm .act-icon{font-size:calc(15px*var(--zf,1))!important;margin-bottom:1px}
+.act-btn-sm{height:36px!important;min-height:0!important;min-width:0!important;padding:2px 2px!important;font-size:calc(16px*var(--zf,1))!important}
+.act-btn-sm .act-icon{font-size:calc(14px*var(--zf,1))!important;margin-bottom:0}
 .stop-icon{position:relative;display:inline-flex;align-items:center;justify-content:center}
 .stop-icon-x{position:absolute;font-size:.55em;font-weight:900;color:#fff;text-shadow:none;line-height:1}
 .act-btn::before{content:'';position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 100%);border-radius:14px 14px 0 0;pointer-events:none}
@@ -4880,7 +4880,7 @@ body.stop-on #app-hdr{background:linear-gradient(90deg,#fff 0px,#fee2e2 160px,#7
 .zp{background:#bbf7d0;border:1px solid #86efac}.zp h4{color:#166534}
 .zq{background:#fed7aa;border:1px solid #fb923c}.zq h4{color:#9a3412}
 .fr{display:flex;flex-direction:column;margin-bottom:4px}
-.fr label{font-size:calc(11px*var(--zf,1));font-weight:700;color:var(--gray);margin-bottom:2px;text-transform:uppercase;letter-spacing:.2px}
+.fr label{font-size:calc(12.65px*var(--zf,1));font-weight:700;color:var(--gray);margin-bottom:2px;text-transform:uppercase;letter-spacing:.2px}
 .fr input,.fr select,.fr textarea{padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(12px*var(--zf,1));background:var(--card);color:var(--text);width:100%;outline:none;transition:border .15s}
 .fr input:focus,.fr select:focus{border-color:#6366f1}
 .fr textarea{resize:none;height:42px}
@@ -5284,7 +5284,8 @@ select{cursor:default}
     <div class="sbar">
       <div class="sc"><div class="sc-lbl">⏱ Durée OF</div><div class="sc-val green" id="sc-of">00:00:00</div></div>
       <div class="sc"><div class="sc-lbl">⛔ Arrêts</div><div class="sc-val red" id="sc-stops">00:00:00</div></div>
-      <div class="sc"><div class="sc-lbl">⏸ Pauses</div><div class="sc-val amber" id="sc-pause">00:00:00</div></div>
+      <div class="sc" id="sc-deg-wrap" style="display:none"><div class="sc-lbl">🐌 Dégradé</div><div class="sc-val amber" id="sc-deg">00:00:00</div></div>
+      <div class="sc"><div class="sc-lbl">⛔ Arrêt totaux</div><div class="sc-val red" id="sc-all-stops">00:00:00</div></div>
       <div class="sc"><div class="sc-lbl">🎯 Pièces théo.</div><div class="sc-val" id="sc-theo" style="color:var(--blue)">—</div></div>
     </div>
     <!-- Body -->
@@ -5314,7 +5315,6 @@ select{cursor:default}
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Traca Fibre</label><input type="text" id="f-traca" style="display:none"><div id="f-traca-ui" style="display:flex;flex-direction:column;gap:2px;margin-bottom:3px"></div><button type="button" onclick="addTracaRow()" style="align-self:flex-start;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:5px;color:#1d4ed8;font-size:calc(10px*var(--zf,1));font-weight:700;padding:3px 10px;cursor:pointer">Ajouter une autre traça</button></div>
-            <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-duree_mq_mp" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-manquant_pers" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
@@ -5323,6 +5323,7 @@ select{cursor:default}
           <div class="fzone zq">
             <h4>✅ Qualité</h4>
             <div class="fr" style="display:none"><input id="f-qte_init_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Nb Taie 2nd Choix</label><input id="f-nb_taie2_choix" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Nb Défaut Couture</label><input id="f-nb_def_cout" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Mq Taie</label><input id="f-mq_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
@@ -6576,7 +6577,7 @@ function resetToLogin() {
   // Restaurer les éléments cachés en mode invité
   const actionBtns=document.getElementById('main-action-btns');if(actionBtns) actionBtns.style.display='';
   const _btnStart=document.getElementById('btn-start');
-  if(_btnStart){if(ST.prod_active){_btnStart.innerHTML='▶ Production en cours';_btnStart.onclick=()=>goTab('prod');}else{_btnStart.innerHTML='▶ Démarrer production';_btnStart.onclick=doStartProd;}}
+  if(_btnStart){if(ST.prod_active){_btnStart.innerHTML='<span class="act-icon">▶</span><span>Production en cours</span>';_btnStart.onclick=()=>goTab('prod');}else{_btnStart.innerHTML='<span class="act-icon">▶</span><span>Démarrer production</span>';_btnStart.onclick=doStartProd;}}
   const prodTab=document.getElementById('ht-prod');if(prodTab) prodTab.style.display='';
   const guestBadge=document.getElementById('ht-guest-badge');if(guestBadge) guestBadge.style.display='none';
   // Reset horaires login aux valeurs config
@@ -6737,8 +6738,8 @@ function applyState(s) {
   // Main btn-start: texte + action selon état prod
   const bs=document.getElementById('btn-start');
   if(bs){
-    if(s.prod_active){bs.innerHTML='▶ Production en cours';bs.onclick=()=>goTab('prod');}
-    else{bs.innerHTML='▶ Démarrer production';bs.onclick=doStartProd;}
+    if(s.prod_active){bs.innerHTML='<span class="act-icon">▶</span><span>Production en cours</span>';bs.onclick=()=>goTab('prod');}
+    else{bs.innerHTML='<span class="act-icon">▶</span><span>Démarrer production</span>';bs.onclick=doStartProd;}
   }
 
   // POB (pilot/OF banner)
@@ -6792,14 +6793,17 @@ function applyState(s) {
   window._degradeActive=s.degrade_active||false;
   window._degradeMotifs=s.degrade_motifs||[];
   window._degradePeriodsIso=s.degrade_periods_iso||[];
+  const degWrap=document.getElementById('sc-deg-wrap');
   if(s.degrade_active){
     if(ds){ds.textContent='🟡 MODE DÉGRADÉ EN COURS : '+esc(s.degrade_type||'');ds.style.display='block';ds.onclick=stopDegrade;}
-    if(bdAcc){bdAcc.style.background='#ca8a04';bdAcc.style.color='#fff';bdAcc.innerHTML='<span class="act-icon">🟡</span><span>Désactiver dégradé</span>';bdAcc.style.animation='blink .85s step-start infinite';}
-    if(bdProd){bdProd.style.background='#ca8a04';bdProd.style.color='#fff';bdProd.innerHTML='<span class="act-icon">🟡</span><span>Désactiver dégradé</span>';bdProd.style.animation='blink .85s step-start infinite';}
+    if(bdAcc){bdAcc.style.background='#ca8a04';bdAcc.style.color='#fff';bdAcc.innerHTML='<span class="act-icon">🐌</span><span>Désactiver dégradé</span>';bdAcc.style.animation='blink .85s step-start infinite';}
+    if(bdProd){bdProd.style.background='#ca8a04';bdProd.style.color='#fff';bdProd.innerHTML='<span class="act-icon">🐌</span><span>Désactiver dégradé</span>';bdProd.style.animation='blink .85s step-start infinite';}
+    if(degWrap) degWrap.style.display='';
   } else {
     if(ds){ds.style.display='none';ds.onclick=null;}
     if(bdAcc){bdAcc.style.background='';bdAcc.style.color='';bdAcc.innerHTML='<span class="act-icon">🐌</span><span>Mode dégradé</span>';bdAcc.style.animation='none';}
     if(bdProd){bdProd.style.background='radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%)';bdProd.style.color='#fff';bdProd.innerHTML='<span class="act-icon">🐌</span><span>Mode dégradé</span>';bdProd.style.animation='none';}
+    if(degWrap) degWrap.style.display='none';
   }
   // Afficher bouton ✏️ budget si pilote connecté
   const _showBov=!!(s.pilot);
@@ -6939,10 +6943,17 @@ function startTicker() {
     const sw=_stopWallAtPoll+((_curStopKey&&_curStopKey!=='_pause')?dt:0);
     const ts=document.getElementById('sc-stops');
     if(ts) ts.textContent=fmtDur(sw);
-    // Pause total
+    // Pause total (kept for arrêt totaux computation)
     const pauseNow=_pauseStartMs>0?_pauseBaseS+(Date.now()-_pauseStartMs)/1000:_pauseBaseS;
-    const tp=document.getElementById('sc-pause');
-    if(tp) tp.textContent=fmtDur(pauseNow);
+    // Dégradé timer
+    if(ST&&ST.degrade_active&&ST.degrade_start_iso){
+      const _degElapsed=(Date.now()-new Date(ST.degrade_start_iso).getTime())/1000;
+      const tdeg=document.getElementById('sc-deg');
+      if(tdeg) tdeg.textContent=fmtDur(Math.max(0,_degElapsed));
+    }
+    // Arrêt totaux du poste (stops wall + pauses, merged — no double-counting)
+    const tall=document.getElementById('sc-all-stops');
+    if(tall) tall.textContent=fmtDur(sw+pauseNow);
     // Pièces théoriques : avec déduction budget + ajustement mode dégradé
     const thEl=document.getElementById('sc-theo');
     if(thEl&&ST.prod_ref){
@@ -8661,8 +8672,7 @@ function openCodeInput(fieldId, label, fmt) {
   _codeInputTarget = fieldId;
   _csFormat = fmt || '6_3';
   document.getElementById('code-input-lbl').textContent = label || 'Code';
-  const raw = ((document.getElementById('f-' + fieldId) || {}).value || '').replace(/_/g,'').replace(/[^0-9]/g,'');
-  _csDigits = Array(9).fill('').map((_,i)=>raw[i]||'');
+  _csDigits = Array(9).fill('');
   const sep=document.getElementById('cs-sep');
   const hint=document.getElementById('cs-hint');
   if(sep) sep.style.display=_csFormat==='9'?'none':'';
