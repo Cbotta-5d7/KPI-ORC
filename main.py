@@ -9108,8 +9108,8 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   // ── Colonnes infos ──
   const commentHtml3=r.comment?`<div style="background:#fffbeb;border-left:3px solid #fbbf24;padding:7px 10px;margin-top:10px;font-size:calc(11px*var(--zf,1));color:#92400e;border-radius:0 8px 8px 0;box-shadow:0 2px 5px rgba(251,191,36,.15)">💬 ${esc(r.comment)}</div>`:'';
   const col1Html=[_sec('Identité'),_row('OF',r.of,'#1e3a8a'),_row('Date',r.date,'#374151'),_row('Poste',r.poste,'#374151'),_row('Pilote',r.pilote,'#374151'),_row('Co-Pilote',r.copilote,'#374151'),_row('Nb Personnes',r.nb_pers,'#374151'),_sec('Produit'),_row('Taille',r.taille,'#374151'),_row('Type produit',r.type_prod,'#374151'),_row('Code produit',r.code_prod,'#374151'),_row('Fibre',r.fibre,'#6366f1'),_row('Poids garnissage (g)',r.poids,'#374151'),_row('OF Taie',r.of_taie,'#374151'),_row('Réf Taie',r.ref_taie,'#374151'),_row('Traca',r.traca?(r.traca.split(';').filter(t=>t.trim()).join(' · ')):'' ,'#374151'),_row('Lots de 2',kitStr==='oui'?'✓ Oui':'Non',kitStr==='oui'?'#16a34a':'#94a3b8')].join('');
-  const col2Html=[_sec('Production'),_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Qté fabriquée',r.qte_fab,'#1e3a8a'),_row('Qté emballée',r.qte_emb,'#374151'),_row('Équivalence',r.equiv,'#0891b2'),_row('Cadence/h',r.cadence_h,'#374151'),_row('Cadence/h/pers',r.cadence_h_pers,'#374151'),_row('TRS %',r.trs>=0?r.trs.toFixed(1)+'%':'—',tc),_row('Objectif pièces',r.objectif!=null&&r.objectif>=0?String(r.objectif):'','#0369a1'),_row('Prévu/Hors TRS',r.prevu_hors_trs,'#374151'),commentHtml3,`<div style="margin-top:10px">${_sec('Événements ('+ofEvts.length+')')}${budgetWarnHtml2}${evtsHtml2}</div>`].join('');
-  const col3Html=[_sec('Qualité'),_row('Qté init Taie',r.qte_init_taie,'#374151'),_row('Nb Taie 2nd choix',r.nb_taie2,'#f59e0b'),_row('Nb défauts couture',r.nb_def_cout,'#dc2626'),_row('Mq Taie',r.mq_taie,'#dc2626'),_row('Mq Housse/Encart',r.mq_housse,'#dc2626'),_row('Nb PP cousue',r.nb_pp,'#374151'),_sec('Manquants'),_row('Manquant MP',r.duree_mq_mp,'#dc2626'),_row('Manquant Personnel/Réunion',r.manquant_pers,'#374151')].join('');
+  const col2Html=[_sec('Production'),_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Qté fabriquée',r.qte_fab,'#1e3a8a'),_row('Qté emballée',r.qte_emb,'#374151'),_row('Équivalence',r.equiv,'#0891b2'),_row('Cadence/h',r.cadence_h,'#374151'),_row('Cadence/h/pers',r.cadence_h_pers,'#374151'),_row('TRS %',r.trs>=0?r.trs.toFixed(1)+'%':'—',tc),_row('Objectif pièces',r.objectif!=null&&r.objectif>=0?String(r.objectif):'','#0369a1'),_row('Prévu/Hors TRS',r.prevu_hors_trs,'#374151'),commentHtml3,`<div style="margin-top:10px">${_sec('Qualité')}${[_row('Qté init Taie',r.qte_init_taie,'#374151'),_row('Nb Taie 2nd choix',r.nb_taie2,'#f59e0b'),_row('Nb défauts couture',r.nb_def_cout,'#dc2626'),_row('Mq Taie',r.mq_taie,'#dc2626'),_row('Mq Housse/Encart',r.mq_housse,'#dc2626'),_row('Nb PP cousue',r.nb_pp,'#374151')].join('')}</div>`,`<div style="margin-top:4px">${_sec('Manquants')}${[_row('Manquant MP',r.duree_mq_mp,'#dc2626'),_row('Manquant Personnel/Réunion',r.manquant_pers,'#374151')].join('')}</div>`].join('');
+  const col3Html=`${_sec('Événements ('+ofEvts.length+')')}${budgetWarnHtml2}${evtsHtml2}`;
 
   const trsBlock2=r.trs>=0?`<div style="text-align:right;background:rgba(255,255,255,.1);border-radius:10px;padding:8px 14px;box-shadow:0 4px 12px rgba(0,0,0,.15)"><div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:${tc};line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.3)">${r.trs.toFixed(1)}%</div><div style="font-size:calc(9px*var(--zf,1));color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.1em">TRS</div></div>`:'';
 
@@ -10467,7 +10467,10 @@ async function calcPeriodReport(autoLoad){
   let ofListHtml='';
   const allOfs=[];
   (d.sessions_detail||[]).forEach(s=>{
-    (s.of_rows||[]).forEach(r=>{allOfs.push({...r,date:s.date,poste:s.poste,pilot:s.pilot,pilote:s.pilot,_rowType:'prod'});});
+    (s.of_rows||[]).forEach(r=>{
+      const _ofEvts=(s.evt_rows||[]).filter(e=>e.of&&String(e.of)===String(r.of));
+      allOfs.push({...r,date:s.date,poste:s.poste,pilot:s.pilot,pilote:s.pilot,_rowType:'prod',_ofEvts:_ofEvts});
+    });
   });
   window._rjOfs=allOfs;
   if(allOfs.length){
@@ -10599,7 +10602,8 @@ async function calcPeriodReport(autoLoad){
 function showRjOfDetail(i){
   const r=window._rjOfs&&window._rjOfs[i];
   if(!r) return;
-  _renderAndOpenOfDetail({...r, trs:(r.trs!==''&&r.trs!=null)?parseFloat(r.trs):-1}, []);
+  const ofEvts=r._ofEvts||[];
+  _renderAndOpenOfDetail({...r, trs:(r.trs!==''&&r.trs!=null)?parseFloat(r.trs):-1}, ofEvts);
 }
 function _rjSetBanner(txt){const b=document.getElementById('rj-period-banner');if(b)b.textContent='📅 '+txt;}
 function rjLast3(){
