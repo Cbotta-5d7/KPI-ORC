@@ -9074,14 +9074,12 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     dpaths+=`<path d="M${xi1.toFixed(1)},${yi1.toFixed(1)} L${x1.toFixed(1)},${y1.toFixed(1)} A${r2},${r2} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${xi2.toFixed(1)},${yi2.toFixed(1)} A${ri},${ri} 0 ${lg},0 ${xi1.toFixed(1)},${yi1.toFixed(1)}" fill="${sl.c}" opacity=".93" filter="url(#ds3)"/>`;
     sA+=a;
   });
-  const legend2=slices.map(sl=>`<div style="display:flex;align-items:center;gap:8px;font-size:calc(12px*var(--zf,1));padding:5px 0;border-bottom:1px solid #f1f5f9"><div style="width:14px;height:14px;border-radius:4px;background:${sl.c};flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div><span style="color:#374151;flex:1">${sl.l}</span><b style="color:${sl.c};white-space:nowrap">${sl.v} min</b></div>`).join('');
+  const legend2=slices.map(sl=>`<div style="display:flex;align-items:center;gap:8px;font-size:calc(12px*var(--zf,1));padding:5px 0;border-bottom:1px solid #f1f5f9"><div style="width:14px;height:14px;border-radius:4px;background:${sl.c};flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div><span style="color:#374151;flex:1">${sl.l}</span><span style="color:#94a3b8;font-size:calc(10px*var(--zf,1));margin-right:6px">${Math.round(sl.v/tot*100)}%</span><b style="color:${sl.c};white-space:nowrap">${sl.v} min</b></div>`).join('');
   const chartHtml2=r.debut&&r.fin?`
     <svg viewBox="0 0 210 210" width="210" height="210" style="display:block;margin:0 auto">
       <defs><filter id="ds3" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity=".22"/></filter></defs>
       ${dpaths||'<circle cx="105" cy="105" r="90" fill="#e2e8f0"/>'}
       <circle cx="105" cy="105" r="44" fill="white" filter="url(#ds3)"/>
-      <text x="105" y="100" text-anchor="middle" font-size="18" font-weight="900" fill="${tc}">${r.trs>=0?r.trs.toFixed(0)+'%':'—'}</text>
-      <text x="105" y="118" text-anchor="middle" font-size="11" fill="#94a3b8">TRS</text>
     </svg>
     <div style="width:100%;padding:0 6px;margin-top:8px">${legend2}</div>
     <div style="font-size:calc(11px*var(--zf,1));color:#94a3b8;text-align:center;margin-top:10px;font-weight:600">${totalMin} min total OF</div>`
@@ -9111,7 +9109,7 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   const col2Html=[_sec('Production'),_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Qté fabriquée',r.qte_fab,'#1e3a8a'),_row('Qté emballée',r.qte_emb,'#374151'),_row('Équivalence',r.equiv,'#0891b2'),_row('Cadence/h',r.cadence_h,'#374151'),_row('Cadence/h/pers',r.cadence_h_pers,'#374151'),_row('TRS %',r.trs>=0?r.trs.toFixed(1)+'%':'—',tc),_row('Objectif pièces',r.objectif!=null&&r.objectif>=0?String(r.objectif):'','#0369a1'),_row('Prévu/Hors TRS',r.prevu_hors_trs,'#374151'),commentHtml3,`<div style="margin-top:10px">${_sec('Qualité')}${[_row('Qté init Taie',r.qte_init_taie,'#374151'),_row('Nb Taie 2nd choix',r.nb_taie2,'#f59e0b'),_row('Nb défauts couture',r.nb_def_cout,'#dc2626'),_row('Mq Taie',r.mq_taie,'#dc2626'),_row('Mq Housse/Encart',r.mq_housse,'#dc2626'),_row('Nb PP cousue',r.nb_pp,'#374151')].join('')}</div>`,`<div style="margin-top:4px">${_sec('Manquants')}${[_row('Manquant MP',r.duree_mq_mp,'#dc2626'),_row('Manquant Personnel/Réunion',r.manquant_pers,'#374151')].join('')}</div>`].join('');
   const col3Html=`${_sec('Événements ('+ofEvts.length+')')}${budgetWarnHtml2}${evtsHtml2}`;
 
-  const trsBlock2=r.trs>=0?`<div style="text-align:right;background:rgba(255,255,255,.1);border-radius:10px;padding:8px 14px;box-shadow:0 4px 12px rgba(0,0,0,.15)"><div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:${tc};line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.3)">${r.trs.toFixed(1)}%</div><div style="font-size:calc(9px*var(--zf,1));color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.1em">TRS</div></div>`:'';
+  const trsBlock2=r.trs>=0?`<div style="text-align:right;background:#fff;border-radius:10px;padding:8px 14px;box-shadow:0 4px 12px rgba(0,0,0,.25)"><div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:${tc};line-height:1">${r.trs.toFixed(1)}%</div><div style="font-size:calc(9px*var(--zf,1));color:#94a3b8;text-transform:uppercase;letter-spacing:.1em">TRS</div></div>`:'';
 
   document.getElementById('of-detail-content').innerHTML=`
     <!-- Header bleu -->
