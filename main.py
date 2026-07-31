@@ -4846,10 +4846,10 @@ body.stop-on #app-hdr{background:linear-gradient(90deg,#fff 0px,#fee2e2 160px,#7
 /* CENTER form col (now left) */
 .form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
 /* Action buttons row below timeline */
-.prod-act-row{display:flex;gap:4px;flex-wrap:nowrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10}
+.prod-act-row{display:flex;gap:4px;flex-wrap:nowrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10;height:120px;align-items:stretch}
 .act-btn{flex:1;min-width:100px;border:none;border-radius:14px;padding:8px 6px 10px;cursor:pointer;font-size:calc(14px*var(--zf,1));font-weight:700;text-align:center;transition:all .12s;white-space:nowrap;min-height:56px;display:flex;align-items:center;justify-content:center;gap:3px;flex-direction:column;line-height:1.25;box-shadow:0 8px 0 rgba(0,0,0,.3),0 10px 16px rgba(0,0,0,.25),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.2);transform:translateY(0);position:relative;overflow:hidden}
-.act-btn-sm{height:36px!important;min-height:0!important;min-width:0!important;padding:2px 2px!important;font-size:calc(16px*var(--zf,1))!important}
-.act-btn-sm .act-icon{font-size:calc(14px*var(--zf,1))!important;margin-bottom:0}
+.act-btn-sm{aspect-ratio:1!important;height:100%!important;min-height:0!important;min-width:0!important;padding:6px 4px!important;font-size:calc(16px*var(--zf,1))!important;flex:1!important}
+.act-btn-sm .act-icon{font-size:calc(30px*var(--zf,1))!important;margin-bottom:2px}
 .stop-icon{position:relative;display:inline-flex;align-items:center;justify-content:center}
 .stop-icon-x{position:absolute;font-size:.55em;font-weight:900;color:#fff;text-shadow:none;line-height:1}
 .act-btn::before{content:'';position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 100%);border-radius:14px 14px 0 0;pointer-events:none}
