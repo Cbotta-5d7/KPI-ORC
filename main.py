@@ -5666,6 +5666,19 @@ select{cursor:default}
 
   <!-- ════ RAPPORTS DES POSTES ════ -->
   <div id="v-rapports" class="view" style="flex-direction:column;overflow:hidden">
+    <!-- Bandeau filtre date -->
+    <div style="background:linear-gradient(180deg,#f8faff 0%,#fff 100%);border-bottom:2px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;box-shadow:0 2px 6px rgba(0,0,0,.04)">
+      <span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:var(--navy);letter-spacing:.3px">📋 Rapports postes</span>
+      <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid #c7d2fe;border-radius:10px;padding:4px 10px;box-shadow:0 1px 4px rgba(99,102,241,.12)">
+        <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#4338ca;text-transform:uppercase">📆 Du</span>
+        <input type="date" id="rpt-from" onchange="loadRapports()" style="padding:3px 6px;border:none;border-radius:5px;font-size:calc(12px*var(--zf,1));color:#1e3a8a;font-weight:600;outline:none;background:transparent">
+        <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#4338ca;text-transform:uppercase">au</span>
+        <input type="date" id="rpt-to" onchange="loadRapports()" style="padding:3px 6px;border:none;border-radius:5px;font-size:calc(12px*var(--zf,1));color:#1e3a8a;font-weight:600;outline:none;background:transparent">
+      </div>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button onclick="_rptSetLast7();loadRapports();" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(5,150,105,.35),inset 0 1px 0 rgba(255,255,255,.18)">7 derniers jours</button>
+      </div>
+    </div>
     <div style="display:flex;flex:1;overflow:hidden;min-height:0">
       <!-- Panneau gauche : liste OU résumé KPI selon mode -->
       <div id="rpt-left-exe" style="width:280px;min-width:0;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:#f8fafc;overflow:hidden;transition:width .25s ease">
@@ -6611,7 +6624,7 @@ function goTab(tab) {
   if(tab==='history') loadHist();
   else if(_prevTab==='history') _resetHistFilters();
   if(tab==='finposte') loadFPData();
-  if(tab==='rapports'){loadRapports();rptBackToList();}
+  if(tab==='rapports'){_rptSetLast7();loadRapports();rptBackToList();}
   if(tab==='rpt-jour') loadRptJour();
   if(tab==='main') { loadMainDecl(); }
   if(tab!=='prod') _clearFieldHighlights();
@@ -10284,6 +10297,13 @@ function resetPeriodReport(){
   const r=document.getElementById('rj-result');
   if(r) r.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📅</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Sélectionnez une période puis cliquez sur Calculer</div></div>';
 }
+function _rptSetLast7(){
+  const today=new Date();
+  const d7=new Date(today);d7.setDate(today.getDate()-6);
+  const fmt=d=>d.toISOString().slice(0,10);
+  const f=document.getElementById('rpt-from');const t=document.getElementById('rpt-to');
+  if(f)f.value=fmt(d7);if(t)t.value=fmt(today);
+}
 async function loadRapports(){
   const listEl=document.getElementById('rpt-list');
   if(!listEl) return;
@@ -10293,7 +10313,16 @@ async function loadRapports(){
     listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun poste disponible</div>';
     return;
   }
-  listEl.innerHTML=sessions.map((s,i)=>{
+  // Filtre par dates (rpt-from / rpt-to en yyyy-mm-dd, sessions en dd/mm/yyyy)
+  const fromVal=(document.getElementById('rpt-from')||{}).value||'';
+  const toVal=(document.getElementById('rpt-to')||{}).value||'';
+  function _dmy2ymd(d){const p=d.split('/');return p.length===3?p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0'):'';}
+  const filtered=(fromVal||toVal)?sessions.filter(s=>{const y=_dmy2ymd(s.date);return(!fromVal||y>=fromVal)&&(!toVal||y<=toVal);}):sessions;
+  if(!filtered.length){
+    listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun poste sur cette période</div>';
+    return;
+  }
+  listEl.innerHTML=filtered.map((s,i)=>{
     const trsStr=s.trs>=0?s.trs.toFixed(1)+'%':'—';
     const trsCol=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
     return `<div class="rpt-item" id="rpt-item-${i}" onclick="loadSessionReport('${esc(s.date)}','${esc(s.pilot)}','${esc(s.poste)}','rpt-item-${i}')"
