@@ -819,6 +819,11 @@ def load_lists():
                 except: pass
             if _pers_map_new:
                 _pers_pct_map.clear(); _pers_pct_map.update(_pers_map_new)
+            # Col G (7) row 2 : MDP admin
+            _adm_pw_v = ws.cell(2, 7).value
+            if _adm_pw_v is not None and str(_adm_pw_v).strip():
+                cfg["supervisor_pw"] = str(_adm_pw_v).strip()
+                save_cfg_data()
         wb.close()
     except: pass
 
@@ -841,6 +846,71 @@ def write_pers_pct_to_excel():
             ri += 1
         wb.save(path); wb.close()
     except: pass
+
+def write_admin_pw_to_excel(pw):
+    """Écrit le MDP admin en G2 de l'onglet Listes."""
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path): return False
+    try:
+        with _excel_lock:
+            wb = _get_wb(path)
+            if wb is None: return False
+            if "Listes" not in wb.sheetnames: wb.close(); return False
+            ws = wb["Listes"]
+            if not ws.cell(1,7).value: ws.cell(1,7).value = "MDP Admin"
+            ws.cell(2,7).value = pw
+            _safe_excel_save(wb, path)
+        return True
+    except: return False
+
+def write_simple_list_to_excel(col_idx, header, items):
+    """Écrit une liste dans une colonne de l'onglet Listes (row 2+), efface l'ancien contenu."""
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path): return False
+    def _bg():
+        try:
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None: return
+                if "Listes" not in wb.sheetnames: wb.close(); return
+                ws = wb["Listes"]
+                if not ws.cell(1, col_idx).value: ws.cell(1, col_idx).value = header
+                clear_until = max(ws.max_row, len(items) + 5)
+                for ri in range(2, clear_until + 1):
+                    ws.cell(ri, col_idx).value = None
+                for ri, val in enumerate(items, start=2):
+                    ws.cell(ri, col_idx).value = val
+                _safe_excel_save(wb, path)
+        except: pass
+        threading.Thread(target=load_lists, daemon=True).start()
+    threading.Thread(target=_bg, daemon=True).start()
+    return True
+
+def write_equiv_list_to_excel(items):
+    """Écrit la liste type_produit (col E=5) + coeff (col F=6) de façon synchronisée."""
+    path = cfg.get("db_path","")
+    if not path or not os.path.exists(path): return False
+    def _bg():
+        try:
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None: return
+                if "Listes" not in wb.sheetnames: wb.close(); return
+                ws = wb["Listes"]
+                if not ws.cell(1,5).value: ws.cell(1,5).value = "Type Produit"
+                if not ws.cell(1,6).value: ws.cell(1,6).value = "Equivalence"
+                clear_until = max(ws.max_row, len(items) + 5)
+                for ri in range(2, clear_until + 1):
+                    ws.cell(ri, 5).value = None
+                    ws.cell(ri, 6).value = None
+                for ri, it in enumerate(items, start=2):
+                    ws.cell(ri, 5).value = it.get("type","")
+                    ws.cell(ri, 6).value = it.get("coeff","")
+                _safe_excel_save(wb, path)
+        except: pass
+        threading.Thread(target=load_lists, daemon=True).start()
+    threading.Thread(target=_bg, daemon=True).start()
+    return True
 
 def get_list(h):
     return _lists.get(h,[])
@@ -3104,7 +3174,7 @@ def api_session_report():
                 tot_eq += eq; tot_s += dur_s
                 if fin_s > max_fin_s: max_fin_s = fin_s
                 _prod_raws_sr.append(r)
-                prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),"traca":str(r[13] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),"qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"trs":trs,"comment":str(r[35] or ""),"nb_pers":str(r[6] or ""),"copilote":str(r[5] or ""),"qte_init_taie":str(r[25] if len(r)>25 else ""),"nb_taie2":str(r[26] if len(r)>26 else ""),"nb_def_cout":str(r[27] if len(r)>27 else ""),"mq_taie":str(r[28] if len(r)>28 else ""),"mq_housse":str(r[29] if len(r)>29 else ""),"nb_pp":str(r[30] if len(r)>30 else ""),"duree_mq_mp":str(r[32] if len(r)>32 else ""),"manquant_pers":str(r[33] if len(r)>33 else "")})
+                prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),"traca":str(r[13] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),"qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),"cadence_h":str(r[22] if len(r)>22 else ""),"cadence_h_pers":str(r[23] if len(r)>23 else ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"trs":trs,"comment":str(r[35] or ""),"prevu_hors_trs":str(r[36] if len(r)>36 else ""),"nb_pers":str(r[6] or ""),"copilote":str(r[5] or ""),"qte_init_taie":str(r[25] if len(r)>25 else ""),"nb_taie2":str(r[26] if len(r)>26 else ""),"nb_def_cout":str(r[27] if len(r)>27 else ""),"mq_taie":str(r[28] if len(r)>28 else ""),"mq_housse":str(r[29] if len(r)>29 else ""),"nb_pp":str(r[30] if len(r)>30 else ""),"duree_mq_mp":str(r[32] if len(r)>32 else ""),"manquant_pers":str(r[33] if len(r)>33 else "")})
             except: pass
         elif _is_degrade_type(str(r[0] or "").strip()):
             try:
@@ -3405,6 +3475,45 @@ def api_pilot_passwords_excel():
     save_cfg_data()
     ok = write_pilots_to_excel(pilot_passwords)
     return jsonify({"ok":ok})
+
+@flask_app.route('/api/change_admin_pw', methods=['POST'])
+def api_change_admin_pw():
+    data = request.json or {}
+    old_pw = data.get("old_pw","")
+    new_pw = str(data.get("new_pw","")).strip()
+    if not _check_pw(old_pw):
+        return jsonify({"ok":False,"error":"Mot de passe actuel incorrect"}),403
+    if not new_pw:
+        return jsonify({"ok":False,"error":"Le nouveau MDP ne peut pas être vide"}),400
+    cfg["supervisor_pw"] = new_pw
+    save_cfg_data()
+    ok = write_admin_pw_to_excel(new_pw)
+    return jsonify({"ok":ok})
+
+@flask_app.route('/api/save_list', methods=['POST'])
+def api_save_list():
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    list_type = data.get("list_type","")
+    items = data.get("items",[])
+    if list_type == "copilotes":
+        _lists["copilotes"] = items
+        ok = write_simple_list_to_excel(3, "Co-pilotes", items)
+    elif list_type == "tailles":
+        _lists["tailles_col"] = items
+        ok = write_simple_list_to_excel(4, "Taille produit", items)
+    elif list_type == "fibres":
+        _lists["fibres_col"] = items
+        ok = write_simple_list_to_excel(10, "Fibres", items)
+    elif list_type == "equiv":
+        _lists["types_prod_col"] = [it.get("type","") for it in items if it.get("type","")]
+        _lists["equivalences_col"] = [it.get("coeff","") for it in items if it.get("type","")]
+        ok = write_equiv_list_to_excel(items)
+    else:
+        return jsonify({"ok":False,"error":"Type de liste inconnu"}),400
+    return jsonify({"ok":bool(ok)})
 
 @flask_app.route('/api/generate_dashboard', methods=['POST'])
 def api_generate_dashboard():
@@ -5254,6 +5363,10 @@ select{cursor:default}
             <!-- Stats en colonne -->
             <div style="display:flex;flex-direction:column;gap:1px;margin-top:2px">
               <div style="display:flex;align-items:baseline;gap:5px">
+                <span style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#15803d;white-space:nowrap">Prod</span>
+                <span style="font-size:calc(12px*var(--zf,1));font-weight:900;color:#15803d;line-height:1" id="acc-prod-total">— pcs / — éq</span>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:5px">
                 <span style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;white-space:nowrap">Nb OF</span>
                 <span style="font-size:calc(17px*var(--zf,1));font-weight:900;color:#1e40af;line-height:1" id="acc-nb-of">0</span>
               </div>
@@ -5735,8 +5848,8 @@ select{cursor:default}
 </div>
 
 <!-- Modal détail OF -->
-<div id="m-of-detail" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:650;align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-of-detail')">
-  <div style="width:min(860px,96vw);max-height:88vh;background:#fff;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden">
+<div id="m-of-detail" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:650;align-items:center;justify-content:center;padding:12px" onclick="if(event.target===this)closeM('m-of-detail')">
+  <div style="width:min(1280px,98vw);height:92vh;background:#f8fafc;border-radius:18px;box-shadow:0 32px 100px rgba(0,0,0,.55),0 8px 24px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden">
     <div id="of-detail-content" style="display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden"></div>
   </div>
 </div>
@@ -5910,6 +6023,28 @@ select{cursor:default}
     </div>
     <div id="v-settings-content">
       <div class="ss">
+        <h3>🔑 Changer le mot de passe administrateur</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Le MDP est enregistré dans la cellule G2 de l'onglet Listes du fichier Excel.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;max-width:360px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <label style="width:150px;font-size:calc(12px*var(--zf,1));font-weight:600">MDP actuel</label>
+            <input type="password" id="adm-old-pw" placeholder="Mot de passe actuel" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))">
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label style="width:150px;font-size:calc(12px*var(--zf,1));font-weight:600">Nouveau MDP</label>
+            <input type="password" id="adm-new-pw" placeholder="Nouveau mot de passe" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))">
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label style="width:150px;font-size:calc(12px*var(--zf,1));font-weight:600">Confirmer MDP</label>
+            <input type="password" id="adm-confirm-pw" placeholder="Confirmer le nouveau MDP" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))">
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="btn btn-prim" onclick="changeAdminPw()" style="font-size:calc(12px*var(--zf,1))">🔒 Changer le MDP</button>
+            <span id="adm-pw-msg" style="font-size:calc(11px*var(--zf,1));font-weight:600"></span>
+          </div>
+        </div>
+      </div>
+      <div class="ss">
         <h3>📂 Fichier Excel de données</h3>
         <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Chemin complet vers le fichier Excel (.xlsx) contenant les onglets Declarations et Listes.</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
@@ -5928,6 +6063,16 @@ select{cursor:default}
         </div>
         <div class="flex mt8">
           <button class="btn btn-ok" onclick="savePwds()">💾 Enregistrer MDP</button>
+        </div>
+      </div>
+      <div class="ss">
+        <h3>🧑‍🤝‍🧑 Co-pilotes</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Liste lue/écrite dans la colonne C de l'onglet Listes. Glisser pour réordonner.</div>
+        <div id="copilotes-list-ui" style="margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="cp-new-name" placeholder="Nom co-pilote" style="flex:1;min-width:140px;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+          <button class="btn btn-green" onclick="addCopilote()">+ Ajouter</button>
+          <button class="btn btn-ok" onclick="saveCopilotes()">💾 Enregistrer</button>
         </div>
       </div>
       <div class="ss">
@@ -6018,6 +6163,37 @@ select{cursor:default}
           <tbody id="pers-pct-tbody"></tbody>
         </table>
         <button class="btn btn-prim" style="font-size:calc(12px*var(--zf,1))" onclick="savePersPct()">💾 Enregistrer</button>
+      </div>
+      <div class="ss">
+        <h3>📐 Coefficients d'équivalence (Type produit + Coeff)</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Colonnes E (type) + F (coeff) de l'onglet Listes. Supprimer décale vers le haut. Glisser pour réordonner.</div>
+        <div id="equiv-list-ui" style="margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:8px;border-radius:7px;border:1px solid var(--border)">
+          <input id="eq-new-type" placeholder="Type produit" style="flex:2;min-width:120px;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+          <input id="eq-new-coeff" placeholder="Coeff (ex: 1.66)" style="flex:1;min-width:80px;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+          <button class="btn btn-green" onclick="addEquiv()">+ Ajouter</button>
+        </div>
+        <button class="btn btn-ok" style="margin-top:8px;font-size:calc(12px*var(--zf,1))" onclick="saveEquiv()">💾 Enregistrer coefficients</button>
+      </div>
+      <div class="ss">
+        <h3>📏 Tailles de produit</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Colonne D de l'onglet Listes. Glisser pour réordonner.</div>
+        <div id="tailles-list-ui" style="margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="tl-new-val" placeholder="Nouvelle taille" style="flex:1;min-width:120px;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+          <button class="btn btn-green" onclick="addTaille()">+ Ajouter</button>
+          <button class="btn btn-ok" onclick="saveTailles()">💾 Enregistrer</button>
+        </div>
+      </div>
+      <div class="ss">
+        <h3>🧵 Fibres</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Colonne J de l'onglet Listes. Glisser pour réordonner.</div>
+        <div id="fibres-list-ui" style="margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="fb-new-val" placeholder="Nouvelle fibre" style="flex:1;min-width:120px;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+          <button class="btn btn-green" onclick="addFibre()">+ Ajouter</button>
+          <button class="btn btn-ok" onclick="saveFibres()">💾 Enregistrer</button>
+        </div>
       </div>
     </div>
   </div>
@@ -6350,6 +6526,12 @@ async function loadLists() {
   popSel('er-taille', d.tailles||[]);
   popSel('er-typeprod', d.types_prod||[]);
   popSel('er-fibre', d.fibres||[]);
+  // Populate Paramètres list editors
+  _copilotesList=(d.copilotes||[]).slice();renderCopilotesList();
+  _taillesList=(d.tailles||[]).slice();renderTaillesList();
+  _fibresList=(d.fibres||[]).slice();renderFibresList();
+  const _tps=d.types_prod||[],_eqs=d.equivalences||[];
+  _equivList=_tps.map((t,i)=>({type:t,coeff:String(_eqs[i]||'')}));renderEquivList();
   // er-traca est maintenant un input text (multi-lots), pas de popSel
   // Build equivalence coef map: type_prod -> coef
   const eqs=d.equivalences||[]; const tps=d.types_prod||[];
@@ -7273,9 +7455,18 @@ async function loadMainKPI() {
   if(srEl) srEl.textContent=_fm(reunionS);
   if(saEl) saEl.textContent=_fm(arretS);
   if(sprodEl) sprodEl.textContent=_fm(prodS);
-  // Nb OF in new accueil block
+  // Nb OF + total pcs/equiv in new accueil block
   const nbOfEl=document.getElementById('acc-nb-of');
   if(nbOfEl) nbOfEl.textContent=d&&d.rows?d.rows.length:0;
+  const prodTotEl=document.getElementById('acc-prod-total');
+  if(prodTotEl&&d&&d.rows){
+    let tPcs=0,tEq=0;
+    d.rows.forEach(r=>{
+      tPcs+=parseFloat((r.qte_fab||'0').toString().replace(',','.'))||0;
+      tEq+=parseFloat(r.equiv||0)||0;
+    });
+    prodTotEl.textContent=Math.round(tPcs)+' pcs / '+Math.round(tEq*10)/10+' éq';
+  }
 
   // Previous sessions from history (group by pilot+date, exclude current session)
   const allRows=await apiFetch('/api/history');
@@ -8807,84 +8998,145 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   const isProd = r._rowType !== 'evt';
   const tc = r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
   const kitStr = (r.kit||'').toLowerCase();
-  const infoRows = isProd ? [
-    ['Heure début', r.debut||'—', '#374151'],
-    ['Heure fin', r.fin||'—', '#374151'],
-    ['Durée', r.duree||'—', '#059669'],
-    ['Taille', r.taille||'—', '#374151'],
-    ['Type produit', r.type_prod||'—', '#374151'],
-    ['Lots de 2', kitStr==='oui'?'✓ Oui':'Non', kitStr==='oui'?'#16a34a':'#94a3b8'],
-    ['Qté fabriquée', r.qte_fab||'—', '#1e3a8a'],
-    ['Qté emballée', r.qte_emb||'—', '#374151'],
-    ['Équivalence', r.equiv||'—', '#0891b2'],
-    ...(r.date?[['Date', r.date, '#374151']]:[]),
-    ...(r.poste?[['Poste', r.poste, '#374151']]:[]),
-    ...(r.pilote?[['Pilote', r.pilote, '#374151']]:[]),
-    ...(r.fibre?[['Fibre', r.fibre, '#6366f1']]:[]),
-    ...(r.code_prod?[['Code Produit', r.code_prod, '#374151']]:[]),
-    ...(r.ref_taie?[['Réf Taie', r.ref_taie, '#374151']]:[]),
-    ...(r.nb_pers?[['Nb Personnes', r.nb_pers, '#374151']]:[]),
-    ...(r.copilote?[['Co-Pilote', r.copilote, '#374151']]:[]),
-    ...(r.traca?[['Traca', r.traca.split(';').filter(t=>t.trim()).join(' · '), '#374151']]:[]),
-    ...(r.poids?[['Poids (g)', r.poids, '#374151']]:[]),
-  ] : [
-    ['Type arrêt', r.type||'—', '#dc2626'],
-    ['Heure début', r.debut||'—', '#374151'],
-    ['Heure fin', r.fin||'—', '#374151'],
-    ['Durée', r.duree||'—', '#059669'],
-    ...(r.date?[['Date', r.date, '#374151']]:[]),
-    ...(r.poste?[['Poste', r.poste, '#374151']]:[]),
-    ...(r.pilote?[['Pilote', r.pilote, '#374151']]:[]),
-  ];
-  const infoHtml = infoRows.map(([lbl,val,col])=>`
-    <div style="display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;border-bottom:1px solid #f1f5f9">
-      <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em">${lbl}</span>
-      <span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${col};text-align:right;max-width:55%">${esc(String(val))}</span>
+
+  // ── Info rows (toutes les infos du formulaire) ──
+  function _row(lbl,val,col){return val&&String(val).trim()&&String(val).trim()!=='0'?`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid #f1f5f9"><span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;padding-right:8px">${lbl}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${col};text-align:right">${esc(String(val))}</span></div>`:''}
+  const prodInfoHtml = isProd ? [
+    _row('OF',r.of,'#1e3a8a'),_row('Date',r.date,'#374151'),_row('Poste',r.poste,'#374151'),_row('Pilote',r.pilote,'#374151'),_row('Co-Pilote',r.copilote,'#374151'),_row('Nb Personnes',r.nb_pers,'#374151'),
+    '<div style="height:6px"></div><div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;padding:4px 0 2px">Produit</div>',
+    _row('Taille',r.taille,'#374151'),_row('Type produit',r.type_prod,'#374151'),_row('Code produit',r.code_prod,'#374151'),_row('Fibre',r.fibre,'#6366f1'),_row('Poids garnissage (g)',r.poids,'#374151'),_row('OF Taie',r.of_taie,'#374151'),_row('Réf Taie',r.ref_taie,'#374151'),_row('Traca',r.traca?(r.traca.split(';').filter(t=>t.trim()).join(' · ')):''  ,'#374151'),_row('Lots de 2',kitStr==='oui'?'✓ Oui':'Non',kitStr==='oui'?'#16a34a':'#94a3b8'),
+    '<div style="height:6px"></div><div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;padding:4px 0 2px">Production</div>',
+    _row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),
+    _row('Qté fabriquée',r.qte_fab,'#1e3a8a'),_row('Qté emballée',r.qte_emb,'#374151'),_row('Équivalence',r.equiv,'#0891b2'),_row('Cadence/h',r.cadence_h,'#374151'),_row('Cadence/h/pers',r.cadence_h_pers,'#374151'),_row('TRS %',r.trs>=0?r.trs.toFixed(1)+'%':'—',tc),_row('Prévu/Hors TRS',r.prevu_hors_trs,'#374151'),
+    '<div style="height:6px"></div><div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;padding:4px 0 2px">Qualité</div>',
+    _row('Qté init Taie',r.qte_init_taie,'#374151'),_row('Nb Taie 2nd choix',r.nb_taie2,'#f59e0b'),_row('Nb défauts couture',r.nb_def_cout,'#dc2626'),_row('Mq Taie',r.mq_taie,'#dc2626'),_row('Mq Housse/Encart',r.mq_housse,'#dc2626'),_row('Nb PP cousue',r.nb_pp,'#374151'),_row('Manquant MP',r.duree_mq_mp,'#374151'),_row('Manquant Personnel/Réunion',r.manquant_pers,'#374151'),
+  ].join('') : [
+    _row('Type arrêt',r.type,'#dc2626'),_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Date',r.date,'#374151'),_row('Poste',r.poste,'#374151'),_row('Pilote',r.pilote,'#374151'),
+  ].join('');
+  const commentHtml = r.comment?`<div style="background:#fffbeb;border-left:3px solid #fbbf24;padding:8px 12px;margin:10px 0 0;font-size:calc(11px*var(--zf,1));color:#92400e;border-radius:0 8px 8px 0;box-shadow:0 2px 6px rgba(251,191,36,.15)">💬 ${esc(r.comment)}</div>`:'';
+
+  // ── Donut chart (prod/arrêts/dégradé) ──
+  let chartHtml='';
+  if(isProd&&r.debut&&r.fin){
+    const hm2s=hm=>{if(!hm)return 0;const p=(hm+':0').split(':').map(Number);return p[0]*3600+p[1]*60;};
+    const dS=hm2s(r.debut),fS=hm2s(r.fin);
+    const totalMin=Math.max(1,Math.round((fS-dS)/60));
+    const {netMin,stopMin}=_rptNetProd(r.debut,r.fin);
+    const degMin=_rptDegMin(r.debut,r.fin);
+    const planMin=Math.round((r.plan_stop_s||0)/60);
+    const unplanMin=Math.max(0,stopMin-planMin);
+    const prodMin=Math.max(0,netMin-degMin);
+    const slices=[
+      {v:prodMin,c:'#16a34a',l:'Production'},
+      {v:planMin,c:'#60a5fa',l:'Arrêts prévus'},
+      {v:unplanMin,c:'#dc2626',l:'Arrêts non prévus'},
+      {v:degMin,c:'#f59e0b',l:'Mode dégradé'},
+    ].filter(s=>s.v>0);
+    const tot=slices.reduce((a,s)=>a+s.v,0)||1;
+    let sA=-Math.PI/2,paths='';
+    slices.forEach(sl=>{
+      const a=sl.v/tot*2*Math.PI,cx=80,cy=80,r2=62,ri=30;
+      const x1=cx+r2*Math.cos(sA),y1=cy+r2*Math.sin(sA);
+      const x2=cx+r2*Math.cos(sA+a),y2=cy+r2*Math.sin(sA+a);
+      const xi1=cx+ri*Math.cos(sA),yi1=cy+ri*Math.sin(sA);
+      const xi2=cx+ri*Math.cos(sA+a),yi2=cy+ri*Math.sin(sA+a);
+      const lg=a>Math.PI?1:0;
+      paths+=`<path d="M${xi1},${yi1} L${x1},${y1} A${r2},${r2} 0 ${lg},1 ${x2},${y2} L${xi2},${yi2} A${ri},${ri} 0 ${lg},0 ${xi1},${yi1}" fill="${sl.c}" opacity=".92" filter="url(#ds)"/>`;
+      sA+=a;
+    });
+    const legend=slices.map(sl=>`<div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1))"><div style="width:10px;height:10px;border-radius:3px;background:${sl.c};flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div><span style="color:#374151">${sl.l} <b>${sl.v} min</b></span></div>`).join('');
+    chartHtml=`<div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+      <svg viewBox="0 0 160 160" width="140" height="140">
+        <defs><filter id="ds" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".18"/></filter></defs>
+        ${paths||'<circle cx="80" cy="80" r="62" fill="#e2e8f0"/>'}
+        <circle cx="80" cy="80" r="30" fill="white" filter="url(#ds)"/>
+        <text x="80" y="76" text-anchor="middle" font-size="11" font-weight="800" fill="${tc}">${r.trs>=0?r.trs.toFixed(0)+'%':'—'}</text>
+        <text x="80" y="89" text-anchor="middle" font-size="8" fill="#94a3b8">TRS</text>
+      </svg>
+      <div style="display:flex;flex-direction:column;gap:4px;width:100%">${legend}</div>
+      <div style="font-size:calc(10px*var(--zf,1));color:#94a3b8;text-align:center">${totalMin} min total</div>
+    </div>`;
+  }
+
+  // ── Timeline OF ──
+  let timelineHtml='';
+  if(isProd&&r.debut&&r.fin){
+    const hm2ms=hm=>{if(!hm)return 0;const p=(hm+':0').split(':').map(Number);return(p[0]*3600+p[1]*60)*1000;};
+    const dMs=hm2ms(r.debut),fMs=hm2ms(r.fin);
+    const span=Math.max(1,fMs-dMs);
+    const pct=ms=>Math.round((ms-dMs)/span*1000)/10;
+    // Build segments: merge stops and degrade
+    const segs=[];
+    // Dégradé intervals in OF window
+    (_rptDegIntervals||[]).forEach(iv=>{
+      const s=Math.max(iv.s,dMs),e=Math.min(iv.e,fMs);
+      if(e>s) segs.push({s,e,c:'#f59e0b',l:'Dégradé'});
+    });
+    // Stops in OF window
+    (_rptStEvts||[]).forEach(sv=>{
+      const s=Math.max(sv.s,dMs),e=Math.min(sv.e,fMs);
+      if(e>s) segs.push({s,e,c:'#dc2626',l:sv.label||'Arrêt'});
+    });
+    const tlBar=segs.map(sg=>`<div title="${esc(sg.l)} ${Math.round((sg.e-sg.s)/60000)}min" style="position:absolute;top:0;bottom:0;left:${pct(sg.s)}%;width:${Math.max(.5,pct(sg.e)-pct(sg.s))}%;background:${sg.c};border-radius:2px;opacity:.88;box-shadow:0 2px 4px rgba(0,0,0,.25)"></div>`).join('');
+    const evtLegend=ofEvts.map((e,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #f1f5f9;font-size:calc(10px*var(--zf,1))">
+      <div style="width:8px;height:8px;border-radius:2px;background:#dc2626;flex-shrink:0"></div>
+      <span style="flex:1;font-weight:600;color:#374151">${esc(e.type||'')}</span>
+      <span style="color:#64748b;white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</span>
+      <span style="font-weight:700;color:#dc2626">${esc(e.duree||'')}</span>
     </div>`).join('');
-  const commentHtml = r.comment?`<div style="background:#fffbeb;border-left:3px solid #fbbf24;padding:6px 10px;margin:8px 0;font-size:calc(11px*var(--zf,1));color:#92400e;border-radius:0 6px 6px 0">💬 ${esc(r.comment)}</div>`:'';
-  const evtsTableHtml = `<table style="width:100%;border-collapse:collapse">
-    <thead><tr style="background:#f8fafc">
-      <th style="padding:5px 8px;text-align:left;font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0">Type</th>
-      <th style="padding:5px 8px;text-align:left;font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0">Plage</th>
-      <th style="padding:5px 8px;text-align:left;font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;border-bottom:2px solid #e2e8f0">Durée</th>
-    </tr></thead>
-    <tbody>${ofEvts.length?ofEvts.map(e=>`<tr style="border-bottom:1px solid #f1f5f9">
-      <td style="padding:5px 8px;font-weight:600;color:#374151">${esc(e.type||'')}</td>
-      <td style="padding:5px 8px;color:#64748b;white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</td>
-      <td style="padding:5px 8px;font-weight:700;color:#dc2626">${esc(e.duree||'')}</td>
-    </tr>`).join(''):'<tr><td colspan="3" style="padding:12px 8px;text-align:center;color:#94a3b8">Aucun arrêt</td></tr>'}
-    </tbody></table>`;
+    timelineHtml=`
+      <div style="margin-bottom:6px;font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em">Timeline ${r.debut} → ${r.fin}</div>
+      <div style="position:relative;height:28px;background:linear-gradient(135deg,#dcfce7,#bbf7d0);border-radius:8px;overflow:hidden;box-shadow:inset 0 2px 6px rgba(0,0,0,.08),0 2px 8px rgba(0,0,0,.1);margin-bottom:6px">
+        ${tlBar}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:calc(9px*var(--zf,1));color:#94a3b8;margin-bottom:12px"><span>${r.debut}</span><span>${r.fin}</span></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1))"><div style="width:10px;height:10px;border-radius:2px;background:#16a34a"></div><span>Production</span></div>
+        <div style="display:flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1))"><div style="width:10px;height:10px;border-radius:2px;background:#dc2626"></div><span>Arrêt</span></div>
+        <div style="display:flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1))"><div style="width:10px;height:10px;border-radius:2px;background:#f59e0b"></div><span>Dégradé</span></div>
+      </div>
+      <div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Arrêts (${ofEvts.length})</div>
+      ${evtLegend||'<div style="color:#94a3b8;font-size:calc(10px*var(--zf,1));padding:6px 0">Aucun arrêt</div>'}`;
+  }
+
+  // ── Header ──
   const headerTitle = isProd ? (r.of||'—') : (r.type||'—');
   const headerSub = isProd ? 'Détail OF' : 'Détail Arrêt';
-  const rightHtml = isProd
-    ? `<div style="text-align:right">
-        <div style="font-size:calc(26px*var(--zf,1));font-weight:900;color:${tc};line-height:1">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</div>
-        <div style="font-size:calc(9px*var(--zf,1));opacity:.55;text-transform:uppercase;letter-spacing:.08em">TRS</div>
-       </div>`
-    : `<div style="text-align:right">
-        <div style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#dc2626;line-height:1">${esc(r.duree||'—')}</div>
-        <div style="font-size:calc(9px*var(--zf,1));opacity:.55;text-transform:uppercase;letter-spacing:.08em">Durée</div>
-       </div>`;
+  const trsBlock = isProd&&r.trs>=0
+    ? `<div style="text-align:right;background:rgba(255,255,255,.1);border-radius:10px;padding:8px 14px;box-shadow:0 4px 12px rgba(0,0,0,.15)">
+        <div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:${tc};line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.3)">${r.trs.toFixed(1)}%</div>
+        <div style="font-size:calc(9px*var(--zf,1));color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.1em">TRS</div>
+       </div>` : '';
+
   document.getElementById('of-detail-content').innerHTML = `
-    <div style="background:var(--navy);color:#fff;padding:14px 20px;border-radius:14px 14px 0 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+    <!-- Header avec effet 3D -->
+    <div style="background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 50%,#2563eb 100%);color:#fff;padding:16px 24px;border-radius:18px 18px 0 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 4px 16px rgba(30,58,138,.4)">
       <div>
-        <div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;letter-spacing:.1em;opacity:.55;margin-bottom:2px">${headerSub}</div>
-        <div style="font-size:calc(20px*var(--zf,1));font-weight:900;font-family:monospace;letter-spacing:.05em">${esc(headerTitle)}</div>
+        <div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;letter-spacing:.12em;opacity:.6;margin-bottom:4px">${headerSub}</div>
+        <div style="font-size:calc(22px*var(--zf,1));font-weight:900;font-family:monospace;letter-spacing:.05em;text-shadow:0 2px 8px rgba(0,0,0,.25)">${esc(headerTitle)}</div>
+        ${r.taille||r.type_prod?`<div style="font-size:calc(12px*var(--zf,1));opacity:.7;margin-top:2px">${esc(r.taille||'')} ${esc(r.type_prod||'')}</div>`:''}
       </div>
-      <div style="display:flex;align-items:center;gap:16px">
-        ${rightHtml}
-        <button onclick="closeM('m-of-detail')" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;width:34px;height:34px;font-size:calc(16px*var(--zf,1));cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">✕</button>
+      <div style="display:flex;align-items:center;gap:12px">
+        ${trsBlock}
+        <button onclick="closeM('m-of-detail')" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:10px;width:38px;height:38px;font-size:calc(18px*var(--zf,1));cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2);transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">✕</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:0;flex:1;overflow:hidden">
-      <div style="padding:14px 16px;border-right:1px solid #e2e8f0;overflow-y:auto">
-        <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.08em;margin-bottom:6px">Informations</div>
-        ${infoHtml}
+    <!-- Corps 3 colonnes -->
+    <div style="display:grid;grid-template-columns:320px 160px 1fr;min-height:0;flex:1;overflow:hidden">
+      <!-- Colonne gauche : toutes les infos -->
+      <div style="padding:16px 14px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">
+        <div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Informations complètes</div>
+        ${prodInfoHtml}
         ${commentHtml}
       </div>
-      <div style="padding:14px 16px;overflow-y:auto">
-        <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.08em;margin-bottom:6px">${isProd?'Arrêts pendant cet OF'+(ofEvts.length?' ('+ofEvts.length+')':''):'—'}</div>
-        ${isProd?evtsTableHtml:'<div style="padding:20px 0;text-align:center;color:#94a3b8;font-size:calc(11px*var(--zf,1))">Aucun arrêt associé</div>'}
+      <!-- Colonne centre : donut chart -->
+      <div style="padding:16px 10px;border-right:1px solid #e2e8f0;overflow-y:auto;background:linear-gradient(180deg,#f8fafc 0%,#fff 100%);display:flex;flex-direction:column;align-items:center">
+        <div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;text-align:center">Répartition temps</div>
+        ${chartHtml||'<div style="color:#94a3b8;font-size:calc(10px*var(--zf,1));text-align:center;padding:20px 0">Pas de données</div>'}
+      </div>
+      <!-- Colonne droite : timeline + arrêts -->
+      <div style="padding:16px 14px;overflow-y:auto;background:#fff">
+        ${isProd?timelineHtml:'<div style="color:#94a3b8;font-size:calc(11px*var(--zf,1));padding:20px 0;text-align:center">Aucun arrêt associé</div>'}
       </div>
     </div>`;
   openM('m-of-detail');
@@ -10821,6 +11073,93 @@ async function savePwds(){
   const r=await fetch('/api/pilot_passwords_excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,pilot_passwords:_cfgPwds})});
   const d=r?await r.json():{};
   if(d&&d.ok){toast('MDP enregistrés et sauvegardés dans Excel','ok');loadCfg();}else toast(d&&d.error||'Erreur','err');
+}
+
+async function changeAdminPw(){
+  const oldPw=document.getElementById('adm-old-pw').value;
+  const newPw=document.getElementById('adm-new-pw').value;
+  const confirmPw=document.getElementById('adm-confirm-pw').value;
+  const msgEl=document.getElementById('adm-pw-msg');
+  if(!newPw){if(msgEl){msgEl.textContent='Nouveau MDP vide';msgEl.style.color='#dc2626';}return;}
+  if(newPw!==confirmPw){if(msgEl){msgEl.textContent='Les MDP ne correspondent pas';msgEl.style.color='#dc2626';}return;}
+  const r=await fetch('/api/change_admin_pw',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({old_pw:oldPw,new_pw:newPw})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){
+    _adminPw=newPw;
+    document.getElementById('adm-old-pw').value='';document.getElementById('adm-new-pw').value='';document.getElementById('adm-confirm-pw').value='';
+    if(msgEl){msgEl.textContent='✓ MDP changé et enregistré dans Excel';msgEl.style.color='#16a34a';}
+  } else {
+    if(msgEl){msgEl.textContent=d&&d.error||'Erreur';msgEl.style.color='#dc2626';}
+  }
+}
+
+// ── Listes Paramètres : co-pilotes, tailles, fibres, équivalences ──
+let _copilotesList=[], _taillesList=[], _fibresList=[], _equivList=[];
+
+// Drag handlers co-pilotes
+function _cpDS(i){_dIdx=i;}function _cpDO(e){e.preventDefault();}
+function _cpDrop(i){if(_dIdx===null||_dIdx===i)return;const m=_copilotesList.splice(_dIdx,1)[0];_copilotesList.splice(i,0,m);_dIdx=null;renderCopilotesList();}
+// Drag handlers tailles
+function _tlDS(i){_dIdx=i;}function _tlDO(e){e.preventDefault();}
+function _tlDrop(i){if(_dIdx===null||_dIdx===i)return;const m=_taillesList.splice(_dIdx,1)[0];_taillesList.splice(i,0,m);_dIdx=null;renderTaillesList();}
+// Drag handlers fibres
+function _fbDS(i){_dIdx=i;}function _fbDO(e){e.preventDefault();}
+function _fbDrop(i){if(_dIdx===null||_dIdx===i)return;const m=_fibresList.splice(_dIdx,1)[0];_fibresList.splice(i,0,m);_dIdx=null;renderFibresList();}
+// Drag handlers equiv
+function _eqDS(i){_dIdx=i;}function _eqDO(e){e.preventDefault();}
+function _eqDrop(i){if(_dIdx===null||_dIdx===i)return;const m=_equivList.splice(_dIdx,1)[0];_equivList.splice(i,0,m);_dIdx=null;renderEquivList();}
+
+const _listRowStyle='display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1));cursor:default';
+const _dragHandle='<span style="cursor:grab;color:#94a3b8;font-size:16px;padding:0 2px;user-select:none" title="Déplacer">⠿</span>';
+
+function renderCopilotesList(){
+  const c=document.getElementById('copilotes-list-ui');if(!c)return;
+  c.innerHTML=_copilotesList.map((v,i)=>`<div draggable="true" ondragstart="_cpDS(${i})" ondragover="_cpDO(event)" ondrop="_cpDrop(${i})" style="${_listRowStyle}">${_dragHandle}<span style="flex:1;font-weight:600">${esc(v)}</span><button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="_copilotesList.splice(${i},1);renderCopilotesList()">✕</button></div>`).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:4px">Aucun co-pilote</div>';
+}
+function addCopilote(){const v=document.getElementById('cp-new-name').value.trim();if(!v){toast('Nom requis','err');return;}_copilotesList.push(v);document.getElementById('cp-new-name').value='';renderCopilotesList();}
+async function saveCopilotes(){
+  const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'copilotes',items:_copilotesList})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){toast('Co-pilotes enregistrés dans Excel','ok');}else toast(d&&d.error||'Erreur','err');
+}
+
+function renderTaillesList(){
+  const c=document.getElementById('tailles-list-ui');if(!c)return;
+  c.innerHTML=_taillesList.map((v,i)=>`<div draggable="true" ondragstart="_tlDS(${i})" ondragover="_tlDO(event)" ondrop="_tlDrop(${i})" style="${_listRowStyle}">${_dragHandle}<span style="flex:1;font-weight:600">${esc(v)}</span><button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="_taillesList.splice(${i},1);renderTaillesList()">✕</button></div>`).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:4px">Aucune taille</div>';
+}
+function addTaille(){const v=document.getElementById('tl-new-val').value.trim();if(!v){toast('Valeur requise','err');return;}_taillesList.push(v);document.getElementById('tl-new-val').value='';renderTaillesList();}
+async function saveTailles(){
+  const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'tailles',items:_taillesList})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){toast('Tailles enregistrées dans Excel','ok');}else toast(d&&d.error||'Erreur','err');
+}
+
+function renderFibresList(){
+  const c=document.getElementById('fibres-list-ui');if(!c)return;
+  c.innerHTML=_fibresList.map((v,i)=>`<div draggable="true" ondragstart="_fbDS(${i})" ondragover="_fbDO(event)" ondrop="_fbDrop(${i})" style="${_listRowStyle}">${_dragHandle}<span style="flex:1;font-weight:600">${esc(v)}</span><button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="_fibresList.splice(${i},1);renderFibresList()">✕</button></div>`).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:4px">Aucune fibre</div>';
+}
+function addFibre(){const v=document.getElementById('fb-new-val').value.trim();if(!v){toast('Valeur requise','err');return;}_fibresList.push(v);document.getElementById('fb-new-val').value='';renderFibresList();}
+async function saveFibres(){
+  const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'fibres',items:_fibresList})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){toast('Fibres enregistrées dans Excel','ok');}else toast(d&&d.error||'Erreur','err');
+}
+
+function renderEquivList(){
+  const c=document.getElementById('equiv-list-ui');if(!c)return;
+  c.innerHTML=_equivList.map((it,i)=>`<div draggable="true" ondragstart="_eqDS(${i})" ondragover="_eqDO(event)" ondrop="_eqDrop(${i})" style="${_listRowStyle}">${_dragHandle}<input value="${esc(it.type||'')}" onchange="_equivList[${i}].type=this.value" style="flex:2;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(12px*var(--zf,1));font-weight:600"><input value="${esc(it.coeff||'')}" onchange="_equivList[${i}].coeff=this.value" style="flex:1;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(12px*var(--zf,1));text-align:center" placeholder="Coeff"><button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="_equivList.splice(${i},1);renderEquivList()">✕</button></div>`).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:4px">Aucun coefficient</div>';
+}
+function addEquiv(){
+  const t=document.getElementById('eq-new-type').value.trim(),c=document.getElementById('eq-new-coeff').value.trim();
+  if(!t){toast('Type requis','err');return;}
+  _equivList.push({type:t,coeff:c});
+  document.getElementById('eq-new-type').value='';document.getElementById('eq-new-coeff').value='';
+  renderEquivList();
+}
+async function saveEquiv(){
+  const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'equiv',items:_equivList})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){toast('Coefficients enregistrés dans Excel','ok');}else toast(d&&d.error||'Erreur','err');
 }
 
 const DAYS=[{k:'lun',l:'Lun'},{k:'mar',l:'Mar'},{k:'mer',l:'Mer'},{k:'jeu',l:'Jeu'},{k:'ven',l:'Ven'},{k:'sam',l:'Sam'},{k:'dim',l:'Dim'}];
