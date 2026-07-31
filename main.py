@@ -5282,11 +5282,11 @@ select{cursor:default}
     </div>
     <!-- Status bar -->
     <div class="sbar">
-      <div class="sc"><div class="sc-lbl">⏱ Durée OF</div><div class="sc-val green" id="sc-of">00:00:00</div></div>
-      <div class="sc"><div class="sc-lbl">⛔ Arrêts</div><div class="sc-val red" id="sc-stops">00:00:00</div></div>
+      <div class="sc"><div class="sc-lbl">⏱ Durée de l'OF en cours</div><div class="sc-val green" id="sc-of">00:00:00</div></div>
+      <div class="sc"><div class="sc-lbl">⛔ Arrêt de l'OF en cours</div><div class="sc-val red" id="sc-stops">00:00:00</div></div>
       <div class="sc" id="sc-deg-wrap" style="display:none"><div class="sc-lbl">🐌 Dégradé</div><div class="sc-val amber" id="sc-deg">00:00:00</div></div>
-      <div class="sc"><div class="sc-lbl">⛔ Arrêt totaux</div><div class="sc-val red" id="sc-all-stops">00:00:00</div></div>
-      <div class="sc"><div class="sc-lbl">🎯 Pièces théo.</div><div class="sc-val" id="sc-theo" style="color:var(--blue)">—</div></div>
+      <div class="sc"><div class="sc-lbl">⛔ Arrêt du poste entier</div><div class="sc-val red" id="sc-all-stops">00:00:00</div></div>
+      <div class="sc"><div class="sc-lbl">🎯 Objectif instantané OF en cours</div><div class="sc-val" id="sc-theo" style="color:var(--blue)">—</div></div>
     </div>
     <!-- Body -->
     <div class="prod-body">
