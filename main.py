@@ -5561,16 +5561,16 @@ select{cursor:default}
           <div id="budget-bars-prod"></div>
         </div>
         <!-- Gauge + Pie: OF uniquement -->
-        <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;align-items:center;flex-shrink:0">
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;margin-bottom:3px;letter-spacing:.4px">TRS — OF en cours</div>
-          <svg viewBox="0 0 100 56" style="width:100%;max-width:200px">
+        <div style="padding:6px;border-top:1px solid var(--border);display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+          <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;margin-bottom:2px;letter-spacing:.4px">TRS — OF en cours</div>
+          <svg viewBox="0 0 100 56" style="width:100%;max-width:140px">
             <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
             <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
             <text x="50" y="46" text-anchor="middle" font-size="17" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
           </svg>
-          <div class="gauge-lbl" style="font-size:calc(13px*var(--zf,1))">TRS OF</div>
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:6px;margin-bottom:2px">Répartition temps OF</div>
-          <svg id="pie-of" viewBox="0 0 130 150" style="width:100%;height:auto;display:block"></svg>
+          <div class="gauge-lbl" style="font-size:calc(9px*var(--zf,1))">TRS OF</div>
+          <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:4px;margin-bottom:2px">Répartition temps OF</div>
+          <svg id="pie-of" viewBox="0 0 130 150" style="width:100%;max-width:220px;height:auto;display:block;margin:0 auto"></svg>
         </div>
         <!-- Bottom action buttons -->
         <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0;background:var(--card)">
