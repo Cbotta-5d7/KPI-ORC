@@ -9009,142 +9009,133 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   const tc = r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
   const kitStr = (r.kit||'').toLowerCase();
 
-  // ── Info rows (toutes les infos du formulaire) ──
-  function _row(lbl,val,col){return val&&String(val).trim()&&String(val).trim()!=='0'?`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-bottom:1px solid #f1f5f9"><span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;padding-right:8px">${lbl}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${col};text-align:right">${esc(String(val))}</span></div>`:''}
-  const prodInfoHtml = isProd ? [
-    _row('OF',r.of,'#1e3a8a'),_row('Date',r.date,'#374151'),_row('Poste',r.poste,'#374151'),_row('Pilote',r.pilote,'#374151'),_row('Co-Pilote',r.copilote,'#374151'),_row('Nb Personnes',r.nb_pers,'#374151'),
-    '<div style="height:6px"></div><div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;padding:4px 0 2px">Produit</div>',
-    _row('Taille',r.taille,'#374151'),_row('Type produit',r.type_prod,'#374151'),_row('Code produit',r.code_prod,'#374151'),_row('Fibre',r.fibre,'#6366f1'),_row('Poids garnissage (g)',r.poids,'#374151'),_row('OF Taie',r.of_taie,'#374151'),_row('Réf Taie',r.ref_taie,'#374151'),_row('Traca',r.traca?(r.traca.split(';').filter(t=>t.trim()).join(' · ')):''  ,'#374151'),_row('Lots de 2',kitStr==='oui'?'✓ Oui':'Non',kitStr==='oui'?'#16a34a':'#94a3b8'),
-    '<div style="height:6px"></div><div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;padding:4px 0 2px">Production</div>',
-    _row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),
-    _row('Qté fabriquée',r.qte_fab,'#1e3a8a'),_row('Qté emballée',r.qte_emb,'#374151'),_row('Équivalence',r.equiv,'#0891b2'),_row('Cadence/h',r.cadence_h,'#374151'),_row('Cadence/h/pers',r.cadence_h_pers,'#374151'),_row('TRS %',r.trs>=0?r.trs.toFixed(1)+'%':'—',tc),_row('Prévu/Hors TRS',r.prevu_hors_trs,'#374151'),
-    '<div style="height:6px"></div><div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;padding:4px 0 2px">Qualité</div>',
-    _row('Qté init Taie',r.qte_init_taie,'#374151'),_row('Nb Taie 2nd choix',r.nb_taie2,'#f59e0b'),_row('Nb défauts couture',r.nb_def_cout,'#dc2626'),_row('Mq Taie',r.mq_taie,'#dc2626'),_row('Mq Housse/Encart',r.mq_housse,'#dc2626'),_row('Nb PP cousue',r.nb_pp,'#374151'),_row('Manquant MP',r.duree_mq_mp,'#374151'),_row('Manquant Personnel/Réunion',r.manquant_pers,'#374151'),
-  ].join('') : [
-    _row('Type arrêt',r.type,'#dc2626'),_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Date',r.date,'#374151'),_row('Poste',r.poste,'#374151'),_row('Pilote',r.pilote,'#374151'),
-  ].join('');
-  const commentHtml = r.comment?`<div style="background:#fffbeb;border-left:3px solid #fbbf24;padding:8px 12px;margin:10px 0 0;font-size:calc(11px*var(--zf,1));color:#92400e;border-radius:0 8px 8px 0;box-shadow:0 2px 6px rgba(251,191,36,.15)">💬 ${esc(r.comment)}</div>`:'';
+  function _row(lbl,val,col){return val&&String(val).trim()&&String(val).trim()!=='0'?`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid #f1f5f9"><span style="font-size:calc(9px*var(--zf,1));font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;padding-right:8px">${lbl}</span><span style="font-size:calc(11px*var(--zf,1));font-weight:700;color:${col};text-align:right">${esc(String(val))}</span></div>`:'';}
+  function _sec(lbl){return `<div style="font-size:calc(9px*var(--zf,1));font-weight:900;color:#475569;text-transform:uppercase;letter-spacing:.08em;padding:8px 0 4px;border-bottom:2px solid #e2e8f0;margin-bottom:4px">${lbl}</div>`;}
 
-  // ── Donut chart (prod/arrêts/dégradé) ──
-  let chartHtml='';
-  if(isProd&&r.debut&&r.fin){
-    const hm2s=hm=>{if(!hm)return 0;const p=(hm+':0').split(':').map(Number);return p[0]*3600+p[1]*60;};
-    const dS=hm2s(r.debut),fS=hm2s(r.fin);
-    const totalMin=Math.max(1,Math.round((fS-dS)/60));
-    const {netMin,stopMin}=(window._rptNetProd?window._rptNetProd(r.debut,r.fin):{netMin:0,stopMin:0});
-    const degMin=window._rptDegMin?window._rptDegMin(r.debut,r.fin):0;
-    const planMin=Math.round((r.plan_stop_s||0)/60);
-    const unplanMin=Math.max(0,stopMin-planMin);
-    const prodMin=Math.max(0,netMin-degMin);
-    const slices=[
-      {v:prodMin,c:'#16a34a',l:'Production'},
-      {v:planMin,c:'#60a5fa',l:'Arrêts prévus'},
-      {v:unplanMin,c:'#dc2626',l:'Arrêts non prévus'},
-      {v:degMin,c:'#f59e0b',l:'Mode dégradé'},
-    ].filter(s=>s.v>0);
-    const tot=slices.reduce((a,s)=>a+s.v,0)||1;
-    let sA=-Math.PI/2,paths='';
-    slices.forEach(sl=>{
-      const a=sl.v/tot*2*Math.PI,cx=80,cy=80,r2=62,ri=30;
-      const x1=cx+r2*Math.cos(sA),y1=cy+r2*Math.sin(sA);
-      const x2=cx+r2*Math.cos(sA+a),y2=cy+r2*Math.sin(sA+a);
-      const xi1=cx+ri*Math.cos(sA),yi1=cy+ri*Math.sin(sA);
-      const xi2=cx+ri*Math.cos(sA+a),yi2=cy+ri*Math.sin(sA+a);
-      const lg=a>Math.PI?1:0;
-      paths+=`<path d="M${xi1},${yi1} L${x1},${y1} A${r2},${r2} 0 ${lg},1 ${x2},${y2} L${xi2},${yi2} A${ri},${ri} 0 ${lg},0 ${xi1},${yi1}" fill="${sl.c}" opacity=".92" filter="url(#ds)"/>`;
-      sA+=a;
-    });
-    const legend=slices.map(sl=>`<div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1))"><div style="width:10px;height:10px;border-radius:3px;background:${sl.c};flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div><span style="color:#374151">${sl.l} <b>${sl.v} min</b></span></div>`).join('');
-    chartHtml=`<div style="display:flex;flex-direction:column;align-items:center;gap:10px">
-      <svg viewBox="0 0 160 160" width="140" height="140">
-        <defs><filter id="ds" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity=".18"/></filter></defs>
-        ${paths||'<circle cx="80" cy="80" r="62" fill="#e2e8f0"/>'}
-        <circle cx="80" cy="80" r="30" fill="white" filter="url(#ds)"/>
-        <text x="80" y="76" text-anchor="middle" font-size="11" font-weight="800" fill="${tc}">${r.trs>=0?r.trs.toFixed(0)+'%':'—'}</text>
-        <text x="80" y="89" text-anchor="middle" font-size="8" fill="#94a3b8">TRS</text>
-      </svg>
-      <div style="display:flex;flex-direction:column;gap:4px;width:100%">${legend}</div>
-      <div style="font-size:calc(10px*var(--zf,1));color:#94a3b8;text-align:center">${totalMin} min total</div>
-    </div>`;
+  if(!isProd){
+    const commentHtmlE=r.comment?`<div style="background:#fffbeb;border-left:3px solid #fbbf24;padding:7px 10px;margin:8px 0;font-size:calc(11px*var(--zf,1));color:#92400e;border-radius:0 8px 8px 0">💬 ${esc(r.comment)}</div>`:'';
+    document.getElementById('of-detail-content').innerHTML=`
+      <div style="background:linear-gradient(135deg,#991b1b 0%,#dc2626 100%);color:#fff;padding:14px 20px;border-radius:18px 18px 0 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div><div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;letter-spacing:.12em;opacity:.6;margin-bottom:3px">Détail Arrêt</div><div style="font-size:calc(18px*var(--zf,1));font-weight:900">${esc(r.type||'—')}</div></div>
+        <button onclick="closeM('m-of-detail')" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:10px;width:36px;height:36px;font-size:calc(17px*var(--zf,1));cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+      </div>
+      <div style="padding:18px 22px;overflow-y:auto;flex:1;background:#fff">
+        ${[_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Date',r.date,'#374151'),_row('Poste',r.poste,'#374151'),_row('Pilote',r.pilote,'#374151'),_row('OF associé',r.of,'#1e3a8a')].join('')}
+        ${commentHtmlE}
+      </div>`;
+    const box=document.getElementById('of-detail-box');
+    if(box){box.style.width='min(480px,96vw)';box.style.height='auto';box.style.maxHeight='80vh';}
+    openM('m-of-detail');
+    return;
   }
 
-  // ── Timeline OF ──
-  let timelineHtml='';
-  if(isProd&&r.debut&&r.fin){
-    const hm2ms=hm=>{if(!hm)return 0;const p=(hm+':0:0').split(':').map(Number);return((p[0]||0)*3600+(p[1]||0)*60)*1000;};
+  // ── Timeline bandeau plein-largeur ──
+  const hm2ms=hm=>{if(!hm)return 0;const p=(hm+':0:0').split(':').map(Number);return((p[0]||0)*3600+(p[1]||0)*60)*1000;};
+  const hm2s2=hm=>{if(!hm)return 0;const p=(hm+':0').split(':').map(Number);return p[0]*3600+p[1]*60;};
+  let tlBandHtml='';
+  if(r.debut&&r.fin){
     const dMs=hm2ms(r.debut),fMs=hm2ms(r.fin);
     const span=Math.max(1,fMs-dMs);
     const pct=ms=>Math.max(0,Math.min(100,Math.round((ms-dMs)/span*1000)/10));
-    // Build timeline segments from ofEvts (already filtered for this OF window)
-    const segs=ofEvts.map(ev=>({
-      s:hm2ms(ev.debut),e:hm2ms(ev.fin||ev.debut),
-      c:ev.is_degrade?'#f59e0b':'#dc2626',
-      l:ev.is_degrade?'Dégradé':(ev.type||'Arrêt')
-    })).filter(sg=>sg.e>sg.s);
-    const tlBar=segs.map(sg=>`<div title="${esc(sg.l)} ${Math.round((sg.e-sg.s)/60000)}min" style="position:absolute;top:0;bottom:0;left:${pct(sg.s)}%;width:${Math.max(.5,pct(sg.e)-pct(sg.s))}%;background:${sg.c};border-radius:2px;opacity:.88;box-shadow:0 2px 4px rgba(0,0,0,.25)"></div>`).join('');
-    const evtLegend=ofEvts.map((e,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #f1f5f9;font-size:calc(10px*var(--zf,1))">
-      <div style="width:8px;height:8px;border-radius:2px;background:#dc2626;flex-shrink:0"></div>
-      <span style="flex:1;font-weight:600;color:#374151">${esc(e.type||'')}</span>
-      <span style="color:#64748b;white-space:nowrap">${esc(e.debut||'')} → ${esc(e.fin||'')}</span>
-      <span style="font-weight:700;color:#dc2626">${esc(e.duree||'')}</span>
-    </div>`).join('');
-    timelineHtml=`
-      <div style="margin-bottom:6px;font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em">Timeline ${r.debut} → ${r.fin}</div>
-      <div style="position:relative;height:28px;background:linear-gradient(135deg,#dcfce7,#bbf7d0);border-radius:8px;overflow:hidden;box-shadow:inset 0 2px 6px rgba(0,0,0,.08),0 2px 8px rgba(0,0,0,.1);margin-bottom:6px">
-        ${tlBar}
+    const segs=ofEvts.map(ev=>({s:hm2ms(ev.debut),e:hm2ms(ev.fin||ev.debut),c:ev.is_degrade?'#f59e0b':'#dc2626',l:ev.is_degrade?'Dégradé':(ev.type||'Arrêt')})).filter(sg=>sg.e>sg.s);
+    const tlBar=segs.map(sg=>`<div title="${esc(sg.l)} ${Math.round((sg.e-sg.s)/60000)}min" style="position:absolute;top:0;bottom:0;left:${pct(sg.s)}%;width:${Math.max(.6,pct(sg.e)-pct(sg.s))}%;background:${sg.c};border-radius:3px;opacity:.9;box-shadow:0 2px 5px rgba(0,0,0,.22)"></div>`).join('');
+    tlBandHtml=`<div style="padding:10px 22px 8px;background:#f8fafc;border-bottom:2px solid #e2e8f0;flex-shrink:0">
+      <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Timeline OF · ${r.debut} → ${r.fin}</div>
+      <div style="position:relative;height:38px;background:linear-gradient(135deg,#dcfce7,#bbf7d0);border-radius:10px;overflow:hidden;box-shadow:inset 0 2px 5px rgba(0,0,0,.07),0 2px 8px rgba(0,0,0,.08)">${tlBar}</div>
+      <div style="display:flex;justify-content:space-between;font-size:calc(9px*var(--zf,1));color:#94a3b8;margin-top:4px;margin-bottom:6px"><span>${r.debut}</span><span>${r.fin}</span></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1));color:#374151"><div style="width:12px;height:12px;border-radius:3px;background:#16a34a"></div>Production</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1));color:#374151"><div style="width:12px;height:12px;border-radius:3px;background:#dc2626"></div>Arrêt non prévu</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1));color:#374151"><div style="width:12px;height:12px;border-radius:3px;background:#60a5fa"></div>Arrêt prévu</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1));color:#374151"><div style="width:12px;height:12px;border-radius:3px;background:#f59e0b"></div>Mode dégradé</div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:calc(9px*var(--zf,1));color:#94a3b8;margin-bottom:12px"><span>${r.debut}</span><span>${r.fin}</span></div>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-        <div style="display:flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1))"><div style="width:10px;height:10px;border-radius:2px;background:#16a34a"></div><span>Production</span></div>
-        <div style="display:flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1))"><div style="width:10px;height:10px;border-radius:2px;background:#dc2626"></div><span>Arrêt</span></div>
-        <div style="display:flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1))"><div style="width:10px;height:10px;border-radius:2px;background:#f59e0b"></div><span>Dégradé</span></div>
-      </div>
-      <div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Arrêts (${ofEvts.length})</div>
-      ${evtLegend||'<div style="color:#94a3b8;font-size:calc(10px*var(--zf,1));padding:6px 0">Aucun arrêt</div>'}`;
+    </div>`;
   }
 
-  // ── Header ──
-  const headerTitle = isProd ? (r.of||'—') : (r.type||'—');
-  const headerSub = isProd ? 'Détail OF' : 'Détail Arrêt';
-  const trsBlock = isProd&&r.trs>=0
-    ? `<div style="text-align:right;background:rgba(255,255,255,.1);border-radius:10px;padding:8px 14px;box-shadow:0 4px 12px rgba(0,0,0,.15)">
-        <div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:${tc};line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.3)">${r.trs.toFixed(1)}%</div>
-        <div style="font-size:calc(9px*var(--zf,1));color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.1em">TRS</div>
-       </div>` : '';
+  // ── Donut chart (GROS) ──
+  const dS=hm2s2(r.debut),fS=hm2s2(r.fin);
+  const totalMin=Math.max(1,Math.round((fS-dS)/60));
+  const {netMin,stopMin}=(window._rptNetProd?window._rptNetProd(r.debut,r.fin):{netMin:0,stopMin:0});
+  const degMin=window._rptDegMin?window._rptDegMin(r.debut,r.fin):0;
+  const planMin=Math.round((r.plan_stop_s||0)/60);
+  const unplanMin=Math.max(0,stopMin-planMin);
+  const prodMin=Math.max(0,netMin-degMin);
+  const slices=[{v:prodMin,c:'#16a34a',l:'Production'},{v:planMin,c:'#60a5fa',l:'Arrêts prévus'},{v:unplanMin,c:'#dc2626',l:'Arrêts non prévus'},{v:degMin,c:'#f59e0b',l:'Mode dégradé'}].filter(s=>s.v>0);
+  const tot=slices.reduce((a,s)=>a+s.v,0)||1;
+  let sA=-Math.PI/2,dpaths='';
+  slices.forEach(sl=>{
+    const a=sl.v/tot*2*Math.PI,cx=105,cy=105,r2=90,ri=44;
+    const x1=cx+r2*Math.cos(sA),y1=cy+r2*Math.sin(sA);
+    const x2=cx+r2*Math.cos(sA+a),y2=cy+r2*Math.sin(sA+a);
+    const xi1=cx+ri*Math.cos(sA),yi1=cy+ri*Math.sin(sA);
+    const xi2=cx+ri*Math.cos(sA+a),yi2=cy+ri*Math.sin(sA+a);
+    const lg=a>Math.PI?1:0;
+    dpaths+=`<path d="M${xi1.toFixed(1)},${yi1.toFixed(1)} L${x1.toFixed(1)},${y1.toFixed(1)} A${r2},${r2} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${xi2.toFixed(1)},${yi2.toFixed(1)} A${ri},${ri} 0 ${lg},0 ${xi1.toFixed(1)},${yi1.toFixed(1)}" fill="${sl.c}" opacity=".93" filter="url(#ds3)"/>`;
+    sA+=a;
+  });
+  const legend2=slices.map(sl=>`<div style="display:flex;align-items:center;gap:8px;font-size:calc(12px*var(--zf,1));padding:5px 0;border-bottom:1px solid #f1f5f9"><div style="width:14px;height:14px;border-radius:4px;background:${sl.c};flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div><span style="color:#374151;flex:1">${sl.l}</span><b style="color:${sl.c};white-space:nowrap">${sl.v} min</b></div>`).join('');
+  const chartHtml2=r.debut&&r.fin?`
+    <svg viewBox="0 0 210 210" width="210" height="210" style="display:block;margin:0 auto">
+      <defs><filter id="ds3" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity=".22"/></filter></defs>
+      ${dpaths||'<circle cx="105" cy="105" r="90" fill="#e2e8f0"/>'}
+      <circle cx="105" cy="105" r="44" fill="white" filter="url(#ds3)"/>
+      <text x="105" y="100" text-anchor="middle" font-size="18" font-weight="900" fill="${tc}">${r.trs>=0?r.trs.toFixed(0)+'%':'—'}</text>
+      <text x="105" y="118" text-anchor="middle" font-size="11" fill="#94a3b8">TRS</text>
+    </svg>
+    <div style="width:100%;padding:0 6px;margin-top:8px">${legend2}</div>
+    <div style="font-size:calc(11px*var(--zf,1));color:#94a3b8;text-align:center;margin-top:10px;font-weight:600">${totalMin} min total OF</div>`
+    :'<div style="color:#94a3b8;font-size:calc(11px*var(--zf,1));padding:30px 0;text-align:center">Pas de données</div>';
 
-  document.getElementById('of-detail-content').innerHTML = `
-    <!-- Header avec effet 3D -->
-    <div style="background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 50%,#2563eb 100%);color:#fff;padding:16px 24px;border-radius:18px 18px 0 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 4px 16px rgba(30,58,138,.4)">
+  // ── Événements enrichis ──
+  function _isPlanned(type){const t=(type||'').toLowerCase();return t.includes('pause')||t.includes('nettoyage')||t.includes('nett')||t.includes('réunion')||t.includes('reunion')||t.includes('meeting');}
+  let totalPlannedActMin=0;
+  ofEvts.forEach(ev=>{if(!ev.is_degrade&&_isPlanned(ev.type)){const p=(ev.duree||'0:0:0').split(':').map(Number);totalPlannedActMin+=(p[0]||0)*60+(p[1]||0)+(p[2]||0)/60;}});
+  const budgetExcess=Math.round(Math.max(0,totalPlannedActMin-planMin));
+  const budgetWarnHtml2=budgetExcess>0&&planMin>0?`<div style="background:#fef3c7;border:1.5px solid #fde68a;border-radius:8px;padding:7px 10px;margin-bottom:8px;font-size:calc(10px*var(--zf,1));display:flex;align-items:center;gap:6px">⚠️ <span>Dépassement budget arrêts prévus : <b style="color:#b45309">+${budgetExcess} min</b> <span style="color:#94a3b8">(budget ${planMin} min)</span></span></div>`:'';
+  const evtsHtml2=ofEvts.length?ofEvts.map(ev=>{
+    const planned=ev.is_degrade?null:_isPlanned(ev.type);
+    const evDurParts=(ev.duree||'0:0:0').split(':').map(Number);
+    const evMin=Math.round((evDurParts[0]||0)*60+(evDurParts[1]||0)+(evDurParts[2]||0)/60);
+    const bgColor=ev.is_degrade?'#fffbeb':planned?'#eff6ff':'#fff7f7';
+    const borderColor=ev.is_degrade?'#fde68a':planned?'#bfdbfe':'#fecaca';
+    const typeColor=ev.is_degrade?'#b45309':planned?'#1d4ed8':'#dc2626';
+    const badge=ev.is_degrade?`<span style="background:#fef3c7;color:#b45309;font-size:calc(9px*var(--zf,1));font-weight:800;padding:2px 7px;border-radius:10px;border:1px solid #fde68a">DÉGRADÉ</span>`:planned?`<span style="background:#dbeafe;color:#1d4ed8;font-size:calc(9px*var(--zf,1));font-weight:800;padding:2px 7px;border-radius:10px;border:1px solid #bfdbfe">✓ PRÉVU</span>`:`<span style="background:#fee2e2;color:#dc2626;font-size:calc(9px*var(--zf,1));font-weight:800;padding:2px 7px;border-radius:10px;border:1px solid #fecaca">✗ NON PRÉVU</span>`;
+    const commentLine=ev.comment?`<div style="display:flex;align-items:flex-start;gap:5px;font-size:calc(10px*var(--zf,1));color:#92400e;background:#fffbeb;border-radius:5px;padding:4px 7px;margin-top:5px"><span style="flex-shrink:0">💬</span><span>${esc(ev.comment)}</span></div>`:'';
+    return `<div style="background:${bgColor};border:1.5px solid ${borderColor};border-radius:9px;padding:9px 11px;margin-bottom:7px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><span style="font-size:calc(12px*var(--zf,1));font-weight:800;color:${typeColor}">${esc(ev.type||'Arrêt')}</span>${badge}</div><span style="font-size:calc(14px*var(--zf,1));font-weight:900;color:${typeColor};white-space:nowrap;margin-left:8px">${evMin} min</span></div><div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:2px">${esc(ev.debut||'')} → ${esc(ev.fin||'')} · durée ${esc(ev.duree||'—')}</div>${commentLine}</div>`;
+  }).join(''):`<div style="color:#94a3b8;font-size:calc(11px*var(--zf,1));text-align:center;padding:16px 0;border:1.5px dashed #e2e8f0;border-radius:8px">Aucun arrêt ni événement</div>`;
+
+  // ── Colonnes infos ──
+  const commentHtml3=r.comment?`<div style="background:#fffbeb;border-left:3px solid #fbbf24;padding:7px 10px;margin-top:10px;font-size:calc(11px*var(--zf,1));color:#92400e;border-radius:0 8px 8px 0;box-shadow:0 2px 5px rgba(251,191,36,.15)">💬 ${esc(r.comment)}</div>`:'';
+  const col1Html=[_sec('Identité'),_row('OF',r.of,'#1e3a8a'),_row('Date',r.date,'#374151'),_row('Poste',r.poste,'#374151'),_row('Pilote',r.pilote,'#374151'),_row('Co-Pilote',r.copilote,'#374151'),_row('Nb Personnes',r.nb_pers,'#374151'),_sec('Produit'),_row('Taille',r.taille,'#374151'),_row('Type produit',r.type_prod,'#374151'),_row('Code produit',r.code_prod,'#374151'),_row('Fibre',r.fibre,'#6366f1'),_row('Poids garnissage (g)',r.poids,'#374151'),_row('OF Taie',r.of_taie,'#374151'),_row('Réf Taie',r.ref_taie,'#374151'),_row('Traca',r.traca?(r.traca.split(';').filter(t=>t.trim()).join(' · ')):'' ,'#374151'),_row('Lots de 2',kitStr==='oui'?'✓ Oui':'Non',kitStr==='oui'?'#16a34a':'#94a3b8')].join('');
+  const col2Html=[_sec('Production'),_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Qté fabriquée',r.qte_fab,'#1e3a8a'),_row('Qté emballée',r.qte_emb,'#374151'),_row('Équivalence',r.equiv,'#0891b2'),_row('Cadence/h',r.cadence_h,'#374151'),_row('Cadence/h/pers',r.cadence_h_pers,'#374151'),_row('TRS %',r.trs>=0?r.trs.toFixed(1)+'%':'—',tc),_row('Objectif pièces',r.objectif!=null&&r.objectif>=0?String(r.objectif):'','#0369a1'),_row('Prévu/Hors TRS',r.prevu_hors_trs,'#374151'),commentHtml3,`<div style="margin-top:10px">${_sec('Événements ('+ofEvts.length+')')}${budgetWarnHtml2}${evtsHtml2}</div>`].join('');
+  const col3Html=[_sec('Qualité'),_row('Qté init Taie',r.qte_init_taie,'#374151'),_row('Nb Taie 2nd choix',r.nb_taie2,'#f59e0b'),_row('Nb défauts couture',r.nb_def_cout,'#dc2626'),_row('Mq Taie',r.mq_taie,'#dc2626'),_row('Mq Housse/Encart',r.mq_housse,'#dc2626'),_row('Nb PP cousue',r.nb_pp,'#374151'),_sec('Manquants'),_row('Manquant MP',r.duree_mq_mp,'#dc2626'),_row('Manquant Personnel/Réunion',r.manquant_pers,'#374151')].join('');
+
+  const trsBlock2=r.trs>=0?`<div style="text-align:right;background:rgba(255,255,255,.1);border-radius:10px;padding:8px 14px;box-shadow:0 4px 12px rgba(0,0,0,.15)"><div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:${tc};line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.3)">${r.trs.toFixed(1)}%</div><div style="font-size:calc(9px*var(--zf,1));color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.1em">TRS</div></div>`:'';
+
+  document.getElementById('of-detail-content').innerHTML=`
+    <!-- Header bleu -->
+    <div style="background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 50%,#2563eb 100%);color:#fff;padding:14px 22px;border-radius:18px 18px 0 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 4px 16px rgba(30,58,138,.4)">
       <div>
-        <div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;letter-spacing:.12em;opacity:.6;margin-bottom:4px">${headerSub}</div>
-        <div style="font-size:calc(22px*var(--zf,1));font-weight:900;font-family:monospace;letter-spacing:.05em;text-shadow:0 2px 8px rgba(0,0,0,.25)">${esc(headerTitle)}</div>
-        ${r.taille||r.type_prod?`<div style="font-size:calc(12px*var(--zf,1));opacity:.7;margin-top:2px">${esc(r.taille||'')} ${esc(r.type_prod||'')}</div>`:''}
+        <div style="font-size:calc(9px*var(--zf,1));text-transform:uppercase;letter-spacing:.12em;opacity:.6;margin-bottom:3px">Détail OF</div>
+        <div style="font-size:calc(22px*var(--zf,1));font-weight:900;font-family:monospace;letter-spacing:.05em;text-shadow:0 2px 8px rgba(0,0,0,.25)">${esc(r.of||'—')}</div>
+        ${r.taille||r.type_prod?`<div style="font-size:calc(12px*var(--zf,1));opacity:.75;margin-top:3px">${esc(r.taille||'')} ${esc(r.type_prod||'')}</div>`:''}
       </div>
-      <div style="display:flex;align-items:center;gap:12px">
-        ${trsBlock}
-        <button onclick="closeM('m-of-detail')" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:10px;width:38px;height:38px;font-size:calc(18px*var(--zf,1));cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2);transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">✕</button>
-      </div>
+      <div style="display:flex;align-items:center;gap:12px">${trsBlock2}<button onclick="closeM('m-of-detail')" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:10px;width:38px;height:38px;font-size:calc(18px*var(--zf,1));cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2);transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">✕</button></div>
     </div>
-    ${isProd ? `
-    <!-- Corps 3 colonnes (production uniquement) -->
-    <div style="display:grid;grid-template-columns:320px 160px 1fr;min-height:0;flex:1;overflow:hidden">
-      <div style="padding:16px 14px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">
-        <div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Informations complètes</div>
-        ${prodInfoHtml}${commentHtml}
+    <!-- Timeline bandeau plein-largeur -->
+    ${tlBandHtml}
+    <!-- Corps 4 colonnes -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr minmax(250px,310px);flex:1;min-height:0;overflow:hidden">
+      <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col1Html}</div>
+      <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col2Html}</div>
+      <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col3Html}</div>
+      <div style="padding:12px 10px;overflow-y:auto;background:linear-gradient(180deg,#f8fafc 0%,#fff 100%);display:flex;flex-direction:column;align-items:center">
+        <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;text-align:center">Répartition temps</div>
+        ${chartHtml2}
       </div>
-      <div style="padding:16px 10px;border-right:1px solid #e2e8f0;overflow-y:auto;background:linear-gradient(180deg,#f8fafc 0%,#fff 100%);display:flex;flex-direction:column;align-items:center">
-        <div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;text-align:center">Répartition temps</div>
-        ${chartHtml||'<div style="color:#94a3b8;font-size:calc(10px*var(--zf,1));text-align:center;padding:20px 0">Pas de données</div>'}
-      </div>
-      <div style="padding:16px 14px;overflow-y:auto;background:#fff">${timelineHtml}</div>
-    </div>` : `
-    <!-- Corps 1 colonne (arrêt/événement) -->
-    <div style="padding:20px 24px;overflow-y:auto;flex:1;background:#fff">
-      <div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Informations</div>
-      <div style="max-width:400px">${prodInfoHtml}${commentHtml}</div>
-    </div>`}`;
+    </div>`;
   const box=document.getElementById('of-detail-box');
-  if(box){box.style.width=isProd?'min(1280px,98vw)':'min(480px,96vw)';box.style.height=isProd?'92vh':'auto';box.style.maxHeight=isProd?'92vh':'80vh';}
+  if(box){box.style.width='min(1400px,99vw)';box.style.height='92vh';box.style.maxHeight='92vh';}
   openM('m-of-detail');
 }
 
@@ -10592,11 +10583,12 @@ async function calcPeriodReport(autoLoad){
       </div>
       <!-- Colonne droite : graphiques -->
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
-        <div style="display:flex;gap:6px;flex-shrink:0">
-          ${chartTrsHtml}
-          ${chartCadHtml}
+        <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;gap:6px">${chartTrsHtml}${chartCadHtml}</div>
+          </div>
+          <div style="flex:1;min-width:0">${paretoRjHtml}</div>
         </div>
-        ${paretoRjHtml}
         ${ofListHtml}
         ${eventsListHtml}
       </div>
@@ -10847,10 +10839,10 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0">
         <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?' — '+(d.actual_debut||d.model_debut)+' → '+(d.actual_fin||d.model_fin):''}</div>
         <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
-        ${d.is_live?`<div style="margin-top:6px;background:#22c55e;color:#fff;font-size:calc(10px*var(--zf,1));font-weight:800;text-align:center;border-radius:6px;padding:3px 8px;letter-spacing:.05em;animation:rpt-arr .9s step-start infinite">▶ POSTE EN COURS</div>`:''}
         <div style="font-size:calc(9px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">TRS :</div>
         <div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3)">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
       </div>
+      ${d.is_live?`<style>@keyframes live-banner{0%,49%{background:#22c55e;color:#000}50%,100%{background:#fff;color:#15803d}}</style><div style="font-size:calc(20px*var(--zf,1));font-weight:900;text-align:center;padding:10px 8px;letter-spacing:.08em;animation:live-banner 1.2s step-start infinite;flex-shrink:0;border-bottom:2px solid #22c55e">▶ POSTE EN COURS</div>`:''}
       <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px">
         <div style="text-align:center">
           <svg id="rpt-pie" viewBox="0 0 130 130" style="width:150px;height:150px;display:block;margin:0 auto"></svg>
@@ -10870,11 +10862,11 @@ async function loadSessionReport(date,pilot,poste,itemId){
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#374151">${d.is_live?'—':ouvertureMin+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#059669">${tempsUtile} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#059669">${d.is_live?'—':tempsUtile+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${d.is_live?'—':tempsFonctionnement+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#dc2626">${netStopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
           ${degMin>0?`<div class="fp-card" style="padding:5px 6px;border-left:3px solid #ca8a04"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#b45309">${degMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en mode dégradé</div></div>`:''}
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${perteCadenceHtml}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${d.is_live?'<span style="color:#94a3b8">—</span>':perteCadenceHtml}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
         </div>
       </div>
       </div>`;
