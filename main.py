@@ -49,7 +49,7 @@ DECL_HEADERS = [
     "","Manquant MP","Manquant Personnel/Reunion",
     "","Commentaire","Prevu/Hors TRS",
     "Duree Arrets","Duree Prod Pure","Date_poste",
-    "","Degrade_min",
+    "","Degrade_min","Nbr pièces théorique",
 ]
 
 POSTES = ["Matin","Midi","Nuit","Jour"]
@@ -1894,6 +1894,7 @@ def api_end_prod():
     prod_ref = get_prod_ref()
     trs = -1.0
     trs_str = ""
+    _objectif_pcs = ""
     if prod_ref>0 and of_s_brut>0:
         # Calculer le temps en mode dégradé pendant cet OF
         _deg_s = 0.0
@@ -1909,6 +1910,9 @@ def api_end_prod():
         _pct_ep = get_pct_cadence(v.get("nb_pers", 1))
         trs = round(equiv/(prod_ref*_pct_ep*_adj_s/28800)*100,1)
         trs_str = str(trs)
+        # Pièces théoriques = objectif OF (même base que TRS)
+        _pcoef_ep = (equiv / qte_fab) if (qte_fab and qte_fab > 0 and equiv and equiv > 0) else 1.0
+        _objectif_pcs = round(prod_ref * _pct_ep * _adj_s / 28800 / _pcoef_ep, 1)
 
     # Ligne Production (40 cols, format unifié)
     _shift_dt = _S.get("shift_start") or datetime.datetime.now()
@@ -1956,6 +1960,7 @@ def api_end_prod():
         _shift_date_str,
         "",
         round(_deg_s / 60.0, 2),
+        _objectif_pcs,
     ]
     evt_rows = build_decl_rows(
         dict(v, pilote=v.get("pilote",_S["pilot"] or ""), poste=v.get("poste",_S["poste"] or "")),
@@ -3132,23 +3137,41 @@ def api_session_report():
     planned_ded = _compute_planned_deduction_s(evt_rows, _sr_live_ov if _is_live_sr else None)
     # Pour session en cours : intervalles planifiés capés au budget (comme api_fin_poste_data)
     _plan_ivs_sr = []
-    if _is_live_sr:
-        _blab_sr = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
-        _plan_bdata_sr = {bk: float((_sr_live_ov.get(bk) if _sr_live_ov.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab_sr}
-        _plan_used_sr = {bk: 0.0 for bk in _blab_sr}
-        for rn2, r2 in _decl_cache:
-            _rd2 = str(r2[39] if len(r2) > 39 else "").strip() or _row_date(r2[2])
-            if _rd2 != date_str: continue
-            if str(r2[4] or "") != pilot or str(r2[3] or "") != poste: continue
-            if str(r2[0] or "").strip().lower() in ("production","prod",""): continue
-            _bk_sr = _get_arret_budget_key(str(r2[0] or ''))
-            if _bk_sr and _bk_sr in _plan_bdata_sr:
-                _ds_sr = _hms_to_sec(str(r2[16] or '00:00:00'))
-                _fs_sr = _norm_fin(_ds_sr, _hms_to_sec(str(r2[17] or '00:00:00')))
-                _dur_sr = _fs_sr - _ds_sr
-                if _dur_sr > 0 and _plan_used_sr[_bk_sr] < _plan_bdata_sr[_bk_sr]:
-                    _plan_ivs_sr.append((_ds_sr, _ds_sr + min(_dur_sr, _plan_bdata_sr[_bk_sr] - _plan_used_sr[_bk_sr])))
-                _plan_used_sr[_bk_sr] += _dur_sr
+    _blab_sr = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
+    _plan_bdata_sr = {bk: float((_sr_live_ov.get(bk) if _sr_live_ov.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab_sr}
+    _plan_used_sr = {bk: 0.0 for bk in _blab_sr}
+    for rn2, r2 in _decl_cache:
+        _rd2 = str(r2[39] if len(r2) > 39 else "").strip() or _row_date(r2[2])
+        if _rd2 != date_str: continue
+        if str(r2[4] or "") != pilot or str(r2[3] or "") != poste: continue
+        if str(r2[0] or "").strip().lower() in ("production","prod",""): continue
+        _bk_sr = _get_arret_budget_key(str(r2[0] or ''))
+        if _bk_sr and _bk_sr in _plan_bdata_sr:
+            _ds_sr = _hms_to_sec(str(r2[16] or '00:00:00'))
+            _fs_sr = _norm_fin(_ds_sr, _hms_to_sec(str(r2[17] or '00:00:00')))
+            _dur_sr = _fs_sr - _ds_sr
+            if _dur_sr > 0 and _plan_used_sr[_bk_sr] < _plan_bdata_sr[_bk_sr]:
+                _plan_ivs_sr.append((_ds_sr, _ds_sr + min(_dur_sr, _plan_bdata_sr[_bk_sr] - _plan_used_sr[_bk_sr])))
+            _plan_used_sr[_bk_sr] += _dur_sr
+    # Per-OF: calcul arrêts prévus et objectif pièces
+    for pi, raw_r in enumerate(_prod_raws_sr):
+        try:
+            _deb_of = _hms_to_sec(str(raw_r[16] or "00:00:00"))
+            _fin_of = _hms_to_sec(str(raw_r[17] or "00:00:00"))
+            _dur_of = _fin_of - _deb_of if _fin_of > _deb_of else _hms_to_sec(str(raw_r[18] or "00:00:00"))
+            _plan_of_s = _deg_overlap_s(_deb_of, _fin_of, _plan_ivs_sr)
+            _deg_of_s = _deg_overlap_s(_deb_of, _fin_of, _deg_mg_sr)
+            _nb_p = max(1, int(float(str(raw_r[6] or 1) or 1)))
+            _pct_of = get_pct_cadence(_nb_p)
+            _adj_of_s = max(1.0, _dur_of - _plan_of_s - _deg_of_s)
+            _eq_of = float(str(raw_r[21] or 0).replace(",", "."))
+            _qte_of = float(str(raw_r[19] or 0).replace(",", "."))
+            _pcoef_of = _eq_of / _qte_of if _qte_of > 0 and _eq_of > 0 else 1.0
+            _exp_of = prod_ref * _pct_of * _adj_of_s / 28800 if prod_ref > 0 else 0.0
+            _obj_of = round(_exp_of / _pcoef_of, 1) if _exp_of > 0 else -1
+            prod_rows[pi]["plan_stop_s"] = round(_plan_of_s)
+            prod_rows[pi]["objectif"] = _obj_of
+        except: pass
     _postes_map2 = load_postes_shift_map()
     _pk2 = (pilot.lower(), date_str)
     _xl_trs_sr = None
@@ -10451,6 +10474,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
     const degMinOf=_rptDegMin(r.debut,r.fin);
     const ofDurMin=r.debut&&r.fin?Math.round((_rptHmsMs(r.fin)-_rptHmsMs(r.debut))/60000):0;
     const nbPers=r.nb_pers||'';
+    const planMin=Math.round((r.plan_stop_s||0)/60);
+    const unplanMin=Math.max(0,stopMin-planMin);
     const td='padding:4px 6px;text-align:center;font-size:calc(11px*var(--zf,1))';
     return `<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="showOfDetail(${ri})" title="Voir détail OF">
       <td style="${td};font-weight:700;color:#1e3a8a;text-decoration:underline">${esc(r.of||'')}</td>
@@ -10461,9 +10486,11 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <td style="${td};white-space:nowrap">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
       <td style="${td};color:#94a3b8">${ofDurMin>0?ofDurMin+' min':'—'}</td>
       <td style="${td};color:#16a34a;font-weight:700">${netMin} min</td>
-      <td style="${td};color:#dc2626;font-weight:700">${stopMin} min</td>
+      <td style="${td};color:#16a34a;font-weight:700">${planMin>0?planMin+' min':'—'}</td>
+      <td style="${td};color:#dc2626;font-weight:700">${unplanMin>0?unplanMin+' min':'—'}</td>
       <td style="${td};color:${degMinOf>0?'#b45309':'#94a3b8'};font-weight:${degMinOf>0?'700':'400'}">${degMinOf>0?degMinOf+' min':'—'}</td>
       <td style="${td};color:#374151;font-weight:600">${esc(String(nbPers))}</td>
+      <td style="${td};color:#0891b2;font-weight:700">${(r.objectif!=null&&r.objectif>=0)?r.objectif:'—'}</td>
       <td style="${td};font-weight:800;color:${tc}">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</td>
       <td style="padding:4px 6px;font-size:calc(10px*var(--zf,1));color:var(--gray)">${esc(r.comment||'')}</td>
     </tr>`;
@@ -10608,9 +10635,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
         <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
           <th style="padding:4px 6px;text-align:center">OF</th><th style="padding:4px 6px;text-align:center">Taille</th>
           <th style="padding:4px 6px;text-align:center">Lots×2</th><th style="padding:4px 6px;text-align:center">Qté</th><th style="padding:4px 6px;text-align:center">Éq.</th>
-          <th style="padding:4px 6px;text-align:center">Heures</th><th style="padding:4px 6px;text-align:center;color:#94a3b8">Durée OF</th><th style="padding:4px 6px;text-align:center;color:#16a34a">Durée prod</th><th style="padding:4px 6px;text-align:center;color:#dc2626">Durée arrêts</th><th style="padding:4px 6px;text-align:center;color:#b45309">Dégradé</th><th style="padding:4px 6px;text-align:center">Nb pers</th><th style="padding:4px 6px;text-align:center">TRS</th><th style="padding:4px 6px;text-align:left">Comm.</th>
+          <th style="padding:4px 6px;text-align:center">Heures</th><th style="padding:4px 6px;text-align:center;color:#94a3b8">Durée OF</th><th style="padding:4px 6px;text-align:center;color:#16a34a">Durée prod</th><th style="padding:4px 6px;text-align:center;color:#16a34a">Arrêts prévus</th><th style="padding:4px 6px;text-align:center;color:#dc2626">Arrêts non prévus</th><th style="padding:4px 6px;text-align:center;color:#b45309">Dégradé</th><th style="padding:4px 6px;text-align:center">Nb pers</th><th style="padding:4px 6px;text-align:center;color:#0891b2">Objectif</th><th style="padding:4px 6px;text-align:center">TRS</th><th style="padding:4px 6px;text-align:left">Comm.</th>
         </tr></thead>
-        <tbody>${prodsHtml||'<tr><td colspan="13" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
+        <tbody>${prodsHtml||'<tr><td colspan="15" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
       </table>
     </div>
     <!-- Pareto + Arrêts côte à côte -->
