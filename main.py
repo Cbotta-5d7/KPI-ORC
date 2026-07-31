@@ -3111,7 +3111,7 @@ def api_period_report():
         _of_rows_sd = [{"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"fibre":str(r[11] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"nb_pers":str(r[6] or ""),"trs":str(r[24] or ""),"degrade_min":round(_deg_overlap_s(_hms_to_sec(str(r[16] or "00:00:00")),_hms_to_sec(str(r[17] or "00:00:00")),_deg_ivs_pr)/60,1)} for r in s.get('prod_raws',[])]
         _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or ""))} for _rn2, re2 in s.get('evt_rows',[])]
         agg_degrade_min += (_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s / 60.0)
-        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd})
+        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd,'_deb_dt':_pdeb})
     _trs_denom = agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected
     trs_periode = round(agg_equiv/_trs_denom*100,1) if _trs_denom>0 and agg_equiv>0 else -1.0
     def _sort_dmy(d):
@@ -3122,7 +3122,8 @@ def api_period_report():
         for day,v in sorted(trs_by_day.items(), key=lambda x:_sort_dmy(x[0]))
     ]
     cadence_h = round(agg_equiv*60/agg_utile) if agg_utile>0 else 0
-    sessions_detail_sorted = sorted(sessions_detail, key=lambda x: _sort_dmy(x['date']))
+    sessions_detail_sorted = sorted(sessions_detail, key=lambda x: x['_deb_dt'] or datetime.datetime.min)
+    for _sd_item in sessions_detail_sorted: _sd_item.pop('_deb_dt', None)
     _agg_perte_xl = round((agg_sum_theorique - agg_equiv) / cadence_ref, 1) if cadence_ref > 0 and agg_sum_theorique > 0 else round(agg_perte, 1)
     return jsonify({
         'ok':True,
