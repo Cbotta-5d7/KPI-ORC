@@ -404,7 +404,7 @@ def _option_b_trs(prod_raw_rows, deg_ivs, prod_ref, plan_ivs=None):
             pct = get_pct_cadence(nb_p)
             ovl = _deg_overlap_s(deb_s, fin_s, deg_ivs)
             plan_ovl = _deg_overlap_s(deb_s, fin_s, plan_ivs) if plan_ivs else 0.0
-            adj_s = max(1.0, dur_s - plan_ovl)
+            adj_s = max(1.0, dur_s - ovl - plan_ovl)
             sum_expected += prod_ref * pct * adj_s / 28800
             tot_equiv += eq
         except: pass
@@ -2633,18 +2633,19 @@ def api_fin_poste_data():
     net_stop_min_fp = round(sum(f - s for s, f in _merged_s) / 60, 1)
     ouverture_min_fp = round(model_dur_s / 60, 1)
     temps_fonctionnement_fp = round(max(0.0, ouverture_min_fp - net_stop_min_fp), 1)
-    # Budget arrêts prévus: min(limite_paramètre, déclaré) par catégorie
+    # Budget arrêts prévus — utilise l'implémentation centralisée pour arrets_prevu
+    arrets_prevu_fp = _compute_planned_deduction_s(shift_evt_rows) / 60  # minutes
+    temps_utile_fp = round(max(0.0, ouverture_min_fp - arrets_prevu_fp), 1)
+    # Détail par type (nécessaire pour réunion et dépassement uniquement)
     _blab = {"pause_min":"Pause","meeting_tol_min":"Réunion","clean_short_min":"Nettoyage court","clean_long_min":"Nettoyage long","clean_grand_min":"Nettoyage très long"}
     _bdata = {bk:{"budget_min":float(cfg.get(bk,0) or 0),"used_min":0.0} for bk in _blab}
     for _, r_e in shift_evt_rows:
-        _bk2 = _get_arret_budget_key(str(r_e[0] or '') or str(r_e[35] if len(r_e) > 35 else ''))
+        _bk2 = _get_arret_budget_key(str(r_e[0] or ''))
         if _bk2 and _bk2 in _bdata:
             _dp2 = str(r_e[18] or ''); _pp2 = (_dp2+':00:00').split(':')
             try: _bs2 = int(_pp2[0] or 0)*3600+int(_pp2[1] or 0)*60+int(_pp2[2] or 0)
             except: _bs2 = 0
             _bdata[_bk2]['used_min'] += _bs2/60
-    arrets_prevu_fp = sum(min(v['budget_min'], v['used_min']) for v in _bdata.values())
-    temps_utile_fp = round(max(0.0, ouverture_min_fp - arrets_prevu_fp), 1)
     reunion_min_fp = round(_bdata.get("meeting_tol_min", {}).get("used_min", 0.0), 1)
     depassement_min_fp = round(sum(max(0.0, v["used_min"] - v["budget_min"]) for v in _bdata.values()), 1)
     cadence_ref_fp = round(prod_ref / 480, 4) if prod_ref > 0 else 0.0
@@ -2929,7 +2930,7 @@ def api_period_report():
         # Planned stops budget tracking (for budget_data display)
         _bdata = {bk:{'budget_min':float(cfg.get(bk,0) or 0),'used_min':0.0} for bk in _blab}
         for _, re3 in s['evt_rows']:
-            _bk2 = _get_arret_budget_key(str(re3[0] or '') or str(re3[35] if len(re3)>35 else ''))
+            _bk2 = _get_arret_budget_key(str(re3[0] or ''))
             if _bk2 and _bk2 in _bdata:
                 _dp2=str(re3[18] or ''); _pp2=(_dp2+':00:00').split(':')
                 try: _bs2=int(_pp2[0] or 0)*3600+int(_pp2[1] or 0)*60+int(_pp2[2] or 0)
