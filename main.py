@@ -2360,9 +2360,25 @@ def api_history():
 @flask_app.route('/api/events_list')
 def api_events_list():
     rows = []
-    evt_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() not in ("production","prod","")]
-    for rn, r in evt_rows[-100:]:
+    date_from_el = request.args.get("from","")
+    date_to_el   = request.args.get("to","")
+    def _parse_date_el(s):
         try:
+            if "-" in s: return datetime.datetime.strptime(s,"%Y-%m-%d").date()
+            if "/" in s: return datetime.datetime.strptime(s,"%d/%m/%Y").date()
+        except: pass
+        return None
+    d_from_el = _parse_date_el(date_from_el) if date_from_el else None
+    d_to_el   = _parse_date_el(date_to_el)   if date_to_el   else None
+    evt_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() not in ("production","prod","")]
+    # With date range: scan all; without: limit to last 500
+    scan_rows = evt_rows if (d_from_el or d_to_el) else evt_rows[-500:]
+    for rn, r in scan_rows:
+        try:
+            if d_from_el or d_to_el:
+                row_d_el = _parse_date_el(_row_date(r[2])) if r[2] else None
+                if d_from_el and row_d_el and row_d_el < d_from_el: continue
+                if d_to_el   and row_d_el and row_d_el > d_to_el:   continue
             hors = str(r[36] if len(r)>36 else "").strip().upper()
             type_str = str(r[0] or "").strip()
             tl = type_str.lower()
@@ -5363,30 +5379,22 @@ select{cursor:default}
             <svg viewBox="0 0 100 58" style="width:100px;display:block;margin:0 auto">
               <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="rgba(0,0,0,.12)" stroke-width="11" stroke-linecap="round"/>
               <path id="gauge-poste-acc-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="11" stroke-linecap="round" stroke-dasharray="0,132"/>
-              <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#15803d" id="gauge-poste-acc-pct">—</text>
+              <text x="50" y="46" text-anchor="middle" font-size="17" font-weight="800" fill="#15803d" id="gauge-poste-acc-pct">—</text>
             </svg>
           </div>
           <div style="flex:1;min-width:0">
             <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:#0369a1;text-transform:uppercase;letter-spacing:.5px">TRS du Poste</div>
             <div style="font-size:calc(13px*var(--zf,1));font-weight:700;color:#0369a1;margin-bottom:2px" id="gauge-poste-acc-lbl">—</div>
-            <!-- Stats en colonne -->
-            <div style="display:flex;flex-direction:column;gap:1px;margin-top:2px">
-              <div style="display:flex;align-items:baseline;gap:5px">
-                <span style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#15803d;white-space:nowrap">Prod</span>
-                <span style="font-size:calc(12px*var(--zf,1));font-weight:900;color:#15803d;line-height:1" id="acc-prod-total">— pcs / — éq</span>
-              </div>
-              <div style="display:flex;align-items:baseline;gap:5px">
-                <span style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;white-space:nowrap">Nb OF</span>
-                <span style="font-size:calc(17px*var(--zf,1));font-weight:900;color:#1e40af;line-height:1" id="acc-nb-of">0</span>
-              </div>
-              <div style="display:flex;align-items:baseline;gap:5px">
-                <span style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626;white-space:nowrap">Arrêts</span>
-                <span style="font-size:calc(15px*var(--zf,1));font-weight:900;color:#b91c1c;line-height:1" id="main-stat-arrets">0 min</span>
-              </div>
-              <div style="display:flex;align-items:baseline;gap:5px">
-                <span style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;white-space:nowrap">Prod</span>
-                <span style="font-size:calc(15px*var(--zf,1));font-weight:900;color:#15803d;line-height:1" id="main-stat-prod">0 min</span>
-              </div>
+            <!-- Stats en grille uniforme -->
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:1px 6px;margin-top:3px;align-items:baseline">
+              <span style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#15803d;white-space:nowrap">Prod</span>
+              <span style="font-size:calc(12px*var(--zf,1));font-weight:900;color:#15803d;line-height:1.1" id="acc-prod-total">— pcs / — éq</span>
+              <span style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#1e40af;white-space:nowrap">Nb OF</span>
+              <span style="font-size:calc(12px*var(--zf,1));font-weight:900;color:#1e40af;line-height:1.1" id="acc-nb-of">0</span>
+              <span style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626;white-space:nowrap">Arrêts</span>
+              <span style="font-size:calc(12px*var(--zf,1));font-weight:900;color:#b91c1c;line-height:1.1" id="main-stat-arrets">0 min</span>
+              <span style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;white-space:nowrap">Fonct.</span>
+              <span style="font-size:calc(12px*var(--zf,1));font-weight:900;color:#15803d;line-height:1.1" id="main-stat-prod">0 min</span>
             </div>
           </div>
           <!-- Répartition temps (pie) -->
@@ -10173,15 +10181,31 @@ function showHistRowDetail(key){
   const isProd=r._rowType==='prod';
   let ofEvts=[];
   if(isProd){
-    const _hm2s=hm=>{if(!hm)return 0;const[h,m]=(hm+':00').split(':').map(Number);return(h||0)*3600+(m||0)*60;};
+    const _hm2s=hm=>{if(!hm)return 0;const[h,m,s2]=((hm||'')+':0:0').split(':').map(Number);return(h||0)*3600+(m||0)*60+(s2||0);};
     const debS=_hm2s(r.debut), finS=_hm2s(r.fin)||86400;
     ofEvts=(window._histEvtsAll||[]).filter(e=>{
       if(!e.date||e.date!==r.date) return false;
-      if(e.pilote&&e.pilote!==r.pilote) return false;
+      if(e.pilote&&r.pilote&&e.pilote!==r.pilote) return false;
       const t=_hm2s(e.debut); return t>=debS&&t<=finS;
     });
+    // Set up net prod helpers from this OF's events (same as showRjOfDetail)
+    const _h2ms=hm=>{if(!hm)return 0;const[h,m,s3]=((hm||'')+':0:0').split(':').map(Number);return((h||0)*3600+(m||0)*60+(s3||0))*1000;};
+    const _stE=ofEvts.filter(e=>!e.is_degrade).map(e=>({s:_h2ms(e.debut),e:_h2ms(e.fin)})).filter(e=>e.e>e.s);
+    const _dgE=ofEvts.filter(e=>e.is_degrade).map(e=>({s:_h2ms(e.debut),e:_h2ms(e.fin)})).filter(e=>e.e>e.s);
+    const _mgH=evs=>{const ss=[...evs].sort((a,b)=>a.s-b.s);const m=[];ss.forEach(o=>{if(m.length&&o.s<=m[m.length-1].e)m[m.length-1].e=Math.max(m[m.length-1].e,o.e);else m.push({...o});});return m;};
+    window._rptDegMin=(dH,fH)=>{const dM=_h2ms(dH),fM=_h2ms(fH);if(fM<=dM)return 0;const mg=_mgH(_dgE.map(e=>({s:Math.max(e.s,dM),e:Math.min(e.e,fM)})).filter(e=>e.e>e.s));return Math.round(mg.reduce((a,o)=>a+(o.e-o.s),0)/60000);};
+    window._rptNetProd=(dH,fH)=>{const dM=_h2ms(dH),fM=_h2ms(fH);if(fM<=dM)return{netMin:0,stopMin:0};const mg=_mgH(_stE.map(e=>({s:Math.max(e.s,dM),e:Math.min(e.e,fM)})).filter(e=>e.e>e.s));const bl=mg.reduce((a,o)=>a+(o.e-o.s),0);return{netMin:Math.round(Math.max(0,fM-dM-bl)/60000),stopMin:Math.round(bl/60000)};};
+    // Compute plan_stop_s from ofEvts + budget config if not set in row (historique rows lack this field)
+    if(!r.plan_stop_s){
+      const _getBK=t=>{const tl=(t||'').toLowerCase();if(tl.includes('grand')||tl.includes('très long'))return 'clean_grand_min';if(tl.includes('long'))return 'clean_long_min';if(tl.includes('nettoyage')||tl.includes('nett'))return 'clean_short_min';if(tl.includes('pause'))return 'pause_min';if(tl.includes('réunion')||tl.includes('reunion')||tl.includes('meeting'))return 'meeting_tol_min';return null;};
+      const ap=_cfgArretsPrevus||{};
+      const byK={};
+      ofEvts.forEach(ev=>{const k=_getBK(ev.type);if(!k)return;const p=((ev.duree||'0:0:0')+':0').split(':').map(Number);const dm=(p[0]||0)*60+(p[1]||0)+(p[2]||0)/60;byK[k]=(byK[k]||0)+dm;});
+      const planMinCalc=Object.entries(byK).reduce((a,[k,v])=>a+Math.min(v,(ap[k]||0)),0);
+      r={...r,plan_stop_s:planMinCalc*60};
+    }
   }
-  _renderAndOpenOfDetail(r, ofEvts);
+  _renderAndOpenOfDetail({...r,_rowType:isProd?'prod':'evt',trs:(r.trs!==''&&r.trs!=null)?parseFloat(r.trs):-1}, ofEvts);
 }
 
 // ── HISTORY ──
@@ -10263,7 +10287,7 @@ async function loadHist(){
   const to=document.getElementById('hist-to').value||today;
   const [declData,evtData]=await Promise.all([
     apiFetch(`/api/history?from=${from}&to=${to}`),
-    apiFetch('/api/events_list')
+    apiFetch(`/api/events_list?from=${from}&to=${to}`)
   ]);
   const decls=Array.isArray(declData)?declData:(declData&&declData.rows?declData.rows:[]);
   const evts=Array.isArray(evtData)?evtData:[];
