@@ -8847,20 +8847,20 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
     if(_d1>_d0){const x1=toX(_d0),x2=toX(_d1);if(x2>x1)html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="url(#${_dpId})" rx="2" opacity=".85"/>`;}
   }
   const fT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
-  // Hourly tick marks
+  // Hourly tick marks — labels centered on tick, guarded 58px from each edge to avoid overlap with start/end labels
+  const TLGUARD=58;
   let tickT=Math.ceil(tS/3600000)*3600000;
-  let _lastTickX=-100;
-  const _firstTickX=toX(Math.ceil(tS/3600000)*3600000);
   while(tickT<tE){
     const tx=toX(tickT);
     const hr=new Date(tickT).getHours();
-    _lastTickX=tx;
     html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`;
-    html+=`<text x="${tx+2}" y="${Y+H2+16}" font-size="11" fill="#374151" font-weight="600">${String(hr).padStart(2,'0')}h</text>`;
+    if(tx>TLGUARD && tx<W-TLGUARD)
+      html+=`<text x="${tx}" y="${Y+H2+16}" text-anchor="middle" font-size="11" fill="#374151" font-weight="600">${String(hr).padStart(2,'0')}h</text>`;
     tickT+=3600000;
   }
-  if(_firstTickX>40) html+=`<text x="2" y="${Y+H2+16}" font-size="13" fill="#374151" font-weight="600">${fT(tS)}</text>`;
-  if(W-_lastTickX>50) html+=`<text x="${W-44}" y="${Y+H2+16}" font-size="13" fill="#374151" font-weight="600">${fT(tE)}</text>`;
+  // Start and end labels always drawn at edges (never overlap with guarded ticks)
+  html+=`<text x="2" y="${Y+H2+16}" font-size="13" fill="#374151" font-weight="600">${fT(tS)}</text>`;
+  html+=`<text x="${W-2}" y="${Y+H2+16}" text-anchor="end" font-size="13" fill="#374151" font-weight="600">${fT(tE)}</text>`;
   svg.innerHTML=html;
 }
 
