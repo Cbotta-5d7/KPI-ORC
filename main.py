@@ -4846,10 +4846,12 @@ body.stop-on #app-hdr{background:linear-gradient(90deg,#fff 0px,#fee2e2 160px,#7
 /* CENTER form col (now left) */
 .form-col{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
 /* Action buttons row below timeline */
-.prod-act-row{display:flex;gap:10px;flex-wrap:wrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10}
+.prod-act-row{display:flex;gap:4px;flex-wrap:nowrap;padding:6px 0 2px;border-top:1px solid var(--border);margin-top:2px;position:sticky;bottom:0;background:var(--card);z-index:10}
 .act-btn{flex:1;min-width:100px;border:none;border-radius:14px;padding:8px 6px 10px;cursor:pointer;font-size:calc(14px*var(--zf,1));font-weight:700;text-align:center;transition:all .12s;white-space:nowrap;min-height:56px;display:flex;align-items:center;justify-content:center;gap:3px;flex-direction:column;line-height:1.25;box-shadow:0 8px 0 rgba(0,0,0,.3),0 10px 16px rgba(0,0,0,.25),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.2);transform:translateY(0);position:relative;overflow:hidden}
-.act-btn-sm{min-height:28px!important;padding:3px 3px!important;min-width:0!important;font-size:calc(9px*var(--zf,1))!important}
-.act-btn-sm .act-icon{font-size:calc(17px*var(--zf,1))!important;margin-bottom:1px}
+.act-btn-sm{aspect-ratio:1!important;min-height:0!important;min-width:0!important;padding:3px 2px!important;font-size:calc(9px*var(--zf,1))!important}
+.act-btn-sm .act-icon{font-size:calc(15px*var(--zf,1))!important;margin-bottom:1px}
+.stop-icon{position:relative;display:inline-flex;align-items:center;justify-content:center}
+.stop-icon-x{position:absolute;font-size:.55em;font-weight:900;color:#fff;text-shadow:none;line-height:1}
 .act-btn::before{content:'';position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 100%);border-radius:14px 14px 0 0;pointer-events:none}
 .act-btn:hover{filter:brightness(1.08)}
 .act-btn:active{transform:translateY(6px);box-shadow:0 2px 0 rgba(0,0,0,.3),0 3px 6px rgba(0,0,0,.2),inset 0 1px 2px rgba(255,255,255,.2),inset 0 -1px 3px rgba(0,0,0,.15)}
@@ -4860,7 +4862,7 @@ body.stop-on #app-hdr{background:linear-gradient(90deg,#fff 0px,#fee2e2 160px,#7
 .act-endprod{background:radial-gradient(ellipse at 50% 25%,#4ade80 0%,#16a34a 55%,#14532d 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4)}
 .act-icon{font-size:calc(34px*var(--zf,1));line-height:1;display:block;margin-bottom:3px}
 /* Accueil 3D buttons */
-.acc-btn{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:12px;gap:4px;border:none;border-radius:16px;padding:14px 22px;min-height:80px;min-width:130px;cursor:pointer;font-size:calc(14px*var(--zf,1));font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.4);box-shadow:0 8px 0 rgba(0,0,0,.3),0 10px 16px rgba(0,0,0,.25),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.2);transform:translateY(0);transition:transform .1s,box-shadow .1s;position:relative;overflow:hidden}
+.acc-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:none;border-radius:16px;padding:14px 22px;min-height:80px;min-width:130px;cursor:pointer;font-size:calc(14px*var(--zf,1));font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.4);box-shadow:0 8px 0 rgba(0,0,0,.3),0 10px 16px rgba(0,0,0,.25),inset 0 2px 3px rgba(255,255,255,.35),inset 0 -3px 6px rgba(0,0,0,.2);transform:translateY(0);transition:transform .1s,box-shadow .1s;position:relative;overflow:hidden}
 .acc-btn::before{content:'';position:absolute;top:0;left:0;right:0;height:50%;background:linear-gradient(180deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,0) 100%);border-radius:16px 16px 0 0;pointer-events:none}
 .acc-btn:hover{filter:brightness(1.08)}
 .acc-btn:active{transform:translateY(6px);box-shadow:0 2px 0 rgba(0,0,0,.3),0 3px 6px rgba(0,0,0,.2),inset 0 1px 2px rgba(255,255,255,.2),inset 0 -1px 3px rgba(0,0,0,.15)}
@@ -5150,7 +5152,7 @@ select{cursor:default}
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0" id="main-action-btns">
         <button class="acc-btn acc-green" id="btn-start" onclick="doStartProd()"><span class="act-icon">▶</span><span>Démarrer production</span></button>
-        <button class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon">🛑✕</span><span>Déclarer un arrêt</span></button>
+        <button class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span>Déclarer un arrêt</span></button>
         <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
         <button class="acc-btn acc-amber" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
       </div>
@@ -5339,11 +5341,11 @@ select{cursor:default}
         </div>
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row" style="justify-content:center">
-          <button class="act-btn act-btn-sm act-stop" style="flex:0 0 auto;width:calc(20% - 5px)" onclick="openStopModal()"><span class="act-icon">🛑✕</span><span>Déclarer un arrêt</span></button>
-          <button id="btn-degrade-prod" class="act-btn act-btn-sm" onclick="toggleDegrade()" style="flex:0 0 auto;width:calc(20% - 5px);background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
-          <button class="act-btn act-btn-sm act-nett" style="flex:0 0 auto;width:calc(20% - 5px)" onclick="doNettoyage()"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
-          <button class="act-btn act-btn-sm act-pause" id="btn-pause" style="flex:0 0 auto;width:calc(20% - 5px)" onclick="doPause()"><span class="act-icon">☕</span><span>Pause</span></button>
-          <button class="act-btn act-btn-sm" id="btn-reunion" onclick="doReunion()" style="flex:0 0 auto;width:calc(20% - 5px);background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
+          <button class="act-btn act-btn-sm act-stop" style="flex:1" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span>Déclarer un arrêt</span></button>
+          <button id="btn-degrade-prod" class="act-btn act-btn-sm" onclick="toggleDegrade()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
+          <button class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
+          <button class="act-btn act-btn-sm act-pause" id="btn-pause" style="flex:1" onclick="doPause()"><span class="act-icon">☕</span><span>Pause</span></button>
+          <button class="act-btn act-btn-sm" id="btn-reunion" onclick="doReunion()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         </div>
       </div>
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
@@ -5390,7 +5392,7 @@ select{cursor:default}
         <!-- Bottom action buttons -->
         <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0;background:var(--card)">
           <button class="act-btn act-cancel" onclick="doCancelProd()" style="width:100%;min-height:44px;padding:8px 12px;font-size:calc(14px*var(--zf,1))"><span class="act-icon" style="font-size:calc(18px*var(--zf,1))">✖</span>Annuler prod</button>
-          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()" title="Remplir le formulaire" style="width:100%;min-height:93px;padding:10px 12px;font-size:calc(20px*var(--zf,1));margin-top:8px"><span class="act-icon" style="font-size:calc(33px*var(--zf,1))">✅</span>Fin d'OF/prod</button>
+          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()" title="Remplir le formulaire" style="width:100%;min-height:121px;padding:10px 12px;font-size:calc(20px*var(--zf,1));margin-top:8px"><span class="act-icon" style="font-size:calc(33px*var(--zf,1))">✅</span>Fin d'OF/prod</button>
         </div>
       </div>
     </div>
