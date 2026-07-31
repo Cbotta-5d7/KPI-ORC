@@ -6193,27 +6193,33 @@ select{cursor:default}
 </div><!-- /app -->
 
 <!-- ════ MODAL: Choix type nettoyage ════ -->
-<div class="overlay" id="m-nett-type" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:700;align-items:center;justify-content:center">
-  <div class="card" style="width:360px;padding:22px;background:#fff;border-radius:14px;border-top:4px solid #f59e0b;box-shadow:0 8px 32px rgba(0,0,0,.18)">
-    <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:#78350f;margin-bottom:16px">🧹 Type de nettoyage</div>
+<div class="overlay" id="m-nett-type" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;align-items:center;justify-content:center;backdrop-filter:blur(4px)">
+  <div class="card" style="width:380px;padding:24px;background:linear-gradient(145deg,#1c1408 0%,#2d1f07 60%,#1c1408 100%);border-radius:20px;border:1px solid rgba(251,191,36,.25);box-shadow:0 0 60px rgba(245,158,11,.35),0 20px 60px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.08)">
+    <div style="font-size:calc(17px*var(--zf,1));font-weight:900;color:#fcd34d;margin-bottom:18px;text-align:center;text-shadow:0 0 20px rgba(251,191,36,.8),0 2px 4px rgba(0,0,0,.6);letter-spacing:.05em">🧹 TYPE DE NETTOYAGE</div>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <button class="btn" id="nett-btn-court" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #fde68a;background:#fffbeb;font-size:calc(13px*var(--zf,1));font-weight:700;color:#92400e;transition:all .15s"
+      <button class="btn" id="nett-btn-court" style="text-align:left;padding:14px 18px;border-radius:14px;border:1.5px solid rgba(253,230,138,.4);background:linear-gradient(145deg,rgba(253,230,138,.18) 0%,rgba(217,119,6,.22) 100%);font-size:calc(14px*var(--zf,1));font-weight:800;color:#fde68a;transition:all .18s;box-shadow:0 4px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.12)"
+        onmouseover="this.style.boxShadow='0 0 24px rgba(253,230,138,.45),0 4px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.18)'"
+        onmouseout="this.style.boxShadow='0 4px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.12)'"
         onclick="doStartNettoyage('court')">
         🧹 Nettoyage court
-        <span id="nett-lbl-court" style="font-size:calc(11px*var(--zf,1));font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
+        <span id="nett-lbl-court" style="font-size:calc(11px*var(--zf,1));font-weight:500;color:#fbbf24;display:block;margin-top:3px;opacity:.85"></span>
       </button>
-      <button class="btn" id="nett-btn-long" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #fcd34d;background:#fefce8;font-size:calc(13px*var(--zf,1));font-weight:700;color:#78350f;transition:all .15s"
+      <button class="btn" id="nett-btn-long" style="text-align:left;padding:14px 18px;border-radius:14px;border:1.5px solid rgba(252,211,77,.4);background:linear-gradient(145deg,rgba(252,211,77,.18) 0%,rgba(180,83,9,.22) 100%);font-size:calc(14px*var(--zf,1));font-weight:800;color:#fcd34d;transition:all .18s;box-shadow:0 4px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.12)"
+        onmouseover="this.style.boxShadow='0 0 24px rgba(252,211,77,.45),0 4px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.18)'"
+        onmouseout="this.style.boxShadow='0 4px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.12)'"
         onclick="doStartNettoyage('long')">
         🧹 Nettoyage long
-        <span id="nett-lbl-long" style="font-size:calc(11px*var(--zf,1));font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
+        <span id="nett-lbl-long" style="font-size:calc(11px*var(--zf,1));font-weight:500;color:#fbbf24;display:block;margin-top:3px;opacity:.85"></span>
       </button>
-      <button class="btn" id="nett-btn-grand" style="text-align:left;padding:12px 16px;border-radius:10px;border:2px solid #f59e0b;background:#fff7ed;font-size:calc(13px*var(--zf,1));font-weight:700;color:#7c2d12;transition:all .15s"
+      <button class="btn" id="nett-btn-grand" style="text-align:left;padding:14px 18px;border-radius:14px;border:1.5px solid rgba(245,158,11,.5);background:linear-gradient(145deg,rgba(245,158,11,.22) 0%,rgba(124,45,18,.28) 100%);font-size:calc(14px*var(--zf,1));font-weight:800;color:#f59e0b;transition:all .18s;box-shadow:0 4px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.12)"
+        onmouseover="this.style.boxShadow='0 0 24px rgba(245,158,11,.5),0 4px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.18)'"
+        onmouseout="this.style.boxShadow='0 4px 16px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.12)'"
         onclick="doStartNettoyage('grand')">
         🧹 Nettoyage très long
-        <span id="nett-lbl-grand" style="font-size:calc(11px*var(--zf,1));font-weight:400;color:#b45309;display:block;margin-top:2px"></span>
+        <span id="nett-lbl-grand" style="font-size:calc(11px*var(--zf,1));font-weight:500;color:#fbbf24;display:block;margin-top:3px;opacity:.85"></span>
       </button>
     </div>
-    <button class="btn btn-sec" style="margin-top:14px;width:100%;font-size:calc(12px*var(--zf,1))" onclick="closeM('m-nett-type')">Annuler</button>
+    <button class="btn btn-sec" style="margin-top:16px;width:100%;font-size:calc(13px*var(--zf,1));background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.15);color:#cbd5e1;border-radius:10px;padding:10px" onclick="closeM('m-nett-type')">✕ Annuler</button>
   </div>
 </div>
 
@@ -6372,13 +6378,13 @@ select{cursor:default}
   </div>
 </div>
 
-<div id="m-degrade" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:5100;align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-degrade')">
-  <div class="mbox" style="max-width:380px;padding:20px" onclick="event.stopPropagation()">
-    <div class="mhdr" style="margin:-20px -20px 14px;padding:14px 16px;border-radius:12px 12px 0 0;background:#854d0e"><h2 id="m-degrade-title" style="color:#fff">🟡 Mode dégradé</h2></div>
-    <div id="m-degrade-body" style="margin-bottom:14px"></div>
+<div id="m-degrade" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:5100;align-items:center;justify-content:center;backdrop-filter:blur(4px)" onclick="if(event.target===this)closeM('m-degrade')">
+  <div style="max-width:400px;width:90%;padding:24px;background:linear-gradient(145deg,#1a1200 0%,#271900 60%,#1a1200 100%);border-radius:20px;border:1px solid rgba(202,138,4,.3);box-shadow:0 0 60px rgba(202,138,4,.4),0 20px 60px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.07)" onclick="event.stopPropagation()">
+    <div id="m-degrade-title" style="font-size:calc(17px*var(--zf,1));font-weight:900;color:#fbbf24;margin-bottom:18px;text-align:center;text-shadow:0 0 24px rgba(202,138,4,.9),0 2px 4px rgba(0,0,0,.6);letter-spacing:.05em">🟡 MODE DÉGRADÉ</div>
+    <div id="m-degrade-body" style="margin-bottom:16px"></div>
     <div style="display:flex;gap:8px">
-      <button class="btn btn-prim" id="m-degrade-confirm" onclick="_confirmDegrade()" style="background:#854d0e;border-color:#854d0e">✓ Confirmer</button>
-      <button class="btn btn-sec" onclick="closeM('m-degrade')">Annuler</button>
+      <button class="btn btn-prim" id="m-degrade-confirm" onclick="_confirmDegrade()" style="flex:1;background:linear-gradient(145deg,#ca8a04,#92400e);border:none;color:#fff;font-weight:800;font-size:calc(14px*var(--zf,1));border-radius:12px;padding:11px;box-shadow:0 4px 18px rgba(202,138,4,.5),inset 0 1px 0 rgba(255,255,255,.2)">✓ Confirmer</button>
+      <button class="btn btn-sec" onclick="closeM('m-degrade')" style="flex:1;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.15);color:#cbd5e1;border-radius:12px;padding:11px;font-size:calc(14px*var(--zf,1))">✕ Annuler</button>
     </div>
   </div>
 </div>
@@ -8340,15 +8346,15 @@ function openDegradeModal(){
   const motifs=window._degradeMotifs||[];
   const bd=document.getElementById('m-degrade-body');
   const tl=document.getElementById('m-degrade-title');
-  if(tl) tl.textContent='🟡 Mode dégradé — choisir le motif';
+  if(tl) tl.textContent='🟡 MODE DÉGRADÉ — Choisir le motif';
   if(!bd) return;
   if(!motifs.length){
-    bd.innerHTML='<div style="color:#dc2626;font-size:calc(12px*var(--zf,1))">Aucun motif configuré. Veuillez d\'abord les ajouter dans les Paramètres.</div>';
+    bd.innerHTML='<div style="color:#fbbf24;font-size:calc(12px*var(--zf,1));text-align:center;padding:12px;background:rgba(220,38,38,.15);border-radius:10px;border:1px solid rgba(220,38,38,.3)">Aucun motif configuré.<br>Veuillez d\'abord les ajouter dans les Paramètres.</div>';
     document.getElementById('m-degrade-confirm').style.display='none';
   } else {
-    let html='<div style="display:flex;flex-direction:column;gap:6px">';
+    let html='<div style="display:flex;flex-direction:column;gap:8px">';
     motifs.forEach(function(m,i){
-      html+=`<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid #ca8a04;border-radius:7px;cursor:pointer;background:#fef9c3"><input type="radio" name="deg-motif" value="${esc(m)}" ${i===0?'checked':''}> <span style="font-weight:700;color:#854d0e">${esc(m)}</span></label>`;
+      html+=`<label style="display:flex;align-items:center;gap:10px;padding:12px 16px;border:1.5px solid rgba(202,138,4,.35);border-radius:12px;cursor:pointer;background:linear-gradient(135deg,rgba(202,138,4,.15) 0%,rgba(146,64,14,.18) 100%);box-shadow:0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08);transition:all .15s" onmouseover="this.style.boxShadow='0 0 20px rgba(202,138,4,.4),0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.12)'" onmouseout="this.style.boxShadow='0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08)'"><input type="radio" name="deg-motif" value="${esc(m)}" ${i===0?'checked':''}> <span style="font-weight:800;color:#fcd34d;font-size:calc(13px*var(--zf,1));text-shadow:0 0 10px rgba(202,138,4,.5)">${esc(m)}</span></label>`;
     });
     html+='</div>';
     bd.innerHTML=html;
@@ -9898,7 +9904,7 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
     const v=minV+(maxV-minV)*t/nTicks;
     const y=toY(v);
     svg+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1"/>`;
-    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11" fill="#64748b">${v%1?v.toFixed(0):v}${unit||''}</text>`;
+    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="13" fill="#64748b">${v%1?v.toFixed(0):v}${unit||''}</text>`;
   }
   // area fill
   let areaD=`M${toX(0).toFixed(1)},${(H-padB).toFixed(1)}`;
@@ -9916,11 +9922,11 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
     const col=colorFn?colorFn(it):areaCol;
     svg+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${col}" stroke="#fff" stroke-width="1.5"/>`;
     const v=it[valueKey]||0;
-    svg+=`<text x="${x.toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${v%1?v.toFixed(1):v}</text>`;
+    svg+=`<text x="${x.toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${v%1?v.toFixed(1):v}</text>`;
     // X labels: date (line1) + poste (line2) — bigger, black
     const lblParts=(it._xLabel||'').split('\n');
-    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="11" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
-    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="10" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
+    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="13" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
+    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="12" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
   });
   svg+='</svg>';
   el.innerHTML=svg;
@@ -9978,13 +9984,13 @@ function _kpiDualLineChart(containerId,items,series,opts){
   [0,0.25,0.5,0.75,1].forEach(t=>{
     const v=minV+(maxV-minV)*t;const y=toY(v);
     svg+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1"/>`;
-    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11" fill="#94a3b8">${v.toFixed(0)}</text>`;
+    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="13" fill="#94a3b8">${v.toFixed(0)}</text>`;
   });
   // Ligne cible (refLine)
   if(refLine!=null){
     const ry=toY(refLine);
     svg+=`<line x1="${padL}" y1="${ry.toFixed(1)}" x2="${W-padR}" y2="${ry.toFixed(1)}" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="6,3"/>`;
-    svg+=`<text x="${W-padR+3}" y="${(ry+4).toFixed(1)}" font-size="11" fill="#dc2626" font-weight="700">Cible ${refLine}</text>`;
+    svg+=`<text x="${W-padR+3}" y="${(ry+4).toFixed(1)}" font-size="13" fill="#dc2626" font-weight="700">Cible ${refLine}</text>`;
   }
   series.forEach(ser=>{
     let lineD='';
@@ -9994,22 +10000,22 @@ function _kpiDualLineChart(containerId,items,series,opts){
       const x=toX(i),y=toY(parseFloat(it[ser.key]||0));
       const v=parseFloat(it[ser.key]||0);
       svg+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${ser.color}" stroke="#fff" stroke-width="1.5"/>`;
-      svg+=`<text x="${x.toFixed(1)}" y="${(y-7).toFixed(1)}" text-anchor="middle" font-size="11" fill="${ser.color}" font-weight="700">${v%1?v.toFixed(1):v}</text>`;
+      svg+=`<text x="${x.toFixed(1)}" y="${(y-7).toFixed(1)}" text-anchor="middle" font-size="13" fill="${ser.color}" font-weight="700">${v%1?v.toFixed(1):v}</text>`;
     });
   });
   items.forEach((it,i)=>{
     const x=toX(i);
     const lblParts=(it._xLabel||'').split('\n');
-    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="11" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
-    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="10" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
+    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="13" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
+    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="12" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
   });
   let lx=padL;
   series.forEach(ser=>{
     svg+=`<line x1="${lx}" y1="${H-7}" x2="${lx+14}" y2="${H-7}" stroke="${ser.color}" stroke-width="2" ${ser.dash?`stroke-dasharray="${ser.dash}"`:''}/>`;
-    svg+=`<text x="${lx+16}" y="${H-3}" font-size="11" fill="#475569">${esc(ser.label||ser.key)}</text>`;
+    svg+=`<text x="${lx+16}" y="${H-3}" font-size="13" fill="#475569">${esc(ser.label||ser.key)}</text>`;
     lx+=90;
   });
-  if(refLine!=null){svg+=`<line x1="${lx}" y1="${H-7}" x2="${lx+14}" y2="${H-7}" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="6,3"/>`;svg+=`<text x="${lx+16}" y="${H-3}" font-size="11" fill="#dc2626">Cible</text>`;}
+  if(refLine!=null){svg+=`<line x1="${lx}" y1="${H-7}" x2="${lx+14}" y2="${H-7}" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="6,3"/>`;svg+=`<text x="${lx+16}" y="${H-3}" font-size="13" fill="#dc2626">Cible</text>`;}
   svg+='</svg>';
   el.innerHTML=svg;
 }
@@ -10475,6 +10481,7 @@ async function calcPeriodReport(autoLoad){
       allOfs.push({...r,date:s.date,poste:s.poste,pilot:s.pilot,pilote:s.pilot,_rowType:'prod',_ofEvts:_ofEvts});
     });
   });
+  allOfs.reverse();
   window._rjOfs=allOfs;
   if(allOfs.length){
     const ofRows=allOfs.map((r,i)=>`<tr style="border-bottom:1px solid var(--border);font-size:calc(10px*var(--zf,1));cursor:pointer;transition:background .12s" onclick="showRjOfDetail(${i})" title="Voir détail OF">
@@ -10496,6 +10503,7 @@ async function calcPeriodReport(autoLoad){
   (d.sessions_detail||[]).forEach(s=>{
     (s.evt_rows||[]).forEach(r=>{allEvts.push({...r,date:s.date,poste:s.poste,pilote:s.pilot,_rowType:'evt'});});
   });
+  allEvts.reverse();
   if(allEvts.length){
     const catCol=t=>{const tl=(t||'').toLowerCase();return tl.includes('nett')?'#f97316':tl.includes('pause')?'#94a3b8':(tl.includes('réunion')||tl.includes('reunion'))?'#8b5cf6':tl.includes('dégrad')?'#ca8a04':'#dc2626';};
     const evtRows=allEvts.map(r=>`<tr style="border-bottom:1px solid var(--border);font-size:calc(10px*var(--zf,1))">
@@ -10606,6 +10614,12 @@ function showRjOfDetail(i){
   const r=window._rjOfs&&window._rjOfs[i];
   if(!r) return;
   const ofEvts=r._ofEvts||[];
+  const _h2ms=hm=>{if(!hm)return 0;const[h,m,s]=(hm+':0:0').split(':').map(Number);return((h||0)*3600+(m||0)*60+(s||0))*1000;};
+  const _stE=ofEvts.filter(e=>!e.is_degrade).map(e=>({s:_h2ms(e.debut),e:_h2ms(e.fin)})).filter(e=>e.e>e.s);
+  const _dgE=ofEvts.filter(e=>e.is_degrade).map(e=>({s:_h2ms(e.debut),e:_h2ms(e.fin)})).filter(e=>e.e>e.s);
+  const _mg=evs=>{const ss=[...evs].sort((a,b)=>a.s-b.s);const m=[];ss.forEach(o=>{if(m.length&&o.s<=m[m.length-1].e)m[m.length-1].e=Math.max(m[m.length-1].e,o.e);else m.push({...o});});return m;};
+  window._rptDegMin=(dH,fH)=>{const dM=_h2ms(dH),fM=_h2ms(fH);if(fM<=dM)return 0;const mg=_mg(_dgE.map(e=>({s:Math.max(e.s,dM),e:Math.min(e.e,fM)})).filter(e=>e.e>e.s));return Math.round(mg.reduce((a,o)=>a+(o.e-o.s),0)/60000);};
+  window._rptNetProd=(dH,fH)=>{const dM=_h2ms(dH),fM=_h2ms(fH);if(fM<=dM)return{netMin:0,stopMin:0};const mg=_mg(_stE.map(e=>({s:Math.max(e.s,dM),e:Math.min(e.e,fM)})).filter(e=>e.e>e.s));const bl=mg.reduce((a,o)=>a+(o.e-o.s),0);return{netMin:Math.round(Math.max(0,fM-dM-bl)/60000),stopMin:Math.round(bl/60000)};};
   _renderAndOpenOfDetail({...r, trs:(r.trs!==''&&r.trs!=null)?parseFloat(r.trs):-1}, ofEvts);
 }
 function _rjSetBanner(txt){const b=document.getElementById('rj-period-banner');if(b)b.textContent='📅 '+txt;}
