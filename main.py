@@ -9061,22 +9061,16 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   // ── Timeline OF ──
   let timelineHtml='';
   if(isProd&&r.debut&&r.fin){
-    const hm2ms=hm=>{if(!hm)return 0;const p=(hm+':0').split(':').map(Number);return(p[0]*3600+p[1]*60)*1000;};
+    const hm2ms=hm=>{if(!hm)return 0;const p=(hm+':0:0').split(':').map(Number);return((p[0]||0)*3600+(p[1]||0)*60)*1000;};
     const dMs=hm2ms(r.debut),fMs=hm2ms(r.fin);
     const span=Math.max(1,fMs-dMs);
-    const pct=ms=>Math.round((ms-dMs)/span*1000)/10;
-    // Build segments: merge stops and degrade
-    const segs=[];
-    // Dégradé intervals in OF window
-    (_rptDegIntervals||[]).forEach(iv=>{
-      const s=Math.max(iv.s,dMs),e=Math.min(iv.e,fMs);
-      if(e>s) segs.push({s,e,c:'#f59e0b',l:'Dégradé'});
-    });
-    // Stops in OF window
-    (_rptStEvts||[]).forEach(sv=>{
-      const s=Math.max(sv.s,dMs),e=Math.min(sv.e,fMs);
-      if(e>s) segs.push({s,e,c:'#dc2626',l:sv.label||'Arrêt'});
-    });
+    const pct=ms=>Math.max(0,Math.min(100,Math.round((ms-dMs)/span*1000)/10));
+    // Build timeline segments from ofEvts (already filtered for this OF window)
+    const segs=ofEvts.map(ev=>({
+      s:hm2ms(ev.debut),e:hm2ms(ev.fin||ev.debut),
+      c:ev.is_degrade?'#f59e0b':'#dc2626',
+      l:ev.is_degrade?'Dégradé':(ev.type||'Arrêt')
+    })).filter(sg=>sg.e>sg.s);
     const tlBar=segs.map(sg=>`<div title="${esc(sg.l)} ${Math.round((sg.e-sg.s)/60000)}min" style="position:absolute;top:0;bottom:0;left:${pct(sg.s)}%;width:${Math.max(.5,pct(sg.e)-pct(sg.s))}%;background:${sg.c};border-radius:2px;opacity:.88;box-shadow:0 2px 4px rgba(0,0,0,.25)"></div>`).join('');
     const evtLegend=ofEvts.map((e,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #f1f5f9;font-size:calc(10px*var(--zf,1))">
       <div style="width:8px;height:8px;border-radius:2px;background:#dc2626;flex-shrink:0"></div>
