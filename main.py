@@ -5849,7 +5849,7 @@ select{cursor:default}
 
 <!-- Modal détail OF -->
 <div id="m-of-detail" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:650;align-items:center;justify-content:center;padding:12px" onclick="if(event.target===this)closeM('m-of-detail')">
-  <div style="width:min(1280px,98vw);height:92vh;background:#f8fafc;border-radius:18px;box-shadow:0 32px 100px rgba(0,0,0,.55),0 8px 24px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden">
+  <div id="of-detail-box" style="width:min(1280px,98vw);height:92vh;background:#f8fafc;border-radius:18px;box-shadow:0 32px 100px rgba(0,0,0,.55),0 8px 24px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden">
     <div id="of-detail-content" style="display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden"></div>
   </div>
 </div>
@@ -9115,24 +9115,26 @@ function _renderAndOpenOfDetail(r, ofEvts) {
         <button onclick="closeM('m-of-detail')" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:10px;width:38px;height:38px;font-size:calc(18px*var(--zf,1));cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2);transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">✕</button>
       </div>
     </div>
-    <!-- Corps 3 colonnes -->
+    ${isProd ? `
+    <!-- Corps 3 colonnes (production uniquement) -->
     <div style="display:grid;grid-template-columns:320px 160px 1fr;min-height:0;flex:1;overflow:hidden">
-      <!-- Colonne gauche : toutes les infos -->
       <div style="padding:16px 14px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">
         <div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Informations complètes</div>
-        ${prodInfoHtml}
-        ${commentHtml}
+        ${prodInfoHtml}${commentHtml}
       </div>
-      <!-- Colonne centre : donut chart -->
       <div style="padding:16px 10px;border-right:1px solid #e2e8f0;overflow-y:auto;background:linear-gradient(180deg,#f8fafc 0%,#fff 100%);display:flex;flex-direction:column;align-items:center">
         <div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;text-align:center">Répartition temps</div>
         ${chartHtml||'<div style="color:#94a3b8;font-size:calc(10px*var(--zf,1));text-align:center;padding:20px 0">Pas de données</div>'}
       </div>
-      <!-- Colonne droite : timeline + arrêts -->
-      <div style="padding:16px 14px;overflow-y:auto;background:#fff">
-        ${isProd?timelineHtml:'<div style="color:#94a3b8;font-size:calc(11px*var(--zf,1));padding:20px 0;text-align:center">Aucun arrêt associé</div>'}
-      </div>
-    </div>`;
+      <div style="padding:16px 14px;overflow-y:auto;background:#fff">${timelineHtml}</div>
+    </div>` : `
+    <!-- Corps 1 colonne (arrêt/événement) -->
+    <div style="padding:20px 24px;overflow-y:auto;flex:1;background:#fff">
+      <div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Informations</div>
+      <div style="max-width:400px">${prodInfoHtml}${commentHtml}</div>
+    </div>`}`;
+  const box=document.getElementById('of-detail-box');
+  if(box){box.style.width=isProd?'min(1280px,98vw)':'min(480px,96vw)';box.style.height=isProd?'92vh':'auto';box.style.maxHeight=isProd?'92vh':'80vh';}
   openM('m-of-detail');
 }
 
