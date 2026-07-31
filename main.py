@@ -533,10 +533,17 @@ def _compute_budget_state_now():
             "of_deductible_s": round(of_ded, 1),
             "shift_deductible_s": round(shift_ded, 1),
         }
+    # Déductible hors OF en cours (pour éviter le bug TRS 150% quand arrêt prévu pendant OF actif)
+    total_shift_ded_before_of = 0.0
+    for lbl in BUDGET_KEYS.values():
+        budget = budgets_s.get(lbl, 0.0)
+        s_cons_before = max(0.0, shift_consumed.get(lbl, 0.0) - of_consumed.get(lbl, 0.0))
+        total_shift_ded_before_of += min(s_cons_before, budget)
     return {
         "per_type": per_type,
         "total_shift_deductible_s": round(total_shift_ded, 1),
         "total_of_deductible_s": round(total_of_ded, 1),
+        "shift_deductible_before_of_s": round(total_shift_ded_before_of, 1),
     }
 
 # ── Timers ────────────────────────────────────────────────────────────────────
@@ -3300,6 +3307,7 @@ def api_session_report():
                     "actual_debut":actual_debut,"actual_fin":actual_fin,
                     "ecart_s":round(ecart_s,0),"model_dur_s":round(model_dur_s,0),
                     "planned_ded_s":round(planned_ded,0),"prod_ref":round(prod_ref,1),
+                    "is_live":_is_live_sr,
                     "ouverture_min":_pm2_xl.get('ouverture_min'),
                     "utile_min":_pm2_xl.get('utile_min'),
                     "fonct_min":_pm2_xl.get('fonct_min'),
@@ -4951,7 +4959,7 @@ body.stop-on #app-hdr{background:linear-gradient(90deg,#fff 0px,#fee2e2 160px,#7
 .htab{background:rgba(26,31,94,0.72);border:1.5px solid rgba(255,255,255,.25);border-bottom:3px solid transparent;color:rgba(255,255,255,.82);padding:7px 16px 9px;border-radius:8px 8px 0 0;cursor:pointer;font-size:calc(12px*var(--zf,1));font-weight:700;white-space:nowrap;transition:all .15s;position:relative;top:3px;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 -2px 6px rgba(0,0,0,.15)}
 .htab:hover{background:linear-gradient(180deg,rgba(255,255,255,.28) 0%,rgba(255,255,255,.12) 100%);border-color:rgba(255,255,255,.42);border-bottom-color:transparent;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 -3px 8px rgba(0,0,0,.2)}
 .htab.on{background:linear-gradient(180deg,#fff 0%,#f0f4ff 100%);color:#1e3a8a;font-weight:800;border-color:rgba(255,255,255,.5);border-bottom:3px solid #fff;box-shadow:0 -4px 10px rgba(0,0,0,.15),inset 0 1px 0 #fff,inset 0 -1px 0 rgba(30,58,138,.1)}
-.htab.prod-on{background:var(--green)!important;color:#fff!important;font-weight:800;animation:pt 1.4s ease-in-out infinite;border-color:transparent!important;border-bottom-color:transparent!important;letter-spacing:.3px}
+.htab.prod-on{background:#22c55e!important;color:#fff!important;font-weight:800;animation:pt 1.4s ease-in-out infinite;border-color:transparent!important;border-bottom-color:transparent!important;letter-spacing:.3px}
 #ht-prod{display:none}
 #ht-prod.prod-visible{display:inline-block!important}
 @keyframes pt{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 5px 2px rgba(34,197,94,.4)}50%{opacity:.45;transform:scale(1.08);box-shadow:0 0 16px 6px rgba(34,197,94,.9)}}
@@ -5340,7 +5348,7 @@ select{cursor:default}
         <button class="acc-btn acc-green" id="btn-start" onclick="doStartProd()"><span class="act-icon">▶</span><span>Démarrer production</span></button>
         <button class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span>Déclarer un arrêt</span></button>
         <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
-        <button class="acc-btn acc-amber" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
+        <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
       </div>
     </div>
     <!-- KPI accueil — POSTE ACTUEL -->
@@ -8535,10 +8543,12 @@ function updateGauge(s){
     else{_shiftRefDt=null;}
   }
   // TRS Accueil : début de plage → fin de la dernière déclaration de prod, avec déduction budget
+  // Quand OF en cours, n'utiliser que les arrêts AVANT l'OF actif pour éviter le bug TRS 150%
   if(_shiftRefDt&&s.prod_ref>0){
     const calcRef=_lastProdDeclTime||new Date();
     const shiftElap=(calcRef.getTime()-_shiftRefDt.getTime())/1000;
-    const effShiftElap=Math.max(1,shiftElap-shiftDed);
+    const shiftDedForPoste=s.prod_active?((bs.shift_deductible_before_of_s)||0):shiftDed;
+    const effShiftElap=Math.max(1,shiftElap-shiftDedForPoste);
     const todayEquiv=_todayEquivAccum||0;
     const trsPoste=effShiftElap>0&&todayEquiv>0?Math.round(todayEquiv/(s.prod_ref*effShiftElap/28800)*100*10)/10:-1;
     // Label : "Entre Xh et Yh" (Y = heure fin de la dernière déclaration, pas l'heure actuelle)
@@ -9021,8 +9031,8 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     const hm2s=hm=>{if(!hm)return 0;const p=(hm+':0').split(':').map(Number);return p[0]*3600+p[1]*60;};
     const dS=hm2s(r.debut),fS=hm2s(r.fin);
     const totalMin=Math.max(1,Math.round((fS-dS)/60));
-    const {netMin,stopMin}=_rptNetProd(r.debut,r.fin);
-    const degMin=_rptDegMin(r.debut,r.fin);
+    const {netMin,stopMin}=(window._rptNetProd?window._rptNetProd(r.debut,r.fin):{netMin:0,stopMin:0});
+    const degMin=window._rptDegMin?window._rptDegMin(r.debut,r.fin):0;
     const planMin=Math.round((r.plan_stop_s||0)/60);
     const unplanMin=Math.max(0,stopMin-planMin);
     const prodMin=Math.max(0,netMin-degMin);
@@ -10697,15 +10707,15 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const _rptHmsMs=hm=>{if(!hm)return 0;const[h,m,s]=(hm+':0:0').split(':').map(Number);return(h||0)*3600000+(m||0)*60000+(s||0)*1000;};
   const _rptStEvts=(d.evt_rows||[]).filter(e=>!e.is_degrade).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(e=>e.e>e.s);
   const _rptDgEvts=(d.evt_rows||[]).filter(e=>e.is_degrade).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(e=>e.e>e.s);
-  function _rptDegMin(debHm,finHm){
+  window._rptDegMin=function(debHm,finHm){
     const dMs=_rptHmsMs(debHm),fMs=_rptHmsMs(finHm);
     if(fMs<=dMs) return 0;
     const ov=_rptDgEvts.map(sv=>({s:Math.max(sv.s,dMs),e:Math.min(sv.e,fMs)})).filter(o=>o.e>o.s);
     ov.sort((a,b)=>a.s-b.s);
     const mg=[];ov.forEach(o=>{if(mg.length&&o.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,o.e);else mg.push({...o});});
     return Math.round(mg.reduce((a,o)=>a+(o.e-o.s),0)/60000);
-  }
-  function _rptNetProd(debHm,finHm){
+  };
+  window._rptNetProd=function(debHm,finHm){
     const dMs=_rptHmsMs(debHm),fMs=_rptHmsMs(finHm);
     if(fMs<=dMs) return {netMin:0,stopMin:0};
     const ov=_rptStEvts.map(sv=>({s:Math.max(sv.s,dMs),e:Math.min(sv.e,fMs)})).filter(o=>o.e>o.s);
@@ -10713,7 +10723,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     const mg=[];ov.forEach(o=>{if(mg.length&&o.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,o.e);else mg.push({...o});});
     const blocked=mg.reduce((a,o)=>a+(o.e-o.s),0);
     return {netMin:Math.round(Math.max(0,fMs-dMs-blocked)/60000),stopMin:Math.round(blocked/60000)};
-  }
+  };
   const prodsHtml=(d.prod_rows||[]).map((r,ri)=>{
     const tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
     const kitStr=(r.kit||'').toLowerCase();
@@ -10837,6 +10847,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0">
         <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?' — '+(d.actual_debut||d.model_debut)+' → '+(d.actual_fin||d.model_fin):''}</div>
         <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
+        ${d.is_live?`<div style="margin-top:6px;background:#22c55e;color:#fff;font-size:calc(10px*var(--zf,1));font-weight:800;text-align:center;border-radius:6px;padding:3px 8px;letter-spacing:.05em;animation:rpt-arr .9s step-start infinite">▶ POSTE EN COURS</div>`:''}
         <div style="font-size:calc(9px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">TRS :</div>
         <div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3)">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
       </div>
@@ -10850,7 +10861,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Équiv.</div></div>
         </div>
         <div style="display:flex;align-items:center;gap:5px">
-          <div class="fp-card" style="padding:6px;text-align:center;flex:1"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#0369a1;font-weight:900">${cadenceH}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Cad./h</div></div>
+          <div class="fp-card" style="padding:6px;text-align:center;flex:1"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#0369a1;font-weight:900">${d.is_live?'—':cadenceH}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Cad./h</div></div>
           <div style="text-align:center;flex-shrink:0"><div style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#0369a1">${Math.round(cadenceRefPcsMin*10)/10}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">réf pcs/min</div></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
@@ -10858,9 +10869,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#8b5cf6;font-weight:900">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#374151">${ouvertureMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#374151">${d.is_live?'—':ouvertureMin+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#059669">${tempsUtile} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${tempsFonctionnement} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${d.is_live?'—':tempsFonctionnement+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#dc2626">${netStopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
           ${degMin>0?`<div class="fp-card" style="padding:5px 6px;border-left:3px solid #ca8a04"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#b45309">${degMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en mode dégradé</div></div>`:''}
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${perteCadenceHtml}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
