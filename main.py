@@ -5356,7 +5356,7 @@ select{cursor:default}
         <!-- Budget arrêts prévus -->
         <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;background:#fffbeb">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <span style="font-size:calc(9px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">⏱ Arrêts prévus</span>
+            <span style="font-size:calc(9px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">⏱ Arrêts prévus du poste</span>
             <button onclick="openBudgetOverrideModal()" id="btn-bov-prod" style="display:none;background:none;border:1px solid #92400e;border-radius:4px;color:#92400e;font-size:calc(9px*var(--zf,1));padding:1px 6px;cursor:pointer" title="Modifier le budget pour ce poste">✏️</button>
           </div>
           <div id="budget-bars-prod"></div>
