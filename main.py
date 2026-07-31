@@ -411,17 +411,16 @@ def _option_b_trs(prod_raw_rows, deg_ivs, prod_ref, plan_ivs=None):
     if sum_expected <= 0: return -1.0, 0.0
     return round(tot_equiv / sum_expected * 100, 1), sum_expected
 
-def _compute_planned_deduction_s(evt_rows):
+def _compute_planned_deduction_s(evt_rows, overrides=None):
     """Calcule les secondes à déduire de l'elapsed TRS pour les arrêts planifiés.
     evt_rows : liste de tuples (rn, r) issus de _decl_cache OU liste de dicts {"type","duree"}.
+    overrides : dict optionnel {key: minutes} — prioritaire sur cfg (session en cours uniquement).
     """
-    budgets = {
-        "clean_short_min": float(cfg.get("clean_short_min", 0)) * 60,
-        "clean_long_min":  float(cfg.get("clean_long_min",  0)) * 60,
-        "clean_grand_min": float(cfg.get("clean_grand_min", 0)) * 60,
-        "meeting_tol_min": float(cfg.get("meeting_tol_min", 0)) * 60,
-        "pause_min":       float(cfg.get("pause_min",       0)) * 60,
-    }
+    _ov = overrides if overrides is not None else {}
+    budgets = {}
+    for k in ("clean_short_min", "clean_long_min", "clean_grand_min", "meeting_tol_min", "pause_min"):
+        raw = _ov.get(k)
+        budgets[k] = float((raw if raw is not None else cfg.get(k, 0)) or 0) * 60
     if all(v == 0 for v in budgets.values()):
         return 0.0
     actual = {}
@@ -1489,6 +1488,7 @@ def api_logout():
     _S["poste"] = None
     _S["shift_start"] = None
     _S["postes_row_num"] = None
+    _S["budget_overrides"] = {}
     save_session()
     # Reload cfg from disk so temporary session horaire overrides are cleared
     # (login screen will show original Paramètres values again)
@@ -2566,7 +2566,8 @@ def api_fin_poste_data():
                 declared_stop_s += dur_s
                 shift_evt_rows.append((rn, r))
             except: pass
-    planned_ded = _compute_planned_deduction_s(shift_evt_rows)
+    _ses_ov = _S.get("budget_overrides") or {}
+    planned_ded = _compute_planned_deduction_s(shift_evt_rows, _ses_ov)
     model_dur_s = get_current_shift_duration_s()
     ecart_s = max(0.0, model_dur_s - (tot_s + declared_stop_s))
     trs_poste_shift = -1.0
@@ -2634,11 +2635,12 @@ def api_fin_poste_data():
     ouverture_min_fp = round(model_dur_s / 60, 1)
     temps_fonctionnement_fp = round(max(0.0, ouverture_min_fp - net_stop_min_fp), 1)
     # Budget arrêts prévus — utilise l'implémentation centralisée pour arrets_prevu
-    arrets_prevu_fp = _compute_planned_deduction_s(shift_evt_rows) / 60  # minutes
+    arrets_prevu_fp = _compute_planned_deduction_s(shift_evt_rows, _ses_ov) / 60  # minutes
     temps_utile_fp = round(max(0.0, ouverture_min_fp - arrets_prevu_fp), 1)
     # Détail par type (nécessaire pour réunion et dépassement uniquement)
     _blab = {"pause_min":"Pause","meeting_tol_min":"Réunion","clean_short_min":"Nettoyage court","clean_long_min":"Nettoyage long","clean_grand_min":"Nettoyage très long"}
-    _bdata = {bk:{"budget_min":float(cfg.get(bk,0) or 0),"used_min":0.0} for bk in _blab}
+    # budget_min utilise l'override de session si disponible, sinon cfg
+    _bdata = {bk:{"budget_min":float((_ses_ov.get(bk) if _ses_ov.get(bk) is not None else cfg.get(bk,0)) or 0),"used_min":0.0} for bk in _blab}
     for _, r_e in shift_evt_rows:
         _bk2 = _get_arret_budget_key(str(r_e[0] or ''))
         if _bk2 and _bk2 in _bdata:
@@ -2651,7 +2653,7 @@ def api_fin_poste_data():
     cadence_ref_fp = round(prod_ref / 480, 4) if prod_ref > 0 else 0.0
     _elapsed_fp = max(1.0, model_dur_s - arrets_prevu_fp * 60)
     _adj_fp = max(1.0, _elapsed_fp)
-    _plan_bdata_fp = {bk: float(cfg.get(bk, 0) or 0) * 60 for bk in _blab}
+    _plan_bdata_fp = {bk: float((_ses_ov.get(bk) if _ses_ov.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab}
     _plan_used_fp = {bk: 0.0 for bk in _blab}
     _plan_ivs_fp = []
     for _, r_e2 in shift_evt_rows:
@@ -6823,6 +6825,7 @@ function applyState(s) {
   const bovA=document.getElementById('btn-bov-acc');if(bovA)bovA.style.display=_showBov?'':'none';
   const bovP=document.getElementById('btn-bov-prod');if(bovP)bovP.style.display=_showBov?'':'none';
   window._budgetOverrides=s.budget_overrides||{};
+  window._lastBudgetState=s.budget_state||null;
   // Pause button text
   const pbtn=document.getElementById('btn-pause');
   if(pbtn){pbtn.innerHTML=s.is_paused?'<span class="act-icon">▶</span>Reprendre':'<span class="act-icon">☕</span>Pause';}
