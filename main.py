@@ -2820,13 +2820,27 @@ def api_past_sessions():
             else:
                 _mdur2 = get_shift_duration_s(s["poste"], date_obj)
             if _live_key and key == _live_key:
-                # Poste en cours : TRS live — même formule que api_fin_poste_data
-                # On ignore le TRS pré-calculé Excel (non encore écrit) et on utilise
-                # la durée réelle de la session + les budget_overrides actifs.
+                # Poste en cours : TRS live identique à api_fin_poste_data (Option B + plan_ivs)
                 _ses_ov = _S.get("budget_overrides") or {}
-                _live_ded = _compute_planned_deduction_s(_evts_ps, _ses_ov)
                 _live_dur = get_current_shift_duration_s()
-                if _live_dur > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
+                if _pers_pct_map and _prod_raws_ps:
+                    _blab_lv = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
+                    _plan_bdata_lv = {bk: float((_ses_ov.get(bk) if _ses_ov.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab_lv}
+                    _plan_used_lv = {bk: 0.0 for bk in _blab_lv}
+                    _plan_ivs_lv = []
+                    for _, r_lv in _evts_ps:
+                        _bk_lv = _get_arret_budget_key(str(r_lv[0] or ''))
+                        if _bk_lv and _bk_lv in _plan_bdata_lv:
+                            _ds_lv = _hms_to_sec(str(r_lv[16] or '00:00:00'))
+                            _fs_lv = _norm_fin(_ds_lv, _hms_to_sec(str(r_lv[17] or '00:00:00')))
+                            _dur_lv = _fs_lv - _ds_lv
+                            if _dur_lv > 0 and _plan_used_lv[_bk_lv] < _plan_bdata_lv[_bk_lv]:
+                                _plan_ivs_lv.append((_ds_lv, _ds_lv + min(_dur_lv, _plan_bdata_lv[_bk_lv] - _plan_used_lv[_bk_lv])))
+                            _plan_used_lv[_bk_lv] += _dur_lv
+                    _deg_ivs_lv = _merged_degrade_ivs([re for _, re in _evts_ps])
+                    trs, _ = _option_b_trs(_prod_raws_ps, _deg_ivs_lv, prod_ref, _plan_ivs_lv)
+                elif _live_dur > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
+                    _live_ded = _compute_planned_deduction_s(_evts_ps, _ses_ov)
                     _live_el = max(1.0, _live_dur - _live_ded)
                     trs = round(s["tot_equiv"] / (prod_ref * _live_el / 28800) * 100, 1)
             elif _xl_trs_ps is not None and _xl_trs_ps > 0:
@@ -3111,7 +3125,30 @@ def api_session_report():
     except Exception:
         _date_obj_rpt = None
     debut_str, fin_str = _get_model_day_cfg(poste, _date_obj_rpt)
-    planned_ded = _compute_planned_deduction_s(evt_rows)
+    _sr_ss = _S.get("shift_start")
+    _sr_live_date = _sr_ss.date().strftime("%d/%m/%Y") if _sr_ss else datetime.date.today().strftime("%d/%m/%Y")
+    _is_live_sr = bool(_S.get("pilot") and _S.get("pilot") == pilot and _S.get("poste") == poste and date_str == _sr_live_date)
+    _sr_live_ov = (_S.get("budget_overrides") or {}) if _is_live_sr else {}
+    planned_ded = _compute_planned_deduction_s(evt_rows, _sr_live_ov if _is_live_sr else None)
+    # Pour session en cours : intervalles planifiés capés au budget (comme api_fin_poste_data)
+    _plan_ivs_sr = []
+    if _is_live_sr:
+        _blab_sr = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
+        _plan_bdata_sr = {bk: float((_sr_live_ov.get(bk) if _sr_live_ov.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab_sr}
+        _plan_used_sr = {bk: 0.0 for bk in _blab_sr}
+        for rn2, r2 in _decl_cache:
+            _rd2 = str(r2[39] if len(r2) > 39 else "").strip() or _row_date(r2[2])
+            if _rd2 != date_str: continue
+            if str(r2[4] or "") != pilot or str(r2[3] or "") != poste: continue
+            if str(r2[0] or "").strip().lower() in ("production","prod",""): continue
+            _bk_sr = _get_arret_budget_key(str(r2[0] or ''))
+            if _bk_sr and _bk_sr in _plan_bdata_sr:
+                _ds_sr = _hms_to_sec(str(r2[16] or '00:00:00'))
+                _fs_sr = _norm_fin(_ds_sr, _hms_to_sec(str(r2[17] or '00:00:00')))
+                _dur_sr = _fs_sr - _ds_sr
+                if _dur_sr > 0 and _plan_used_sr[_bk_sr] < _plan_bdata_sr[_bk_sr]:
+                    _plan_ivs_sr.append((_ds_sr, _ds_sr + min(_dur_sr, _plan_bdata_sr[_bk_sr] - _plan_used_sr[_bk_sr])))
+                _plan_used_sr[_bk_sr] += _dur_sr
     _postes_map2 = load_postes_shift_map()
     _pk2 = (pilot.lower(), date_str)
     _xl_trs_sr = None
@@ -3121,7 +3158,7 @@ def api_session_report():
         _pdeb2 = _pm2['deb_dt']; _pfin2 = _pm2['fin_dt']
         _xl_trs_sr = _pm2.get('trs')
         _xl_perte_sr = _pm2.get('perte_min')
-        model_dur_s = max(0.0, (_pfin2 - _pdeb2).total_seconds()) if _pfin2 else 0.0
+        model_dur_s = max(0.0, (_pfin2 - _pdeb2).total_seconds()) if _pfin2 else (get_current_shift_duration_s() if _is_live_sr else 0.0)
         if not debut_str:
             debut_str = _pdeb2.strftime("%H:%M")
             fin_str = _pfin2.strftime("%H:%M") if _pfin2 else ''
@@ -3139,7 +3176,7 @@ def api_session_report():
             if _xl_perte_sr is not None:
                 perte_cadence_s = _xl_perte_sr * 60.0
     elif _pers_pct_map and _prod_raws_sr and tot_eq > 0:
-        trs_shift, _sum_exp_sr = _option_b_trs(_prod_raws_sr, _deg_mg_sr, prod_ref)
+        trs_shift, _sum_exp_sr = _option_b_trs(_prod_raws_sr, _deg_mg_sr, prod_ref, _plan_ivs_sr)
         _cadence_ref_s = prod_ref / 28800
         if _cadence_ref_s > 0 and _sum_exp_sr > 0:
             perte_cadence_s = (_sum_exp_sr - tot_eq) / _cadence_ref_s
