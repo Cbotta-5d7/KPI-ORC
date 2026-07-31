@@ -1087,7 +1087,7 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
 
-POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Total Arrets (min)","Total Pauses (min)","Nettoyage (min)","Durée Prod Totale (min)","Durée Prod Sans Arrêt (min)","Durée poste théorique (min)","Commentaire","Début Poste","Fin Poste","Temps ouverture (min)","Temps utile (min)","Temps fonctionnement (min)","Temps en arrêt (min)","Réf cadence (pcs/min)","Perte cadence (min)"]
+POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Cadence (equiv/h)","Total Pauses (min)","Nettoyage (min)","Réunion (min)","Dépassement arrêts (min)","Nb chgt fibre","Commentaire","Début Poste","Fin Poste","Temps ouverture (min)","Temps utile (min)","Temps fonctionnement (min)","Temps en arrêt (min)","Réf cadence (pcs/min)","Perte cadence (min)","Temps dégradé (min)","Pièces théoriques"]
 
 def write_pilots_to_excel(pilot_passwords):
     """Écrit la liste pilote+MDP dans l'onglet Listes col A+B."""
@@ -2663,6 +2663,7 @@ def api_fin_poste_data():
                 _cap_p = min(_dur_p, _plan_bdata_fp[_bk_p] - _plan_used_fp[_bk_p])
                 _plan_ivs_fp.append((_ds_p, _ds_p + _cap_p))
             _plan_used_fp[_bk_p] += _dur_p
+    _sum_exp_fp = None
     if _pers_pct_map and _filtered_prod_raw_fp:
         _deg_ivs_fp = _merged_degrade_ivs([r_s for _, r_s in shift_evt_rows])
         trs_poste_shift, _sum_exp_fp = _option_b_trs(_filtered_prod_raw_fp, _deg_ivs_fp, prod_ref, _plan_ivs_fp)
@@ -2698,7 +2699,7 @@ def api_fin_poste_data():
         "perte_cadence_min": perte_cadence_fp,
         "degrade_min": round(_degrade_s_fp / 60, 1),
         "cadence_h": cadence_h_fp,
-        "pcs_theorique": round(_sum_exp_fp, 1) if '_sum_exp_fp' in dir() else round(prod_ref * max(1.0, model_dur_s - planned_ded) / 28800, 1),
+        "pcs_theorique": round(_sum_exp_fp, 1) if _sum_exp_fp is not None else round(prod_ref * max(0.0, model_dur_s - planned_ded) / 28800, 1),
         "reunion_min": reunion_min_fp,
         "depassement_min": depassement_min_fp,
         "nb_fibre_chg": nb_fibre_chg_fp,
@@ -2965,7 +2966,9 @@ def api_period_report():
             perte = round((_sum_exp_pr - s['tot_equiv']) / cadence_ref, 1) if cadence_ref>0 else 0.0
         agg_sum_expected += _sum_exp_pr
         depassement = sum(max(0.0, v['used_min'] - v['budget_min']) for v in _bdata.values())
-        agg_depassement += depassement
+        _xl_theorique = _xl.get('pcs_theorique') or _sum_exp_pr
+        agg_sum_theorique += _xl_theorique
+        agg_depassement += (_xl.get('depassement_min') if _xl.get('depassement_min') is not None else depassement)
         _pf = sorted(s.get('prod_rows', []), key=lambda x: x[0])
         nb_chg = sum(1 for i in range(1, len(_pf)) if _pf[i][1] and _pf[i-1][1] and _pf[i][1] != _pf[i-1][1])
         agg_fibre_chg += nb_chg
@@ -2989,14 +2992,11 @@ def api_period_report():
         if day not in trs_by_day: trs_by_day[day]={'equiv':0.0,'elapsed_s':0.0,'sum_expected':0.0}
         trs_by_day[day]['equiv']    += s['tot_equiv']
         trs_by_day[day]['elapsed_s'] += elapsed_s
-        trs_by_day[day]['sum_expected'] += _sum_exp_pr
-        _cad_s = _xl.get('cadence_h') or (round(s['tot_equiv']/fonct_min*60) if fonct_min>0 else 0)
+        trs_by_day[day]['sum_expected'] += _xl_theorique
+        _cad_s = _xl.get('cadence_h') or (round(s['tot_equiv']/utile_min*60) if utile_min>0 else 0)
         _of_rows_sd = [{"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"fibre":str(r[11] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"nb_pers":str(r[6] or ""),"trs":str(r[24] or ""),"degrade_min":round(_deg_overlap_s(_hms_to_sec(str(r[16] or "00:00:00")),_hms_to_sec(str(r[17] or "00:00:00")),_deg_ivs_pr)/60,1)} for r in s.get('prod_raws',[])]
         _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or ""))} for _rn2, re2 in s.get('evt_rows',[])]
         agg_degrade_min += (_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s / 60.0)
-        _xl_theorique = _xl.get('pcs_theorique') or _sum_exp_pr
-        agg_sum_theorique += _xl_theorique
-        agg_depassement += (_xl.get('depassement_min') if _xl.get('depassement_min') is not None else depassement)
         sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd})
     _trs_denom = agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected
     trs_periode = round(agg_equiv/_trs_denom*100,1) if _trs_denom>0 and agg_equiv>0 else -1.0
@@ -9228,8 +9228,7 @@ async function loadFPData(){
   // New metrics: Cadence/h, Nb pièces, Chg. fibre
   const ofList=d.of_list||[];
   const totQteFabFP=ofList.reduce((s,r)=>s+parseFloat(r.qte_fab||0),0);
-  const elapsedEffSFP=Math.max(1,(d.model_dur_s||0)-(d.planned_ded_s||0));
-  const cadenceHFP=elapsedEffSFP>0?Math.round(totQteFabFP/elapsedEffSFP*3600):0;
+  const cadenceHFP=(d.cadence_h!=null&&d.cadence_h>0)?Math.round(d.cadence_h):0;
   const sortedProdFFP=ofList.filter(r=>r.fibre).sort((a,b)=>(a.debut||'').localeCompare(b.debut||''));
   let nbChangFibreFP=0;for(let i=1;i<sortedProdFFP.length;i++){if(sortedProdFFP[i].fibre!==sortedProdFFP[i-1].fibre)nbChangFibreFP++;}
   document.getElementById('fp-cadence').textContent=cadenceHFP;
