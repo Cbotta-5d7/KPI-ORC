@@ -5956,15 +5956,15 @@ select{cursor:default}
     <!-- 3 courbes côte à côte (compact) -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;height:200px;flex-shrink:0;background:#fff;border-bottom:1px solid #e2e8f0">
       <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px;border-right:1px solid #f1f5f9">
-        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📈 TRS par poste (%)</div>
+        <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📈 TRS par poste (%)</div>
         <div id="kpi-trs-chart" style="flex:1;min-height:0;overflow:hidden"></div>
       </div>
       <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px;border-right:1px solid #f1f5f9;background:#fafafa">
-        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">🛑 Arrêts cumulés (min)</div>
+        <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">🛑 Arrêts cumulés (min)</div>
         <div id="kpi-arr-chart" style="flex:1;min-height:0;overflow:hidden"></div>
       </div>
       <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px">
-        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#6366f1;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📦 Nombre d'OF par poste</div>
+        <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#6366f1;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📦 Nombre d'OF par poste</div>
         <div id="kpi-of-chart" style="flex:1;min-height:0;overflow:hidden"></div>
       </div>
     </div>
@@ -5973,15 +5973,15 @@ select{cursor:default}
       <!-- Gauche : cadence + 2 évolutions -->
       <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #e2e8f0;min-height:0">
         <div style="flex:2;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9;min-height:0">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⚡ Évolution cadence (éq./h)</div>
+          <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⚡ Évolution cadence (éq./h)</div>
           <div id="kpi-cad-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
         <div style="flex:1;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#f8fafc;border-bottom:1px solid #f1f5f9;min-height:0">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Équivalence</div>
+          <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Équivalence</div>
           <div id="kpi-qte-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
         <div style="flex:1;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;min-height:0">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#8b5cf6;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">🧵 Changements de fibre par poste</div>
+          <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#8b5cf6;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">🧵 Changements de fibre par poste</div>
           <div id="kpi-fibre-chart" style="flex:1;min-height:0;overflow:hidden"></div>
         </div>
       </div>
@@ -9942,7 +9942,7 @@ function _kpiBarChart(containerId,items,valueKey,colorFn,unit){
   [0,0.5,1].forEach(t=>{
     const v=maxV*t;const y=padT+gH*(1-t);
     svg+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1"/>`;
-    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="8" fill="#94a3b8">${Math.round(v)}${t>0&&unit?unit:''}</text>`;
+    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11" fill="#94a3b8">${Math.round(v)}${t>0&&unit?unit:''}</text>`;
   });
   items.forEach((it,i)=>{
     const v=it[valueKey]||0;
@@ -9951,24 +9951,26 @@ function _kpiBarChart(containerId,items,valueKey,colorFn,unit){
     const y=padT+gH-bH;
     const col=colorFn?colorFn(it):'#f59e0b';
     svg+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW}" height="${Math.max(0,bH).toFixed(1)}" fill="${col}" rx="2" opacity=".85"/>`;
-    if(v>0)svg+=`<text x="${(x+barW/2).toFixed(1)}" y="${(y-2).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${col}">${v%1?v.toFixed(1):v}</text>`;
+    if(v>0)svg+=`<text x="${(x+barW/2).toFixed(1)}" y="${(y-2).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${v%1?v.toFixed(1):v}</text>`;
     const lbl=(it._xLabel||'').split('\n')[0];
-    svg+=`<text transform="translate(${(x+barW/2).toFixed(1)},${(H-padB+4).toFixed(1)}) rotate(35)" font-size="7" fill="#64748b" dominant-baseline="hanging">${esc(lbl)}</text>`;
+    svg+=`<text transform="translate(${(x+barW/2).toFixed(1)},${(H-padB+4).toFixed(1)}) rotate(35)" font-size="11" fill="#64748b" dominant-baseline="hanging">${esc(lbl)}</text>`;
   });
   svg+='</svg>';
   el.innerHTML=svg;
 }
 
-function _kpiDualLineChart(containerId,items,series){
+function _kpiDualLineChart(containerId,items,series,opts){
   const el=document.getElementById(containerId);if(!el)return;
   const rect=el.getBoundingClientRect();
   const W=Math.max(rect.width||400,200);
   const H=Math.max(rect.height||100,60);
   if(!items.length){el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%"><text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="10" fill="#94a3b8">Aucune donnée</text></svg>`;return;}
+  const refLine=opts&&opts.refLine!=null?opts.refLine:null;
   const allVals=series.flatMap(s=>items.map(it=>parseFloat(it[s.key]||0)));
+  if(refLine!=null) allVals.push(refLine);
   const minV=Math.max(0,Math.min(...allVals)-2);
   const maxV=Math.max(...allVals,1)+2;
-  const padL=32,padR=65,padT=8,padB=62;
+  const padL=36,padR=70,padT=12,padB=68;
   const gW=W-padL-padR,gH=H-padT-padB;
   const toX=i=>padL+i/(Math.max(items.length-1,1))*gW;
   const toY=v=>padT+gH*(1-(v-minV)/(maxV-minV||1));
@@ -9976,8 +9978,14 @@ function _kpiDualLineChart(containerId,items,series){
   [0,0.25,0.5,0.75,1].forEach(t=>{
     const v=minV+(maxV-minV)*t;const y=toY(v);
     svg+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1"/>`;
-    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="8" fill="#94a3b8">${v.toFixed(0)}</text>`;
+    svg+=`<text x="${padL-3}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11" fill="#94a3b8">${v.toFixed(0)}</text>`;
   });
+  // Ligne cible (refLine)
+  if(refLine!=null){
+    const ry=toY(refLine);
+    svg+=`<line x1="${padL}" y1="${ry.toFixed(1)}" x2="${W-padR}" y2="${ry.toFixed(1)}" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="6,3"/>`;
+    svg+=`<text x="${W-padR+3}" y="${(ry+4).toFixed(1)}" font-size="11" fill="#dc2626" font-weight="700">Cible ${refLine}</text>`;
+  }
   series.forEach(ser=>{
     let lineD='';
     items.forEach((it,i)=>{lineD+=(i===0?'M':'L')+toX(i).toFixed(1)+','+toY(parseFloat(it[ser.key]||0)).toFixed(1)+' ';});
@@ -9985,22 +9993,23 @@ function _kpiDualLineChart(containerId,items,series){
     items.forEach((it,i)=>{
       const x=toX(i),y=toY(parseFloat(it[ser.key]||0));
       const v=parseFloat(it[ser.key]||0);
-      svg+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="${ser.color}" stroke="#fff" stroke-width="1.2"/>`;
-      svg+=`<text x="${x.toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" font-size="7" fill="${ser.color}" font-weight="700">${v%1?v.toFixed(1):v}</text>`;
+      svg+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${ser.color}" stroke="#fff" stroke-width="1.5"/>`;
+      svg+=`<text x="${x.toFixed(1)}" y="${(y-7).toFixed(1)}" text-anchor="middle" font-size="11" fill="${ser.color}" font-weight="700">${v%1?v.toFixed(1):v}</text>`;
     });
   });
   items.forEach((it,i)=>{
     const x=toX(i);
     const lblParts=(it._xLabel||'').split('\n');
-    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="9" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
-    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="8" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
+    svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+3).toFixed(1)}) rotate(35)" font-size="11" font-weight="700" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[0]||'')}</text>`;
+    if(lblParts[1]) svg+=`<text transform="translate(${x.toFixed(1)},${(H-padB+17).toFixed(1)}) rotate(35)" font-size="10" fill="#1e293b" dominant-baseline="hanging">${esc(lblParts[1]||'')}</text>`;
   });
   let lx=padL;
   series.forEach(ser=>{
     svg+=`<line x1="${lx}" y1="${H-7}" x2="${lx+14}" y2="${H-7}" stroke="${ser.color}" stroke-width="2" ${ser.dash?`stroke-dasharray="${ser.dash}"`:''}/>`;
-    svg+=`<text x="${lx+16}" y="${H-3}" font-size="8" fill="#475569">${esc(ser.label||ser.key)}</text>`;
+    svg+=`<text x="${lx+16}" y="${H-3}" font-size="11" fill="#475569">${esc(ser.label||ser.key)}</text>`;
     lx+=90;
   });
+  if(refLine!=null){svg+=`<line x1="${lx}" y1="${H-7}" x2="${lx+14}" y2="${H-7}" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="6,3"/>`;svg+=`<text x="${lx+16}" y="${H-3}" font-size="11" fill="#dc2626">Cible</text>`;}
   svg+='</svg>';
   el.innerHTML=svg;
 }
@@ -10098,9 +10107,10 @@ async function loadKPI(){
   _kpiLineChart('kpi-of-chart',sessArr,'nb_of',()=>'#6366f1','');
 
   // ── Cadence dual-line chart (éq./h + pièces/h) ──
+  const _cadRefH=pr.cadence_ref_pcs_min>0?Math.round(pr.cadence_ref_pcs_min*60):null;
   _kpiDualLineChart('kpi-cad-chart',sessArr,[
     {key:'cad',color:'#f59e0b',label:'Éq./h'}
-  ]);
+  ],{refLine:_cadRefH});
 
   // ── Évolution changements de fibre par poste ──
   _kpiLineChart('kpi-fibre-chart',sessArr,'nb_fibre_chg',()=>'#8b5cf6','');
@@ -10581,10 +10591,10 @@ async function calcPeriodReport(autoLoad){
       <!-- Colonne droite : graphiques -->
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">
-          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+          <div style="flex:7;min-width:0;display:flex;flex-direction:column;gap:6px">
             <div style="display:flex;gap:6px">${chartTrsHtml}${chartCadHtml}</div>
           </div>
-          <div style="flex:1;min-width:0">${paretoRjHtml}</div>
+          <div style="flex:3;min-width:0">${paretoRjHtml}</div>
         </div>
         ${ofListHtml}
         ${eventsListHtml}
