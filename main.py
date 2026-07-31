@@ -2795,6 +2795,12 @@ def api_past_sessions():
         if row_type2 not in ("production","prod",""):
             session_evts[key2].append((rn, r))
     postes_map = load_postes_shift_map()
+    # Clé de la session active en cours (pour calcul TRS live identique à api_fin_poste_data)
+    _live_pilot = (_S.get("pilot") or "").strip()
+    _live_poste = (_S.get("poste") or "").strip()
+    _live_ss = _S.get("shift_start")
+    _live_date_str = _live_ss.date().strftime("%d/%m/%Y") if _live_ss else datetime.date.today().strftime("%d/%m/%Y")
+    _live_key = f"{_live_date_str}||{_live_pilot}||{_live_poste}" if _live_pilot else None
     result = []
     for key, s in sessions.items():
         trs = -1.0
@@ -2802,7 +2808,8 @@ def api_past_sessions():
             try:
                 parts = s["date"].split('/'); date_obj = datetime.date(int(parts[2]), int(parts[1]), int(parts[0]))
             except: date_obj = None
-            planned_ded = _compute_planned_deduction_s(session_evts.get(key, []))
+            _evts_ps = session_evts.get(key, [])
+            _prod_raws_ps = s.get("prod_raws", [])
             _pk = (s["pilot"].lower(), s["date"])
             _xl_trs_ps = None
             if _pk in postes_map:
@@ -2812,15 +2819,23 @@ def api_past_sessions():
                 _mdur2 = max(0.0, (_pfin_ps - _pdeb_ps).total_seconds()) if _pfin_ps else get_shift_duration_s(s["poste"], date_obj)
             else:
                 _mdur2 = get_shift_duration_s(s["poste"], date_obj)
-            _evts_ps = session_evts.get(key, [])
-            _prod_raws_ps = s.get("prod_raws", [])
-            if _xl_trs_ps is not None and _xl_trs_ps > 0:
+            if _live_key and key == _live_key:
+                # Poste en cours : TRS live — même formule que api_fin_poste_data
+                # On ignore le TRS pré-calculé Excel (non encore écrit) et on utilise
+                # la durée réelle de la session + les budget_overrides actifs.
+                _ses_ov = _S.get("budget_overrides") or {}
+                _live_ded = _compute_planned_deduction_s(_evts_ps, _ses_ov)
+                _live_dur = get_current_shift_duration_s()
+                if _live_dur > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
+                    _live_el = max(1.0, _live_dur - _live_ded)
+                    trs = round(s["tot_equiv"] / (prod_ref * _live_el / 28800) * 100, 1)
+            elif _xl_trs_ps is not None and _xl_trs_ps > 0:
                 trs = _xl_trs_ps
             elif _pers_pct_map and _prod_raws_ps:
                 _deg_ivs_ps = _merged_degrade_ivs([re for _, re in _evts_ps])
                 trs, _ = _option_b_trs(_prod_raws_ps, _deg_ivs_ps, prod_ref)
             else:
-                _deg_ps = _merged_degrade_s([re for _, re in _evts_ps])
+                planned_ded = _compute_planned_deduction_s(_evts_ps)
                 if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
                     _el2 = max(1.0, _mdur2 - planned_ded)
                     trs = round(s["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
