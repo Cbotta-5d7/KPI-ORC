@@ -5085,15 +5085,15 @@ input[type=checkbox]{cursor:pointer}
 input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]),textarea{cursor:text!important}
 input,select,textarea{cursor:auto}
 input[type=text],input[type=number],input[type=password],input[type=time],input[type=date],textarea{cursor:text!important}
-.tl-legend{display:flex;gap:12px;padding:2px 4px;font-size:calc(10px*var(--zf,1));color:var(--gray);flex-wrap:wrap;align-items:center}
-.tl-legend span{display:flex;align-items:center;gap:3px}
-.tl-legend i{display:inline-block;width:12px;height:10px;border-radius:2px;flex-shrink:0}
+.tl-legend{display:flex;gap:12px;padding:2px 4px;font-size:calc(12.5px*var(--zf,1));color:var(--gray);flex-wrap:wrap;align-items:center}
+.tl-legend span{display:flex;align-items:center;gap:4px}
+.tl-legend i{display:inline-block;width:15px;height:13px;border-radius:2px;flex-shrink:0}
 select{cursor:default}
 .fr.big input{font-size:calc(16px*var(--zf,1));font-weight:700;padding:5px 6px;color:var(--green)}
 .fr.ro input{background:#f8fafc;color:var(--gray)}
 /* Timeline */
 .tl-wrap{background:var(--card);border-radius:7px;padding:7px 8px;border:1px solid var(--border)}
-.tl-wrap h5{font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700;letter-spacing:.7px;margin-bottom:4px}
+.tl-wrap h5{font-size:calc(11.25px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700;letter-spacing:.7px;margin-bottom:4px}
 /* RIGHT recap col (wider) */
 .recap-col{width:280px;flex-shrink:0;border-left:1px solid var(--border);background:var(--card);display:flex;flex-direction:column;overflow:hidden}
 .recap-hdr{font-size:calc(10px*var(--zf,1));text-transform:uppercase;font-weight:700;color:var(--gray);letter-spacing:.6px;padding:8px 8px 4px}
@@ -5534,8 +5534,8 @@ select{cursor:default}
         <!-- Timeline 4h -->
         <div class="tl-wrap">
           <h5>Timeline — 4 dernières heures</h5>
-          <svg id="tl-svg" viewBox="0 0 800 52" preserveAspectRatio="none" style="width:100%;height:52px;display:block">
-            <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
+          <svg id="tl-svg" viewBox="0 0 800 64" preserveAspectRatio="none" style="width:100%;height:64px;display:block">
+            <rect x="0" y="4" width="800" height="35" fill="#e2e8f0" rx="4"/>
           </svg>
           <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Prod dégradé</span></div>
         </div>
@@ -5560,34 +5560,17 @@ select{cursor:default}
           </div>
           <div id="budget-bars-prod"></div>
         </div>
-        <!-- Gauges + Pies: left=OF, right=Poste, separated -->
-        <div style="padding:4px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 3px 1fr;gap:0;flex-shrink:0">
-          <!-- Left: OF -->
-          <div style="display:flex;flex-direction:column;align-items:center;padding:2px 4px">
-            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;margin-bottom:1px;letter-spacing:.4px">OF en cours</div>
-            <svg viewBox="0 0 100 56" style="width:100%;max-width:130px">
-              <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
-              <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
-              <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
-            </svg>
-            <div class="gauge-lbl">TRS OF</div>
-            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:4px;margin-bottom:1px">Prod / Arrêts OF</div>
-            <svg id="pie-of" viewBox="0 0 130 140" style="width:100%;height:auto;display:block"></svg>
-          </div>
-          <!-- Separator -->
-          <div style="background:var(--border);margin:4px 0;border-radius:2px"></div>
-          <!-- Right: Poste -->
-          <div style="display:flex;flex-direction:column;align-items:center;padding:2px 4px">
-            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#0891b2;margin-bottom:1px;letter-spacing:.4px">Poste entier</div>
-            <svg viewBox="0 0 100 56" style="width:100%;max-width:130px">
-              <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
-              <path id="gauge-poste-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#0891b2" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
-              <text x="50" y="46" text-anchor="middle" font-size="13" font-weight="800" fill="#0c4a6e" id="gauge-poste-pct">—</text>
-            </svg>
-            <div class="gauge-lbl" id="gauge-poste-lbl">TRS Poste</div>
-            <div style="font-size:calc(8px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:4px;margin-bottom:1px">Prod / Arrêts Poste</div>
-            <svg id="pie-poste" viewBox="0 0 130 140" style="width:100%;height:auto;display:block"></svg>
-          </div>
+        <!-- Gauge + Pie: OF uniquement -->
+        <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;margin-bottom:3px;letter-spacing:.4px">TRS — OF en cours</div>
+          <svg viewBox="0 0 100 56" style="width:100%;max-width:200px">
+            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
+            <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
+            <text x="50" y="46" text-anchor="middle" font-size="17" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
+          </svg>
+          <div class="gauge-lbl" style="font-size:calc(13px*var(--zf,1))">TRS OF</div>
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:6px;margin-bottom:2px">Répartition temps OF</div>
+          <svg id="pie-of" viewBox="0 0 130 150" style="width:100%;height:auto;display:block"></svg>
         </div>
         <!-- Bottom action buttons -->
         <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0;background:var(--card)">
@@ -8281,17 +8264,24 @@ function drawPie(svgId, segments, opts) {
   const total=segments.reduce((a,s)=>a+s.value,0);
   if(total<=0){svg.innerHTML=`<text x="65" y="60" text-anchor="middle" font-size="${fCenter}" fill="#94a3b8">Pas de données</text>`;return;}
   const cx=65,cy=57,r=44,ir=24;let html='',startAngle=-Math.PI/2;
-  segments.forEach(seg=>{
-    if(seg.value<=0) return;
-    const angle=(seg.value/total)*2*Math.PI;if(angle<0.001) return;
-    const endAngle=startAngle+angle,large=angle>Math.PI?1:0;
-    const x1=(cx+r*Math.cos(startAngle)).toFixed(2),y1=(cy+r*Math.sin(startAngle)).toFixed(2);
-    const x2=(cx+r*Math.cos(endAngle)).toFixed(2),y2=(cy+r*Math.sin(endAngle)).toFixed(2);
-    const ix1=(cx+ir*Math.cos(startAngle)).toFixed(2),iy1=(cy+ir*Math.sin(startAngle)).toFixed(2);
-    const ix2=(cx+ir*Math.cos(endAngle)).toFixed(2),iy2=(cy+ir*Math.sin(endAngle)).toFixed(2);
-    html+=`<path d="M${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} L${ix2},${iy2} A${ir},${ir} 0 ${large},0 ${ix1},${iy1} Z" fill="${seg.color}"/>`;
-    startAngle=endAngle;
-  });
+  const visSegs=segments.filter(s=>s.value>0&&(s.value/total)*2*Math.PI>=0.001);
+  if(visSegs.length===1){
+    // 100% — arc dégénéré : dessiner un anneau plein
+    html+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${visSegs[0].color}"/>`;
+    html+=`<circle cx="${cx}" cy="${cy}" r="${ir}" fill="#fff"/>`;
+  } else {
+    segments.forEach(seg=>{
+      if(seg.value<=0) return;
+      const angle=(seg.value/total)*2*Math.PI;if(angle<0.001) return;
+      const endAngle=startAngle+angle,large=angle>Math.PI?1:0;
+      const x1=(cx+r*Math.cos(startAngle)).toFixed(2),y1=(cy+r*Math.sin(startAngle)).toFixed(2);
+      const x2=(cx+r*Math.cos(endAngle)).toFixed(2),y2=(cy+r*Math.sin(endAngle)).toFixed(2);
+      const ix1=(cx+ir*Math.cos(startAngle)).toFixed(2),iy1=(cy+ir*Math.sin(startAngle)).toFixed(2);
+      const ix2=(cx+ir*Math.cos(endAngle)).toFixed(2),iy2=(cy+ir*Math.sin(endAngle)).toFixed(2);
+      html+=`<path d="M${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} L${ix2},${iy2} A${ir},${ir} 0 ${large},0 ${ix1},${iy1} Z" fill="${seg.color}"/>`;
+      startAngle=endAngle;
+    });
+  }
   const m=segments[0],mp=total>0?Math.round(m.value/total*100):0;
   html+=`<text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="${fCenter}" font-weight="800" fill="#1a1f5e">${mp}%</text>`;
   html+=`<text x="${cx}" y="${cy+15}" text-anchor="middle" font-size="${fSub}" fill="#64748b">${esc(m.label)}</text>`;
@@ -8572,7 +8562,7 @@ function updateGauge(s){
   const stopS=s.stop_wall_s||0;
   const ofDur=s.of_elapsed_s||0;
   const prodSof=Math.max(0,ofDur-stopS);
-  drawPie('pie-of',[{label:'Prod',value:prodSof,color:'#16a34a'},{label:'Arrêts',value:stopS,color:'#dc2626'}],{fCenter:16,fSub:9,fLeg:9});
+  drawPie('pie-of',[{label:'Prod',value:prodSof,color:'#16a34a'},{label:'Arrêts',value:stopS,color:'#dc2626'}],{fCenter:20,fSub:12,fLeg:12,legY:118});
   // For poste pie — compute from shift start
   const shiftTotal=s.shift_start_iso?(Date.now()-new Date(s.shift_start_iso).getTime())/1000:0;
   const shiftStop=_todayStopAccum||0;
@@ -8795,7 +8785,7 @@ function drawTL(svgId,tlEvts,debutHMS,finHMS){
 function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
   const svg=document.getElementById(svgId);
   if(!svg) return;
-  const W=800,Y=4,H2=28,H=52;
+  const W=800,Y=4,H2=35,H=64;
   const _dpId='dpat_'+svgId;
   let html=`<defs><pattern id="${_dpId}" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#16a34a"/><rect x="4" y="0" width="4" height="8" fill="#fef08a"/></pattern></defs>`;
   html+=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
@@ -8860,11 +8850,11 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
     const hr=new Date(tickT).getHours();
     _lastTickX=tx;
     html+=`<line x1="${tx}" y1="${Y}" x2="${tx}" y2="${Y+H2}" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`;
-    html+=`<text x="${tx+2}" y="${Y+H2+14}" font-size="9" fill="#374151" font-weight="600">${String(hr).padStart(2,'0')}h</text>`;
+    html+=`<text x="${tx+2}" y="${Y+H2+16}" font-size="11" fill="#374151" font-weight="600">${String(hr).padStart(2,'0')}h</text>`;
     tickT+=3600000;
   }
-  if(_firstTickX>32) html+=`<text x="2" y="${Y+H2+14}" font-size="10" fill="#374151" font-weight="600">${fT(tS)}</text>`;
-  if(W-_lastTickX>40) html+=`<text x="${W-36}" y="${Y+H2+14}" font-size="10" fill="#374151" font-weight="600">${fT(tE)}</text>`;
+  if(_firstTickX>40) html+=`<text x="2" y="${Y+H2+16}" font-size="13" fill="#374151" font-weight="600">${fT(tS)}</text>`;
+  if(W-_lastTickX>50) html+=`<text x="${W-44}" y="${Y+H2+16}" font-size="13" fill="#374151" font-weight="600">${fT(tE)}</text>`;
   svg.innerHTML=html;
 }
 
@@ -9064,22 +9054,27 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   const slices=[{v:prodMin,c:'#16a34a',l:'Production'},{v:planMin,c:'#60a5fa',l:'Arrêts prévus'},{v:unplanMin,c:'#dc2626',l:'Arrêts non prévus'},{v:degMin,c:'#f59e0b',l:'Mode dégradé'}].filter(s=>s.v>0);
   const tot=slices.reduce((a,s)=>a+s.v,0)||1;
   let sA=-Math.PI/2,dpaths='';
-  slices.forEach(sl=>{
-    const a=sl.v/tot*2*Math.PI,cx=105,cy=105,r2=90,ri=44;
-    const x1=cx+r2*Math.cos(sA),y1=cy+r2*Math.sin(sA);
-    const x2=cx+r2*Math.cos(sA+a),y2=cy+r2*Math.sin(sA+a);
-    const xi1=cx+ri*Math.cos(sA),yi1=cy+ri*Math.sin(sA);
-    const xi2=cx+ri*Math.cos(sA+a),yi2=cy+ri*Math.sin(sA+a);
-    const lg=a>Math.PI?1:0;
-    dpaths+=`<path d="M${xi1.toFixed(1)},${yi1.toFixed(1)} L${x1.toFixed(1)},${y1.toFixed(1)} A${r2},${r2} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${xi2.toFixed(1)},${yi2.toFixed(1)} A${ri},${ri} 0 ${lg},0 ${xi1.toFixed(1)},${yi1.toFixed(1)}" fill="${sl.c}" opacity=".93" filter="url(#ds3)"/>`;
-    sA+=a;
-  });
+  const visSlices=slices.filter(sl=>sl.v>0&&(sl.v/tot)*2*Math.PI>=0.001);
+  if(visSlices.length===1){
+    // 100% — arc dégénéré : anneau plein de la couleur du seul segment
+    dpaths=`<circle cx="105" cy="105" r="90" fill="${visSlices[0].c}" opacity=".93" filter="url(#ds3)"/><circle cx="105" cy="105" r="44" fill="white" filter="url(#ds3)"/>`;
+  } else {
+    slices.forEach(sl=>{
+      const a=sl.v/tot*2*Math.PI,cx=105,cy=105,r2=90,ri=44;
+      const x1=cx+r2*Math.cos(sA),y1=cy+r2*Math.sin(sA);
+      const x2=cx+r2*Math.cos(sA+a),y2=cy+r2*Math.sin(sA+a);
+      const xi1=cx+ri*Math.cos(sA),yi1=cy+ri*Math.sin(sA);
+      const xi2=cx+ri*Math.cos(sA+a),yi2=cy+ri*Math.sin(sA+a);
+      const lg=a>Math.PI?1:0;
+      dpaths+=`<path d="M${xi1.toFixed(1)},${yi1.toFixed(1)} L${x1.toFixed(1)},${y1.toFixed(1)} A${r2},${r2} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${xi2.toFixed(1)},${yi2.toFixed(1)} A${ri},${ri} 0 ${lg},0 ${xi1.toFixed(1)},${yi1.toFixed(1)}" fill="${sl.c}" opacity=".93" filter="url(#ds3)"/>`;
+      sA+=a;
+    });
+  }
   const legend2=slices.map(sl=>`<div style="display:flex;align-items:center;gap:8px;font-size:calc(12px*var(--zf,1));padding:5px 0;border-bottom:1px solid #f1f5f9"><div style="width:14px;height:14px;border-radius:4px;background:${sl.c};flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div><span style="color:#374151;flex:1">${sl.l}</span><span style="color:#94a3b8;font-size:calc(10px*var(--zf,1));margin-right:6px">${Math.round(sl.v/tot*100)}%</span><b style="color:${sl.c};white-space:nowrap">${sl.v} min</b></div>`).join('');
   const chartHtml2=r.debut&&r.fin?`
     <svg viewBox="0 0 210 210" width="210" height="210" style="display:block;margin:0 auto">
       <defs><filter id="ds3" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity=".22"/></filter></defs>
-      ${dpaths||'<circle cx="105" cy="105" r="90" fill="#e2e8f0"/>'}
-      <circle cx="105" cy="105" r="44" fill="white" filter="url(#ds3)"/>
+      ${dpaths||'<circle cx="105" cy="105" r="90" fill="#e2e8f0"/><circle cx="105" cy="105" r="44" fill="white" filter="url(#ds3)"/>'}
     </svg>
     <div style="width:100%;padding:0 6px;margin-top:8px">${legend2}</div>
     <div style="font-size:calc(11px*var(--zf,1));color:#94a3b8;text-align:center;margin-top:10px;font-weight:600">${totalMin} min total OF</div>`
