@@ -4444,13 +4444,13 @@ html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Aria
     </div>
     <!-- Pareto + Arrêts -->
     <div style="display:flex;flex-direction:column;gap:8px;overflow:hidden">
-      <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:10px 12px;flex-shrink:0">
-        <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#1e3a8a;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+      <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:10px 12px;flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+        <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#1e3a8a;margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-shrink:0">
           <span style="width:8px;height:8px;background:#d97706;border-radius:50%;display:inline-block"></span>Pareto arrêts
         </div>
-        {pareto_html}
+        <div style="overflow-y:auto;flex:1">{pareto_html}</div>
       </div>
-      <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:1;overflow:hidden;display:flex;flex-direction:column">
+      <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
         <div style="padding:8px 12px;font-size:calc(12px*var(--zf,1));font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:6px;flex-shrink:0">
           <span style="width:8px;height:8px;background:#ef4444;border-radius:50%;display:inline-block"></span>Détail arrêts
         </div>
@@ -5157,7 +5157,9 @@ select{cursor:default}
 .sdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
 .si-nm{flex:1;font-weight:600;font-size:calc(10px*var(--zf,1));line-height:1.2}
 .si-dur{font-size:calc(9px*var(--zf,1));color:var(--gray);white-space:nowrap}
-.btn-edit{background:none;border:none;cursor:pointer;font-size:calc(11px*var(--zf,1));color:#6366f1;padding:1px 3px;border-radius:2px}
+.btn-edit{background:#eff6ff;border:1.5px solid #93c5fd;cursor:pointer;font-size:calc(14px*var(--zf,1));color:#2563eb;padding:4px 9px;border-radius:8px;line-height:1;transition:all .12s;box-shadow:0 2px 0 #60a5fa;font-weight:700}
+.btn-edit:hover{background:#dbeafe;box-shadow:0 3px 0 #3b82f6;transform:translateY(-1px)}
+.btn-edit:active{transform:translateY(2px);box-shadow:none}
 /* TRS gauge */
 .gauge-box{padding:6px;border-top:1px solid var(--border);text-align:center}
 .gauge-lbl{font-size:calc(11px*var(--zf,1));text-transform:uppercase;color:var(--gray);font-weight:700;margin-top:3px}
@@ -5416,6 +5418,13 @@ select{cursor:default}
     <!-- KPI accueil — POSTE ACTUEL -->
     <div style="background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;padding:4px 8px;display:flex;gap:6px;align-items:stretch;flex-wrap:wrap">
 
+      <!-- Tableau de bord pilote -->
+      <div id="acc-pilot-card" style="min-width:130px;max-width:155px;background:linear-gradient(145deg,#1e3a8a,#1e40af);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;box-shadow:0 2px 8px rgba(30,58,138,.25)">
+        <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.55)">Tableau de bord</div>
+        <div id="acc-pilot-name" style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#fff;text-align:center;word-break:break-word;line-height:1.2">—</div>
+        <div id="acc-pilot-poste" style="font-size:calc(10px*var(--zf,1));color:rgba(255,255,255,.65);text-align:center">—</div>
+      </div>
+
       <!-- POSTE ACTUEL encart principal -->
       <div style="flex:1.5;min-width:220px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column;gap:3px">
         <!-- Titre + TRS jauge + valeur -->
@@ -5453,26 +5462,12 @@ select{cursor:default}
       </div>
 
       <!-- Arrêts prévus — barres budget -->
-      <div style="flex:2;min-width:190px;background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column">
+      <div style="flex:1;min-width:100px;max-width:220px;background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
           <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">⏱ Arrêts prévus du poste</span>
           <button onclick="openBudgetOverrideModal()" id="btn-bov-acc" style="display:none;background:none;border:1px solid #92400e;border-radius:4px;color:#92400e;font-size:calc(10px*var(--zf,1));padding:1px 7px;cursor:pointer" title="Modifier le budget pour ce poste">✏️</button>
         </div>
         <div id="budget-bars-acc" style="flex:1"></div>
-      </div>
-
-      <!-- Poste précédent -->
-      <div class="skpi" style="flex:1;min-width:100px;max-width:180px">
-        <div class="sk-lbl" id="kpi1-lbl">Poste précédent</div>
-        <div class="sk-val" id="kpi1-trs">--%</div>
-        <div class="sk-sub" id="kpi1-date" style="font-size:calc(10px*var(--zf,1));opacity:.85"></div>
-        <div class="sk-sub" id="kpi1-sub">0 OF</div>
-      </div>
-      <div class="skpi" style="flex:1;min-width:100px;max-width:180px">
-        <div class="sk-lbl" id="kpi2-lbl">Avant-dernier</div>
-        <div class="sk-val" id="kpi2-trs">--%</div>
-        <div class="sk-sub" id="kpi2-date" style="font-size:calc(10px*var(--zf,1));opacity:.85"></div>
-        <div class="sk-sub" id="kpi2-sub">0 OF</div>
       </div>
 
       <!-- IDs cachés compatibles JS existant -->
@@ -5594,7 +5589,7 @@ select{cursor:default}
         </div>
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row" style="justify-content:center">
-          <button id="btn-declarer-arret" class="act-btn act-btn-sm act-stop" style="flex:1" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-lbl">Déclarer un arrêt</span></button>
+          <button id="btn-declarer-arret" class="act-btn act-btn-sm act-stop" style="flex:1;aspect-ratio:unset !important;white-space:normal !important;height:auto !important;min-height:60px" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-lbl" style="white-space:normal;line-height:1.2;text-align:center">Déclarer un arrêt</span></button>
           <button id="btn-degrade-prod" class="act-btn act-btn-sm" onclick="toggleDegrade()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
           <button class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
           <button class="act-btn act-btn-sm act-pause" id="btn-pause" style="flex:1" onclick="doPause()"><span class="act-icon">☕</span><span>Pause</span></button>
@@ -6303,7 +6298,11 @@ select{cursor:default}
         <span id="nett-lbl-grand" style="font-size:calc(11px*var(--zf,1));font-weight:500;color:#c2410c;display:block;margin-top:3px"></span>
       </button>
     </div>
-    <button class="btn btn-sec" style="margin-top:16px;width:100%;font-size:calc(13px*var(--zf,1));border-radius:10px;padding:10px;text-align:center" onclick="closeM('m-nett-type')">✕ Annuler</button>
+    <button class="btn" style="margin-top:16px;width:100%;font-size:calc(13px*var(--zf,1));border-radius:10px;padding:10px;justify-content:center;background:linear-gradient(145deg,#f8fafc,#e2e8f0);border:2px solid #94a3b8;color:#334155;font-weight:800;box-shadow:0 4px 0 #475569,0 6px 14px rgba(71,85,105,.2),inset 0 1px 0 rgba(255,255,255,.9);transition:all .15s" onclick="closeM('m-nett-type')"
+      onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 6px 0 #475569,0 8px 18px rgba(71,85,105,.3),inset 0 1px 0 rgba(255,255,255,.9)'"
+      onmouseout="this.style.transform='';this.style.boxShadow='0 4px 0 #475569,0 6px 14px rgba(71,85,105,.2),inset 0 1px 0 rgba(255,255,255,.9)'"
+      onmousedown="this.style.transform='translateY(3px)';this.style.boxShadow='0 1px 0 #475569,0 2px 6px rgba(71,85,105,.1),inset 0 1px 0 rgba(255,255,255,.9)'"
+      onmouseup="this.style.transform='translateY(-1px)';this.style.boxShadow='0 6px 0 #475569,0 8px 18px rgba(71,85,105,.3),inset 0 1px 0 rgba(255,255,255,.9)'">✕ Annuler</button>
   </div>
 </div>
 
@@ -6467,12 +6466,16 @@ select{cursor:default}
     <div id="m-degrade-title" style="font-size:calc(17px*var(--zf,1));font-weight:900;color:#b45309;margin-bottom:18px;text-align:center;letter-spacing:.05em">🟡 MODE DÉGRADÉ</div>
     <div id="m-degrade-body" style="margin-bottom:16px"></div>
     <div style="display:flex;gap:8px">
-      <button class="btn" id="m-degrade-confirm" onclick="_confirmDegrade()" style="flex:1;background:linear-gradient(145deg,#fefce8,#fef08a);border:2px solid #ca8a04;color:#713f12;font-weight:800;font-size:calc(14px*var(--zf,1));border-radius:12px;padding:11px;text-align:center;box-shadow:0 5px 0 #92400e,0 7px 18px rgba(202,138,4,.25),inset 0 1px 0 rgba(255,255,255,.9);transition:all .15s"
+      <button class="btn" id="m-degrade-confirm" onclick="_confirmDegrade()" style="flex:1;background:linear-gradient(145deg,#fefce8,#fef08a);border:2px solid #ca8a04;color:#713f12;font-weight:800;font-size:calc(14px*var(--zf,1));border-radius:12px;padding:11px;justify-content:center;box-shadow:0 5px 0 #92400e,0 7px 18px rgba(202,138,4,.25),inset 0 1px 0 rgba(255,255,255,.9);transition:all .15s"
         onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 7px 0 #92400e,0 10px 24px rgba(202,138,4,.35),inset 0 1px 0 rgba(255,255,255,.9)'"
         onmouseout="this.style.transform='';this.style.boxShadow='0 5px 0 #92400e,0 7px 18px rgba(202,138,4,.25),inset 0 1px 0 rgba(255,255,255,.9)'"
         onmousedown="this.style.transform='translateY(4px)';this.style.boxShadow='0 1px 0 #92400e,0 2px 8px rgba(202,138,4,.15),inset 0 1px 0 rgba(255,255,255,.9)'"
         onmouseup="this.style.transform='translateY(-2px)';this.style.boxShadow='0 7px 0 #92400e,0 10px 24px rgba(202,138,4,.35),inset 0 1px 0 rgba(255,255,255,.9)'">✓ Confirmer</button>
-      <button class="btn btn-sec" onclick="closeM('m-degrade')" style="flex:1;border-radius:12px;padding:11px;font-size:calc(14px*var(--zf,1));text-align:center">✕ Annuler</button>
+      <button class="btn" onclick="closeM('m-degrade')" style="flex:1;background:linear-gradient(145deg,#f8fafc,#e2e8f0);border:2px solid #94a3b8;color:#334155;font-weight:800;font-size:calc(14px*var(--zf,1));border-radius:12px;padding:11px;justify-content:center;box-shadow:0 5px 0 #475569,0 7px 18px rgba(71,85,105,.2),inset 0 1px 0 rgba(255,255,255,.9);transition:all .15s"
+        onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 7px 0 #475569,0 10px 24px rgba(71,85,105,.3),inset 0 1px 0 rgba(255,255,255,.9)'"
+        onmouseout="this.style.transform='';this.style.boxShadow='0 5px 0 #475569,0 7px 18px rgba(71,85,105,.2),inset 0 1px 0 rgba(255,255,255,.9)'"
+        onmousedown="this.style.transform='translateY(4px)';this.style.boxShadow='0 1px 0 #475569,0 2px 8px rgba(71,85,105,.1),inset 0 1px 0 rgba(255,255,255,.9)'"
+        onmouseup="this.style.transform='translateY(-2px)';this.style.boxShadow='0 7px 0 #475569,0 10px 24px rgba(71,85,105,.3),inset 0 1px 0 rgba(255,255,255,.9)'">✕ Annuler</button>
     </div>
   </div>
 </div>
@@ -7417,6 +7420,8 @@ async function loadMainDecl() {
   if(!bd) return;
   // Accumuler équivalences et arrêts du poste pour les jauges
   const curPilotD=ST.pilot||'';
+  const _pnEl=document.getElementById('acc-pilot-name');if(_pnEl)_pnEl.textContent=curPilotD||'—';
+  const _ppEl=document.getElementById('acc-pilot-poste');if(_ppEl)_ppEl.textContent=ST.poste||'—';
   const pilotDecls=decls.filter(r=>!curPilotD||!r.pilote||r.pilote===curPilotD);
   const _hms2s=s=>{if(!s)return 0;const p=String(s).split(':');return p.length>=3?+p[0]*3600+ +p[1]*60+ +p[2]:p.length===2?+p[0]*60+ +p[1]:0;};
   // Filter to model horaire window only — exclude pre-shift prods (changement de série before model debut)
@@ -7459,7 +7464,7 @@ async function loadMainDecl() {
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
       <td style="font-size:calc(11px*var(--zf,1))">${details}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
-      <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:calc(15px*var(--zf,1));cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
+      <td><button onclick="openEditRow('${esc(String(key))}')" class="btn-edit" title="Modifier">✏</button></td>
     </tr>`;
   }).join('');
   loadMainKPI();
@@ -7689,7 +7694,7 @@ function _renderInterposteLblsHTML(){
   c.innerHTML=_interposteLblsEditing.map((lbl,i)=>`
     <div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1))">
       <span style="flex:1;font-weight:600">${esc(lbl)}</span>
-      <button class="btn btn-ghost" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="editInterposteLbl(${i})">✏</button>
+      <button class="btn-edit" style="font-size:calc(11px*var(--zf,1));padding:3px 7px" onclick="editInterposteLbl(${i})">✏</button>
       <button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="rmInterposteLbl(${i})">✕</button>
     </div>`).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:4px">Aucun label</div>';
 }
@@ -7727,11 +7732,9 @@ function _showNextGap(){
   document.getElementById('ps-gap-s').value=g.duree_s||0;
   document.getElementById('ps-start-iso').value='';
   document.getElementById('ps-custom').value='';
-  // Bouton rétrodatage : seulement sur 1er OF + 1er gap
   const bdRow=document.getElementById('ps-backdate-row');
   const bt=document.getElementById('ps-backdate-time');
-  const showBd=_isFirstOfGaps&&_pendingGapIdx===0;
-  if(bdRow) bdRow.style.display=showBd?'':'none';
+  if(bdRow) bdRow.style.display='';
   if(bt) bt.textContent=debut.replace(':','h');
   psFillStopBtns();
   openM('m-preshift');
@@ -8093,7 +8096,7 @@ function _renderEvtListHTML(){
       <span style="cursor:grab;color:#94a3b8;font-size:16px;padding:0 2px;user-select:none" title="Déplacer">⠿</span>
       <span style="flex:1;font-weight:600">${esc(e.label)}</span>
       <span style="font-size:calc(10px*var(--zf,1));color:var(--gray)">${catLbl[e.cat]||e.cat}</span>
-      <button class="btn btn-ghost" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="editEvtItem(${i})">✏</button>
+      <button class="btn-edit" style="font-size:calc(11px*var(--zf,1));padding:3px 7px" onclick="editEvtItem(${i})">✏</button>
       <button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="rmEvtItem(${i})">✕</button>
     </div>`).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:4px">Aucun arrêt configuré</div>';
 }
@@ -10501,7 +10504,7 @@ async function loadHist(){
       <td>${esc(r.pilote||'')}</td><td style="text-align:center;font-size:calc(10px*var(--zf,1));color:#374151">${isProd?esc(r.nb_pers||''):'—'}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
       <td style="font-size:calc(11px*var(--zf,1))">${details}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
-      <td><button onclick="openEditRow('${esc(String(key))}')" style="background:#6366f1;color:#fff;border:none;border-radius:5px;padding:4px 10px;font-size:calc(15px*var(--zf,1));cursor:pointer;font-weight:700" title="Modifier">✏</button></td>
+      <td><button onclick="openEditRow('${esc(String(key))}')" class="btn-edit" title="Modifier">✏</button></td>
     </tr>`;
   }).join('');
   _applyHistFilter();
