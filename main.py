@@ -7051,10 +7051,6 @@ async function confirmEndProd(){
     await pollEvts();
     goTab('main');
     toast('Production enregistrée','ok');
-    // Auto-generate dashboard
-    try{
-      await fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    }catch(e){}
   } else toast(d.error||'Erreur','err');
 }
 
@@ -10074,25 +10070,6 @@ async function saveProdRef(){
   if(d&&d.ok){toast('Enregistré','ok');_settingsClearDirty('référence production');}else toast(d&&d.error||'Erreur','err');
 }
 
-async function generateDashboard(){
-  const st=document.getElementById('dash-status');
-  if(st){st.textContent='Génération en cours…';st.style.color='var(--amber)';}
-  let d={};
-  try{
-    const r=await fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(r&&r.ok) d=await r.json();
-  }catch(e){}
-  if(d&&d.ok){
-    if(st){st.textContent='✓ Dashboard prêt — cliquez pour ouvrir';st.style.color='var(--green)';}
-    toast('Dashboard généré !','ok');
-    // Ouvrir via Flask (même origine, pas de CORS)
-    window.open('http://127.0.0.1:5001/dashboard','_blank');
-  } else {
-    const errMsg=d&&d.error?d.error:'Erreur inconnue — vérifiez que le fichier Excel est configuré dans les paramètres';
-    if(st){st.textContent='✗ '+errMsg;st.style.color='var(--red)';}
-    toast('Erreur dashboard: '+errMsg,'err');
-  }
-}
 
 // ── MODALS ──
 function openM(id){const m=document.getElementById(id);if(m){m.classList.add('on');m.style.display='flex';}}
