@@ -2340,7 +2340,17 @@ def api_history():
     d_from = _parse_date(date_from) if date_from else None
     d_to = _parse_date(date_to) if date_to else None
     all_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() in ("production","prod","")]
-    for rn, r in all_rows[-500:]:
+    def _hist_key(item):
+        _, r = item
+        # Use col AN (idx 39) as date, fall back to col C (idx 2)
+        d_val = (r[39] if len(r) > 39 and r[39] else None) or (r[2] if r[2] else None)
+        d_str = _row_date(d_val) if d_val else ""
+        p = d_str.split("/") if d_str else []
+        d_tup = (int(p[2]), int(p[1]), int(p[0])) if len(p) == 3 else (0, 0, 0)
+        t_str = str(r[16] or "")[:5]
+        return (d_tup, t_str)
+    all_rows.sort(key=_hist_key, reverse=True)
+    for rn, r in all_rows[:500]:
         try:
             row_d = _parse_date(_row_date(r[2])) if r[2] else None
             if d_from and row_d and row_d < d_from: continue
@@ -2402,7 +2412,7 @@ def api_history():
                 "objectif": round(float(str(r[42] or 0).replace(",",".")), 1) if len(r)>42 and r[42] not in (None,"") else -1,
             })
         except: pass
-    return jsonify(list(reversed(rows)))
+    return jsonify(rows)
 
 @flask_app.route('/api/events_list')
 def api_events_list():
@@ -4381,51 +4391,48 @@ select{cursor:default}
   </div>
 
   <!-- ════ MODAL PRÉ-POSTE (gaps non déclarés avant 1er OF ou entre OFs) ════ -->
-  <div id="m-preshift" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,.82);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:601;align-items:center;justify-content:center">
-    <div style="width:min(860px,95vw);background:linear-gradient(145deg,#0f172a 0%,#1e1b4b 50%,#0f172a 100%);border-radius:22px;box-shadow:0 0 0 1px rgba(139,92,246,.25),0 32px 80px rgba(0,0,0,.7),0 0 60px rgba(239,68,68,.12),inset 0 1px 0 rgba(255,255,255,.07);overflow:hidden">
-      <!-- Header glow rouge -->
-      <div style="background:linear-gradient(135deg,#7f1d1d 0%,#991b1b 40%,#dc2626 70%,#ef4444 100%);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden">
+  <div id="m-preshift" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:601;align-items:center;justify-content:center">
+    <div style="width:min(860px,95vw);background:#f8fafc;border-radius:18px;box-shadow:0 4px 6px rgba(0,0,0,.07),0 20px 60px rgba(0,0,0,.2);overflow:hidden;border:1px solid #e2e8f0">
+      <!-- Header rouge -->
+      <div style="background:linear-gradient(135deg,#7f1d1d 0%,#991b1b 40%,#dc2626 70%,#ef4444 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden">
         <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%,rgba(255,200,200,.18) 0%,transparent 70%);pointer-events:none"></div>
         <div>
-          <div style="font-size:calc(10px*var(--zf,1));text-transform:uppercase;letter-spacing:.18em;color:rgba(255,255,255,.6);font-weight:700;margin-bottom:3px">Action requise</div>
-          <div id="ps-title" style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.4);letter-spacing:.01em">⚠ Période non déclarée</div>
+          <div style="font-size:calc(10px*var(--zf,1));text-transform:uppercase;letter-spacing:.18em;color:rgba(255,255,255,.75);font-weight:700;margin-bottom:3px">Action requise</div>
+          <div id="ps-title" style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.3);letter-spacing:.01em">⚠ Période non déclarée</div>
         </div>
-        <div id="ps-counter" style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#fff;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:4px 14px;backdrop-filter:blur(4px);letter-spacing:.05em"></div>
+        <div id="ps-counter" style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#fff;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:4px 14px;letter-spacing:.05em"></div>
       </div>
       <!-- Bandeau durée -->
-      <div style="background:rgba(239,68,68,.08);border-bottom:1px solid rgba(239,68,68,.15);padding:12px 24px;display:flex;align-items:center;gap:10px">
-        <div style="width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 10px #ef4444;flex-shrink:0;animation:blink .85s step-start infinite"></div>
-        <div id="ps-text" style="font-size:calc(14px*var(--zf,1));color:#fca5a5;font-weight:700;letter-spacing:.01em"></div>
+      <div style="background:#fff1f0;border-bottom:1px solid #fecaca;padding:10px 24px;display:flex;align-items:center;gap:10px">
+        <div style="width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0;animation:blink .85s step-start infinite"></div>
+        <div id="ps-text" style="font-size:calc(14px*var(--zf,1));color:#dc2626;font-weight:700"></div>
       </div>
       <input type="hidden" id="ps-start-iso">
       <input type="hidden" id="ps-gap-s">
       <!-- Corps -->
-      <div style="padding:20px 24px">
-        <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:rgba(148,163,184,.7);text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px">Déclarer comme :</div>
+      <div style="padding:18px 24px">
+        <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px">Déclarer comme :</div>
         <!-- Raccourcis rapides -->
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-          <button style="background:linear-gradient(145deg,#431407,#7c2d12);border:1px solid rgba(249,115,22,.4);color:#fed7aa;font-weight:800;font-size:calc(12px*var(--zf,1));padding:9px 14px;border-radius:12px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4),0 0 16px rgba(249,115,22,.15),inset 0 1px 0 rgba(255,255,255,.08);transition:all .15s;letter-spacing:.01em" onmouseover="this.style.boxShadow='0 6px 20px rgba(0,0,0,.5),0 0 24px rgba(249,115,22,.35),inset 0 1px 0 rgba(255,255,255,.12)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(0,0,0,.4),0 0 16px rgba(249,115,22,.15),inset 0 1px 0 rgba(255,255,255,.08)'" onclick="psPick('Nettoyage court')">🧹 Nettoyage court</button>
-          <button style="background:linear-gradient(145deg,#431407,#7c2d12);border:1px solid rgba(234,88,12,.4);color:#fdba74;font-weight:800;font-size:calc(12px*var(--zf,1));padding:9px 14px;border-radius:12px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4),0 0 16px rgba(234,88,12,.15),inset 0 1px 0 rgba(255,255,255,.08);transition:all .15s" onmouseover="this.style.boxShadow='0 6px 20px rgba(0,0,0,.5),0 0 24px rgba(234,88,12,.35),inset 0 1px 0 rgba(255,255,255,.12)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(0,0,0,.4),0 0 16px rgba(234,88,12,.15),inset 0 1px 0 rgba(255,255,255,.08)'" onclick="psPick('Nettoyage long')">🧹 Nettoyage long</button>
-          <button style="background:linear-gradient(145deg,#431407,#6b1a0a);border:1px solid rgba(194,65,12,.4);color:#fb923c;font-weight:800;font-size:calc(12px*var(--zf,1));padding:9px 14px;border-radius:12px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4),0 0 16px rgba(194,65,12,.15),inset 0 1px 0 rgba(255,255,255,.08);transition:all .15s" onmouseover="this.style.boxShadow='0 6px 20px rgba(0,0,0,.5),0 0 24px rgba(194,65,12,.35),inset 0 1px 0 rgba(255,255,255,.12)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(0,0,0,.4),0 0 16px rgba(194,65,12,.15),inset 0 1px 0 rgba(255,255,255,.08)'" onclick="psPick('Nettoyage très long')">🧹 Nettoyage très long</button>
-          <button style="background:linear-gradient(145deg,#1e293b,#334155);border:1px solid rgba(100,116,139,.4);color:#cbd5e1;font-weight:800;font-size:calc(12px*var(--zf,1));padding:9px 14px;border-radius:12px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4),0 0 16px rgba(100,116,139,.1),inset 0 1px 0 rgba(255,255,255,.06);transition:all .15s" onmouseover="this.style.boxShadow='0 6px 20px rgba(0,0,0,.5),0 0 24px rgba(100,116,139,.25),inset 0 1px 0 rgba(255,255,255,.1)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(0,0,0,.4),0 0 16px rgba(100,116,139,.1),inset 0 1px 0 rgba(255,255,255,.06)'" onclick="psPick('Pause')">☕ Pause</button>
-          <button style="background:linear-gradient(145deg,#2e1065,#4c1d95);border:1px solid rgba(139,92,246,.4);color:#c4b5fd;font-weight:800;font-size:calc(12px*var(--zf,1));padding:9px 14px;border-radius:12px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.4),0 0 16px rgba(139,92,246,.2),inset 0 1px 0 rgba(255,255,255,.08);transition:all .15s" onmouseover="this.style.boxShadow='0 6px 20px rgba(0,0,0,.5),0 0 24px rgba(139,92,246,.4),inset 0 1px 0 rgba(255,255,255,.12)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(0,0,0,.4),0 0 16px rgba(139,92,246,.2),inset 0 1px 0 rgba(255,255,255,.08)'" onclick="psPick('Réunion')">🗣️ Réunion</button>
+          <button style="background:linear-gradient(145deg,#fff7ed,#ffedd5);border:1px solid #f97316;color:#c2410c;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 14px;border-radius:10px;cursor:pointer;box-shadow:0 2px 6px rgba(249,115,22,.2);transition:all .15s" onclick="psPick('Nettoyage court')">🧹 Nettoyage court</button>
+          <button style="background:linear-gradient(145deg,#fff7ed,#ffedd5);border:1px solid #ea580c;color:#9a3412;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 14px;border-radius:10px;cursor:pointer;box-shadow:0 2px 6px rgba(234,88,12,.2);transition:all .15s" onclick="psPick('Nettoyage long')">🧹 Nettoyage long</button>
+          <button style="background:linear-gradient(145deg,#fff7ed,#ffedd5);border:1px solid #c2410c;color:#7c2d12;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 14px;border-radius:10px;cursor:pointer;box-shadow:0 2px 6px rgba(194,65,12,.2);transition:all .15s" onclick="psPick('Nettoyage très long')">🧹 Nettoyage très long</button>
+          <button style="background:linear-gradient(145deg,#f8fafc,#e2e8f0);border:1px solid #94a3b8;color:#334155;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 14px;border-radius:10px;cursor:pointer;box-shadow:0 2px 6px rgba(100,116,139,.15);transition:all .15s" onclick="psPick('Pause')">☕ Pause</button>
+          <button style="background:linear-gradient(145deg,#faf5ff,#ede9fe);border:1px solid #8b5cf6;color:#5b21b6;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 14px;border-radius:10px;cursor:pointer;box-shadow:0 2px 6px rgba(139,92,246,.2);transition:all .15s" onclick="psPick('Réunion')">🗣️ Réunion</button>
         </div>
         <div id="ps-stop-btns" style="margin-bottom:12px"></div>
         <!-- Saisie libre -->
-        <div style="display:flex;gap:8px;margin-bottom:18px">
-          <input id="ps-custom" placeholder="Ou saisir librement…" style="flex:1;padding:10px 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;font-size:calc(13px*var(--zf,1));color:#e2e8f0;outline:none;transition:border .15s" onfocus="this.style.borderColor='rgba(139,92,246,.6)';this.style.boxShadow='0 0 0 3px rgba(139,92,246,.12)'" onblur="this.style.borderColor='rgba(255,255,255,.12)';this.style.boxShadow='none'" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
-          <button onclick="confirmPsAsStop()" style="flex-shrink:0;padding:10px 18px;background:linear-gradient(135deg,#1d4ed8,#2563eb);border:none;border-radius:12px;color:#fff;font-size:calc(13px*var(--zf,1));font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(29,78,216,.5),inset 0 1px 0 rgba(255,255,255,.15);transition:all .15s" onmouseover="this.style.boxShadow='0 6px 20px rgba(29,78,216,.7),inset 0 1px 0 rgba(255,255,255,.18)'" onmouseout="this.style.boxShadow='0 4px 14px rgba(29,78,216,.5),inset 0 1px 0 rgba(255,255,255,.15)'">✓ Valider</button>
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <input id="ps-custom" placeholder="Ou saisir librement…" style="flex:1;padding:9px 14px;background:#fff;border:1.5px solid #cbd5e1;border-radius:10px;font-size:calc(13px*var(--zf,1));color:#1e293b;outline:none;transition:border .15s" onfocus="this.style.borderColor='#6366f1';this.style.boxShadow='0 0 0 3px rgba(99,102,241,.12)'" onblur="this.style.borderColor='#cbd5e1';this.style.boxShadow='none'" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
+          <button onclick="confirmPsAsStop()" style="flex-shrink:0;padding:9px 18px;background:linear-gradient(135deg,#1d4ed8,#2563eb);border:none;border-radius:10px;color:#fff;font-size:calc(13px*var(--zf,1));font-weight:800;cursor:pointer;box-shadow:0 3px 10px rgba(29,78,216,.35);transition:all .15s">✓ Valider</button>
         </div>
         <!-- Séparateur -->
-        <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);margin-bottom:16px"></div>
-        <!-- Actions bas -->
-        <div style="display:flex;gap:10px;align-items:stretch">
-          <div id="ps-backdate-row" style="flex:1">
-            <button onclick="psChooseBackdate()" style="width:100%;padding:12px 16px;background:linear-gradient(135deg,#064e3b,#065f46);border:1px solid rgba(52,211,153,.3);border-radius:14px;color:#6ee7b7;font-size:calc(13px*var(--zf,1));font-weight:800;cursor:pointer;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.4),0 0 20px rgba(16,185,129,.1),inset 0 1px 0 rgba(255,255,255,.08);transition:all .15s;letter-spacing:.01em" onmouseover="this.style.boxShadow='0 6px 20px rgba(0,0,0,.5),0 0 28px rgba(16,185,129,.25),inset 0 1px 0 rgba(255,255,255,.12)'" onmouseout="this.style.boxShadow='0 4px 14px rgba(0,0,0,.4),0 0 20px rgba(16,185,129,.1),inset 0 1px 0 rgba(255,255,255,.08)'">
-              ▶ Déclarer le début de cet OF à <span id="ps-backdate-time" style="font-weight:900;color:#34d399">--h--</span>
-            </button>
-          </div>
-          <button onclick="psIgnorer()" style="flex-shrink:0;padding:12px 22px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:14px;color:rgba(148,163,184,.8);font-size:calc(13px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);transition:all .15s" onmouseover="this.style.background='rgba(255,255,255,.1)';this.style.color='#cbd5e1'" onmouseout="this.style.background='rgba(255,255,255,.05)';this.style.color='rgba(148,163,184,.8)'">Ignorer</button>
+        <div style="height:1px;background:#e2e8f0;margin-bottom:14px"></div>
+        <!-- Backdate button seul -->
+        <div id="ps-backdate-row">
+          <button onclick="psChooseBackdate()" style="width:100%;padding:12px 16px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1.5px solid #16a34a;border-radius:12px;color:#15803d;font-size:calc(13px*var(--zf,1));font-weight:800;cursor:pointer;text-align:center;box-shadow:0 2px 8px rgba(22,163,74,.15);transition:all .15s">
+            ▶ Signaler le début de l'OF à <span id="ps-backdate-time" style="font-weight:900;color:#15803d">--h--</span>
+          </button>
         </div>
       </div>
     </div>
@@ -6421,7 +6428,13 @@ function _showNextGap(){
   const debut=g.debut||'';const fin=g.fin||'';
   document.getElementById('ps-text').textContent=`${dur} non déclarées : ${debut.replace(':','h')} → ${fin.replace(':','h')}`;
   document.getElementById('ps-gap-s').value=g.duree_s||0;
-  document.getElementById('ps-start-iso').value='';
+  // Compute ISO for the backdate button from g.debut HH:MM
+  const _bdhm=(g.debut||'').split(':');
+  if(_bdhm.length>=2){
+    const _bdn=new Date();
+    const _bddt=new Date(_bdn.getFullYear(),_bdn.getMonth(),_bdn.getDate(),parseInt(_bdhm[0])||0,parseInt(_bdhm[1])||0,0,0);
+    document.getElementById('ps-start-iso').value=_bddt.toISOString();
+  }else{document.getElementById('ps-start-iso').value='';}
   document.getElementById('ps-custom').value='';
   const bdRow=document.getElementById('ps-backdate-row');
   const bt=document.getElementById('ps-backdate-time');
