@@ -9285,8 +9285,9 @@ async function loadHist(){
   decls.forEach(r=>allRows.push({...r,_rowType:'prod'}));
   evtsFiltered.forEach(r=>allRows.push({...r,_rowType:'evt'}));
   allRows.sort((a,b)=>{
-    const da=a.date||'',db=b.date||'';
-    if(da!==db) return db.localeCompare(da);
+    const _pd=s=>{if(!s)return 0;const p=s.split('/');return p.length===3?(+p[2])*10000+(+p[1])*100+(+p[0]):0;};
+    const da=_pd(a.date),db=_pd(b.date);
+    if(db!==da) return db-da;
     return (b.debut||'').localeCompare(a.debut||'');
   });
   hd.innerHTML='<th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
