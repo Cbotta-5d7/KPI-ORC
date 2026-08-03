@@ -205,6 +205,24 @@ cfg = {}
 
 flask_app = Flask(__name__)
 
+# ── Mode encadrant ─────────────────────────────────────────────────────────────
+_write_lock = threading.Lock()
+
+def _is_pilot_request():
+    """True si la requête vient du PC pilote (localhost)."""
+    remote = request.remote_addr or ""
+    return remote in ("127.0.0.1", "::1", "localhost")
+
+def require_pilot(f):
+    """Décorateur : refuse les appels POST des PCs encadrants."""
+    import functools
+    @functools.wraps(f)
+    def _wrapped(*args, **kwargs):
+        if not _is_pilot_request():
+            return jsonify({"ok": False, "error": "Action réservée au PC pilote"}), 403
+        return f(*args, **kwargs)
+    return _wrapped
+
 @flask_app.after_request
 def _add_cors(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
@@ -1609,6 +1627,7 @@ def api_update_shift_horaires():
     return jsonify({"ok":True,"shift_dur_s":round(dur_s,0)})
 
 @flask_app.route('/api/force_reset_prod', methods=['POST'])
+@require_pilot
 def api_force_reset_prod():
     """Reset d'urgence : annule la prod en cours sans écrire dans Excel."""
     _S["prod_active"] = False
@@ -1665,6 +1684,7 @@ def _get_uncovered_gaps(from_dt, to_dt, pilot):
     return gaps
 
 @flask_app.route('/api/start_prod', methods=['POST'])
+@require_pilot
 def api_start_prod():
     if not _S["pilot"]:
         return jsonify({"ok":False,"error":"Connectez-vous d'abord"}),400
@@ -1724,6 +1744,7 @@ def api_start_prod():
                     "ip_debut_iso":ip_debut_iso})
 
 @flask_app.route('/api/set_of_start', methods=['POST'])
+@require_pilot
 def api_set_of_start():
     """Rétrodate le début de l'OF en cours (et shift_start) à l'heure du modèle horaire."""
     data = request.json or {}
@@ -1740,6 +1761,7 @@ def api_set_of_start():
         return jsonify({"ok":False,"error":str(e)}),400
 
 @flask_app.route('/api/inter_of_confirm', methods=['POST'])
+@require_pilot
 def api_inter_of_confirm():
     data = request.json or {}
     _S["inter_of_s"] = float(data.get("inter_of_s",0))
@@ -1816,7 +1838,6 @@ def api_interposte_cfg_post():
     write_interposte_to_excel(cfg["interposte_labels"])
     return jsonify({"ok":True})
 
-    threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True})
 
 @flask_app.route('/api/set_budget_override', methods=['POST'])
@@ -1832,6 +1853,7 @@ def api_set_budget_override():
     return jsonify({"ok":True})
 
 @flask_app.route('/api/start_degrade', methods=['POST'])
+@require_pilot
 def api_start_degrade():
     data = request.json or {}
     motif = str(data.get("motif","")).strip()
@@ -1843,10 +1865,10 @@ def api_start_degrade():
     _S["degrade_type"] = motif
     _S["degrade_start_dt"] = datetime.datetime.now()
     save_session()
-    threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True})
 
 @flask_app.route('/api/stop_degrade', methods=['POST'])
+@require_pilot
 def api_stop_degrade():
     if not _S.get("degrade_active"):
         return jsonify({"ok":False,"error":"Mode dégradé non actif"}),400
@@ -1859,7 +1881,6 @@ def api_stop_degrade():
     # Si durée < 30s (ex: fin de poste juste après fin d'OF), on ne génère pas de ligne parasite
     if dur_s < 30:
         save_session()
-        threading.Thread(target=generate_dashboard_html, daemon=True).start()
         return jsonify({"ok":True})
     pilot = _S.get("pilot",""); poste = _S.get("poste","")
     shift_dt = _S.get("shift_start") or start_dt_deg
@@ -1877,7 +1898,6 @@ def api_stop_degrade():
         _decl_cache.append((_nrn, tuple(_row)+("",)*max(0,40-len(_row))))
     except: pass
     save_session()
-    threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True})
 
 @flask_app.route('/api/save_degrade_list', methods=['POST'])
@@ -1910,6 +1930,7 @@ def api_save_pers_pct():
     return jsonify({"ok":True})
 
 @flask_app.route('/api/end_prod', methods=['POST'])
+@require_pilot
 def api_end_prod():
     if not _S["prod_active"] or not _S["of_start"]:
         return jsonify({"ok":False,"error":"Pas de production active"}),400
@@ -2084,7 +2105,6 @@ def api_end_prod():
     _S["degrade_periods"] = []
     save_session()
     _extra_evt_rows = [_degrade_end_row] if _degrade_end_row else []
-    # Mise à jour immédiate de _decl_cache avant write_excel_bg (évite race condition avec generate_dashboard_html)
     try:
         _next_rn_ep = max((rn for rn, _ in _decl_cache), default=0) + 1
         for _ep_row in ([prod_row] if prod_row else []) + evt_rows + _extra_evt_rows:
@@ -2093,10 +2113,10 @@ def api_end_prod():
             _next_rn_ep += 1
     except: pass
     write_excel_bg(prod_row, evt_rows + _extra_evt_rows)
-    threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True,"recap":recap})
 
 @flask_app.route('/api/preview_end_prod', methods=['POST'])
+@require_pilot
 def api_preview_end_prod():
     if not _S["prod_active"] or not _S["of_start"]:
         return jsonify({"ok":False}),400
@@ -2144,6 +2164,7 @@ def api_preview_end_prod():
     })
 
 @flask_app.route('/api/start_stop', methods=['POST'])
+@require_pilot
 def api_start_stop():
     data = request.json or {}
     key = data.get("key","")
@@ -2151,10 +2172,10 @@ def api_start_stop():
     if not key: return jsonify({"ok":False,"error":"Clé manquante"}),400
     t_start(key)
     tl_open(key,cat)
-    threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True})
 
 @flask_app.route('/api/end_stop', methods=['POST'])
+@require_pilot
 def api_end_stop():
     data = request.json or {}
     key = data.get("key","")
@@ -2190,7 +2211,6 @@ def api_end_stop():
                 _nrn = max((rn for rn,_ in _decl_cache), default=1)+1
                 _decl_cache.append((_nrn, tuple(_row)+('',)*max(0,40-len(_row))))
             except: pass
-    threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok":True})
 
 def _toggle_pause_internal():
@@ -2208,11 +2228,13 @@ def _toggle_pause_internal():
     save_session()
 
 @flask_app.route('/api/toggle_pause', methods=['POST'])
+@require_pilot
 def api_toggle_pause():
     _toggle_pause_internal()
     return jsonify({"ok":True,"paused":_S["is_paused"]})
 
 @flask_app.route('/api/toggle_reunion', methods=['POST'])
+@require_pilot
 def api_toggle_reunion():
     if t_running("reunion"):
         t_stop("reunion")
@@ -2247,10 +2269,10 @@ def api_toggle_reunion():
         t_start("reunion")
         tl_open("reunion", "reunion")
         reunion_active = True
-    threading.Thread(target=generate_dashboard_html, daemon=True).start()
     return jsonify({"ok": True, "reunion_active": reunion_active})
 
 @flask_app.route('/api/start_nettoyage', methods=['POST'])
+@require_pilot
 def api_start_nettoyage():
     data = request.json or {}
     ntype = data.get("ntype","court")
@@ -2264,6 +2286,7 @@ def api_start_nettoyage():
     return jsonify({"ok":True})
 
 @flask_app.route('/api/end_nettoyage', methods=['POST'])
+@require_pilot
 def api_end_nettoyage():
     data = request.json or {}
     t_stop("nettoyage")
@@ -2271,6 +2294,7 @@ def api_end_nettoyage():
     return jsonify({"ok":True})
 
 @flask_app.route('/api/save_form', methods=['POST'])
+@require_pilot
 def api_save_form():
     data = request.json or {}
     _S["form"] = data
@@ -3578,1413 +3602,19 @@ def api_save_list():
         return jsonify({"ok":False,"error":"Type de liste inconnu"}),400
     return jsonify({"ok":bool(ok)})
 
-@flask_app.route('/api/generate_dashboard', methods=['POST'])
-def api_generate_dashboard():
-    html_path, err = generate_dashboard_html()
-    if err: return jsonify({"ok":False,"error":err})
-    return jsonify({"ok":True,"path":html_path})
 
-@flask_app.route('/dashboard')
-def dashboard_view():
-    """Serve the dashboard HTML via Flask so JS fetch() is same-origin (no CORS block)."""
-    html_path, err = generate_dashboard_html()
-    if err:
-        return f"<html><body style='font-family:sans-serif;padding:40px;color:#dc2626'><h2>Erreur Dashboard</h2><p>{err}</p></body></html>", 500
+@flask_app.route('/api/server_info')
+def api_server_info():
+    """Retourne l'IP locale du serveur — utilisé pour construire le lien encadrant."""
+    import socket
     try:
-        with open(html_path, encoding='utf-8') as f:
-            content = f.read()
-        return content, 200, {'Content-Type': 'text/html; charset=utf-8'}
-    except Exception as e:
-        return f"<html><body>Erreur lecture fichier: {e}</body></html>", 500
-
-def _dash_budget_bars_html():
-    """Génère les barres de budget arrêts prévus pour le dashboard (rendu serveur)."""
-    try:
-        bs = _compute_budget_state_now()
-    except:
-        return ''
-    LABELS = ["Pause","Réunion","Nettoyage court","Nettoyage long","Nettoyage très long"]
-    def _fmt_dur_s(s):
-        s = int(round(s))
-        m, sec = divmod(s, 60)
-        return f"{m}m {sec:02d}s" if m else f"{sec}s"
-    rows = ""
-    any_budget = False
-    for lbl in LABELS:
-        d = bs["per_type"].get(lbl, {})
-        budget = d.get("budget_s", 0)
-        if budget <= 0: continue
-        any_budget = True
-        consumed = d.get("consumed_s", 0)
-        pct = min(100, consumed / budget * 100) if budget > 0 else 0
-        over = max(0, consumed - budget)
-        color = "#dc2626" if pct >= 100 else ("#d97706" if pct >= 70 else "#16a34a")
-        val_str = f"<b>+{_fmt_dur_s(over)}</b>" if over > 0 else f"{_fmt_dur_s(consumed)} / {_fmt_dur_s(budget)}"
-        rows += (f'<div style="margin-bottom:6px">'
-            f'<div style="display:flex;justify-content:space-between;font-size:calc(11px*var(--zf,1));font-weight:700;margin-bottom:2px">'
-            f'<span style="color:#374151">{lbl}</span>'
-            f'<span style="color:{color}">{val_str}</span></div>'
-            f'<div style="background:#e5e7eb;border-radius:4px;height:7px">'
-            f'<div style="background:{color};width:{min(100,pct):.0f}%;height:7px;border-radius:4px"></div>'
-            f'</div></div>')
-    if not any_budget:
-        return ''
-    return (f'<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;min-width:170px">'
-        f'<div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#92400e;letter-spacing:.5px;margin-bottom:8px">⏱ Arrêts prévus</div>'
-        f'{rows}</div>')
-
-# ── Dashboard HTML superviseur ─────────────────────────────────────────────────
-def generate_dashboard_html():
-    path = cfg.get("db_path","")
-    if not path or not os.path.exists(path):
-        return None, "Aucun fichier Excel configuré ou introuvable"
-    try:
-        wb = load_workbook(path, read_only=True, data_only=True)
-    except Exception as e:
-        return None, f"Erreur lecture Excel: {e}"
-
-    prod_ref = get_prod_ref()
-    from collections import defaultdict
-    import math
-
-    decl_rows = []
-    if "Declarations" in wb.sheetnames:
-        ws = wb["Declarations"]
-        for r in ws.iter_rows(min_row=2, values_only=True):
-            if r and any(r): decl_rows.append(list(r)+[None]*5)
-    elif "Data" in wb.sheetnames:
-        ws = wb["Data"]
-        for r in ws.iter_rows(min_row=2, values_only=True):
-            if r and any(r):
-                row = list(r)+[None]*10; u=[None]*37
-                u[0]="Production";u[1]=row[0];u[2]=row[1];u[3]=row[2];u[4]=row[3]
-                u[16]=row[17];u[17]=row[18];u[18]=row[16];u[19]=row[13]
-                u[20]=row[14];u[21]=row[15];u[22]=row[19];u[23]=row[20];u[24]=None
-                decl_rows.append(u)
-    wb.close()
-
-    prod_rows_all = [r for r in decl_rows if str(r[0] or "").strip().lower() in ("production","prod","")]
-    evt_rows_all  = [r for r in decl_rows if str(r[0] or "").strip().lower() not in ("production","prod","")]
-
-    def trs_color(t):
-        if t < 0: return "#94a3b8"
-        if t >= 70: return "#22c55e"
-        if t >= 50: return "#f59e0b"
-        return "#ef4444"
-
-    def hms2s(s):
-        try:
-            if hasattr(s,'hour'): return s.hour*3600+s.minute*60+getattr(s,'second',0)
-            p = str(s).strip().split(":")
-            if len(p)==3: return int(p[0])*3600+int(p[1])*60+float(p[2])
-            if len(p)==2: return int(p[0])*3600+float(p[1])*60  # HH:MM
-        except: pass
-        return 0.0
-
-    def fmt_s(s):
-        s = max(0, int(s or 0))
-        return f"{s//3600:02d}h{(s%3600)//60:02d}"
-
-    today_str = datetime.date.today().strftime("%d/%m/%Y")
-    pilot_now = _S.get("pilot","") or ""
-    poste_now = _S.get("poste","") or ""
-    prod_active = bool(_S.get("prod_active"))
-    active_stops = [k for k,t in _S.get("timers",{}).items() if t.get("running") and not k.startswith("_")]
-    of_num_now = (_S.get("form") or {}).get("of_num","") or "—"
-    taille_now = (_S.get("form") or {}).get("taille","") or ""
-    type_prod_now = (_S.get("form") or {}).get("type_prod","") or ""
-    kit_now = "Oui" if (_S.get("form") or {}).get("kit") else "Non"
-    _form_now = _S.get("form") or {}
-    copilote_now = str(_form_now.get("copilote","") or "")
-    nb_pers_now  = str(_form_now.get("nb_pers","") or "")
-    code_prod_now= str(_form_now.get("code_prod","") or "")
-    poids_now    = str(_form_now.get("poids","") or "")
-    fibre_now    = str(_form_now.get("fibre","") or "")
-    of_taie_now  = str(_form_now.get("of_taie","") or "")
-    traca_now    = str(_form_now.get("traca","") or "")
-    ref_taie_now = str(_form_now.get("ref_taie","") or "")
-    qte_fab_now  = str(_form_now.get("qte_fab","") or "")
-    qte_emb_now  = str(_form_now.get("qte_emb","") or "")
-    comment_now  = str(_form_now.get("comment","") or "")
-    of_start_dt = _S.get("of_start")
-    is_paused = _S.get("is_paused", False)
-    # Temps écoulé depuis début OF (en cours)
-    of_elapsed_s = 0.0
-    if prod_active and of_start_dt:
-        try: of_elapsed_s = (datetime.datetime.now() - of_start_dt).total_seconds()
-        except: pass
-    # Arrêts en cours cumulés sur cet OF (depuis of_start via tl_events live)
-    of_stop_s = 0.0
-    for ev in (_S.get("tl_events") or []):
-        if of_start_dt and ev.get("key") != "_prod":
-            try:
-                ev_start = ev.get("start") or ev.get("t_start")
-                if ev_start and ev_start >= of_start_dt:
-                    ev_end = ev.get("end") or ev.get("t_end") or datetime.datetime.now()
-                    of_stop_s += max(0, (ev_end - ev_start).total_seconds())
-            except: pass
-
-    today_prod = [r for r in prod_rows_all if _row_date(r[2])==today_str and str(r[4] or "")==pilot_now]
-    today_evts = [r for r in evt_rows_all if _row_date(r[2])==today_str and str(r[4] or "")==pilot_now]
-
-    shift_start_dt = _S.get("shift_start")
-
-    trs_poste = -1.0
-    elapsed_for_trs = 0.0
-
-    # Use model horaire debut as shift reference (not shift_start which may include pre-shift events)
-    model_debut_dt = None
-    _day_map = {0:'lun',1:'mar',2:'mer',3:'jeu',4:'ven',5:'sam',6:'dim'}
-    _dk = _day_map.get(datetime.date.today().weekday(), 'lun')
-    model_fin_dt = None
-    for _m in cfg.get("modeles_horaires", []):
-        if str(_m.get("nom","")).strip() == str(poste_now).strip():
-            _j = _m.get("jours",{}).get(_dk,{})
-            _deb = _j.get("debut","") or _m.get("debut","")
-            _fin = _j.get("fin","") or _m.get("fin","")
-            if _deb:
-                try:
-                    _h, _mi = map(int, _deb.split(":"))
-                    model_debut_dt = datetime.datetime.combine(datetime.date.today(), datetime.time(_h, _mi))
-                except: pass
-            if _fin:
-                try:
-                    _h2, _mi2 = map(int, _fin.split(":"))
-                    model_fin_dt = datetime.datetime.combine(datetime.date.today(), datetime.time(_h2, _mi2))
-                except: pass
-            break
-    # Filter to only prods within model horaire window (same logic as JS inShiftDecls)
-    if model_debut_dt:
-        _mdeb_s = model_debut_dt.hour * 3600 + model_debut_dt.minute * 60
-        def _ts_s(s):
-            try: p = str(s)[:5].split(':'); return int(p[0]) * 3600 + int(p[1]) * 60
-            except: return 0
-        in_shift_prod = [r for r in today_prod if _ts_s(r[17]) >= _mdeb_s or _ts_s(r[16]) >= _mdeb_s]
-    else:
-        in_shift_prod = today_prod
-    tot_equiv = sum(float(str(r[21] or "0").replace(",",".") or 0) for r in in_shift_prod)
-    nb_of_today = len(in_shift_prod)
-    nb_pieces = sum(int(str(r[19] or 0).split('.')[0] or 0) for r in in_shift_prod)
-    # Recompute last_fin_dt from in_shift_prod for TRS elapsed
-    last_fin_dt = None
-    _last_fin_s = 0.0
-    for r in in_shift_prod:
-        fs = hms2s(r[17])
-        if fs > _last_fin_s:
-            _last_fin_s = fs
-    if _last_fin_s > 0:
-        try:
-            _h = int(_last_fin_s // 3600)
-            _mi = int((_last_fin_s % 3600) // 60)
-            _sc = int(_last_fin_s % 60)
-            last_fin_dt = datetime.datetime.combine(datetime.date.today(), datetime.time(_h, _mi, _sc))
-        except: pass
-    # Match accueil formula: use last declared fin, not now()
-    # (accueil uses _lastProdDeclTime which is fin of last declared OF)
-    if prod_active and last_fin_dt is None:
-        last_fin_dt = datetime.datetime.now()
-    prod_s_total = sum(hms2s(str(r[18] or "0")) for r in in_shift_prod)
-    # Filter stop events to model horaire window (same logic as in_shift_prod)
-    if model_debut_dt:
-        in_shift_evts = [r for r in today_evts if _ts_s(r[17]) >= _mdeb_s or _ts_s(r[16]) >= _mdeb_s]
-    else:
-        in_shift_evts = today_evts
-    stop_s_total = sum(hms2s(str(r[18] or "0")) for r in in_shift_evts
-                       if str(r[0] or "").lower() not in ("pause pilote","changement d'of","interposte","changement de serie"))
-    ref_start_dt = _S.get("shift_debut_dt") or model_debut_dt or shift_start_dt
-    if ref_start_dt and last_fin_dt and prod_ref > 0:
-        elapsed_for_trs = (last_fin_dt - ref_start_dt).total_seconds()
-        if elapsed_for_trs > 0:
-            _bgt = _compute_budget_state_now()
-            _shift_ded = _bgt["total_shift_deductible_s"]
-            _adj_elapsed = max(1.0, elapsed_for_trs - _shift_ded)
-            trs_poste = round(tot_equiv / (prod_ref * _adj_elapsed / 28800) * 100, 1)
-
-    evt_dur = defaultdict(float)
-    for r in in_shift_evts:
-        t = str(r[0] or "")
-        if not t or t.lower() in ("pause pilote","changement d'of","interposte"): continue
-        evt_dur[t] += hms2s(str(r[18] or "0"))
-    pareto = sorted(evt_dur.items(), key=lambda x: -x[1])[:8]
-
-    all_stops_info = []  # list of (name, elapsed_s)
-    if active_stops:
-        evts_cfg_list = get_events_list()
-        for k in active_stops:
-            ev = next((e for e in evts_cfg_list if e.get("key")==k), None)
-            stop_name = ev["label"] if ev else k
-            t_data = _S.get("timers",{}).get(k, {})
-            stop_elapsed = t_data.get("elapsed", 0)
-            if t_data.get("running") and t_data.get("start"):
-                try: stop_elapsed += (datetime.datetime.now() - t_data["start"]).total_seconds()
-                except: pass
-            all_stops_info.append((stop_name, stop_elapsed))
-    elif is_paused:
-        pause_elapsed = _S.get("pause_total_s", 0)
-        if _S.get("pause_start"):
-            try: pause_elapsed += (datetime.datetime.now() - _S["pause_start"]).total_seconds()
-            except: pass
-        all_stops_info.append(("Pause", pause_elapsed))
-    # Legacy single-stop for compat
-    active_stop_name = all_stops_info[0][0] if all_stops_info else ""
-    active_stop_elapsed = all_stops_info[0][1] if all_stops_info else 0.0
-
-    has_alert = bool(active_stops or is_paused)
-    gen_time = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    elapsed_str = fmt_s(elapsed_for_trs) if elapsed_for_trs > 0 else "—"
-    prod_pct = int(prod_s_total / (prod_s_total + stop_s_total) * 100) if (prod_s_total + stop_s_total) > 0 else 0
-    trs_col = trs_color(trs_poste)
-
-    # ── Gauge arc SVG ──
-    def gauge_svg(trs, size=220):
-        pct = max(0, min(100, trs)) if trs >= 0 else 0
-        col = trs_color(trs)
-        r_out=90; r_in=62; cx=100; cy=104
-        def arc_pt(r, deg):
-            rad = math.radians(deg)
-            return cx+r*math.cos(rad), cy+r*math.sin(rad)
-        x1,y1=arc_pt(r_out,180); x2,y2=arc_pt(r_out,0)
-        xi1,yi1=arc_pt(r_in,180); xi2,yi2=arc_pt(r_in,0)
-        bg=f'<path d="M{x1:.1f},{y1:.1f} A{r_out},{r_out} 0 0,1 {x2:.1f},{y2:.1f} L{xi2:.1f},{yi2:.1f} A{r_in},{r_in} 0 0,0 {xi1:.1f},{yi1:.1f} Z" fill="#e2e8f0"/>'
-        fg=""
-        if pct > 0:
-            end_deg = 180 - pct * 1.8
-            fx1,fy1=arc_pt(r_out,180); fx2,fy2=arc_pt(r_out,end_deg)
-            fxi1,fyi1=arc_pt(r_in,180); fxi2,fyi2=arc_pt(r_in,end_deg)
-            lg=1 if pct>50 else 0
-            fg=f'<path d="M{fx1:.1f},{fy1:.1f} A{r_out},{r_out} 0 {lg},1 {fx2:.1f},{fy2:.1f} L{fxi2:.1f},{fyi2:.1f} A{r_in},{r_in} 0 {lg},0 {fxi1:.1f},{fyi1:.1f} Z" fill="{col}"/>'
-        lbl_txt = f"{trs:.1f}%" if trs >= 0 else "—"
-        h = int(size * 110 // 200)
-        return (f'<svg width="{size}" height="{h}" viewBox="0 0 200 110">'
-                f'{bg}{fg}'
-                f'<text x="{cx}" y="{cy+6}" text-anchor="middle" font-size="35" font-weight="900" fill="{col}">{lbl_txt}</text>'
-                f'</svg>')
-
-    # ── Pie chart SVG ──
-    def pie_svg(prod_s, stop_s, size=180):
-        total = prod_s + stop_s
-        if total <= 0:
-            return f'<svg width="{size}" height="{size}"><text x="{size//2}" y="{size//2+6}" text-anchor="middle" font-size="20" fill="#475569">Pas de données</text></svg>'
-        cx = cy = size // 2
-        r = size // 2 - 8
-        def seg(start_a, end_a, color):
-            s = math.radians(start_a); e = math.radians(end_a)
-            lg = 1 if (end_a - start_a) > 180 else 0
-            x1,y1 = cx+r*math.cos(s), cy+r*math.sin(s)
-            x2,y2 = cx+r*math.cos(e), cy+r*math.sin(e)
-            return f'<path d="M{cx},{cy} L{x1:.1f},{y1:.1f} A{r},{r} 0 {lg},1 {x2:.1f},{y2:.1f} Z" fill="{color}"/>'
-        prod_end = (prod_s / total) * 360 - 90
-        parts = seg(-90, prod_end, "#22c55e") + seg(prod_end, 270, "#ef4444")
-        pp = int(prod_s / total * 100)
-        lbl = f'<text x="{cx}" y="{cy-6}" text-anchor="middle" font-size="25" font-weight="900" fill="#fff">{pp}%</text>'
-        lbl += f'<text x="{cx}" y="{cy+16}" text-anchor="middle" font-size="16" fill="#cbd5e1">Prod</text>'
-        return f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">{parts}{lbl}</svg>'
-
-    # ── Timeline SVG ──
-    def timeline_svg(W=1200, H=64):
-        now_ts = datetime.datetime.now()
-        win_start = model_debut_dt if model_debut_dt else (shift_start_dt if shift_start_dt else now_ts - datetime.timedelta(hours=8))
-        win_end = now_ts
-        span = (win_end - win_start).total_seconds()
-        if span <= 0: span = 28800
-        Y=18; BH=38
-        def to_x(dt_str):
-            try:
-                if hasattr(dt_str,'strftime'):
-                    t = dt_str.strftime("%H:%M:%S")
-                else:
-                    t = str(dt_str).strip()[:8]
-                    if len(t)==5: t += ":00"
-                dt = datetime.datetime.strptime(f"{today_str} {t}", "%d/%m/%Y %H:%M:%S")
-                return max(0, min(W, int((dt-win_start).total_seconds()/span*W)))
-            except: return 0
-        catcol = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#f97316","pause":"#64748b","organisation":"#3b82f6","reunion":"#8b5cf6","degrade":"url(#deg-pat)"}
-        svg = f'<svg width="100%" viewBox="0 0 {W} {H}" style="display:block" preserveAspectRatio="none">'
-        svg += '<defs><pattern id="deg-pat" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#16a34a"/><rect x="4" y="0" width="4" height="8" fill="#fef08a"/></pattern></defs>'
-        svg += f'<rect x="0" y="{Y}" width="{W}" height="{BH}" fill="#e2e8f0" rx="4"/>'
-        for r in today_prod:
-            x1 = to_x(str(r[16] or ""))
-            x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*W)
-            x2 = max(x2, x1+3)
-            svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="#22c55e" rx="2" opacity="0.85"/>'
-        # Current running OF (not yet declared) — show in lighter green
-        if prod_active:
-            _of_bar_start = last_fin_dt or model_debut_dt or shift_start_dt
-            if _of_bar_start:
-                x1 = to_x(_of_bar_start)
-                x2 = int((now_ts - win_start).total_seconds() / span * W)
-                x2 = max(x2, x1 + 3)
-                svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="#4ade80" rx="2" opacity="0.65" stroke="#16a34a" stroke-width="1" stroke-dasharray="4,2"/>'
-        for r in today_evts:
-            t = str(r[0] or "").lower()
-            x1 = to_x(str(r[16] or ""))
-            x2 = to_x(str(r[17] or "")) if r[17] else int((now_ts-win_start).total_seconds()/span*W)
-            x2 = max(x2, x1+3)
-            col = catcol["pb"] if ("pb" in t or "panne" in t or "technique" in t) else catcol["ratt"] if "ratt" in t else catcol["nettoyage"] if "nett" in t else catcol["reunion"] if ("réunion" in t or "reunion" in t or "meeting" in t) else catcol["pause"] if "pause" in t else catcol["degrade"] if ("dégr" in t or "degrad" in t or "mode" in t) else "#94a3b8"
-            svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="{col}" rx="2" opacity="0.95"/>'
-        # Live events from _S (in-memory, not yet in Excel)
-        _catcol2 = {"pb":"#ef4444","ratt":"#f59e0b","nettoyage":"#f97316","pause":"#64748b","organisation":"#3b82f6","reunion":"#8b5cf6"}
-        for _dp in (_S.get("degrade_periods") or []):
-            _d0 = _dp.get("start"); _d1 = _dp.get("end") or now_ts
-            if _d0:
-                x1 = to_x(_d0); x2 = to_x(_d1); x2 = max(x2, x1+3)
-                svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="url(#deg-pat)" rx="2" opacity="0.85"/>'
-        if _S.get("degrade_active") and _S.get("degrade_start_dt"):
-            x1 = to_x(_S["degrade_start_dt"]); x2 = int((now_ts-win_start).total_seconds()/span*W); x2 = max(x2, x1+3)
-            svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="url(#deg-pat)" rx="2" opacity="0.85"/>'
-        for _ev in (_S.get("tl_events") or []):
-            _key = _ev.get("key","")
-            if not _key or _key.startswith("_"): continue
-            _ev_start = _ev.get("start")
-            if not _ev_start: continue
-            _ev_end = _ev.get("end") or now_ts
-            _cat = _ev.get("cat","autre")
-            _col = _catcol2.get(_cat, "#94a3b8")
-            try:
-                x1 = to_x(_ev_start)
-                x2 = to_x(_ev_end)
-                x2 = max(x2, x1+3)
-                if x2 > x1:
-                    svg += f'<rect x="{x1}" y="{Y}" width="{x2-x1}" height="{BH}" fill="{_col}" rx="2" opacity="0.95"/>'
-            except: pass
-        h_span = span / 3600
-        step = 1 if h_span <= 10 else 2
-        cur = win_start.replace(minute=0, second=0, microsecond=0)
-        if cur < win_start: cur += datetime.timedelta(hours=1)
-        while cur <= win_end:
-            frac = (cur-win_start).total_seconds()/span
-            x = int(frac*W)
-            svg += f'<line x1="{x}" y1="{Y}" x2="{x}" y2="{Y+BH}" stroke="#94a3b8" stroke-width="1"/>'
-            svg += f'<text x="{x}" y="{Y-3}" font-size="15" fill="#475569" text-anchor="middle">{cur.strftime("%H:%M")}</text>'
-            cur += datetime.timedelta(hours=step)
-        now_x = int((now_ts-win_start).total_seconds()/span*W)
-        svg += f'<line x1="{now_x}" y1="{Y-4}" x2="{now_x}" y2="{Y+BH+4}" stroke="#1e293b" stroke-width="2.5"/>'
-        svg += '</svg>'
-        return svg
-
-    # ── Pareto bars HTML ──
-    pareto_html = ""
-    if pareto:
-        max_dur = pareto[0][1]
-        for lbl, dur in pareto:
-            pct = dur / max_dur * 100 if max_dur > 0 else 0
-            col = "#ef4444" if any(x in lbl.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in lbl.lower() else "#f97316" if "nett" in lbl.lower() else "#8b5cf6" if any(x in lbl.lower() for x in ["réunion","reunion","meeting"]) else "#3b82f6"
-            pareto_html += f'''<div style="margin-bottom:4px">
-              <div style="display:flex;justify-content:space-between;font-size:calc(12px*var(--zf,1));color:#475569;margin-bottom:2px">
-                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%">{lbl[:30]}</span>
-                <span style="font-weight:800;color:#1e293b;flex-shrink:0">{dur/60:.0f}m</span>
-              </div>
-              <div style="background:#e2e8f0;border-radius:3px;height:12px;width:100%">
-                <div style="width:{pct:.0f}%;height:12px;background:{col};border-radius:3px"></div>
-              </div>
-            </div>'''
-    else:
-        pareto_html = '<div style="color:#475569;font-size:calc(13px*var(--zf,1));padding:6px;text-align:center">Aucun arrêt enregistré</div>'
-    # ── Liste arrêts individuels ──
-    _stop_list_html = ""
-    for _sr in today_evts:
-        _st = str(_sr[0] or "").strip()
-        _sd = str(_sr[16] or "")[:5]
-        _sf = str(_sr[17] or "")[:5]
-        _sdur = str(_sr[18] or "")
-        _scmt = str(_sr[35] or "").strip()
-        _scol = "#ef4444" if any(x in _st.lower() for x in ["pb","panne","technique"]) else "#f59e0b" if "ratt" in _st.lower() else "#f97316" if "nett" in _st.lower() else "#8b5cf6" if any(x in _st.lower() for x in ["réunion","reunion","meeting"]) else "#3b82f6"
-        _stop_list_html += (f'<tr>'
-            f'<td style="padding:3px 6px;font-size:calc(11px*var(--zf,1));font-weight:700;color:{_scol};white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis">{_st}</td>'
-            f'<td style="padding:3px 6px;font-size:calc(11px*var(--zf,1));color:#64748b;white-space:nowrap">{_sd}→{_sf}</td>'
-            f'<td style="padding:3px 6px;font-size:calc(11px*var(--zf,1));font-weight:800;color:#1e293b;white-space:nowrap">{_sdur}</td>'
-            f'<td style="padding:3px 6px;font-size:calc(10px*var(--zf,1));color:#94a3b8;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{_scmt}">{_scmt}</td>'
-            f'</tr>')
-    if not _stop_list_html:
-        _stop_list_html = '<tr><td colspan="4" style="padding:6px;text-align:center;color:#94a3b8;font-size:calc(12px*var(--zf,1))">Aucun arrêt</td></tr>'
-
-    # ── Productions table (avec données détaillées pour popup) ──
-    import json as _json2
-    _dash_prod_list = []
-    prod_rows_html = ""
-    for _pi, r in enumerate(list(reversed(in_shift_prod))[:8]):
-        _trs_p = -1.0
-        trs_val = ""
-        try:
-            tv = float(str(r[24] or "").replace(",","."))
-            _trs_p = tv
-            tc = trs_color(tv)
-            trs_val = f'<span style="color:{tc};font-weight:900">{tv:.1f}%</span>'
-        except: pass
-        kit_val = str(r[15] or "").strip()
-        if kit_val.lower() in ("oui","yes","1","true","x"): kit_disp = '<span style="color:#16a34a;font-weight:800">Oui</span>'
-        elif kit_val.lower() in ("non","no","0","false",""): kit_disp = '<span style="color:#94a3b8">Non</span>'
-        else: kit_disp = kit_val
-        cad_val = str(r[22] or "").strip()
-        cmt_val = str(r[35] or "").strip()
-        fibre_val = str(r[11] or "").strip()
-        fibre_short = fibre_val[:9]+('…' if len(fibre_val)>9 else '')
-        # Arrêts pendant cet OF
-        _of_date = str(r[2] or "")[:10]
-        _of_pilot = str(r[4] or "")
-        _of_deb_s2 = hms2s(r[16]); _of_fin_s2 = hms2s(r[17]) or 86400
-        _of_stops2 = [{"type":str(_er[0] or ""),"debut":str(_er[16] or "")[:5],"fin":str(_er[17] or "")[:5],"duree":str(_er[18] or ""),"comment":str(_er[35] or "")}
-                      for _er in evt_rows_all if str(_er[2] or "")[:10]==_of_date and str(_er[4] or "")==_of_pilot and _of_deb_s2<=hms2s(_er[16])<=_of_fin_s2]
-        _dash_prod_list.append({"of":str(r[1] or ""),"date":str(r[2] or "")[:10],"pilot":str(r[4] or ""),"poste":str(r[3] or ""),
-            "copilote":str(r[5] or ""),"nb_pers":str(r[6] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),
-            "type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),
-            "traca":str(r[13] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),
-            "debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),
-            "qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),
-            "qte_init_taie":str(r[25] if len(r)>25 else ""),"nb_taie2_choix":str(r[26] if len(r)>26 else ""),
-            "nb_def_cout":str(r[27] if len(r)>27 else ""),"mq_taie":str(r[28] if len(r)>28 else ""),
-            "mq_housse_encart":str(r[29] if len(r)>29 else ""),"nb_pp_cousue":str(r[30] if len(r)>30 else ""),
-            "duree_mq_mp":str(r[32] if len(r)>32 else ""),"manquant_pers":str(r[33] if len(r)>33 else ""),
-            "comment":cmt_val,"trs":_trs_p,"stops":_of_stops2})
-        prod_rows_html += f'''<tr style="cursor:pointer" onclick="showDashProdOf({_pi})" title="Voir détail OF">
-          <td style="font-weight:800;font-size:calc(15px*var(--zf,1));color:#1e3a8a;text-decoration:underline">{r[1] or ""}</td>
-          <td style="color:#6366f1;font-weight:700;font-size:calc(13px*var(--zf,1));cursor:pointer" title="{fibre_val}" onclick="event.stopPropagation();if(this.title)alert(\'Fibre : \'+this.title)">{fibre_short}</td>
-          <td style="color:#475569;font-size:calc(14px*var(--zf,1))">{r[9] or ""}</td>
-          <td style="color:#475569;font-size:calc(14px*var(--zf,1))">{r[7] or ""}</td>
-          <td style="text-align:center">{kit_disp}</td>
-          <td style="color:#475569">{str(r[16] or "")[:5]}</td><td style="color:#475569">{str(r[17] or "")[:5]}</td>
-          <td style="color:#475569">{r[18] or ""}</td>
-          <td style="color:#1e293b">{r[19] or "0"}</td>
-          <td style="color:#0369a1;font-size:calc(14px*var(--zf,1))">{cad_val}</td>
-          <td style="font-weight:800;color:#0891b2">{r[21] or ""}</td>
-          <td>{trs_val}</td>
-          <td style="color:#64748b;font-size:calc(14px*var(--zf,1));max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{cmt_val}">{cmt_val}</td>
-        </tr>'''
-    if not prod_rows_html:
-        prod_rows_html = '<tr><td colspan="12" style="color:#94a3b8;padding:10px;text-align:center;font-size:calc(15px*var(--zf,1))">Aucune production déclarée</td></tr>'
-    _dash_prod_json = _json2.dumps(_dash_prod_list, ensure_ascii=True, default=str)
-
-    # ── ALERT BANNER HTML ──
-    alert_html = ""
-    if has_alert:
-        stops_html = "".join(
-            f'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;background:rgba(255,255,255,.12);border-radius:8px;padding:6px 14px;margin:3px 0;min-width:240px">'
-            f'<span style="font-size:calc(22px*var(--zf,1));font-weight:800;color:#fef2f2">{nm}</span>'
-            f'<span style="font-size:calc(30px*var(--zf,1));font-weight:900;color:#fecaca;font-variant-numeric:tabular-nums">{int(el/60)}<span style="font-size:calc(16px*var(--zf,1))">min</span></span>'
-            f'</div>'
-            for nm, el in all_stops_info
-        )
-        alert_html = f'''
-<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,#7f0000 0%,#b91c1c 50%,#ef4444 100%);
-  animation:pulse 1.2s ease-in-out infinite;border-bottom:6px solid #fca5a5">
-  <div style="font-size:calc(52px*var(--zf,1));line-height:1;animation:wag .8s ease-in-out infinite">🚨</div>
-  <div style="font-size:calc(50px*var(--zf,1));font-weight:900;letter-spacing:4px;margin:8px 0;text-shadow:0 4px 16px rgba(0,0,0,.4);color:#fff">ARRÊT{"S" if len(all_stops_info)>1 else ""} EN COURS</div>
-  {stops_html}
-  <div style="font-size:calc(52px*var(--zf,1));line-height:1;animation:wag .8s ease-in-out infinite reverse;margin-top:8px">🚨</div>
-</div>'''
-    else:
-        # ── PROD EN COURS + PRODUCTIONS DU POSTE ──
-        prod_status_col = "#16a34a" if prod_active else "#64748b"
-        prod_status_label = "▶ PRODUCTION EN COURS" if prod_active else "○ EN ATTENTE"
-        of_debut_str = of_start_dt.strftime("%H:%M") if of_start_dt else "—"
-        of_elapsed_str = f"{int(of_elapsed_s//3600):02d}h{int((of_elapsed_s%3600)//60):02d}" if of_elapsed_s > 0 else "—"
-        of_stop_min = f"{of_stop_s/60:.0f}" if of_stop_s > 0 else "0"
-        kit_col = "#16a34a" if kit_now == "Oui" else "#94a3b8"
-        of_border_col = "#22c55e" if prod_active else "#e2e8f0"
-        # Chips ligne 1 : timing courant
-        _of_chips = ""
-        for _lbl, _val, _col in [("Début", of_debut_str, "#1e293b"),
-                                   ("Écoulé", of_elapsed_str, "#0891b2"),
-                                   ("Arrêts", of_stop_min+" min", "#ef4444")]:
-            _of_chips += (f'<div style="text-align:center;flex-shrink:0">'
-                          f'<div style="font-size:calc(10px*var(--zf,1));color:#64748b;font-weight:700;text-transform:uppercase">{_lbl}</div>'
-                          f'<div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:{_col}">{_val}</div></div>')
-        # Chips ligne 2 : champs formulaire (uniquement si renseigné)
-        _form_detail_chips = ""
-        _form_detail_fields = [
-            ("Taille", taille_now, "#1e293b"), ("Type", type_prod_now, "#1e293b"),
-            ("Code prod.", code_prod_now, "#374151"), ("Lots de 2", kit_now if prod_active else "", kit_col),
-            ("Fibre", fibre_now, "#6366f1"), ("Poids (g)", poids_now, "#1e293b"),
-            ("Co-pilote", copilote_now, "#1e293b"), ("Nb pers.", nb_pers_now, "#1e293b"),
-            ("OF Taie", of_taie_now, "#374151"), ("Traca", traca_now, "#374151"),
-            ("Réf Taie", ref_taie_now, "#374151"),
-            ("Qté Fab.", qte_fab_now, "#1e293b"), ("Qté Emb.", qte_emb_now, "#1e293b"),
-        ]
-        for _lbl2, _val2, _col2 in _form_detail_fields:
-            if not _val2 or _val2 == "Non": continue
-            _form_detail_chips += (f'<div style="text-align:center;flex-shrink:0;padding:2px 5px;background:#f0fdf4;border:1px solid #d1fae5;border-radius:5px">'
-                                   f'<div style="font-size:calc(9px*var(--zf,1));color:#64748b;font-weight:700;text-transform:uppercase">{_lbl2}</div>'
-                                   f'<div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:{_col2};white-space:nowrap">{_val2}</div></div>')
-        _form_section = (f'<div style="border-top:1px solid #d1fae5;padding-top:4px;display:flex;flex-wrap:wrap;gap:4px">{_form_detail_chips}</div>'
-                         if _form_detail_chips else '')
-        _poste_chips = ""
-        for _i, (_lbl, _val, _col) in enumerate([("Éq.", f"{tot_equiv:.1f}", "#0891b2"),
-                                                   ("Qté", str(nb_pieces), "#7c3aed"),
-                                                   ("OF", str(nb_of_today), "#1e3a8a"),
-                                                   ("Prod", f"{prod_s_total/3600:.1f}h", "#16a34a"),
-                                                   ("Arrêts", f"{stop_s_total/60:.0f}min", "#ef4444")]):
-            _bl = "border-left:1px solid #e2e8f0;" if _i > 0 else ""
-            _poste_chips += (f'<div style="text-align:center;flex:1;padding:0 3px;{_bl}">'
-                             f'<div style="font-size:calc(20px*var(--zf,1));font-weight:900;color:{_col};line-height:1">{_val}</div>'
-                             f'<div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#64748b;text-transform:uppercase;margin-top:1px">{_lbl}</div></div>')
-        _budget_bars = _dash_budget_bars_html()
-        _budget_col = f'  {_budget_bars}' if _budget_bars else ''
-        _grid_cols = '2fr 1fr auto' if _budget_bars else '2fr 1fr'
-        alert_html = f'''
-<div style="display:grid;grid-template-columns:{_grid_cols};gap:6px;flex-shrink:0;align-items:stretch">
-  <div style="background:#f0fdf4;border:2px solid {of_border_col};border-radius:8px;padding:5px 12px;display:flex;flex-direction:column;gap:4px">
-    <div style="display:flex;align-items:center;gap:12px">
-      <div style="flex-shrink:0">
-        <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:{prod_status_col};letter-spacing:1px">{prod_status_label}</div>
-        <div style="font-size:calc(24px*var(--zf,1));font-weight:900;color:#1e293b;line-height:1.1;font-family:monospace">OF {of_num_now}</div>
-      </div>
-      <div style="height:32px;width:1px;background:#d1fae5;flex-shrink:0"></div>
-      {_of_chips}
-    </div>
-    {_form_section}
-  </div>
-  <div style="background:#f8fafc;border:2px solid #e2e8f0;border-radius:8px;padding:3px 8px;display:flex;align-items:center;gap:0">
-    <div style="font-size:calc(10px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#1e3a8a;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:1px;flex-shrink:0;margin-right:6px">Poste entier</div>
-    {_poste_chips}
-  </div>
-{_budget_col}
-</div>'''
-
-    tl_svg = timeline_svg()
-
-    # ── Historique: all prods sorted by date+time desc (last 30) ──
-    hist_rows = sorted(prod_rows_all, key=lambda r: (str(r[2] or ''), str(r[16] or '')), reverse=True)[:30]
-    import json as _json
-    _dash_of_list = []
-    hist_html = ""
-    _prev_session_key = None
-    for _hidx, r in enumerate(hist_rows):
-        tc_hist = ""
-        try:
-            tv_h = float(str(r[24] or "").replace(",","."))
-            tc_hist = f'<span style="color:{trs_color(tv_h)};font-weight:900">{tv_h:.1f}%</span>'
-        except: pass
-        # Compute stops for this OF
-        _of_date = str(r[2] or "")[:10]
-        _of_pilot = str(r[4] or "")
-        _of_deb_s = hms2s(r[16])
-        _of_fin_s = hms2s(r[17]) or 86400
-        _of_stops = []
-        for _er in evt_rows_all:
-            if str(_er[2] or "")[:10] != _of_date: continue
-            if str(_er[4] or "") != _of_pilot: continue
-            _er_s = hms2s(_er[16])
-            if _of_deb_s <= _er_s <= _of_fin_s:
-                _of_stops.append({"type":str(_er[0] or ""),"debut":str(_er[16] or "")[:5],"fin":str(_er[17] or "")[:5],"duree":str(_er[18] or ""),"comment":str(_er[35] or "")})
-        _trs_of = -1.0
-        try:
-            _tv_h2 = float(str(r[24] or "").replace(",","."))
-            _trs_of = _tv_h2
-        except: pass
-        _dash_of_list.append({
-            "of":str(r[1] or ""),
-            "date":_of_date,
-            "pilot":_of_pilot,
-            "poste":str(r[3] or ""),
-            "copilote":str(r[5] or ""),
-            "nb_pers":str(r[6] or ""),
-            "taille":str(r[7] or ""),
-            "code_prod":str(r[8] or ""),
-            "type_prod":str(r[9] or ""),
-            "kit":str(r[15] or ""),
-            "debut":str(r[16] or "")[:5],
-            "fin":str(r[17] or "")[:5],
-            "duree":str(r[18] or ""),
-            "qte_fab":str(r[19] or ""),
-            "qte_emb":str(r[20] or ""),
-            "equiv":str(r[21] or ""),
-            "poids":str(r[10] or ""),
-            "fibre":str(r[11] or ""),
-            "of_taie":str(r[12] or ""),
-            "traca":str(r[13] or ""),
-            "ref_taie":str(r[14] or ""),
-            "qte_init_taie":str(r[22] or ""),
-            "nb_taie2_choix":str(r[23] or ""),
-            "trs":_trs_of,
-            "duree_mq_mp":str(r[26] or "") if len(r)>26 else "",
-            "manquant_pers":str(r[27] or "") if len(r)>27 else "",
-            "nb_def_cout":str(r[28] or "") if len(r)>28 else "",
-            "mq_taie":str(r[29] or "") if len(r)>29 else "",
-            "mq_housse_encart":str(r[30] or "") if len(r)>30 else "",
-            "nb_pp_cousue":str(r[31] or "") if len(r)>31 else "",
-            "comment":str(r[35] or "") if len(r)>35 else "",
-            "stops":_of_stops
-        })
-        _sess_key = f"{str(r[2] or '')[:10]}|{str(r[3] or '')}|{str(r[4] or '')}"
-        if _sess_key != _prev_session_key:
-            _prev_session_key = _sess_key
-            hist_html += (f'<tr class="hist-sep" style="background:#f0f4fa;border-top:2px solid #c7d2e8">'
-                f'<td colspan="12" style="padding:3px 10px;font-size:calc(10px*var(--zf,1));font-weight:600;color:#334155;letter-spacing:.2px">'
-                f'📅 {str(r[2] or "")[:10]} &nbsp;·&nbsp; 🏭 {str(r[3] or "")} &nbsp;·&nbsp; 👤 {str(r[4] or "")}'
-                f'</td></tr>')
-        _fibre_h = str(r[11] or "").strip()
-        _fibre_short_h = _fibre_h[:9] + ('…' if len(_fibre_h) > 9 else '')
-        hist_html += (f'<tr class="hist-row" data-date="{str(r[2] or "")[:10]}" data-of="{str(r[1] or "")}" data-pilot="{str(r[4] or "")}" style="cursor:pointer" onclick="showDashOf({_hidx})" title="Voir détail OF">'
-            f'<td style="font-weight:800">{str(r[2] or "")[:10]}</td>'
-            f'<td style="font-weight:800;color:#1e3a8a;text-decoration:underline">{r[1] or ""}</td>'
-            f'<td style="color:#6366f1;font-weight:700;font-size:calc(12px*var(--zf,1));cursor:pointer" title="{_fibre_h}" onclick="event.stopPropagation();if(this.title)alert(\'Fibre : \'+this.title)">{_fibre_short_h}</td>'
-            f'<td>{r[9] or ""}</td>'
-            f'<td>{str(r[3] or "")}</td>'
-            f'<td>{str(r[4] or "")}</td>'
-            f'<td>{str(r[16] or "")[:5]}</td><td>{str(r[17] or "")[:5]}</td>'
-            f'<td>{r[18] or ""}</td>'
-            f'<td>{r[19] or "0"}</td>'
-            f'<td style="color:#0891b2;font-weight:800">{r[21] or ""}</td>'
-            f'<td>{tc_hist}</td>'
-            f'</tr>')
-    if not hist_html:
-        hist_html = '<tr><td colspan="12" style="text-align:center;color:#94a3b8;padding:12px">Aucune production</td></tr>'
-    _dash_of_json = _json.dumps(_dash_of_list, ensure_ascii=True, default=str)
-
-    # ── Rapports: groupé par type_prod ──
-    from collections import defaultdict as _dd2
-    _rpt = _dd2(lambda: {'count':0,'equiv':0.0,'qty':0,'trs_sum':0.0,'trs_cnt':0})
-    for r in prod_rows_all:
-        _tp = str(r[9] or '').strip() or '(sans type)'
-        _rpt[_tp]['count'] += 1
-        try: _rpt[_tp]['equiv'] += float(str(r[21] or '0').replace(',','.') or 0)
-        except: pass
-        try: _rpt[_tp]['qty'] += int(str(r[19] or '0').split('.')[0] or 0)
-        except: pass
-        try:
-            _tv = float(str(r[24] or '').replace(',','.'))
-            if _tv >= 0: _rpt[_tp]['trs_sum'] += _tv; _rpt[_tp]['trs_cnt'] += 1
-        except: pass
-    rpt_html = ""
-    for _tpk, _dr in sorted(_rpt.items(), key=lambda x: -x[1]['equiv']):
-        _atrs = _dr['trs_sum']/_dr['trs_cnt'] if _dr['trs_cnt'] else -1
-        _tcrpt = (f'<span style="color:{trs_color(_atrs)};font-weight:900">{_atrs:.1f}%</span>'
-                  if _atrs >= 0 else '<span style="color:#94a3b8">—</span>')
-        rpt_html += (f'<tr>'
-            f'<td style="font-weight:800;text-align:left;padding:6px 10px">{_tpk}</td>'
-            f'<td style="text-align:center">{_dr["count"]}</td>'
-            f'<td style="text-align:center;color:#0891b2;font-weight:800">{_dr["equiv"]:.1f}</td>'
-            f'<td style="text-align:center">{_dr["qty"]}</td>'
-            f'<td style="text-align:center">{_tcrpt}</td>'
-            f'</tr>')
-    if not rpt_html:
-        rpt_html = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:12px">Aucune donnée</td></tr>'
-
-    html = f"""<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Dashboard Encadrant — ORC</title>
-<style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-html,body{{height:100%;overflow:hidden;font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:#eef2f7;color:#1e293b;font-size:calc(15px*var(--zf,1))}}
-.hdr{{height:48px;background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;box-shadow:0 2px 8px rgba(30,58,138,.3)}}
-.hdr-title{{font-size:calc(18px*var(--zf,1));font-weight:900;display:flex;align-items:center;gap:10px;letter-spacing:.3px}}
-.hdr-badge{{background:rgba(255,255,255,.15);border-radius:20px;padding:4px 12px;font-size:calc(13px*var(--zf,1));font-weight:700}}
-.hdr-badge.green{{background:#15803d;box-shadow:0 0 0 2px #22c55e44}}
-.hdr-badge.gray{{background:rgba(255,255,255,.15)}}
-.hdr-time{{font-size:calc(12px*var(--zf,1));opacity:.75}}
-.outer{{height:calc(100vh - 48px);display:flex;flex-direction:column;gap:8px;padding:8px;overflow:hidden}}
-.panel{{background:#fff;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}}
-.panel-hdr{{padding:6px 12px;font-size:calc(12px*var(--zf,1));font-weight:900;text-transform:uppercase;letter-spacing:1px;flex-shrink:0}}
-.panel-body{{flex:1;overflow-y:auto;padding:8px 12px;min-height:0}}
-.trs-num{{font-size:calc(42px*var(--zf,1));font-weight:900;line-height:1;text-align:center}}
-.trs-lbl{{font-size:calc(12px*var(--zf,1));font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#64748b;text-align:center;margin-bottom:4px}}
-.trs-sub{{font-size:calc(14px*var(--zf,1));color:#64748b;text-align:center;margin-top:3px}}
-/* HERO ROW */
-.dash-hero{{display:flex;gap:10px;align-items:stretch;flex-shrink:0}}
-.dash-trs-card{{background:#fff;border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.1);min-width:180px}}
-.dash-kpi-grid{{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;flex:1}}
-.dash-kpi{{background:#fff;border-radius:10px;padding:10px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.1);text-align:center}}
-.dash-kpi-val{{font-size:calc(24px*var(--zf,1));font-weight:900;line-height:1.1}}
-.dash-kpi-lbl{{font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;margin-top:4px;letter-spacing:.4px}}
-.dash-pie-card{{background:#fff;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 3px rgba(0,0,0,.1);flex-shrink:0}}
-/* CONTENT GRID */
-.dash-content{{display:grid;grid-template-columns:1fr 320px;gap:8px;flex:1;overflow:hidden;min-height:0}}
-.dash-right{{display:flex;flex-direction:column;gap:8px;overflow:hidden}}
-.dash-card{{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column}}
-.dash-card-hdr{{padding:7px 14px;font-size:calc(11px*var(--zf,1));font-weight:900;text-transform:uppercase;letter-spacing:.7px;color:#475569;border-bottom:1px solid #f1f5f9;flex-shrink:0;display:flex;align-items:center;gap:6px}}
-.dash-card-hdr .dot{{width:8px;height:8px;border-radius:50%;flex-shrink:0}}
-.dash-card-body{{flex:1;overflow-y:auto;min-height:0}}
-/* STAT CARDS (alert mode) */
-.stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:6px}}
-.stat-card{{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.05)}}
-.stat-val{{font-size:calc(28px*var(--zf,1));font-weight:900;line-height:1}}
-.stat-lbl{{font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;margin-top:3px;letter-spacing:.4px}}
-/* TIMELINE */
-.tl-cell{{background:#fff;border-radius:12px;padding:8px 12px;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.08)}}
-.tl-lbl{{font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#64748b;margin-bottom:5px;display:flex;justify-content:space-between}}
-.tl-legend{{display:flex;gap:10px;font-size:calc(12px*var(--zf,1));color:#64748b;margin-top:4px;flex-wrap:wrap;align-items:center}}
-.tl-legend span i{{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:2px;vertical-align:middle}}
-/* FP CARDS (used in _render_rpt_panel) */
-.fp-card{{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;text-align:center}}
-.fp-big{{font-size:calc(20px*var(--zf,1));font-weight:900;color:#1e3a8a;line-height:1.1}}
-.fp-lbl{{font-size:calc(9px*var(--zf,1));text-transform:uppercase;font-weight:700;color:#64748b;margin-top:2px}}
-.rpt-card{{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px}}
-/* TABLE */
-.ktbl{{width:100%;border-collapse:collapse;font-size:calc(14px*var(--zf,1))}}
-.ktbl th{{background:#f8fafc;padding:6px 10px;font-weight:800;text-align:center;position:sticky;top:0;font-size:calc(11px*var(--zf,1));text-transform:uppercase;color:#475569;border-bottom:2px solid #e2e8f0;white-space:nowrap}}
-.ktbl td{{padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:center;color:#1e293b}}
-.ktbl tr:hover td{{background:#f8fafc}}
-/* HISTORIQUE FILTER */
-.hist-filter{{display:flex;gap:8px;align-items:center;padding:8px 10px;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex-shrink:0;flex-wrap:wrap}}
-.hist-filter label{{font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;white-space:nowrap}}
-.hist-filter input{{border:1px solid #e2e8f0;border-radius:6px;padding:5px 10px;font-size:calc(12px*var(--zf,1));color:#1e293b;outline:none;background:#f8fafc}}
-.hist-filter input:focus{{border-color:#3b82f6;background:#fff}}
-/* TABS */
-.tab-bar{{display:flex;gap:0;flex-shrink:0;border-bottom:2px solid #e2e8f0}}
-.tab-btn{{background:none;border:none;border-bottom:3px solid transparent;padding:9px 22px;font-size:calc(13px*var(--zf,1));font-weight:700;color:#64748b;cursor:pointer;transition:all .15s;margin-bottom:-2px}}
-.tab-btn:hover{{color:#1e3a8a}}
-.tab-btn.active{{color:#1e3a8a;border-bottom-color:#1e3a8a;background:rgba(30,58,138,.04)}}
-.tab-pane{{flex:1;display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0}}
-/* RAPPORTS SIDEBAR */
-.rpt-wrap{{display:flex;flex:1;overflow:hidden;min-height:0;position:relative;gap:0}}
-#rpt-sidebar{{width:260px;min-width:0;transition:width .25s ease,opacity .2s ease;overflow:hidden;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid #e2e8f0;background:#fafbfc}}
-#rpt-sidebar.col{{width:0;opacity:0;border-right:none}}
-#rpt-tog{{position:absolute;left:260px;top:50%;transform:translateY(-50%);z-index:20;width:18px;height:40px;background:#fff;border:1px solid #e2e8f0;border-left:none;border-radius:0 6px 6px 0;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748b;transition:left .25s ease;box-shadow:2px 0 4px rgba(0,0,0,.06);font-size:calc(13px*var(--zf,1))}}
-#rpt-sidebar.col+#rpt-tog{{left:0}}
-/* MODAL */
-.dash-modal-overlay{{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:9999}}
-.dash-modal-box{{background:#fff;border-radius:16px;padding:24px;max-width:680px;width:95%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}}
-@keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.85}}}}
-@keyframes wag{{0%{{transform:rotate(-8deg)}}50%{{transform:rotate(8deg)}}100%{{transform:rotate(-8deg)}}}}
-::-webkit-scrollbar{{width:5px}}::-webkit-scrollbar-track{{background:#f1f5f9}}::-webkit-scrollbar-thumb{{background:#cbd5e1;border-radius:3px}}
-</style>
-</head>
-<body>
-
-<div class="hdr">
-  <div class="hdr-title">
-    &#127981; Dashboard Encadrant — ORC
-  </div>
-  <div style="display:flex;align-items:center;gap:18px">
-    {f'<div style="display:flex;flex-direction:column;align-items:center;line-height:1.1"><span style="font-size:calc(22px*var(--zf,1));font-weight:900;color:#fff;letter-spacing:.5px">👤 {pilot_now}</span><span style="font-size:calc(14px*var(--zf,1));font-weight:700;color:#93c5fd;text-transform:uppercase">{poste_now}</span></div>' if pilot_now else ''}
-    {f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px;text-align:center"><div style="font-size:calc(12px*var(--zf,1));color:#93c5fd;font-weight:700;text-transform:uppercase">Modèle horaire</div><div style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} → {model_fin_dt.strftime("%H:%M")}</div></div>' if (model_debut_dt and model_fin_dt) else (f'<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:4px 12px"><div style="font-size:calc(12px*var(--zf,1));color:#93c5fd;font-weight:700">Modèle</div><div style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#fff">{model_debut_dt.strftime("%H:%M")} →</div></div>' if model_debut_dt else '')}
-    {'<span class="hdr-badge green">▶ PROD — OF ' + of_num_now + '</span>' if prod_active else '<span class="hdr-badge gray">○ En attente</span>'}
-    <span class="hdr-time">🔄 15s | {gen_time}</span>
-  </div>
-</div>
-
-<div class="outer">
-
-  <!-- ONGLETS -->
-  <div class="tab-bar">
-    <button class="tab-btn active" id="tb-accueil" onclick="showTab('accueil')">🏠 Accueil</button>
-    <button class="tab-btn" id="tb-historique" onclick="showTab('historique')">📋 Historique</button>
-    <button class="tab-btn" id="tb-rapports" onclick="showTab('rapports')">📊 Rapports postes</button>
-    <button class="tab-btn" id="tb-rpt-jour" onclick="showTab('rpt-jour')">📅 Rapports jour</button>
-  </div>
-
-  <!-- ONGLET ACCUEIL -->
-  <div id="tab-accueil" class="tab-pane">
-
-  {alert_html}
-
-  <!-- HEADER BAR like EXE Reports -->
-  <div style="background:#1e3a8a;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-radius:10px;margin-bottom:8px">
-    <div>
-      <div style="font-size:calc(15px*var(--zf,1));font-weight:800">📋 Tableau de bord — {poste_now or "—"}</div>
-      <div style="font-size:calc(11px*var(--zf,1));opacity:.8">{pilot_now or "—"} · Aujourd'hui · {elapsed_str}</div>
-    </div>
-    <div style="text-align:right">
-      <div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:{trs_col}">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div>
-      <div style="font-size:calc(11px*var(--zf,1));opacity:.7">TRS Poste</div>
-    </div>
-  </div>
-
-  <!-- KPI BAR: gauge + pie + fp-cards -->
-  <div style="display:flex;gap:10px;padding:10px 12px;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:8px;align-items:center;flex-wrap:wrap;flex-shrink:0">
-    <div style="text-align:center;flex-shrink:0">
-      <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">TRS Poste</div>
-      {gauge_svg(trs_poste, 130)}
-    </div>
-    <div style="text-align:center;flex-shrink:0">
-      <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:4px">Répartition</div>
-      {pie_svg(prod_s_total, stop_s_total, 65)}
-    </div>
-    <div style="flex:1;display:flex;flex-direction:column;gap:5px;min-width:300px">
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">
-        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(24px*var(--zf,1));color:#7c3aed;font-weight:900">{nb_of_today}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">OF déclarés</div></div>
-        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(24px*var(--zf,1));color:#0891b2;font-weight:900">{tot_equiv:.1f}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">Équivalence</div></div>
-        <div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(24px*var(--zf,1));color:{trs_col};font-weight:900">{f"{trs_poste:.1f}%" if trs_poste>=0 else "—"}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">TRS Poste</div></div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1))">{(model_debut_dt.strftime("%H:%M")+"→"+last_fin_dt.strftime("%H:%M")) if (model_debut_dt and last_fin_dt) else "—"}</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Plage</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#16a34a">{prod_s_total/60:.0f} min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Prod.</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#dc2626">{stop_s_total/60:.0f} min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Arrêts</div></div>
-        <div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#16a34a">{prod_pct}%</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">% prod</div></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- TIMELINE -->
-  <div style="padding:6px 12px;background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:8px;flex-shrink:0">
-    <div class="tl-lbl">
-      <span>Timeline — {poste_now or "en cours"}</span>
-      <span style="font-size:calc(12px*var(--zf,1))">{(model_debut_dt or shift_start_dt).strftime("%H:%M") if (model_debut_dt or shift_start_dt) else "—"} → maintenant</span>
-    </div>
-    {tl_svg}
-    <div class="tl-legend">
-      <span><i style="background:#22c55e"></i>Production</span>
-      <span><i style="background:#4ade80"></i>OF en cours</span>
-      <span><i style="background:#ef4444"></i>PB Technique</span>
-      <span><i style="background:#f59e0b"></i>Rattrapage</span>
-      <span><i style="background:#f97316"></i>Nettoyage</span>
-      <span><i style="background:#64748b"></i>Pause</span>
-      <span><i style="background:#8b5cf6"></i>Réunion</span>
-      <span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Mode dégradé</span>
-    </div>
-  </div>
-
-  <!-- BODY: Productions + Pareto/Arrêts side by side -->
-  <div style="display:grid;grid-template-columns:1fr 340px;gap:8px;flex:1;min-height:0;overflow:hidden">
-    <!-- Productions -->
-    <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column;overflow:hidden">
-      <div style="padding:8px 12px;font-size:calc(12px*var(--zf,1));font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <span style="width:8px;height:8px;background:#16a34a;border-radius:50%;display:inline-block"></span>Productions déclarées
-      </div>
-      <div style="flex:1;overflow-y:auto">
-        <table class="ktbl" style="font-size:calc(12px*var(--zf,1))">
-          <thead><tr><th>OF</th><th>Fibre</th><th>Type</th><th>Format</th><th>Lots 2</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Cad./h</th><th>Éq.</th><th>TRS</th><th>Comm.</th></tr></thead>
-          <tbody>{prod_rows_html}</tbody>
-        </table>
-      </div>
-    </div>
-    <!-- Pareto + Arrêts -->
-    <div style="display:flex;flex-direction:column;gap:8px;overflow:hidden">
-      <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:10px 12px;flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
-        <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#1e3a8a;margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-shrink:0">
-          <span style="width:8px;height:8px;background:#d97706;border-radius:50%;display:inline-block"></span>Pareto arrêts
-        </div>
-        <div style="overflow-y:auto;flex:1">{pareto_html}</div>
-      </div>
-      <div style="background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
-        <div style="padding:8px 12px;font-size:calc(12px*var(--zf,1));font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:6px;flex-shrink:0">
-          <span style="width:8px;height:8px;background:#ef4444;border-radius:50%;display:inline-block"></span>Détail arrêts
-        </div>
-        <div style="flex:1;overflow-y:auto">
-          <table style="width:100%;border-collapse:collapse"><tbody>{_stop_list_html}</tbody></table>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  </div><!-- /tab-accueil -->
-
-  <!-- ONGLET HISTORIQUE -->
-  <div id="tab-historique" class="tab-pane" style="display:none;flex-direction:column">
-
-  <div class="hist-filter">
-    <label>Du :</label>
-    <input type="date" id="h-from" oninput="filterHist()">
-    <label>Au :</label>
-    <input type="date" id="h-to" oninput="filterHist()">
-    <label>Recherche OF :</label>
-    <input type="text" id="h-q" placeholder="Numéro d'OF..." oninput="filterHist()" style="width:160px">
-    <button onclick="document.getElementById('h-from').value='';document.getElementById('h-to').value='';document.getElementById('h-q').value='';filterHist()" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;font-size:calc(12px*var(--zf,1));color:#64748b;cursor:pointer">✕ Réinitialiser</button>
-    <span id="h-count" style="font-size:calc(11px*var(--zf,1));color:#94a3b8;margin-left:auto">{len(hist_rows)} productions</span>
-  </div>
-
-  <div class="dash-card" style="flex:1;min-height:0">
-    <div class="dash-card-body" style="padding:0">
-      <table class="ktbl">
-        <thead><tr>
-          <th>Date</th><th>OF</th><th>Fibre</th><th>Type</th><th>Poste</th><th>Pilote</th>
-          <th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>Éq.</th><th>TRS</th>
-        </tr></thead>
-        <tbody id="hist-tbody">{hist_html}</tbody>
-      </table>
-    </div>
-  </div>
-
-  </div><!-- /tab-historique -->
-
-  <!-- ONGLET RAPPORTS -->
-  <div id="tab-rapports" class="tab-pane" style="display:none;flex-direction:column;overflow:hidden">
-    <div class="rpt-wrap">
-      <div id="rpt-sidebar">
-        <div style="padding:10px 14px;font-size:calc(13px*var(--zf,1));font-weight:800;color:#1e3a8a;border-bottom:1px solid #e2e8f0;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
-          <span>📋 Rapports postes</span>
-          <button onclick="loadRapports()" style="font-size:calc(11px*var(--zf,1));padding:3px 8px;background:none;border:1px solid #cbd5e1;border-radius:4px;cursor:pointer;color:#64748b">↺</button>
-        </div>
-        <div id="rpt-list" style="flex:1;overflow-y:auto">
-          __RPT_LIST__
-        </div>
-      </div>
-      <button id="rpt-tog" onclick="toggleRptSidebar()" title="Réduire/Agrandir">❮</button>
-      <div id="rpt-detail" style="overflow-y:auto;flex:1;padding:0">
-        __RPT_DET__
-      </div>
-    </div>
-  </div><!-- /tab-rapports -->
-
-  <!-- ONGLET RAPPORTS JOUR -->
-  <div id="tab-rpt-jour" class="tab-pane" style="display:none;flex-direction:column;overflow:hidden;height:100%">
-    <div class="hist-filter" style="flex-shrink:0">
-      <label>Du :</label>
-      <input type="date" id="rj-from" style="font-size:calc(12px*var(--zf,1))">
-      <label>Au :</label>
-      <input type="date" id="rj-to" style="font-size:calc(12px*var(--zf,1))">
-      <label>Pilote :</label>
-      <select id="rj-pilot" style="font-size:calc(12px*var(--zf,1));padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;background:#fff"><option value="">Tous</option></select>
-      <label>Poste :</label>
-      <select id="rj-poste" style="font-size:calc(12px*var(--zf,1));padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;background:#fff"><option value="">Tous</option></select>
-      <button onclick="calcPeriodReport()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">🔄 Actualiser</button>
-      <button onclick="resetPeriodReport()" style="background:none;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;font-size:calc(12px*var(--zf,1));color:#64748b;cursor:pointer">✕ Réinitialiser</button>
-    </div>
-    <div id="rj-auto-banner" style="display:none;padding:5px 16px;background:#eff6ff;border-bottom:1px solid #bfdbfe;flex-shrink:0"></div>
-    <div id="rj-result" style="flex:1;overflow-y:auto;padding:12px 16px">
-      <div style="padding:60px;text-align:center;color:#94a3b8">
-        <div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📅</div>
-        <div style="font-size:calc(14px*var(--zf,1));font-weight:600">Sélectionnez une période puis cliquez sur Calculer</div>
-      </div>
-    </div>
-  </div><!-- /tab-rpt-jour -->
-
-</div><!-- /outer -->
-
-<script>
-var _dashOf={_dash_of_json};
-var _dashProdOf={_dash_prod_json};
-function _renderDashOf(r){{
-  if(!r)return;
-  var tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
-  var kit=(r.kit||'').toLowerCase()==='oui'?'<span style="color:#16a34a;font-weight:800">✓ Oui</span>':'Non';
-  var chips=[
-    ['Date',r.date],['Poste',r.poste],['Pilote',r.pilot||r.pilote||''],['Co-Pilote',r.copilote||''],
-    ['Taille',r.taille||''],['Type',r.type_prod||''],['Lots de 2',kit,'raw'],
-    ['Nb Pers.',r.nb_pers||''],['Code Produit',r.code_prod||''],
-    ['Début',r.debut||''],['Fin',r.fin||''],['Durée',r.duree||''],
-    ['Qté Fab.',r.qte_fab||''],['Qté Emb.',r.qte_emb||''],['Équivalence',r.equiv||''],
-    ['Poids (g)',r.poids||''],['Fibre',r.fibre||''],['OF Taie',r.of_taie||''],
-    ['Traca',(r.traca||'').split(';').filter(function(t){{return t.trim();}}).join(' · ')],['Réf Taie',r.ref_taie||''],
-    ['Qté Init Taie',r.qte_init_taie||''],['Nb Taie 2nd',r.nb_taie2_choix||''],
-    ['Nb déf. coût',r.nb_def_cout||''],['Mq taie',r.mq_taie||''],
-    ['Mq housse',r.mq_housse_encart||''],['PP cousu emb.',r.nb_pp_cousue||''],
-    ['Durée MQ MP',r.duree_mq_mp||''],
-    ['TRS OF',r.trs>=0?r.trs.toFixed(1)+'%':''],
-  ];
-  chips=chips.filter(function(c){{return c[1]&&c[1]!=='—'&&c[1]!==''||c[0]==='TRS OF';}});
-  var esc=function(s){{return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}};
-  var chipsHtml=chips.map(function(c){{return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;text-align:center"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b">'+c[0]+'</div><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:#1e293b">'+(c[2]==='raw'?c[1]:esc(c[1]))+'</div></div>';}}).join('');
-  var stopsHtml=(r.stops&&r.stops.length)?r.stops.map(function(e){{return '<tr><td style="padding:4px 8px;font-size:calc(12px*var(--zf,1));font-weight:600">'+esc(e.type||'')+'</td><td style="padding:4px 8px;font-size:calc(11px*var(--zf,1));white-space:nowrap">'+e.debut+'→'+e.fin+'</td><td style="padding:4px 8px;font-weight:700">'+e.duree+'</td><td style="padding:4px 8px;font-size:calc(11px*var(--zf,1));color:#64748b">'+esc(e.comment||'')+'</td></tr>';}}).join(''):'<tr><td colspan="4" style="padding:8px;text-align:center;color:#94a3b8">Aucun arrêt</td></tr>';
-  document.getElementById('dash-of-detail-content').innerHTML='<div style="font-size:calc(22px*var(--zf,1));font-weight:900;color:#1e3a8a;margin-bottom:14px;font-family:monospace">OF '+esc(r.of||'—')+'</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">'+chipsHtml+'</div>'+(r.comment?'<div style="background:#fffbeb;border:1px solid #fef08a;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:calc(13px*var(--zf,1))">💬 '+esc(r.comment)+'</div>':'')+'<div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:6px">Arrêts pendant cet OF</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9"><th style="padding:4px 8px;text-align:left;font-size:calc(11px*var(--zf,1))">Type</th><th style="padding:4px 8px;font-size:calc(11px*var(--zf,1))">Plage</th><th style="padding:4px 8px;font-size:calc(11px*var(--zf,1))">Durée</th><th style="padding:4px 8px;font-size:calc(11px*var(--zf,1))">Comm.</th></tr></thead><tbody>'+stopsHtml+'</tbody></table>';
-  document.getElementById('dash-of-modal').style.display='flex';
-}}
-function showDashProdOf(i){{ _renderDashOf(_dashProdOf[i]); }}
-function showDashOf(i){{ _renderDashOf(_dashOf[i]); }}
-var _rptSideCol=false;
-function toggleRptSidebar(){{
-  var sb=document.getElementById('rpt-sidebar');
-  var tog=document.getElementById('rpt-tog');
-  if(!sb||!tog) return;
-  _rptSideCol=!_rptSideCol;
-  sb.classList.toggle('col',_rptSideCol);
-  tog.textContent=_rptSideCol?'❯':'❮';
-}}
-function filterHist(){{
-  var from=document.getElementById('h-from').value;
-  var to=document.getElementById('h-to').value;
-  var q=(document.getElementById('h-q').value||'').trim().toLowerCase();
-  var rows=document.querySelectorAll('#hist-tbody .hist-row');
-  var vis=0;
-  rows.forEach(function(tr){{
-    var d=(tr.dataset.date||'');
-    var iso=d.split('/').reverse().join('-');
-    var of=(tr.dataset.of||'').toLowerCase();
-    var ok=true;
-    if(from&&iso<from) ok=false;
-    if(to&&iso>to) ok=false;
-    if(q&&!of.includes(q)) ok=false;
-    tr.style.display=ok?'':'none';
-    if(ok) vis++;
-  }});
-  var seps=document.querySelectorAll('#hist-tbody .hist-sep');
-  seps.forEach(function(sep){{
-    var next=sep.nextElementSibling;
-    var show=false;
-    while(next&&next.classList.contains('hist-row')){{if(next.style.display!=='none'){{show=true;break;}}next=next.nextElementSibling;}}
-    sep.style.display=show?'':'none';
-  }});
-  var cnt=document.getElementById('h-count');
-  if(cnt) cnt.textContent=vis+' production'+(vis>1?'s':'');
-}}
-var _currentDashTab='accueil';
-function showTab(name){{
-  _currentDashTab=name;
-  ['accueil','historique','rapports','rpt-jour'].forEach(function(n){{
-    var p=document.getElementById('tab-'+n);
-    var b=document.getElementById('tb-'+n);
-    if(p) p.style.display=(n===name)?'flex':'none';
-    if(b) b.classList.toggle('active',n===name);
-  }});
-  if(name==='rapports') loadRapports();
-  if(name==='rpt-jour') loadRptJour();
-}}
-setInterval(function(){{if(_currentDashTab==='accueil') location.reload();}},15000);
-</script>
-
-<div id="dash-of-modal" class="dash-modal-overlay" onclick="if(event.target.id==='dash-of-modal')this.style.display='none'">
-  <div class="dash-modal-box">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <span style="font-size:calc(14px*var(--zf,1));font-weight:800;color:#1e3a8a">📋 Détail OF</span>
-      <button onclick="document.getElementById('dash-of-modal').style.display='none'" style="background:none;border:none;font-size:calc(18px*var(--zf,1));cursor:pointer;color:#64748b">✕</button>
-    </div>
-    <div id="dash-of-detail-content"></div>
-  </div>
-</div>
-
-</body>
-</html>"""
-
-    # ── Compute embedded sessions & reports (no fetch calls needed) ──
-    import json as _json_rpt
-    _sess_map_r = {}
-    _sess_evts_map_r = {}
-    _sess_prods_map_r = {}
-    for _, _r in _decl_cache:  # utilise _decl_cache (toujours à jour) au lieu de decl_rows (Excel potentiellement en retard)
-        _dkey = str(_r[39] if len(_r) > 39 else "").strip() or _row_date(_r[2])
-        if not _dkey: continue
-        _pilot_r = str(_r[4] or ""); _poste_r = str(_r[3] or "")
-        _rtype_r = str(_r[0] or "").strip().lower()
-        _sk_r = f"{_dkey}||{_pilot_r}||{_poste_r}"
-        if _sk_r not in _sess_map_r:
-            _sess_map_r[_sk_r] = {"date":_dkey,"pilot":_pilot_r,"poste":_poste_r,"nb_of":0,"tot_equiv":0.0,"max_fin_s":0.0}
-            _sess_evts_map_r[_sk_r] = []
-            _sess_prods_map_r[_sk_r] = []
-        if _rtype_r in ("production","prod",""):
-            try:
-                _eq_r = float(str(_r[21] or 0).replace(",","."))
-                _fs_r = hms2s(_r[17])
-                _sess_map_r[_sk_r]["nb_of"] += 1
-                _sess_map_r[_sk_r]["tot_equiv"] += _eq_r
-                _sess_prods_map_r[_sk_r].append(_r)
-                if _fs_r > _sess_map_r[_sk_r]["max_fin_s"]: _sess_map_r[_sk_r]["max_fin_s"] = _fs_r
-            except: pass
-        else:
-            _sess_evts_map_r[_sk_r].append(_r)
-    _embedded_sessions_list = []
-    for _sk_r, _s_r in _sess_map_r.items():
-        _trs_r = -1.0
-        try:
-            _p2 = _s_r["date"].split('/'); _do2 = datetime.date(int(_p2[2]),int(_p2[1]),int(_p2[0]))
-        except: _do2 = None
-        _deb2, _ = _get_model_day_cfg(_s_r["poste"], _do2)
-        _mds2 = hms2s(_deb2) if _deb2 else None
-        _sess_evts2 = _sess_evts_map_r.get(_sk_r, [])
-        _sess_prods2 = _sess_prods_map_r.get(_sk_r, [])
-        _mdur2 = get_shift_duration_s(_s_r["poste"], _do2)
-        if _pers_pct_map and _sess_prods2 and _s_r["tot_equiv"] > 0:
-            _deg_ivs2 = _merged_degrade_ivs(_sess_evts2)
-            _trs_r, _ = _option_b_trs(_sess_prods2, _deg_ivs2, prod_ref)
-        elif _mdur2 > 0 and prod_ref > 0 and _s_r["tot_equiv"] > 0:
-            _ded2 = sum(hms2s(_er[18]) for _er in _sess_evts2 if any(k in str(_er[0] or "").lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
-            _deg2 = _merged_degrade_s(_sess_evts2)
-            _el2 = max(1.0, _mdur2 - _ded2)
-            _trs_r = round(_s_r["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
-        _embedded_sessions_list.append({"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"nb_of":_s_r["nb_of"],"tot_equiv":round(_s_r["tot_equiv"],1),"trs":_trs_r})
-    _embedded_sessions_list.sort(key=lambda x: (lambda p: (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0))(x["date"].split('/')), reverse=True)
-    _embedded_sessions_list = _embedded_sessions_list[:60]
-    _embedded_reports_dict = {}
-    for _s_r in _embedded_sessions_list:
-        _sk3 = f"{_s_r['date']}||{_s_r['pilot']}||{_s_r['poste']}"
-        _pr3=[]; _er3=[]; _pr3_raw=[]; _deg_ivs3=[]; _teq3=0.0; _ts3=0.0; _mfs3=0.0; _sts3=0.0; _ads3=[]; _afs3=[]
-        for _, _r3 in _decl_cache:  # utilise _decl_cache (toujours à jour)
-            _dk3 = str(_r3[39] if len(_r3)>39 else "").strip() or _row_date(_r3[2])
-            if _dk3 != _s_r["date"] or str(_r3[4] or "") != _s_r["pilot"]: continue
-            if _s_r["poste"] and str(_r3[3] or "") != _s_r["poste"]: continue
-            _rt3 = str(_r3[0] or "").strip().lower()
-            _dbs3 = hms2s(_r3[16]) if _r3[16] else -1; _fbs3 = hms2s(_r3[17]) if _r3[17] else -1
-            if _dbs3 >= 0: _ads3.append(_dbs3)
-            if _fbs3 >= 0: _afs3.append(_fbs3)
-            if _rt3 in ("production","prod",""):
-                try:
-                    _eq3 = float(str(_r3[21] or 0).replace(",","."))
-                    _ds3 = hms2s(_r3[16]); _fs3b = hms2s(_r3[17])
-                    _dur3 = _fs3b - _ds3 if _fs3b > _ds3 else hms2s(_r3[18])
-                    try: _r3_24=float(str(_r3[24] if len(_r3)>24 else '').strip() or '-1')
-                    except: _r3_24=-1.0
-                    _trs3 = _r3_24 if _r3_24>=0 else (round(_eq3/(prod_ref*_dur3/28800)*100,1) if prod_ref>0 and _dur3>0 and _eq3>0 else -1)
-                    _teq3 += _eq3; _ts3 += _dur3
-                    if _fs3b > _mfs3: _mfs3 = _fs3b
-                    _pr3_raw.append(_r3)
-                    _pr3.append({"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"kit":str(_r3[15] or ""),"qte_fab":str(_r3[19] or ""),"equiv":str(_r3[21] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"trs":_trs3,"comment":str(_r3[35] or ""),"nb_pers":str(_r3[6] or "")})
-                except: pass
-            else:
-                try:
-                    _durs3 = hms2s(_r3[18]); _sts3 += _durs3
-                    _is_deg3 = _is_degrade_type(str(_r3[0] or "").strip())
-                    if _is_deg3 and _dbs3 >= 0 and _fbs3 > _dbs3: _deg_ivs3.append((_dbs3, _fbs3))
-                    _er3.append({"type":str(_r3[0] or ""),"of":str(_r3[1] or ""),"taille":str(_r3[7] or ""),"type_prod":str(_r3[9] or ""),"debut":str(_r3[16] or "")[:5],"fin":str(_r3[17] or "")[:5],"duree":str(_r3[18] or ""),"comment":str(_r3[35] or ""),"is_degrade":_is_deg3})
-                except: pass
-        _acd3 = _sec_to_hm(min(_ads3)) if _ads3 else ""
-        _acf3 = _sec_to_hm(max(_afs3)) if _afs3 else ""
-        try:
-            _dp3 = _s_r["date"].split('/'); _dpo3 = datetime.date(int(_dp3[2]),int(_dp3[1]),int(_dp3[0]))
-        except: _dpo3 = None
-        _mdeb3, _mfin3 = _get_model_day_cfg(_s_r["poste"], _dpo3)
-        _ded3 = sum(hms2s(_e3r.get("duree","")) for _e3r in _er3 if any(k in str(_e3r.get("type","")).lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]))
-        _mdur3 = get_shift_duration_s(_s_r["poste"], _dpo3)
-        _ecart3 = max(0.0, _mdur3 - (_ts3 + _sts3))
-        _trs_sh3 = -1.0
-        if _pers_pct_map and _pr3_raw and _teq3 > 0:
-            _deg_mg3 = []
-            for _si3, _fi3 in sorted(_deg_ivs3):
-                if _deg_mg3 and _si3 <= _deg_mg3[-1][1]: _deg_mg3[-1] = (_deg_mg3[-1][0], max(_deg_mg3[-1][1], _fi3))
-                else: _deg_mg3.append((_si3, _fi3))
-            _trs_sh3, _ = _option_b_trs(_pr3_raw, _deg_mg3, prod_ref)
-        elif _mdur3 > 0 and prod_ref > 0 and _teq3 > 0:
-            _deg3 = sum(hms2s(_e3r.get("duree","")) for _e3r in _er3 if _e3r.get("is_degrade"))
-            _el3 = max(1.0, _mdur3 - _ded3)
-            _trs_sh3 = round(_teq3/(prod_ref*_el3/28800)*100,1)
-        _trs_of3 = round(_teq3/(prod_ref*_ts3/28800)*100,1) if prod_ref>0 and _ts3>0 and _teq3>0 else -1
-        _rpt_key3 = f"{_s_r['date']}|{_s_r['pilot']}|{_s_r['poste']}"
-        _embedded_reports_dict[_rpt_key3] = {"date":_s_r["date"],"pilot":_s_r["pilot"],"poste":_s_r["poste"],"prod_rows":_pr3,"evt_rows":_er3,"trs_shift":_trs_sh3,"trs":_trs_of3,"tot_equiv":round(_teq3,1),"tot_s":round(_ts3,0),"stop_s":round(_sts3,0),"nb_of":len(_pr3),"model_debut":_mdeb3 or "","model_fin":_mfin3 or "","actual_debut":_acd3,"actual_fin":_acf3,"ecart_s":round(_ecart3,0),"model_dur_s":round(_mdur3,0),"planned_ded_s":round(_ded3,0)}
-    # --- STATIC RAPPORTS HTML GENERATION ---
-    def _resc(s):
-        return str(s or '').replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;')
-
-    def _svg_gauge_static(trs):
-        v = max(0.0, min(100.0, float(trs) if (trs is not None and trs >= 0) else 0.0))
-        dash = (v / 100.0) * 132
-        col = '#16a34a' if v >= 90 else '#d97706' if v >= 75 else '#dc2626'
-        trs_str = f'{trs:.1f}%' if (trs is not None and trs >= 0) else '--%'
-        return (
-            f'<svg width="110" height="72" viewBox="0 0 110 72">'
-            f'<circle cx="55" cy="54" r="38" fill="none" stroke="#e2e8f0" stroke-width="11"'
-            f' stroke-dasharray="119,200" stroke-linecap="round" transform="rotate(134 55 54)"/>'
-            f'<circle cx="55" cy="54" r="38" fill="none" stroke="{col}" stroke-width="11"'
-            f' stroke-dasharray="{dash:.1f},200" stroke-linecap="round" transform="rotate(134 55 54)"/>'
-            f'<text x="55" y="58" text-anchor="middle" font-size="14" font-weight="900" fill="{col}">{_resc(trs_str)}</text>'
-            f'<text x="55" y="69" text-anchor="middle" font-size="8" fill="#64748b">TRS</text>'
-            f'</svg>'
-        )
-
-    def _svg_pie_static(prod_min, stop_min, total_min):
-        autre = max(0.0, total_min - prod_min - stop_min)
-        segs = [(prod_min, '#16a34a', 'Prod'), (stop_min, '#dc2626', 'Arrêts'), (autre, '#94a3b8', 'Autre')]
-        total = sum(s[0] for s in segs)
-        if total <= 0:
-            return '<svg width="130" height="120" viewBox="0 0 130 120"><text x="65" y="60" text-anchor="middle" font-size="9" fill="#94a3b8">Pas de données</text></svg>'
-        cx, cy, r, ir = 65.0, 57.0, 44.0, 24.0
-        parts = []
-        start = -math.pi / 2
-        for val, color, label in segs:
-            if val <= 0: continue
-            angle = (val / total) * 2 * math.pi
-            if angle < 0.001: continue
-            end = start + angle
-            large = 1 if angle > math.pi else 0
-            x1 = cx + r * math.cos(start); y1 = cy + r * math.sin(start)
-            x2 = cx + r * math.cos(end);   y2 = cy + r * math.sin(end)
-            ix1 = cx + ir * math.cos(start); iy1 = cy + ir * math.sin(start)
-            ix2 = cx + ir * math.cos(end);   iy2 = cy + ir * math.sin(end)
-            parts.append(f'<path d="M{x1:.2f},{y1:.2f} A{r:.0f},{r:.0f} 0 {large},1 {x2:.2f},{y2:.2f} L{ix2:.2f},{iy2:.2f} A{ir:.0f},{ir:.0f} 0 {large},0 {ix1:.2f},{iy1:.2f} Z" fill="{color}"/>')
-            start = end
-        prod_pct = round(prod_min / total * 100) if total > 0 else 0
-        parts.append(f'<text x="65" y="62" text-anchor="middle" font-size="13" font-weight="800" fill="#1a1f5e">{prod_pct}%</text>')
-        parts.append(f'<text x="65" y="72" text-anchor="middle" font-size="7" fill="#64748b">Prod</text>')
-        lx = 0
-        for val, color, label in segs:
-            if val <= 0: continue
-            p = round(val / total * 100)
-            parts.append(f'<rect x="{lx}" y="108" width="7" height="7" fill="{color}" rx="1"/>')
-            parts.append(f'<text x="{lx+9}" y="115" font-size="7" fill="#475569">{_resc(label)} {p}%</text>')
-            lx += 65
-        return f'<svg width="130" height="120" viewBox="0 0 130 120">{"".join(parts)}</svg>'
-
-    def _render_rpt_panel(idx, d, visible=False):
-        trs_s = d.get('trs_shift', -1) if (d.get('trs_shift') is not None and d.get('trs_shift', -1) >= 0) else d.get('trs', -1)
-        trs_col = '#16a34a' if trs_s >= 90 else '#d97706' if trs_s >= 70 else '#dc2626' if trs_s >= 0 else '#94a3b8'
-        trs_str = f'{trs_s:.1f}%' if trs_s >= 0 else '—'
-        trs_of = d.get('trs', -1)
-        trs_of_str = f'{trs_of:.1f}%' if trs_of >= 0 else '--'
-        stop_min = round((d.get('stop_s', 0) or 0) / 60)
-        prod_min = round(max(0, (d.get('tot_s', 0) or 0) - (d.get('stop_s', 0) or 0)) / 60)
-        total_min = round((d.get('tot_s', 0) or 0) / 60) + stop_min
-        ecart_mn = round((d.get('ecart_s', 0) or 0) / 60)
-        stop_map = {}
-        for _er in (d.get('evt_rows') or []):
-            k = _er.get('type') or 'Inconnu'
-            _dur = (_er.get('duree') or '')
-            _p2 = (_dur + ':00:00').split(':')
-            try: _s2 = int(_p2[0] or 0)*3600 + int(_p2[1] or 0)*60 + int(_p2[2] or 0)
-            except: _s2 = 0
-            stop_map[k] = stop_map.get(k, 0) + _s2 / 60
-        stop_arr = sorted(stop_map.items(), key=lambda x: -x[1])
-        max_stop = stop_arr[0][1] if stop_arr else 1.0
-        pareto_h = ''.join(
-            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">'
-            f'<div style="font-size:calc(10px*var(--zf,1));width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{_resc(e[0])}</div>'
-            f'<div style="flex:1;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden">'
-            f'<div style="height:100%;background:#dc2626;border-radius:4px;width:{round(e[1]/max_stop*100) if max_stop>0 else 0}%;opacity:.8"></div></div>'
-            f'<div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">{round(e[1])}mn</div></div>'
-            for e in stop_arr
-        ) if stop_arr else '<div style="color:#64748b;font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>'
-        prod_h = ''
-        for _pr in (d.get('prod_rows') or []):
-            _to = _pr.get('trs', -1)
-            _tc = '#16a34a' if _to >= 90 else '#d97706' if _to >= 70 else '#dc2626' if _to >= 0 else '#94a3b8'
-            _ts = f'{_to:.1f}%' if _to >= 0 else '—'
-            prod_h += (
-                f'<tr style="border-bottom:1px solid #e2e8f0">'
-                f'<td style="padding:4px 6px;font-weight:700;color:#1e3a8a">{_resc(_pr.get("of",""))}</td>'
-                f'<td style="padding:4px 6px;font-size:calc(11px*var(--zf,1))">{_resc(_pr.get("taille",""))} {_resc(_pr.get("type_prod",""))}</td>'
-                f'<td style="padding:4px 6px;text-align:center">{"✓" if str(_pr.get("kit","")).lower()=="oui" else ""}</td>'
-                f'<td style="padding:4px 6px">{_resc(_pr.get("qte_fab",""))}</td>'
-                f'<td style="padding:4px 6px;color:#0891b2;font-weight:700">{_resc(_pr.get("equiv",""))}</td>'
-                f'<td style="padding:4px 6px;white-space:nowrap">{_resc(_pr.get("debut",""))} → {_resc(_pr.get("fin",""))}</td>'
-                f'<td style="padding:4px 6px;font-weight:800;color:{_tc}">{_ts}</td>'
-                f'<td style="padding:4px 6px;font-size:calc(10px*var(--zf,1));color:#64748b">{_resc(_pr.get("comment",""))}</td>'
-                f'</tr>'
-            )
-        if not prod_h:
-            prod_h = '<tr><td colspan="8" style="padding:8px;text-align:center;color:#94a3b8">Aucune production</td></tr>'
-        evts_h = ''
-        for _ev in (d.get('evt_rows') or []):
-            evts_h += (
-                f'<tr style="border-bottom:1px solid #e2e8f0">'
-                f'<td style="padding:3px 5px;font-weight:600">{_resc(_ev.get("type",""))}</td>'
-                f'<td style="padding:3px 5px;color:#0369a1">{_resc(_ev.get("of","—"))}</td>'
-                f'<td style="padding:3px 5px;white-space:nowrap;color:#64748b">{_resc(_ev.get("debut",""))} → {_resc(_ev.get("fin",""))}</td>'
-                f'<td style="padding:3px 5px;font-weight:700">{_resc(_ev.get("duree",""))}</td>'
-                f'<td style="padding:3px 5px;color:#64748b">{_resc(_ev.get("comment","—"))}</td>'
-                f'</tr>'
-            )
-        evts_section = (
-            f'<table style="width:100%;border-collapse:collapse;font-size:calc(10px*var(--zf,1))"><thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">'
-            f'<th style="padding:3px 5px;text-align:left;font-weight:700;color:#64748b">Arrêt</th>'
-            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">OF</th>'
-            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Plage</th>'
-            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Durée</th>'
-            f'<th style="padding:3px 5px;font-weight:700;color:#64748b">Commentaire</th>'
-            f'</tr></thead><tbody>{evts_h}</tbody></table>'
-        ) if evts_h else '<div style="color:#64748b;font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>'
-        _bgt_labels = {"pause_min":"Pause","meeting_tol_min":"Réunion","clean_short_min":"Nettoyage court","clean_long_min":"Nettoyage long","clean_grand_min":"Nettoyage très long"}
-        _bgt_used = {bk:0.0 for bk in _bgt_labels}
-        for _er in (d.get('evt_rows') or []):
-            _bk2 = None
-            _rl = str(_er.get('type','') or '').lower()
-            if 'nettoyage' in _rl or 'nett' in _rl:
-                if 'très long' in _rl or 'tres long' in _rl or 'grand' in _rl: _bk2='clean_grand_min'
-                elif 'long' in _rl: _bk2='clean_long_min'
-                elif 'court' in _rl: _bk2='clean_short_min'
-            elif 'réunion' in _rl or 'reunion' in _rl or 'meeting' in _rl: _bk2='meeting_tol_min'
-            elif 'pause' in _rl: _bk2='pause_min'
-            if _bk2:
-                _dp2=str(_er.get('duree') or ''); _pp2=(_dp2+':00:00').split(':')
-                try: _bs2=int(_pp2[0] or 0)*3600+int(_pp2[1] or 0)*60+int(_pp2[2] or 0)
-                except: _bs2=0
-                _bgt_used[_bk2]+=_bs2/60
-        _budget_bars_h=''
-        for _bk3,_bl3 in [('clean_short_min','Nettoyage court'),('clean_long_min','Nettoyage long'),('clean_grand_min','Nettoyage très long'),('meeting_tol_min','Réunion'),('pause_min','Pause')]:
-            _bm=float(cfg.get(_bk3,0) or 0); _bu=_bgt_used.get(_bk3,0.0)
-            if _bm<=0: continue
-            _pct=min(100,round(_bu/_bm*100)) if _bm>0 else 0
-            _bc='#dc2626' if _bu>_bm else '#d97706' if _bu/_bm>=0.8 else '#16a34a'
-            _budget_bars_h+=(
-                f'<div style="margin-bottom:7px">'
-                f'<div style="display:flex;justify-content:space-between;font-size:calc(11px*var(--zf,1));margin-bottom:3px">'
-                f'<span>{_resc(_bl3)}</span>'
-                f'<span style="font-weight:700;color:{_bc}">{round(_bu)}/{round(_bm)} min</span>'
-                f'</div>'
-                f'<div style="background:#f1f5f9;border-radius:4px;height:12px;overflow:hidden">'
-                f'<div style="height:100%;background:{_bc};border-radius:4px;width:{_pct}%;opacity:.85"></div>'
-                f'</div></div>'
-            )
-        if not _budget_bars_h: _budget_bars_h='<div style="color:#94a3b8;font-size:calc(12px*var(--zf,1))">Aucun budget configuré</div>'
-        _tot_qte_fab = sum(float(str(pr.get("qte_fab","") or 0).replace(",",".")) for pr in (d.get("prod_rows") or []))
-        _eff_s = max(1.0, float(d.get("model_dur_s",0) or 0) - float(d.get("planned_ded_s",0) or 0))
-        _cad_h = round(_tot_qte_fab / _eff_s * 3600) if _eff_s > 0 and _tot_qte_fab > 0 else 0
-        _sorted_f = sorted([pr for pr in (d.get("prod_rows") or []) if pr.get("fibre")], key=lambda x: x.get("debut",""))
-        _nb_chg_f = sum(1 for _i in range(1, len(_sorted_f)) if _sorted_f[_i]["fibre"] != _sorted_f[_i-1]["fibre"])
-        plage_str = ''
-        if d.get('actual_debut') and d.get('actual_fin'):
-            plage_str = f' · {_resc(d.get("actual_debut",""))} → {_resc(d.get("actual_fin",""))}'
-        elif d.get('model_debut') and d.get('model_fin'):
-            plage_str = f' · Modèle : {_resc(d.get("model_debut",""))} → {_resc(d.get("model_fin",""))}'
-        ecart_div = (
-            f'<div class="fp-card" style="padding:7px;border:1.5px solid #f59e0b">'
-            f'<div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#d97706">{ecart_mn} min</div>'
-            f'<div class="fp-lbl">Non déclaré</div></div>'
-        ) if ecart_mn > 0 else ''
-        disp = 'flex' if visible else 'none'
-        g_svg = _svg_gauge_static(trs_s)
-        p_svg = _svg_pie_static(prod_min, stop_min, total_min)
-        return (
-            f'<div class="rpt-det-panel" id="rpt-det-{idx}" style="display:{disp};flex-direction:column;overflow-y:auto">'
-            f'<div style="background:#1e3a8a;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
-            f'<div><div style="font-size:calc(15px*var(--zf,1));font-weight:800">📋 Rapport — {_resc(d.get("poste",""))}</div>'
-            f'<div style="font-size:calc(11px*var(--zf,1));opacity:.8">{_resc(d.get("pilot",""))} · {_resc(d.get("date",""))}{plage_str}</div></div>'
-            f'<div style="text-align:right"><div style="font-size:calc(26px*var(--zf,1));font-weight:900;color:{trs_col}">{trs_str}</div>'
-            f'<div style="font-size:calc(11px*var(--zf,1));opacity:.7">TRS Shift</div></div></div>'
-            f'<div style="display:flex;gap:12px;padding:10px 14px;background:#fff;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap">'
-            f'<div style="text-align:center;flex-shrink:0"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">TRS Poste</div>{g_svg}</div>'
-            f'<div style="text-align:center;flex-shrink:0"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;margin-bottom:4px">Répartition</div>{p_svg}</div>'
-            f'<div style="flex:1;display:flex;flex-direction:column;gap:5px">'
-            f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">'
-            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(26px*var(--zf,1));color:#059669;font-weight:900">{round(_tot_qte_fab)}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">Nb pièces prod.</div></div>'
-            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(26px*var(--zf,1));color:#0891b2;font-weight:900">{round(d.get("tot_equiv",0) or 0)}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">Équivalence</div></div>'
-            f'<div class="fp-card" style="padding:9px"><div class="fp-big" style="font-size:calc(26px*var(--zf,1));color:#0369a1;font-weight:900">{_cad_h}</div><div class="fp-lbl" style="font-size:calc(12px*var(--zf,1))">Cadence/h</div></div>'
-            f'</div>'
-            f'<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px">'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1))">{(_resc(d.get("model_debut",""))+"→"+_resc(d.get("model_fin",""))) if d.get("model_debut") and d.get("model_fin") else (str(round((d.get("model_dur_s",0) or 0)/60))+" min")}</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Durée ouverture</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#16a34a">{prod_min} min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Durée prod</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#dc2626">{stop_min} min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Arrêts total</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#16a34a">{round((d.get("planned_ded_s",0) or 0)/60)} min</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Arrêts prévus</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#7c3aed">{d.get("nb_of",0)}</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Nb OF</div></div>'
-            f'<div class="fp-card" style="padding:7px"><div class="fp-big" style="font-size:calc(13px*var(--zf,1));color:#8b5cf6">{_nb_chg_f}</div><div class="fp-lbl" style="font-size:calc(11px*var(--zf,1))">Chg. fibre</div></div>'
-            f'</div></div></div>'
-            f'<div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">'
-            f'<div class="rpt-card" style="padding:10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Productions</div>'
-            f'<table style="width:100%;border-collapse:collapse;font-size:calc(11px*var(--zf,1))"><thead><tr style="background:#f8fafc">'
-            f'<th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Taille</th>'
-            f'<th style="padding:4px 6px">Kit</th><th style="padding:4px 6px">Qté</th><th style="padding:4px 6px">Éq.</th>'
-            f'<th style="padding:4px 6px">Heures</th><th style="padding:4px 6px">TRS</th><th style="padding:4px 6px">Comm.</th>'
-            f'</tr></thead><tbody>{prod_h}</tbody></table></div>'
-            f'<div class="rpt-card" style="padding:10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>{_budget_bars_h}</div>'
-            f'<div style="display:flex;flex-direction:column;gap:8px">'
-            f'<div class="rpt-card" style="padding:10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px">Pareto arrêts</div>{pareto_h}</div>'
-            f'<div class="rpt-card" style="padding:10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:6px">Détail arrêts</div>{evts_section}</div>'
-            f'</div></div></div>'
-        )
-
-    _rpt_list_html = ''
-    _rpt_det_html = ''
-    if not _embedded_sessions_list:
-        _rpt_list_html = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:calc(12px*var(--zf,1))">Aucun poste disponible</div>'
-        _rpt_det_html = '<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📋</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Aucun rapport disponible</div></div>'
-    else:
-        for _ri, _sr in enumerate(_embedded_sessions_list):
-            _tv = _sr.get('trs', -1)
-            _ts2 = f'{_tv:.1f}%' if _tv >= 0 else '—'
-            _tc2 = '#16a34a' if _tv >= 90 else '#f59e0b' if _tv >= 70 else '#dc2626' if _tv >= 0 else '#94a3b8'
-            _sel_st = ' style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s;background:#eff6ff"' if _ri == 0 else ' style="padding:10px 14px;border-bottom:1px solid #e2e8f0;cursor:pointer;transition:background .15s"'
-            _rpt_list_html += (
-                f'<div class="rpt-item" id="rpt-item-{_ri}" onclick="showRptPanel({_ri})"{_sel_st}>'
-                f'<div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#1e3a8a">{_resc(_sr.get("date",""))} — {_resc(_sr.get("poste",""))}</div>'
-                f'<div style="font-size:calc(11px*var(--zf,1));color:#64748b;margin-top:2px">{_resc(_sr.get("pilot","?"))} | {_sr.get("nb_of",0)} OF | Éq. {_sr.get("tot_equiv",0)}</div>'
-                f'<div style="font-size:calc(16px*var(--zf,1));font-weight:900;color:{_tc2};margin-top:2px">{_ts2}</div>'
-                f'</div>'
-            )
-            _rk = f"{_sr['date']}|{_sr['pilot']}|{_sr['poste']}"
-            _rd = _embedded_reports_dict.get(_rk, _sr)
-            _rpt_det_html += _render_rpt_panel(_ri, _rd, visible=(_ri == 0))
-
-    # Inject rapports JS (minimal – all content is pre-rendered)
-    _rapports_js = """<script>
-function showRptPanel(idx){
-  document.querySelectorAll('.rpt-det-panel').forEach(function(el){el.style.display='none';});
-  document.querySelectorAll('.rpt-item').forEach(function(el){el.style.background='';});
-  var panel=document.getElementById('rpt-det-'+idx);
-  if(panel){panel.style.display='flex';}
-  var item=document.getElementById('rpt-item-'+idx);
-  if(item){item.style.background='#eff6ff';}
-}
-function loadRapports(){}
-</script>"""
-    html = html.replace('__RPT_LIST__', _rpt_list_html, 1)
-    html = html.replace('__RPT_DET__', _rpt_det_html, 1)
-    html = html.replace('</body>', _rapports_js + '\n</body>', 1)
-
-    try:
-        html_path = os.path.join(os.path.dirname(path), "KPI_Dashboard.html")
-        with open(html_path, "w", encoding="utf-8") as f: f.write(html)
-        return html_path, None
-    except Exception as e:
-        return None, str(e)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        ip = "127.0.0.1"
+    return jsonify({"ip": ip, "port": 5001})
 
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
@@ -6070,6 +4700,15 @@ select{cursor:default}
       </div>
     </div>
     <div id="v-settings-content">
+      <!-- ── Dashboard encadrant ── -->
+      <div class="ss" id="ss-dashboard">
+        <h3>🖥️ Dashboard encadrant</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:12px">Partagez ce lien avec les encadrants pour qu'ils accèdent à une vue lecture/supervision depuis leur PC. Les boutons de déclaration de production ne sont pas disponibles en mode encadrant.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;max-width:720px" id="enc-links-grid">
+          <!-- populated by JS -->
+          <div style="color:var(--gray);font-size:calc(11px*var(--zf,1));grid-column:1/-1">Chargement…</div>
+        </div>
+      </div>
       <div class="ss">
         <h3>🔑 Changer le mot de passe administrateur</h3>
         <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Le MDP est enregistré dans la cellule G2 de l'onglet Listes du fichier Excel.</div>
@@ -7028,6 +5667,7 @@ async function unlockSettings() {
     document.getElementById('v-settings-content').style.display='block';
     loadCfg();
     renderDegradeList(_degradeListLocal);
+    if(typeof _initEncDashLinks==='function') _initEncDashLinks();
   } else {
     document.getElementById('lock-err').textContent = d.error||'Mot de passe incorrect';
   }
@@ -11489,6 +10129,160 @@ function toast(msg,type,dur){
   t.textContent=msg;t.style.background=type==='ok'?'#16a34a':type==='warn'?'#d97706':'#dc2626';t.style.color='#fff';t.style.opacity='1';
   clearTimeout(t._to);t._to=setTimeout(()=>t.style.opacity='0',dur||3000);
 }
+
+// ── Mode encadrant ─────────────────────────────────────────────────────────────
+(function(){
+  const params=new URLSearchParams(location.search);
+  const encMode=params.get('mode')==='encadrant';
+  const ecranId=params.get('ecran')||'1';
+
+  // Zoom: each encadrant screen has its own localStorage key
+  if(encMode){
+    const ZK='kpi_zoom_enc_'+ecranId;
+    const savedZoom=localStorage.getItem(ZK);
+    if(savedZoom) document.documentElement.style.setProperty('--zf',savedZoom);
+    // Override zoom save/load to use per-screen key
+    const _origZoom=window.setZoom;
+    window.setZoom=function(v){
+      document.documentElement.style.setProperty('--zf',v);
+      localStorage.setItem(ZK,v);
+    };
+    // Patch applyZoom if it uses 'kpi_zoom' key
+    const _stoOrig=window.localStorage.setItem.bind(localStorage);
+    // We'll intercept zoom writes below via MutationObserver on --zf
+  }
+
+  if(!encMode) return;
+
+  // ── CSS: hide pilot-only buttons ──
+  const style=document.createElement('style');
+  style.textContent=`
+    #btn-start,#btn-fin-poste,#btn-declarer-arret-main,#btn-degrade-acc,
+    #btn-nettoyage-acc,#btn-pause-acc,#btn-reunion-acc,
+    .acc-btn.acc-green[onclick*="doStartProd"],
+    .acc-btn.acc-green[onclick*="doFinPoste"],
+    .acc-btn.acc-amber[onclick*="toggleDegrade"],
+    .acc-btn[onclick*="doNettoyage"],
+    .acc-btn[onclick*="doPause"],
+    .acc-btn[onclick*="doReunion"],
+    #btn-declarer-arret,
+    #btn-fin-of,
+    #btn-annuler-prod,
+    #btn-inter-of,
+    #stop-bottom,#stop-bottom-main,
+    .act-stop,.act-pause,.act-nett,.act-reunion,.act-fin,
+    #v-preshift,
+    [onclick*="openStopModal"],[onclick*="toggleDegrade"],[onclick*="doStartProd"],
+    [onclick*="doFinPoste"],[onclick*="doPause"],[onclick*="doReunion"],
+    [onclick*="doNettoyage"],[onclick*="doCancelProd"],[onclick*="openDegradeModal"]
+    { display:none !important; }
+    #enc-badge{ display:inline-flex !important; }
+  `;
+  document.head.appendChild(style);
+
+  // ── Badge "Mode Encadrant" in header ──
+  const badge=document.createElement('div');
+  badge.id='enc-badge';
+  badge.style.cssText='display:none;align-items:center;gap:6px;background:#1d4ed8;color:#fff;border-radius:6px;padding:3px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;margin-left:8px';
+  badge.innerHTML='👁️ Écran '+ecranId;
+  const hdr=document.getElementById('hdr-right')||document.querySelector('.hdr');
+  if(hdr) hdr.appendChild(badge);
+
+  // ── Loading overlay (shown when pilot request is queued) ──
+  const overlay=document.createElement('div');
+  overlay.id='enc-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);z-index:9999;display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px';
+  overlay.innerHTML='<div style="width:64px;height:64px;border:6px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:encSpin .8s linear infinite"></div><div style="color:#fff;font-size:calc(16px*var(--zf,1));font-weight:700">Synchronisation en cours…</div>';
+  document.body.appendChild(overlay);
+  const spinCss=document.createElement('style');
+  spinCss.textContent='@keyframes encSpin{to{transform:rotate(360deg)}}';
+  document.head.appendChild(spinCss);
+
+  function showOverlay(){ overlay.style.display='flex'; }
+  function hideOverlay(){ overlay.style.display='none'; }
+
+  // ── Fetch interceptor: show overlay on 503 (pilot busy), retry ──
+  const _origFetch=window.fetch;
+  window.fetch=async function(url,opts){
+    // Only intercept POST requests (reads pass through freely)
+    if(opts&&opts.method&&opts.method.toUpperCase()==='POST'){
+      // If we get 403 (pilot-only action), block silently
+      const resp=await _origFetch(url,opts);
+      if(resp.status===403){
+        toast('Action réservée au PC pilote','warn');
+        return resp;
+      }
+      if(resp.status===503){
+        // Pilot is writing, queue and retry
+        showOverlay();
+        await new Promise(r=>setTimeout(r,1500));
+        let retry=await _origFetch(url,opts);
+        let attempts=1;
+        while(retry.status===503&&attempts<5){
+          await new Promise(r=>setTimeout(r,1000*attempts));
+          retry=await _origFetch(url,opts);
+          attempts++;
+        }
+        hideOverlay();
+        return retry;
+      }
+      return resp;
+    }
+    return _origFetch(url,opts);
+  };
+
+  // ── Populate Dashboard links in settings ──
+  async function _buildEncLinks(){
+    const grid=document.getElementById('enc-links-grid');
+    if(!grid) return;
+    try{
+      const r=await _origFetch('/api/server_info');
+      const d=await r.json();
+      const ip=d.ip||location.hostname;
+      const port=d.port||5001;
+      const base='http://'+ip+':'+port+'/?mode=encadrant&ecran=';
+      grid.innerHTML=['1','2','3','4'].map(n=>`
+        <div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:10px;padding:10px 12px">
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#0369a1;margin-bottom:6px">📺 Écran ${n}</div>
+          <div style="font-size:calc(10px*var(--zf,1));color:#374151;word-break:break-all;margin-bottom:8px">${base}${n}</div>
+          <button onclick="navigator.clipboard.writeText('${base}${n}').then(()=>toast('Copié !','ok'))" style="background:#0284c7;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">📋 Copier</button>
+        </div>
+      `).join('');
+    }catch(e){
+      if(grid) grid.innerHTML='<div style="color:#dc2626;font-size:calc(11px*var(--zf,1))">Impossible de récupérer l\'IP du serveur.</div>';
+    }
+  }
+
+  // Also populate when accessed from pilot (settings visible to all)
+  window._buildEncLinks=_buildEncLinks;
+  document.addEventListener('DOMContentLoaded',()=>{
+    // Try immediately; will also be called when settings tab opens
+    setTimeout(_buildEncLinks, 500);
+  });
+
+})();
+
+// Populate enc links from pilot view too (called when settings tab shown)
+function _initEncDashLinks(){
+  if(window._buildEncLinks) window._buildEncLinks();
+  else{
+    // Non-encadrant mode: build links directly
+    fetch('/api/server_info').then(r=>r.json()).then(d=>{
+      const grid=document.getElementById('enc-links-grid');
+      if(!grid) return;
+      const ip=d.ip||location.hostname;
+      const port=d.port||5001;
+      const base='http://'+ip+':'+port+'/?mode=encadrant&ecran=';
+      grid.innerHTML=['1','2','3','4'].map(n=>`
+        <div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:10px;padding:10px 12px">
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#0369a1;margin-bottom:6px">📺 Écran ${n}</div>
+          <div style="font-size:calc(10px*var(--zf,1));color:#374151;word-break:break-all;margin-bottom:8px">${base}${n}</div>
+          <button onclick="navigator.clipboard.writeText('${base}${n}').then(()=>toast('Copié !','ok'))" style="background:#0284c7;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">📋 Copier</button>
+        </div>
+      `).join('');
+    }).catch(()=>{});
+  }
+}
 </script>
 </body>
 </html>"""
@@ -11499,14 +10293,6 @@ def _session_autosave():
         try: save_session()
         except: pass
 
-def _dashboard_autogen():
-    while True:
-        time.sleep(30)
-        try:
-            if cfg.get("db_path") and _S.get("pilot"):
-                generate_dashboard_html()
-        except: pass
-
 def main():
     global cfg
     cfg = load_cfg()
@@ -11514,7 +10300,6 @@ def main():
     threading.Thread(target=load_lists, daemon=True).start()
     threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_session_autosave, daemon=True).start()
-    threading.Thread(target=_dashboard_autogen, daemon=True).start()
     _start_periodic_excel_sync()
 
     # Recover pending Excel write after crash
@@ -11532,7 +10317,7 @@ def main():
         from threading import Thread
 
         def run_flask():
-            flask_app.run(host="127.0.0.1", port=5001, debug=False, use_reloader=False)
+            flask_app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)
 
         t = Thread(target=run_flask, daemon=True)
         t.start()
@@ -11550,7 +10335,7 @@ def main():
     except ImportError:
         # Fallback: run as plain Flask server (dev mode)
         print("pywebview non disponible — démarrage en mode serveur sur http://127.0.0.1:5001")
-        flask_app.run(host="127.0.0.1", port=5001, debug=True, use_reloader=False)
+        flask_app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False)
 
 
 if __name__ == "__main__":
