@@ -6233,6 +6233,23 @@ select{cursor:default}
           <button class="btn btn-ok" onclick="saveFibres()">💾 Enregistrer</button>
         </div>
       </div>
+      <div class="ss">
+        <h3>🧮 Calculs — Comment c'est calculé ?</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:12px">Explication de chaque indicateur. <b>Prod_réf</b> = production de référence (unités/8h, 1 personne) · <b>%cadence</b> = % selon nb opérateurs · <b>Coeff</b> = coefficient d'équivalence du type de produit · <b>28800</b> = secondes dans 8h.</div>
+        <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:calc(11px*var(--zf,1))">
+          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">⏱ Temps d'ouverture</b><span style="color:#374151">Durée du poste selon le modèle horaire (ex. 5h→13h = 480 min). Plage de référence.</span></div></div>
+          <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">✅ Temps utile</b><span style="color:#374151">Temps d'ouverture − arrêts prévus budgétés (pauses, nettoyages, réunions configurés en Paramètres). Temps disponible pour produire.</span></div></div>
+          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🏭 Temps de fonctionnement</b><span style="color:#374151">Durée OF − tous les arrêts déclarés (prévus + non prévus + dégradé). Temps réel de production.</span></div></div>
+          <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🛑 Temps en arrêt</b><span style="color:#374151">Somme directe des durées déclarées. Un seul arrêt actif à la fois → pas de chevauchement possible.</span></div></div>
+          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">📉 Perte de cadence</b><span style="color:#374151">Ralentissement lié à l'effectif réduit. Ex : 1 opérateur = 70% → perte = 30% du potentiel. Configuré dans "Influence nb opérateur".</span></div></div>
+          <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">📊 TRS</b><span style="color:#374151">Équiv produit ÷ Objectif × 100. 100% = objectif atteint. L'objectif est calculé sur la durée nette (hors arrêts prévus déduits).</span></div><div style="margin-top:5px;font-family:monospace;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:4px 10px;color:#1e40af;display:inline-block;font-size:calc(10px*var(--zf,1))">TRS = Équiv ÷ (Prod_réf × %cadence × Durée_nette / 28800) × 100</div></div>
+          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">⚡ Cadence/h</b><span style="color:#374151">Équiv ÷ Nb personnes ÷ Durée OF (heures). Production par personne par heure sur toute la durée (pauses comprises).</span></div><div style="margin-top:5px;font-family:monospace;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:4px 10px;color:#1e40af;display:inline-block;font-size:calc(10px*var(--zf,1))">Cadence/h = Équiv ÷ Nb_pers ÷ Durée_h</div></div>
+          <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">📅 Arrêts prévus</b><span style="color:#374151">Cumul des arrêts planifiés déclarés (nettoyage, pause, réunion). Déduits avant le calcul de l'objectif TRS → ne pénalisent pas le TRS s'ils restent dans le budget.</span></div></div>
+          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🚨 Arrêts non prévus</b><span style="color:#374151">Cumul des arrêts non planifiés (pannes, problèmes, manquants…). Pèsent pleinement sur le TRS.</span></div></div>
+          <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🟡 Dégradé</b><span style="color:#374151">Durée totale en mode dégradé (production ralentie). Comptabilisée séparément et déduite du TRS.</span></div></div>
+          <div style="padding:10px 14px;background:#f8fafc"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🎯 Objectif</b><span style="color:#374151">Production maximale attendue sur la durée nette de l'OF, selon l'effectif et le type de produit.</span></div><div style="margin-top:5px;font-family:monospace;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:4px 10px;color:#1e40af;display:inline-block;font-size:calc(10px*var(--zf,1))">Objectif = Prod_réf × %cadence × Durée_nette / 28800 ÷ Coeff</div></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -6548,10 +6565,15 @@ let _cfgModels = [];
 let _cfgModelsBase = [];
 let _settingsUnlocked = false;
 let _adminPw = '';
+const _settingsDirtySet = new Set();
+function _settingsMarkDirty(e){const ss=e.target.closest('.ss');if(!ss)return;const h3=ss.querySelector('h3');if(h3)_settingsDirtySet.add(h3.textContent.trim());}
+function _settingsClearDirty(keyword){for(const k of _settingsDirtySet){if(k.toLowerCase().includes(keyword.toLowerCase()))_settingsDirtySet.delete(k);}}
 window._evMap = {};
 
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', async () => {
+  const _scEl=document.getElementById('v-settings-content');
+  if(_scEl){_scEl.addEventListener('input',_settingsMarkDirty);_scEl.addEventListener('change',_settingsMarkDirty);}
   await loadEvtsList(); // charge la liste dynamique des arrêts avant de construire les grilles
   await loadInterposteCfg();
   buildEditStopOpts();
@@ -6924,6 +6946,11 @@ function setToday() {
 // ── NAVIGATION ──
 function goTab(tab) {
   if(window._guestMode && (tab==='prod'||tab==='finposte')){toast('Mode consultation — accès restreint','warn');return;}
+  if(_curTab==='settings' && tab!=='settings' && _settingsDirtySet.size>0){
+    const list=[..._settingsDirtySet].map(s=>'• '+s).join('\n');
+    if(!confirm('Modifications non enregistrées :\n'+list+'\n\nQuitter sans sauvegarder ?'))return;
+    _settingsDirtySet.clear();
+  }
   const _prevTab=_curTab;
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
@@ -8031,7 +8058,7 @@ async function saveEvtList(){
   if(d&&d.ok){
     _evtsList=_evtsEditing.map(e=>({...e}));
     rebuildStopGrids();
-    toast('Liste des arrêts enregistrée','ok');
+    toast('Liste des arrêts enregistrée','ok');_settingsClearDirty('arrêts configurables');
   } else toast(d?.error||'Erreur','err');
 }
 
@@ -8490,7 +8517,7 @@ async function saveDegradeList(){
   try{
     const r=await fetch('/api/save_degrade_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,motifs:_degradeListLocal})});
     const d=await r.json();
-    if(d&&d.ok) toast('Liste dégradé enregistrée');
+    if(d&&d.ok){toast('Liste dégradé enregistrée');_settingsClearDirty('dégradé');}
     else toast(d?.error||'Erreur','err');
   }catch(e){toast('Erreur connexion','err');}
 }
@@ -8520,7 +8547,7 @@ async function savePersPct(){
   try{
     const r=await fetch('/api/save_pers_pct',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,entries})});
     const d=await r.json();
-    if(d&&d.ok){toast('Tableau nb opérateur enregistré','ok');await loadCfg();}
+    if(d&&d.ok){toast('Tableau nb opérateur enregistré','ok');_settingsClearDirty('influence nb');await loadCfg();}
     else toast(d?.error||'Erreur','err');
   }catch(e){toast('Erreur connexion','err');}
 }
@@ -9165,11 +9192,12 @@ function _renderAndOpenOfDetail(r, ofEvts) {
 
   // ── Événements enrichis ──
   function _isPlanned(type){const t=(type||'').toLowerCase();return t.includes('pause')||t.includes('nettoyage')||t.includes('nett')||t.includes('réunion')||t.includes('reunion')||t.includes('meeting');}
+  function _getBudgetKeyForType(type){const t=(type||'').toLowerCase();if(t.includes('nett')){if(t.includes('très')||t.includes('grand'))return 'clean_grand_min';if(t.includes('long'))return 'clean_long_min';return 'clean_short_min';}if(t.includes('réunion')||t.includes('reunion')||t.includes('meeting'))return 'meeting_tol_min';if(t.includes('pause'))return 'pause_min';return null;}
   let totalPlannedActMin=0;
-  const plannedEvtBreakdown=[];
-  ofEvts.forEach(ev=>{if(!ev.is_degrade&&_isPlanned(ev.type)){const p=(ev.duree||'0:0:0').split(':').map(Number);const m=Math.round((p[0]||0)*60+(p[1]||0)+(p[2]||0)/60);totalPlannedActMin+=m;plannedEvtBreakdown.push(`${esc(ev.type)} ${m}min`);}});
+  const byTypePlan={};
+  ofEvts.forEach(ev=>{if(!ev.is_degrade&&_isPlanned(ev.type)){const p=(ev.duree||'0:0:0').split(':').map(Number);const m=Math.round((p[0]||0)*60+(p[1]||0)+(p[2]||0)/60);totalPlannedActMin+=m;byTypePlan[ev.type]=(byTypePlan[ev.type]||0)+m;}});
   const budgetExcess=Math.round(Math.max(0,totalPlannedActMin-planMin));
-  const budgetWarnHtml2=budgetExcess>0&&planMin>0?`<div style="background:#fef3c7;border:1.5px solid #fde68a;border-radius:8px;padding:7px 10px;margin-bottom:8px;font-size:calc(10px*var(--zf,1))">⚠️ <b style="color:#b45309">Dépassement budget arrêts prévus : +${budgetExcess} min</b> <span style="color:#94a3b8">(budget ${planMin} min)</span><div style="font-size:calc(9px*var(--zf,1));color:#92400e;margin-top:3px">${plannedEvtBreakdown.join(' · ')}</div></div>`:'';
+  const budgetWarnHtml2=budgetExcess>0&&planMin>0?`<div style="background:#fef3c7;border:1.5px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:calc(10px*var(--zf,1))"><div style="font-weight:800;color:#b45309;margin-bottom:5px">⚠️ Dépassement budget arrêt prévu (+${budgetExcess} min)</div>${Object.entries(byTypePlan).map(([type,declared])=>{const bk=_getBudgetKeyForType(type);const bMin=bk?(_cfgArretsPrevus[bk]||0):0;return `<div style="font-size:calc(9.5px*var(--zf,1));color:#92400e;padding:3px 0;border-top:1px solid rgba(180,83,9,.15)">• ${esc(type)} : Déclaré <b>${declared} min</b>, Budget <b>${bMin} min</b></div>`;}).join('')}</div>`:'';
   const evtsHtml2=ofEvts.length?ofEvts.map(ev=>{
     const planned=ev.is_degrade?null:_isPlanned(ev.type);
     const evDurParts=(ev.duree||'0:0:0').split(':').map(Number);
@@ -11100,6 +11128,7 @@ async function setDbPath(){
   if(d&&d.ok){
     if(st){st.textContent='✓ Fichier Excel configuré';st.style.color='var(--green)';}
     toast('Fichier Excel enregistré','ok');
+    _settingsClearDirty('fichier excel');
     loadCfg();
   } else {
     if(st){st.textContent='✗ '+(d&&d.error||'Erreur — vérifiez le chemin');st.style.color='var(--red)';}
@@ -11170,7 +11199,7 @@ async function saveArretsPrevus(){
   const pause_m=parseFloat(document.getElementById('ap-pause')?.value||0)||0;
   const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,clean_short_min:clean_short,clean_long_min:clean_long,clean_grand_min:clean_grand,meeting_tol_min:meeting,pause_min:pause_m})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('Arrêts prévus enregistrés','ok');await loadCfg();}
+  if(d&&d.ok){toast('Arrêts prévus enregistrés','ok');_settingsClearDirty('arrêts prévus');await loadCfg();}
   else toast(d?.error||'Erreur','err');
 }
 
@@ -11200,7 +11229,7 @@ async function savePwds(){
   document.querySelectorAll('#pwd-list input[data-n]').forEach(i=>_cfgPwds[i.dataset.n]=i.value);
   const r=await fetch('/api/pilot_passwords_excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,pilot_passwords:_cfgPwds})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('MDP enregistrés et sauvegardés dans Excel','ok');loadCfg();}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('MDP enregistrés et sauvegardés dans Excel','ok');_settingsClearDirty('mots de passe pilotes');loadCfg();}else toast(d&&d.error||'Erreur','err');
 }
 
 async function changeAdminPw(){
@@ -11248,7 +11277,7 @@ function addCopilote(){const v=document.getElementById('cp-new-name').value.trim
 async function saveCopilotes(){
   const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'copilotes',items:_copilotesList})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('Co-pilotes enregistrés dans Excel','ok');}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('Co-pilotes enregistrés dans Excel','ok');_settingsClearDirty('co-pilotes');}else toast(d&&d.error||'Erreur','err');
 }
 
 function renderTaillesList(){
@@ -11259,7 +11288,7 @@ function addTaille(){const v=document.getElementById('tl-new-val').value.trim();
 async function saveTailles(){
   const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'tailles',items:_taillesList})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('Tailles enregistrées dans Excel','ok');}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('Tailles enregistrées dans Excel','ok');_settingsClearDirty('tailles');}else toast(d&&d.error||'Erreur','err');
 }
 
 function renderFibresList(){
@@ -11270,7 +11299,7 @@ function addFibre(){const v=document.getElementById('fb-new-val').value.trim();i
 async function saveFibres(){
   const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'fibres',items:_fibresList})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('Fibres enregistrées dans Excel','ok');}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('Fibres enregistrées dans Excel','ok');_settingsClearDirty('fibres');}else toast(d&&d.error||'Erreur','err');
 }
 
 function renderEquivList(){
@@ -11287,7 +11316,7 @@ function addEquiv(){
 async function saveEquiv(){
   const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'equiv',items:_equivList})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('Coefficients enregistrés dans Excel','ok');}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('Coefficients enregistrés dans Excel','ok');_settingsClearDirty('coefficients');}else toast(d&&d.error||'Erreur','err');
 }
 
 const DAYS=[{k:'lun',l:'Lun'},{k:'mar',l:'Mar'},{k:'mer',l:'Mer'},{k:'jeu',l:'Jeu'},{k:'ven',l:'Ven'},{k:'sam',l:'Sam'},{k:'dim',l:'Dim'}];
@@ -11316,13 +11345,13 @@ function addModel(){_cfgModelsBase.push({nom:'Nouveau poste',jours:{lun:{debut:'
 async function saveModels(){
   const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,modeles_horaires:_cfgModelsBase})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('Modèles enregistrés','ok');loadCfg();}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('Modèles enregistrés','ok');_settingsClearDirty('modèles horaires');loadCfg();}else toast(d&&d.error||'Erreur','err');
 }
 async function saveProdRef(){
   const v=parseFloat(document.getElementById('cfg-pr').value)||200;
   const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,prod_ref:v})});
   const d=r?await r.json():{};
-  d&&d.ok?toast('Enregistré','ok'):toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('Enregistré','ok');_settingsClearDirty('référence production');}else toast(d&&d.error||'Erreur','err');
 }
 
 async function generateDashboard(){
