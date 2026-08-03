@@ -49,7 +49,7 @@ DECL_HEADERS = [
     "","Manquant MP","Manquant Personnel/Reunion",
     "","Commentaire","Prevu/Hors TRS",
     "Duree Arrets","Duree Prod Pure","Date_poste",
-    "","Degrade_min","Nbr pièces théorique",
+    "","Degrade_min","Objectif éq",
 ]
 
 POSTES = ["Matin","Midi","Nuit","Jour"]
@@ -1181,7 +1181,7 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
 
-POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Cadence (equiv/h)","Total Pauses (min)","Nettoyage (min)","Réunion (min)","Dépassement arrêts (min)","Nb chgt fibre","Commentaire","Début Poste","Fin Poste","Temps ouverture (min)","Temps utile (min)","Temps fonctionnement (min)","Temps en arrêt (min)","Réf cadence (pcs/min)","Perte cadence (min)","Temps dégradé (min)","Pièces théoriques"]
+POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Cadence (equiv/h)","Total Pauses (min)","Nettoyage (min)","Réunion (min)","Dépassement arrêts (min)","Nb chgt fibre","Commentaire","Début Poste","Fin Poste","Temps ouverture (min)","Temps utile (min)","Temps fonctionnement (min)","Temps en arrêt (min)","Réf cadence (pcs/min)","Perte cadence (min)","Temps dégradé (min)","Objectif éq","Budget pause (min)","Budget nett. court (min)","Budget nett. long (min)","Budget nett. très long (min)","Budget réunion (min)"]
 
 def write_pilots_to_excel(pilot_passwords):
     """Écrit la liste pilote+MDP dans l'onglet Listes col A+B."""
@@ -1327,7 +1327,16 @@ def write_poste_row(data, row_num=None):
                     round(float(data.get("cadence_ref_pcs_min",0) or 0),4),      # col 22 (V) Réf cadence
                     round(float(data.get("perte_cadence_min",0) or 0),1),        # col 23 (W) Perte cadence
                     round(float(data.get("degrade_min",0) or 0),1),              # col 24 (X) Temps en mode dégradé
-                    round(float(data.get("pcs_theorique",0) or 0),1),             # col 25 (Y) Pièces théoriques
+                    round(float(data.get("pcs_theorique",0) or 0),1),             # col 25 (Y) Objectif éq
+                ]
+                _bov = data.get("budget_overrides") or {}
+                _bov_get = lambda k: float((_bov.get(k) if _bov.get(k) is not None else cfg.get(k,0)) or 0)
+                vals += [
+                    _bov_get("pause_min"),        # col 26 (Z)  Budget pause
+                    _bov_get("clean_short_min"),  # col 27 (AA) Budget nett. court
+                    _bov_get("clean_long_min"),   # col 28 (AB) Budget nett. long
+                    _bov_get("clean_grand_min"),  # col 29 (AC) Budget nett. très long
+                    _bov_get("meeting_tol_min"),  # col 30 (AD) Budget réunion
                 ]
                 if row_num and row_num > 1:
                     for ci, v in enumerate(vals, start=1):
@@ -1400,6 +1409,13 @@ def load_postes_shift_map():
                     'pcs_theorique': _flt(ws.cell(ri, 25).value),  # col Y: Pièces théoriques
                     'depassement_min': _flt(ws.cell(ri, 13).value), # col M: Dépassement arrêts
                     'row_idx':       ri,
+                    'budget_overrides': {
+                        'pause_min':       _flt(ws.cell(ri, 26).value),
+                        'clean_short_min': _flt(ws.cell(ri, 27).value),
+                        'clean_long_min':  _flt(ws.cell(ri, 28).value),
+                        'clean_grand_min': _flt(ws.cell(ri, 29).value),
+                        'meeting_tol_min': _flt(ws.cell(ri, 30).value),
+                    },
                 }
             wb.close()
     except: pass
@@ -2010,7 +2026,7 @@ def api_end_prod():
         trs_str = str(trs)
         # Pièces théoriques = objectif OF (même base que TRS)
         _pcoef_ep = (equiv / qte_fab) if (qte_fab and qte_fab > 0 and equiv and equiv > 0) else 1.0
-        _objectif_pcs = round(prod_ref * _pct_ep * _adj_s / 28800 / _pcoef_ep, 1)
+        _objectif_pcs = round(prod_ref * _pct_ep * _adj_s / 28800, 1)
 
     # Ligne Production (40 cols, format unifié)
     _shift_dt = _S.get("shift_start") or datetime.datetime.now()
@@ -3163,7 +3179,7 @@ def api_period_report():
                 _qte_rp  = float(str(_rp[19] or 0).replace(",", "."))
                 _pcoef_rp = _eq_rp / _qte_rp if _qte_rp > 0 and _eq_rp > 0 else 1.0
                 _exp_rp  = prod_ref * _pct_rp * _adj_rp / 28800 if prod_ref > 0 else 0.0
-                _obj_rp  = round(_exp_rp / _pcoef_rp, 1) if _exp_rp > 0 else -1
+                _obj_rp  = round(_exp_rp, 1) if _exp_rp > 0 else -1
             except:
                 _plan_rp = 0; _deg_rp = 0; _obj_rp = -1
             _of_rows_sd.append({
@@ -3289,8 +3305,11 @@ def api_session_report():
     _sr_ss = _S.get("shift_start")
     _sr_live_date = _sr_ss.date().strftime("%d/%m/%Y") if _sr_ss else datetime.date.today().strftime("%d/%m/%Y")
     _is_live_sr = bool(_S.get("pilot") and _S.get("pilot") == pilot and _S.get("poste") == poste and date_str == _sr_live_date)
-    _sr_live_ov = (_S.get("budget_overrides") or {}) if _is_live_sr else {}
-    planned_ded = _compute_planned_deduction_s(evt_rows, _sr_live_ov if _is_live_sr else None)
+    _postes_map2 = load_postes_shift_map()
+    _pk2 = (pilot.lower(), date_str)
+    _xl_bov = {k: v for k, v in (_postes_map2.get(_pk2, {}).get('budget_overrides') or {}).items() if v is not None}
+    _sr_live_ov = (_S.get("budget_overrides") or {}) if _is_live_sr else _xl_bov
+    planned_ded = _compute_planned_deduction_s(evt_rows, _sr_live_ov if (_is_live_sr or _xl_bov) else None)
     # Pour session en cours : intervalles planifiés capés au budget (comme api_fin_poste_data)
     _plan_ivs_sr = []
     _blab_sr = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
@@ -3324,12 +3343,10 @@ def api_session_report():
             _qte_of = float(str(raw_r[19] or 0).replace(",", "."))
             _pcoef_of = _eq_of / _qte_of if _qte_of > 0 and _eq_of > 0 else 1.0
             _exp_of = prod_ref * _pct_of * _adj_of_s / 28800 if prod_ref > 0 else 0.0
-            _obj_of = round(_exp_of / _pcoef_of, 1) if _exp_of > 0 else -1
+            _obj_of = round(_exp_of, 1) if _exp_of > 0 else -1
             prod_rows[pi]["plan_stop_s"] = round(_plan_of_s)
             prod_rows[pi]["objectif"] = _obj_of
         except: pass
-    _postes_map2 = load_postes_shift_map()
-    _pk2 = (pilot.lower(), date_str)
     _xl_trs_sr = None
     _xl_perte_sr = None
     if _pk2 in _postes_map2:
@@ -7905,7 +7922,7 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   // ── Colonnes infos ──
   const commentHtml3=r.comment?`<div style="background:#fffbeb;border-left:3px solid #fbbf24;padding:7px 10px;margin-top:10px;font-size:calc(11px*var(--zf,1));color:#92400e;border-radius:0 8px 8px 0;box-shadow:0 2px 5px rgba(251,191,36,.15)">💬 ${esc(r.comment)}</div>`:'';
   const col1Html=[_sec('Identité'),_row('OF',r.of,'#1e3a8a'),_row('Date',r.date,'#374151'),_row('Poste',r.poste,'#374151'),_row('Pilote',r.pilote,'#374151'),_row('Co-Pilote',r.copilote,'#374151'),_row('Nb Personnes',r.nb_pers,'#374151'),_sec('Produit'),_row('Taille',r.taille,'#374151'),_row('Type produit',r.type_prod,'#374151'),_row('Code produit',r.code_prod,'#374151'),_row('Fibre',r.fibre,'#6366f1'),_row('Poids garnissage (g)',r.poids,'#374151'),_row('OF Taie',r.of_taie,'#374151'),_row('Réf Taie',r.ref_taie,'#374151'),_row('Traca',r.traca?(r.traca.split(';').filter(t=>t.trim()).join(' · ')):'' ,'#374151'),_row('Lots de 2',kitStr==='oui'?'✓ Oui':'Non',kitStr==='oui'?'#16a34a':'#94a3b8')].join('');
-  const col2Html=[_sec('Production'),_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Qté fabriquée',r.qte_fab,'#1e3a8a'),_row('Qté emballée',r.qte_emb,'#374151'),_row('Équivalence',r.equiv,'#0891b2'),_row('Cadence/h',r.cadence_h,'#374151'),_row('Cadence/h/pers',r.cadence_h_pers,'#374151'),_row('TRS %',r.trs>=0?r.trs.toFixed(1)+'%':'—',tc),_row('Objectif pièces',r.objectif!=null&&r.objectif>=0?String(r.objectif):'','#0369a1'),_row('Prévu/Hors TRS',r.prevu_hors_trs,'#374151'),commentHtml3,`<div style="margin-top:10px">${_sec('Qualité')}${[_row('Qté init Taie',r.qte_init_taie,'#374151'),_row('Nb Taie 2nd choix',r.nb_taie2,'#f59e0b'),_row('Nb défauts couture',r.nb_def_cout,'#dc2626'),_row('Mq Taie',r.mq_taie,'#dc2626'),_row('Mq Housse/Encart',r.mq_housse,'#dc2626'),_row('Nb PP cousue',r.nb_pp,'#374151')].join('')}</div>`,`<div style="margin-top:4px">${_sec('Manquants')}${[_row('Manquant MP',r.duree_mq_mp,'#dc2626'),_row('Manquant Personnel/Réunion',r.manquant_pers,'#374151')].join('')}</div>`].join('');
+  const col2Html=[_sec('Production'),_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Qté fabriquée',r.qte_fab,'#1e3a8a'),_row('Qté emballée',r.qte_emb,'#374151'),_row('Équivalence',r.equiv,'#0891b2'),_row('Cadence/h',r.cadence_h,'#374151'),_row('Cadence/h/pers',r.cadence_h_pers,'#374151'),_row('TRS %',r.trs>=0?r.trs.toFixed(1)+'%':'—',tc),_row('Objectif éq',r.objectif!=null&&r.objectif>=0?String(r.objectif):'','#0369a1'),_row('Prévu/Hors TRS',r.prevu_hors_trs,'#374151'),commentHtml3,`<div style="margin-top:10px">${_sec('Qualité')}${[_row('Qté init Taie',r.qte_init_taie,'#374151'),_row('Nb Taie 2nd choix',r.nb_taie2,'#f59e0b'),_row('Nb défauts couture',r.nb_def_cout,'#dc2626'),_row('Mq Taie',r.mq_taie,'#dc2626'),_row('Mq Housse/Encart',r.mq_housse,'#dc2626'),_row('Nb PP cousue',r.nb_pp,'#374151')].join('')}</div>`,`<div style="margin-top:4px">${_sec('Manquants')}${[_row('Manquant MP',r.duree_mq_mp,'#dc2626'),_row('Manquant Personnel/Réunion',r.manquant_pers,'#374151')].join('')}</div>`].join('');
   const col3Html=`${_sec('Événements ('+ofEvts.length+')')}${budgetWarnHtml2}${evtsHtml2}`;
 
   const trsBlock2=r.trs>=0?`<div style="text-align:right;background:#fff;border-radius:10px;padding:8px 14px;box-shadow:0 4px 12px rgba(0,0,0,.25)"><div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:${tc};line-height:1">${r.trs.toFixed(1)}%</div><div style="font-size:calc(9px*var(--zf,1));color:#94a3b8;text-transform:uppercase;letter-spacing:.1em">TRS</div></div>`:'';
@@ -8581,6 +8598,7 @@ async function confirmFinPoste(){
     perte_cadence_min:fpData&&fpData.perte_cadence_min||0,
     degrade_min:fpData&&fpData.degrade_min||0,
     pcs_theorique:fpData&&fpData.pcs_theorique||0,
+    budget_overrides:window._budgetOverrides||{},
   };
   await fetch('/api/save_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posteRow)});
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
