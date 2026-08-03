@@ -4064,7 +4064,7 @@ select{cursor:default}
         <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
         <button id="btn-nettoyage-acc" class="acc-btn" onclick="doNettoyage()" style="background:radial-gradient(ellipse at 50% 25%,#fed7aa 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
         <button id="btn-pause-acc" class="acc-btn" onclick="doPause()" style="background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">☕</span><span>Pause</span></button>
-        <button class="acc-btn" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
+        <button id="btn-reunion-acc" class="acc-btn" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
       </div>
     </div>
@@ -4081,10 +4081,10 @@ select{cursor:default}
 
       <!-- POSTE ACTUEL encart principal -->
       <div style="flex:0 0 auto;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:6px 10px;display:flex;align-items:center;gap:10px">
-        <!-- Répartition temps (pie) — à GAUCHE -->
-        <div style="flex-shrink:0;text-align:center">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Répartition</div>
-          <svg id="pie-poste-acc" viewBox="0 0 130 100" style="width:110px;height:85px;display:block;margin:0 auto"></svg>
+        <!-- Répartition temps (barres) — à GAUCHE -->
+        <div style="flex-shrink:0;min-width:130px;max-width:150px">
+          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Répartition</div>
+          <div id="pie-poste-acc"></div>
         </div>
         <!-- Jauge TRS — au centre -->
         <div style="flex-shrink:0;text-align:center">
@@ -4621,13 +4621,14 @@ select{cursor:default}
         <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#4338ca;text-transform:uppercase">au</span>
         <input type="date" id="rj-to" style="padding:3px 6px;border:none;border-radius:5px;font-size:calc(12px*var(--zf,1));color:#1e3a8a;font-weight:600;outline:none;background:transparent">
       </div>
-      <select id="rj-pilot" style="font-size:calc(12px*var(--zf,1));padding:5px 10px;border:1.5px solid #c7d2fe;border-radius:8px;background:#fff;color:#1e3a8a;font-weight:600;outline:none"><option value="">Tous les pilotes</option></select>
-      <select id="rj-poste" style="font-size:calc(12px*var(--zf,1));padding:5px 10px;border:1.5px solid #c7d2fe;border-radius:8px;background:#fff;color:#1e3a8a;font-weight:600;outline:none"><option value="">Tous les postes</option></select>
+      <select id="rj-pilot" style="font-size:calc(12px*var(--zf,1));padding:5px 10px;border:1.5px solid #c7d2fe;border-radius:8px;background:#fff;color:#1e3a8a;font-weight:600;outline:none"><option value="">Pilote</option></select>
+      <select id="rj-poste" style="font-size:calc(12px*var(--zf,1));padding:5px 10px;border:1.5px solid #c7d2fe;border-radius:8px;background:#fff;color:#1e3a8a;font-weight:600;outline:none"><option value="">Poste</option></select>
       <button onclick="calcPeriodReport()" style="background:linear-gradient(180deg,#2d3480,#1a1f5e);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(26,31,94,.35),inset 0 1px 0 rgba(255,255,255,.18)">🔄 Actualiser</button>
       <button onclick="resetPeriodReport()" style="background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:5px 12px;font-size:calc(12px*var(--zf,1));color:var(--gray);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.08)">✕ Réinitialiser</button>
       <div style="margin-left:auto;display:flex;gap:6px">
         <button onclick="rjLast3()" style="background:linear-gradient(180deg,#0ea5e9,#0369a1);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(3,105,161,.35),inset 0 1px 0 rgba(255,255,255,.18)">3 derniers postes</button>
         <button onclick="rjLast7Days()" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(5,150,105,.35),inset 0 1px 0 rgba(255,255,255,.18)">7 derniers jours</button>
+        <button onclick="rjLast31Days()" style="background:linear-gradient(180deg,#a78bfa,#7c3aed);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(124,58,237,.35),inset 0 1px 0 rgba(255,255,255,.18)">31 derniers jours</button>
       </div>
     </div>
     <div id="rj-result" style="flex:1;overflow-y:auto;padding:14px 18px">
@@ -4675,6 +4676,11 @@ select{cursor:default}
       <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Du <input type="date" id="kpi-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
       <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Au <input type="date" id="kpi-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
       <button onclick="loadKPI()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">↺ Actualiser</button>
+      <button onclick="kpiLastMonths(3)" style="background:linear-gradient(180deg,#0ea5e9,#0369a1);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">3 derniers mois</button>
+      <button onclick="kpiLastMonths(6)" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">6 derniers mois</button>
+      <button onclick="kpiLastMonths(12)" style="background:linear-gradient(180deg,#a78bfa,#7c3aed);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">12 derniers mois</button>
+      <select id="kpi-pilot" style="font-size:calc(11px*var(--zf,1));padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;color:#1e3a8a;font-weight:600;outline:none"><option value="">Pilote</option></select>
+      <select id="kpi-poste" style="font-size:calc(11px*var(--zf,1));padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;color:#1e3a8a;font-weight:600;outline:none"><option value="">Poste</option></select>
     </div>
     <!-- 3 courbes côte à côte (compact) -->
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;height:200px;flex-shrink:0;background:#fff;border-bottom:1px solid #e2e8f0">
@@ -5878,9 +5884,11 @@ function applyState(s) {
   if(pbtn){pbtn.innerHTML=s.is_paused?'<span class="act-icon">▶</span>Reprendre':'<span class="act-icon">☕</span>Pause';pbtn.style.animation=s.is_paused?'blink .85s step-start infinite':'none';}
   const pbtnAcc=document.getElementById('btn-pause-acc');
   if(pbtnAcc){pbtnAcc.style.animation=s.is_paused?'blink .85s step-start infinite':'none';}
-  // Réunion button text + blink
+  // Réunion button text + blink (Prod en cours + Accueil)
   const rbtn=document.getElementById('btn-reunion');
   if(rbtn){rbtn.innerHTML=s.reunion_active?'<span class="act-icon">✓</span>Fin réunion':'<span class="act-icon">🗣️</span>Réunion';rbtn.style.animation=s.reunion_active?'blink .85s step-start infinite':'none';}
+  const rbtnAcc=document.getElementById('btn-reunion-acc');
+  if(rbtnAcc){rbtnAcc.style.animation=s.reunion_active?'blink .85s step-start infinite':'none';}
   // Nettoyage button blink
   window._nettActive=(s.active_stops||[]).some(k=>k==='nettoyage'||(k||'').startsWith('nettoyage'));
   const nbtnAcc=document.getElementById('btn-nettoyage-acc');const nbtnProd=document.getElementById('btn-nettoyage-prod');
@@ -7417,7 +7425,16 @@ function updateGauge(s){
   const shiftProd=Math.max(0,shiftTotal-shiftStop);
   const postePieData=[{label:'Prod',value:shiftProd,color:'#16a34a'},{label:'Arrêts',value:shiftStop,color:'#dc2626'}];
   drawPie('pie-poste',postePieData,{fCenter:16,fSub:9,fLeg:9});
-  drawPie('pie-poste-acc',postePieData,{fCenter:24,fSub:10,fLeg:0});
+  // Horizontal bars replacing pie in Accueil
+  const _pAccEl=document.getElementById('pie-poste-acc');
+  if(_pAccEl){
+    const _tot=postePieData.reduce((a,b)=>a+b.value,0);
+    _pAccEl.innerHTML=postePieData.map(d=>{
+      const _pct=_tot>0?Math.round(d.value/_tot*100):0;
+      const _min=Math.round(d.value/60);
+      return`<div style="margin-bottom:5px"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:${d.color};margin-bottom:2px;white-space:nowrap">${d.label} — ${_min}min</div><div style="background:#e2e8f0;border-radius:3px;height:14px;position:relative;overflow:hidden"><div style="height:100%;background:${d.color};border-radius:3px;width:${_pct}%;opacity:.85;position:absolute;top:0;left:0"></div><span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:calc(9px*var(--zf,1));font-weight:800;color:#1e293b">${_pct}%</span></div></div>`;
+    }).join('');
+  }
 }
 // Accumulateurs poste (mis à jour à chaque loadMainDecl)
 let _todayEquivAccum=0, _todayStopAccum=0, _lastProdDeclTime=null, _shiftRefDt=null;
@@ -8946,6 +8963,15 @@ function _kpiInitDates(){
   if(!fi.value){const d=new Date();d.setMonth(d.getMonth()-6);fi.value=d.toISOString().slice(0,10);}
   if(!ti.value){ti.value=new Date().toISOString().slice(0,10);}
 }
+function kpiLastMonths(n){
+  const fi=document.getElementById('kpi-from'),ti=document.getElementById('kpi-to');
+  if(!fi||!ti)return;
+  const _t=new Date(),_f=new Date(_t);
+  _f.setMonth(_f.getMonth()-n);
+  fi.value=_f.toISOString().slice(0,10);
+  ti.value=_t.toISOString().slice(0,10);
+  loadKPI();
+}
 
 async function loadKPI(){
   _kpiInitDates();
@@ -8963,9 +8989,18 @@ async function loadKPI(){
   const allEvts=Array.isArray(evtData)?evtData:[];
 
   const inRange=dateStr=>{const ms=_kpiParseFR(dateStr);return ms&&ms>=fromMs&&ms<=toMs;};
-  const rows=allRows.filter(r=>inRange(r.date)&&(r.type||'').trim().toLowerCase()!=='');
-  const prodRows=allRows.filter(r=>inRange(r.date)&&['production','prod',''].includes((r.type||'').trim().toLowerCase()));
-  const evts=allEvts.filter(e=>inRange(e.date));
+  // Populate and read pilot/poste selects
+  const _kpiPilotSel=document.getElementById('kpi-pilot');
+  const _kpiPosteSel=document.getElementById('kpi-poste');
+  const _kpiPilotCur=_kpiPilotSel?_kpiPilotSel.value:'';
+  const _kpiPosteCur=_kpiPosteSel?_kpiPosteSel.value:'';
+  if(_kpiPilotSel){const _pilots=[...new Set(allRows.map(r=>r.pilote).filter(Boolean))].sort();_kpiPilotSel.innerHTML='<option value="">Pilote</option><option value="tous">Tous</option>'+_pilots.map(p=>`<option value="${esc(p)}"${p===_kpiPilotCur?' selected':''}>${esc(p)}</option>`).join('');if(_kpiPilotCur)_kpiPilotSel.value=_kpiPilotCur;}
+  if(_kpiPosteSel){const _postes=[...new Set(allRows.map(r=>r.poste).filter(Boolean))].sort();_kpiPosteSel.innerHTML='<option value="">Poste</option><option value="tous">Tous</option>'+_postes.map(p=>`<option value="${esc(p)}"${p===_kpiPosteCur?' selected':''}>${esc(p)}</option>`).join('');if(_kpiPosteCur)_kpiPosteSel.value=_kpiPosteCur;}
+  const _kpiPilotFilt=(_kpiPilotSel&&_kpiPilotSel.value&&_kpiPilotSel.value!=='tous')?_kpiPilotSel.value:'';
+  const _kpiPosteFilt=(_kpiPosteSel&&_kpiPosteSel.value&&_kpiPosteSel.value!=='tous')?_kpiPosteSel.value:'';
+  const rows=allRows.filter(r=>inRange(r.date)&&(r.type||'').trim().toLowerCase()!==''&&(!_kpiPilotFilt||(r.pilote||'')===_kpiPilotFilt)&&(!_kpiPosteFilt||(r.poste||'')===_kpiPosteFilt));
+  const prodRows=allRows.filter(r=>inRange(r.date)&&['production','prod',''].includes((r.type||'').trim().toLowerCase())&&(!_kpiPilotFilt||(r.pilote||'')===_kpiPilotFilt)&&(!_kpiPosteFilt||(r.poste||'')===_kpiPosteFilt));
+  const evts=allEvts.filter(e=>inRange(e.date)&&(!_kpiPilotFilt||(e.pilote||'')===_kpiPilotFilt)&&(!_kpiPosteFilt||(e.poste||'')===_kpiPosteFilt));
 
   // Build sessions (one per pilot+date+poste)
   const sessMap={};
@@ -9280,11 +9315,13 @@ async function loadRptJour(){
   const qSel=document.getElementById('rj-poste');
   if(pSel){
     const cur=pSel.value;
-    pSel.innerHTML='<option value="">Tous</option>'+pilots.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('');
+    pSel.innerHTML='<option value="">Pilote</option><option value="tous">Tous</option>'+pilots.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('');
+    if(cur)pSel.value=cur;
   }
   if(qSel){
     const cur=qSel.value;
-    qSel.innerHTML='<option value="">Tous</option>'+postes.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('');
+    qSel.innerHTML='<option value="">Poste</option><option value="tous">Tous</option>'+postes.map(p=>`<option value="${esc(p)}" ${p===cur?'selected':''}>${esc(p)}</option>`).join('');
+    if(cur)qSel.value=cur;
   }
   // Auto-load: trouver les 3 derniers postes et stocker pour bandeau + limit API
   window._rjAutoLast3=[];
@@ -9310,8 +9347,10 @@ async function calcPeriodReport(autoLoad){
   // On laisse l'API renvoyer les max_sessions=3 derniers postes sans restriction de date
   const from=autoLoad?'':document.getElementById('rj-from').value;
   const to=autoLoad?'':document.getElementById('rj-to').value;
-  const pilot=autoLoad?'':document.getElementById('rj-pilot').value;
-  const poste=autoLoad?'':document.getElementById('rj-poste').value;
+  const _rjPilotRaw=autoLoad?'':document.getElementById('rj-pilot').value;
+  const _rjPosteRaw=autoLoad?'':document.getElementById('rj-poste').value;
+  const pilot=(_rjPilotRaw==='tous')?'':_rjPilotRaw;
+  const poste=(_rjPosteRaw==='tous')?'':_rjPosteRaw;
   const resultEl=document.getElementById('rj-result');
   if(!resultEl) return;
   if(autoLoad){_rjSetBanner('Rapport des 3 derniers postes');}
@@ -9395,15 +9434,16 @@ async function calcPeriodReport(autoLoad){
     const maxMp=d.stop_pareto[0].min,totMp=d.stop_pareto.reduce((a,e)=>a+e.min,0);
     const rows3=d.stop_pareto.map(e=>{
       const pct=Math.round(e.min/maxMp*100),col=STOP_COL[e.cat]||'#94a3b8',pctTot=totMp>0?Math.round(e.min/totMp*100):0;
-      return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px">
-        <div style="flex:0 0 130px;display:flex;align-items:center;gap:4px;min-width:0">
+      return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;white-space:nowrap">
+        <div style="flex:0 0 120px;display:flex;align-items:center;gap:4px;min-width:0">
           <div style="width:8px;height:8px;border-radius:2px;background:${col};flex-shrink:0"></div>
           <span style="font-size:calc(10px*var(--zf,1));color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.type)}</span>
         </div>
-        <div style="flex:1;background:#f1f5f9;border-radius:3px;height:14px;min-width:40px">
-          <div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8"></div>
+        <div style="flex:1;background:#f1f5f9;border-radius:3px;height:16px;min-width:40px;position:relative;overflow:hidden">
+          <div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div>
+          <span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:calc(9px*var(--zf,1));font-weight:800;color:#1e293b">${pctTot}%</span>
         </div>
-        <div style="flex:0 0 56px;font-size:calc(10px*var(--zf,1));color:#6b7280;text-align:right">${Math.round(e.min)}m <b style="color:#1e293b">${pctTot}%</b></div>
+        <div style="flex:0 0 32px;font-size:calc(10px*var(--zf,1));color:#6b7280;text-align:right;white-space:nowrap">${Math.round(e.min)}m</div>
       </div>`;
     }).join('');
     paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex-shrink:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">🛑 Pareto des arrêts</div>${rows3}</div>`;
@@ -9589,6 +9629,14 @@ function rjLast7Days(){
   _rjSetBanner('Rapport des 7 derniers jours');
   calcPeriodReport(false);
 }
+function rjLast31Days(){
+  const _t=new Date(),_f=new Date(_t);
+  _f.setDate(_t.getDate()-30);
+  document.getElementById('rj-from').value=_f.toISOString().slice(0,10);
+  document.getElementById('rj-to').value=_t.toISOString().slice(0,10);
+  _rjSetBanner('Rapport des 31 derniers jours');
+  calcPeriodReport(false);
+}
 function resetPeriodReport(){
   document.getElementById('rj-from').value='';
   document.getElementById('rj-to').value='';
@@ -9703,17 +9751,17 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <td style="${td};font-weight:700;color:#1e3a8a;text-decoration:underline">${esc(r.of||'')}</td>
       <td style="${td}">${esc(r.taille||'')} ${esc(r.type_prod||'')}</td>
       <td style="${td}">${kitDisp}</td>
+      <td style="${td};color:#374151;font-weight:600">${esc(String(nbPers))}</td>
       <td style="${td}">${esc(r.qte_fab||'')}</td>
       <td style="${td};color:#0891b2;font-weight:700">${esc(r.equiv||'')}</td>
+      <td style="${td};color:#0891b2;font-weight:700">${(r.objectif!=null&&r.objectif>=0)?r.objectif:'—'}</td>
+      <td style="${td};font-weight:800;color:${tc}">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</td>
       <td style="${td};white-space:nowrap">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
       <td style="${td};color:#94a3b8">${ofDurMin>0?ofDurMin+' min':'—'}</td>
       <td style="${td};color:#16a34a;font-weight:700">${netMin} min</td>
       <td style="${td};color:#16a34a;font-weight:700">${planMin>0?planMin+' min':'—'}</td>
       <td style="${td};color:#dc2626;font-weight:700">${unplanMin>0?unplanMin+' min':'—'}</td>
       <td style="${td};color:${degMinOf>0?'#b45309':'#94a3b8'};font-weight:${degMinOf>0?'700':'400'}">${degMinOf>0?degMinOf+' min':'—'}</td>
-      <td style="${td};color:#374151;font-weight:600">${esc(String(nbPers))}</td>
-      <td style="${td};color:#0891b2;font-weight:700">${(r.objectif!=null&&r.objectif>=0)?r.objectif:'—'}</td>
-      <td style="${td};font-weight:800;color:${tc}">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</td>
       <td style="padding:4px 6px;font-size:calc(10px*var(--zf,1));color:var(--gray)">${esc(r.comment||'')}</td>
     </tr>`;
   }).join('');
@@ -9857,8 +9905,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <table style="width:100%;border-collapse:collapse;font-size:calc(11px*var(--zf,1))">
         <thead><tr style="background:#f8fafc;border-bottom:1px solid var(--border)">
           <th style="padding:4px 6px;text-align:center">OF</th><th style="padding:4px 6px;text-align:center">Taille</th>
-          <th style="padding:4px 6px;text-align:center">Lots×2</th><th style="padding:4px 6px;text-align:center">Qté</th><th style="padding:4px 6px;text-align:center">Éq.</th>
-          <th style="padding:4px 6px;text-align:center">Heures</th><th style="padding:4px 6px;text-align:center;color:#94a3b8">Durée OF</th><th style="padding:4px 6px;text-align:center;color:#16a34a">Durée prod</th><th style="padding:4px 6px;text-align:center;color:#16a34a">Arrêts prévus</th><th style="padding:4px 6px;text-align:center;color:#dc2626">Arrêts non prévus</th><th style="padding:4px 6px;text-align:center;color:#b45309">Dégradé</th><th style="padding:4px 6px;text-align:center">Nb pers</th><th style="padding:4px 6px;text-align:center;color:#0891b2">Objectif</th><th style="padding:4px 6px;text-align:center">TRS</th><th style="padding:4px 6px;text-align:left">Comm.</th>
+          <th style="padding:4px 6px;text-align:center">Lots×2</th><th style="padding:4px 6px;text-align:center">Nb pers</th><th style="padding:4px 6px;text-align:center">Qté</th><th style="padding:4px 6px;text-align:center">Éq.</th>
+          <th style="padding:4px 6px;text-align:center;color:#0891b2">Objectif</th><th style="padding:4px 6px;text-align:center">TRS</th><th style="padding:4px 6px;text-align:center">Heures</th><th style="padding:4px 6px;text-align:center;color:#94a3b8">Durée OF</th><th style="padding:4px 6px;text-align:center;color:#16a34a">Durée prod</th><th style="padding:4px 6px;text-align:center;color:#16a34a">Arrêts prévus</th><th style="padding:4px 6px;text-align:center;color:#dc2626">Arrêts non prévus</th><th style="padding:4px 6px;text-align:center;color:#b45309">Dégradé</th><th style="padding:4px 6px;text-align:left">Comm.</th>
         </tr></thead>
         <tbody>${prodsHtml||'<tr><td colspan="15" style="padding:8px;text-align:center;color:var(--gray)">Aucune production</td></tr>'}</tbody>
       </table>
