@@ -1773,6 +1773,8 @@ def api_set_of_start():
         return jsonify({"ok":False,"error":"Pas de production active"}),400
     try:
         dt = datetime.datetime.fromisoformat(iso)
+        if getattr(dt, 'tzinfo', None) is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
         _S["of_start"] = dt
         _S["shift_start"] = dt
         save_session()
@@ -4091,10 +4093,10 @@ select{cursor:default}
 
       <!-- POSTE ACTUEL encart principal -->
       <div style="flex:0 0 auto;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:6px 10px;display:flex;align-items:center;gap:10px">
-        <!-- Répartition temps (barres) — à GAUCHE -->
-        <div style="flex-shrink:0;min-width:130px;max-width:150px">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Répartition</div>
-          <div id="pie-poste-acc"></div>
+        <!-- Répartition temps (pie) — à GAUCHE -->
+        <div style="flex-shrink:0;text-align:center">
+          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Répartition</div>
+          <svg id="pie-poste-acc" viewBox="0 0 130 100" style="width:110px;height:85px;display:block;margin:0 auto"></svg>
         </div>
         <!-- Jauge TRS — au centre -->
         <div style="flex-shrink:0;text-align:center">
@@ -4280,7 +4282,7 @@ select{cursor:default}
           </svg>
           <div class="gauge-lbl" style="font-size:calc(9px*var(--zf,1))">TRS OF</div>
           <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:4px;margin-bottom:2px">Répartition temps OF</div>
-          <svg id="pie-of" viewBox="0 0 130 150" style="width:100%;max-width:154px;height:auto;display:block;margin:0 auto"></svg>
+          <div id="pie-of" style="width:100%;max-width:154px"></div>
         </div>
         <!-- Bottom action buttons -->
         <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0;background:var(--card)">
@@ -6433,7 +6435,9 @@ function _showNextGap(){
   if(_bdhm.length>=2){
     const _bdn=new Date();
     const _bddt=new Date(_bdn.getFullYear(),_bdn.getMonth(),_bdn.getDate(),parseInt(_bdhm[0])||0,parseInt(_bdhm[1])||0,0,0);
-    document.getElementById('ps-start-iso').value=_bddt.toISOString();
+    const _pad=n=>String(n).padStart(2,'0');
+    const _localIso=`${_bddt.getFullYear()}-${_pad(_bddt.getMonth()+1)}-${_pad(_bddt.getDate())}T${_pad(_bddt.getHours())}:${_pad(_bddt.getMinutes())}:00`;
+    document.getElementById('ps-start-iso').value=_localIso;
   }else{document.getElementById('ps-start-iso').value='';}
   document.getElementById('ps-custom').value='';
   const bdRow=document.getElementById('ps-backdate-row');
@@ -7431,23 +7435,23 @@ function updateGauge(s){
   const stopS=s.stop_wall_s||0;
   const ofDur=s.of_elapsed_s||0;
   const prodSof=Math.max(0,ofDur-stopS);
-  drawPie('pie-of',[{label:'Prod',value:prodSof,color:'#16a34a'},{label:'Arrêts',value:stopS,color:'#dc2626'}],{fCenter:20,fSub:12,fLeg:12,legY:118});
+  // Horizontal bars for pie-of (Prod en cours)
+  const _pOfEl=document.getElementById('pie-of');
+  if(_pOfEl){
+    const _ofData=[{label:'Prod',value:prodSof,color:'#16a34a'},{label:'Arrêts',value:stopS,color:'#dc2626'}];
+    const _ofTot=_ofData.reduce((a,b)=>a+b.value,0);
+    _pOfEl.innerHTML=_ofData.map(d=>{
+      const _pct=_ofTot>0?Math.round(d.value/_ofTot*100):0;
+      const _min=Math.round(d.value/60);
+      return`<div style="margin-bottom:5px"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:${d.color};margin-bottom:2px;white-space:nowrap">${d.label} — ${_min}min</div><div style="background:#e2e8f0;border-radius:3px;height:14px;position:relative;overflow:hidden"><div style="height:100%;background:${d.color};border-radius:3px;width:${_pct}%;opacity:.85;position:absolute;top:0;left:0"></div><span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:calc(9px*var(--zf,1));font-weight:800;color:#1e293b">${_pct}%</span></div></div>`;
+    }).join('');
+  }
   // For poste pie — compute from shift start
   const shiftTotal=s.shift_start_iso?(Date.now()-new Date(s.shift_start_iso).getTime())/1000:0;
   const shiftStop=_todayStopAccum||0;
   const shiftProd=Math.max(0,shiftTotal-shiftStop);
   const postePieData=[{label:'Prod',value:shiftProd,color:'#16a34a'},{label:'Arrêts',value:shiftStop,color:'#dc2626'}];
-  drawPie('pie-poste',postePieData,{fCenter:16,fSub:9,fLeg:9});
-  // Horizontal bars replacing pie in Accueil
-  const _pAccEl=document.getElementById('pie-poste-acc');
-  if(_pAccEl){
-    const _tot=postePieData.reduce((a,b)=>a+b.value,0);
-    _pAccEl.innerHTML=postePieData.map(d=>{
-      const _pct=_tot>0?Math.round(d.value/_tot*100):0;
-      const _min=Math.round(d.value/60);
-      return`<div style="margin-bottom:5px"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:${d.color};margin-bottom:2px;white-space:nowrap">${d.label} — ${_min}min</div><div style="background:#e2e8f0;border-radius:3px;height:14px;position:relative;overflow:hidden"><div style="height:100%;background:${d.color};border-radius:3px;width:${_pct}%;opacity:.85;position:absolute;top:0;left:0"></div><span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:calc(9px*var(--zf,1));font-weight:800;color:#1e293b">${_pct}%</span></div></div>`;
-    }).join('');
-  }
+  drawPie('pie-poste-acc',postePieData,{fCenter:24,fSub:10,fLeg:0});
 }
 // Accumulateurs poste (mis à jour à chaque loadMainDecl)
 let _todayEquivAccum=0, _todayStopAccum=0, _lastProdDeclTime=null, _shiftRefDt=null;
@@ -8976,14 +8980,15 @@ function _kpiInitDates(){
   if(!fi.value){const d=new Date();d.setMonth(d.getMonth()-6);fi.value=d.toISOString().slice(0,10);}
   if(!ti.value){ti.value=new Date().toISOString().slice(0,10);}
 }
-function kpiLastMonths(n){
+async function kpiLastMonths(n){
   const fi=document.getElementById('kpi-from'),ti=document.getElementById('kpi-to');
   if(!fi||!ti)return;
   const _t=new Date(),_f=new Date(_t);
   _f.setMonth(_f.getMonth()-n);
   fi.value=_f.toISOString().slice(0,10);
   ti.value=_t.toISOString().slice(0,10);
-  loadKPI();
+  toast(`Période : ${n} dernier${n>1?'s':''} mois`,'ok',1800);
+  await loadKPI();
 }
 
 async function loadKPI(){
@@ -9386,7 +9391,8 @@ async function calcPeriodReport(autoLoad){
   if(d.sessions_detail&&d.sessions_detail.length>0){
     const sd=d.sessions_detail;
     const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),100);
-    const CH=280,padT=20,padB=56,padL=4,padR=4;
+    const _vertA=sd.length>5;
+    const CH=280,padT=20,padB=_vertA?90:56,padL=4,padR=4;
     const gH=CH-padT-padB;
     const n=sd.length;
     const WB=Math.max(22,Math.min(60,Math.floor((420-padL-padR-n*4)/n)));
@@ -9395,16 +9401,24 @@ async function calcPeriodReport(autoLoad){
     let svgB='',svgL='';
     sd.forEach((s,i)=>{
       const x=padL+i*(WB+GP);
+      const cx=x+WB/2;
       const trs=s.trs>=0?s.trs:0;
       const bh=Math.max(2,Math.round(trs/maxTrs*gH));
       const by=padT+gH-bh;
       const col=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgB+=`<rect x="${x}" y="${by}" width="${WB}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(s.trs>=0)svgB+=`<text x="${x+WB/2}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${s.trs.toFixed(0)}%</text>`;
+      if(s.trs>=0)svgB+=`<text x="${cx}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${s.trs.toFixed(0)}%</text>`;
       const dp=s.date.split('/');
-      svgL+=`<text x="${x+WB/2}" y="${padT+gH+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
-      svgL+=`<text x="${x+WB/2}" y="${padT+gH+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
-      svgL+=`<text x="${x+WB/2}" y="${padT+gH+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
+      if(_vertA){
+        const yA=padT+gH+6;
+        svgL+=`<text transform="rotate(-90,${cx},${yA})" x="${cx}" y="${yA}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
+        svgL+=`<text transform="rotate(-90,${cx},${yA+13})" x="${cx}" y="${yA+13}" text-anchor="end" font-size="10" fill="#6366f1">${esc((s.pilot||'').slice(0,12))}</text>`;
+        svgL+=`<text transform="rotate(-90,${cx},${yA+26})" x="${cx}" y="${yA+26}" text-anchor="end" font-size="10" fill="#94a3b8">${esc((s.poste||'').slice(0,12))}</text>`;
+      }else{
+        svgL+=`<text x="${cx}" y="${padT+gH+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
+        svgL+=`<text x="${cx}" y="${padT+gH+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
+        svgL+=`<text x="${cx}" y="${padT+gH+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
+      }
     });
     const yBase=padT+gH;
     chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex:1;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">📈 TRS par équipe</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgB}${svgL}</svg></div></div>`;
@@ -9415,7 +9429,8 @@ async function calcPeriodReport(autoLoad){
     const sd2=d.sessions_detail;
     const cadRef=Math.round((d.cadence_ref_pcs_min||0)*60);
     const maxCad=Math.max(...sd2.map(s=>s.cadence_h||0),cadRef,1);
-    const CH2=280,padT2=20,padB2=56,padL2=4,padR2=4;
+    const _vertB=sd2.length>5;
+    const CH2=280,padT2=20,padB2=_vertB?90:56,padL2=4,padR2=4;
     const gH2=CH2-padT2-padB2;
     const n2=sd2.length;
     const WB2=Math.max(22,Math.min(60,Math.floor((420-padL2-padR2-n2*4)/n2)));
@@ -9425,16 +9440,24 @@ async function calcPeriodReport(autoLoad){
     let svgB2='',svgL2='';
     sd2.forEach((s,i)=>{
       const x=padL2+i*(WB2+GP2);
+      const cx2=x+WB2/2;
       const v=s.cadence_h||0;
       const bh=Math.max(2,Math.round(v/maxCad*gH2));
       const by=padT2+gH2-bh;
       const col=v>=cadRef?'#16a34a':'#f59e0b';
       svgB2+=`<rect x="${x}" y="${by}" width="${WB2}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(v>0)svgB2+=`<text x="${x+WB2/2}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${v}</text>`;
+      if(v>0)svgB2+=`<text x="${cx2}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${v}</text>`;
       const dp=s.date.split('/');
-      svgL2+=`<text x="${x+WB2/2}" y="${padT2+gH2+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
-      svgL2+=`<text x="${x+WB2/2}" y="${padT2+gH2+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
-      svgL2+=`<text x="${x+WB2/2}" y="${padT2+gH2+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
+      if(_vertB){
+        const yB=padT2+gH2+6;
+        svgL2+=`<text transform="rotate(-90,${cx2},${yB})" x="${cx2}" y="${yB}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
+        svgL2+=`<text transform="rotate(-90,${cx2},${yB+13})" x="${cx2}" y="${yB+13}" text-anchor="end" font-size="10" fill="#6366f1">${esc((s.pilot||'').slice(0,12))}</text>`;
+        svgL2+=`<text transform="rotate(-90,${cx2},${yB+26})" x="${cx2}" y="${yB+26}" text-anchor="end" font-size="10" fill="#94a3b8">${esc((s.poste||'').slice(0,12))}</text>`;
+      }else{
+        svgL2+=`<text x="${cx2}" y="${padT2+gH2+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
+        svgL2+=`<text x="${cx2}" y="${padT2+gH2+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
+        svgL2+=`<text x="${cx2}" y="${padT2+gH2+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
+      }
     });
     const yBase2=padT2+gH2;
     const tLine=tY!==null?`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#dc2626" stroke-width="2" stroke-dasharray="6,3"/>`:'';
@@ -9470,7 +9493,7 @@ async function calcPeriodReport(autoLoad){
       allOfs.push({...r,date:s.date,poste:s.poste,pilot:s.pilot,pilote:s.pilot,_rowType:'prod',_ofEvts:_ofEvts});
     });
   });
-  allOfs.reverse();
+  allOfs.sort((a,b)=>{const _pa=(a.date||'').split('/'),_pb=(b.date||'').split('/');const _da=(+_pa[2]||0)*10000+(+_pa[1]||0)*100+(+_pa[0]||0),_db=(+_pb[2]||0)*10000+(+_pb[1]||0)*100+(+_pb[0]||0);if(_db!==_da)return _db-_da;return (b.debut||'').localeCompare(a.debut||'');});
   window._rjOfs=allOfs;
   if(allOfs.length){
     const ofRows=allOfs.map((r,i)=>{
@@ -9498,7 +9521,7 @@ async function calcPeriodReport(autoLoad){
   (d.sessions_detail||[]).forEach(s=>{
     (s.evt_rows||[]).forEach(r=>{allEvts.push({...r,date:s.date,poste:s.poste,pilote:s.pilot,_rowType:'evt'});});
   });
-  allEvts.reverse();
+  allEvts.sort((a,b)=>{const _pa=(a.date||'').split('/'),_pb=(b.date||'').split('/');const _da=(+_pa[2]||0)*10000+(+_pa[1]||0)*100+(+_pa[0]||0),_db=(+_pb[2]||0)*10000+(+_pb[1]||0)*100+(+_pb[0]||0);if(_db!==_da)return _db-_da;return (b.debut||'').localeCompare(a.debut||'');});
   window._rjEvts=allEvts;
   if(allEvts.length){
     const catCol=t=>{const tl=(t||'').toLowerCase();return tl.includes('nett')?'#f97316':tl.includes('pause')?'#94a3b8':(tl.includes('réunion')||tl.includes('reunion'))?'#8b5cf6':tl.includes('dégrad')?'#ca8a04':'#dc2626';};
