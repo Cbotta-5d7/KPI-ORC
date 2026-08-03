@@ -5239,6 +5239,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(pollState, 5000);
   setInterval(pollEvts, 8000);
   setInterval(loadLists, 300000); // sync Excel lists every 5 min
+  setInterval(refreshAccFpData, 30000);
+  refreshAccFpData();
   startTicker();
 });
 
@@ -5616,7 +5618,7 @@ function goTab(tab) {
   if(tab==='finposte') loadFPData();
   if(tab==='rapports'){_rptSetLast7();loadRapports();rptBackToList();}
   if(tab==='rpt-jour') loadRptJour();
-  if(tab==='main') { loadMainDecl(); }
+  if(tab==='main') { loadMainDecl(); refreshAccFpData(); }
   if(tab!=='prod') _clearFieldHighlights();
   if(tab==='kpi') loadKPI();
   if(tab==='settings') {
@@ -7321,9 +7323,16 @@ function updateGauge(s){
     }
     const dashP=trsPoste>=0?Math.min(1,trsPoste/100)*pArc:0;
     const colP=trsPoste>=90?'#16a34a':trsPoste>=75?'#d97706':'#dc2626';
-    [arcPoste,arcPosteAcc].forEach(el=>{if(el){el.setAttribute('stroke-dasharray',`${dashP},${pArc}`);el.setAttribute('stroke',colP);}});
-    [pctPoste,pctPosteAcc].forEach(el=>{if(el){el.textContent=trsPoste>=0?fmtTRS(trsPoste):'—';el.setAttribute('fill',colP);}});
-    [lblPoste,lblPosteAcc].forEach(el=>{if(el) el.textContent=lbl;});
+    [arcPoste].forEach(el=>{if(el){el.setAttribute('stroke-dasharray',`${dashP},${pArc}`);el.setAttribute('stroke',colP);}});
+    [pctPoste].forEach(el=>{if(el){el.textContent=trsPoste>=0?fmtTRS(trsPoste):'—';el.setAttribute('fill',colP);}});
+    [lblPoste].forEach(el=>{if(el) el.textContent=lbl;});
+    // Accueil : TRS identique au rapport poste (trs_shift serveur)
+    const trsAcc=_accFpData&&_accFpData.trs_shift!==undefined?_accFpData.trs_shift:-1;
+    const dashAcc=trsAcc>=0?Math.min(1,trsAcc/100)*pArc:0;
+    const colAcc=trsAcc>=90?'#16a34a':trsAcc>=75?'#d97706':'#dc2626';
+    if(arcPosteAcc){arcPosteAcc.setAttribute('stroke-dasharray',`${dashAcc},${pArc}`);arcPosteAcc.setAttribute('stroke',colAcc);}
+    if(pctPosteAcc){pctPosteAcc.textContent=trsAcc>=0?fmtTRS(trsAcc):'—';pctPosteAcc.setAttribute('fill',colAcc);}
+    if(lblPosteAcc) lblPosteAcc.textContent='TRS Poste';
   }
 
   // Pie charts
@@ -7341,6 +7350,10 @@ function updateGauge(s){
 }
 // Accumulateurs poste (mis à jour à chaque loadMainDecl)
 let _todayEquivAccum=0, _todayStopAccum=0, _lastProdDeclTime=null, _shiftRefDt=null;
+let _accFpData=null;
+async function refreshAccFpData(){
+  try { _accFpData=await apiFetch('/api/fin_poste_data'); } catch(e){}
+}
 
 // ── EDIT ROW (accueil) ──
 function openEditRow(key) {
