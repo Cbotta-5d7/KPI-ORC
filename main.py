@@ -4308,7 +4308,7 @@ select{cursor:default}
       <div class="card" style="padding:8px">
         <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:5px">Productions</div>
         <table class="fp-tbl" style="font-size:calc(10px*var(--zf,1))">
-          <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Taille</th><th>Qté</th><th>Éq</th><th>Durée</th><th>TRS%</th></tr></thead>
+          <thead><tr><th>OF</th><th>Début</th><th>Fin</th><th>Taille</th><th>Qté</th><th>Éq</th><th>Objectif</th><th>TRS%</th><th>Durée</th></tr></thead>
           <tbody id="fp-prods"></tbody>
         </table>
       </div>
@@ -8431,9 +8431,10 @@ async function loadFPData(){
         <td>${esc(p.taille||'')}</td>
         <td>${esc(String(p.qte_fab||0))}</td>
         <td>${esc(String(p.equiv||''))}</td>
-        <td>${esc(p.duree||'')}</td>
+        <td style="color:#0369a1;font-weight:700">${p.trs>0?Math.round(parseFloat(p.equiv||0)*100/p.trs):'—'}</td>
         <td class="${(p.trs||0)>=90?'tg':(p.trs||0)>=75?'tm':'tb'}">${fmtTRS(p.trs||0)}</td>
-      </tr>`).join('')||'<tr><td colspan="8" style="color:var(--gray)">Aucune production</td></tr>';
+        <td>${esc(p.duree||'')}</td>
+      </tr>`).join('')||'<tr><td colspan="9" style="color:var(--gray)">Aucune production</td></tr>';
   }
 
   // Stops list
@@ -9310,11 +9311,12 @@ async function calcPeriodReport(autoLoad){
       <td style="padding:4px 6px;text-align:center">${esc(r.debut)}→${esc(r.fin)}</td>
       <td style="padding:4px 6px;text-align:right;font-weight:700">${esc(r.qte_fab)}</td>
       <td style="padding:4px 6px;text-align:right">${esc(r.equiv)}</td>
+      <td style="padding:4px 6px;text-align:right;color:#0369a1;font-weight:700">${(r.objectif!=null&&r.objectif>=0)?r.objectif:'—'}</td>
       <td style="padding:4px 6px;text-align:right;font-weight:700;color:${r.trs&&parseFloat(r.trs)>=90?'#16a34a':r.trs&&parseFloat(r.trs)>=70?'#f59e0b':'#dc2626'}">${r.trs?parseFloat(r.trs).toFixed(1)+'%':'—'}</td>
       <td style="padding:4px 6px;text-align:right;color:${arretMin>0?'#dc2626':'#94a3b8'}">${arretMin>0?arretMin+' min':'—'}</td>
       <td style="padding:4px 6px;text-align:right;color:${r.degrade_min>0?'#f59e0b':'#94a3b8'}">${r.degrade_min>0?Math.round(r.degrade_min)+' min':'—'}</td>
     </tr>`;}).join('');
-    ofListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px;overflow-x:auto"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">📋 Liste des OF fabriqués</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">Pilote</th><th style="padding:4px 6px;text-align:left">Type produit</th><th style="padding:4px 6px;text-align:center">Taille</th><th style="padding:4px 6px;text-align:left">Fibre</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Qté</th><th style="padding:4px 6px;text-align:right">Équiv</th><th style="padding:4px 6px;text-align:right">TRS</th><th style="padding:4px 6px;text-align:right">Arrêt</th><th style="padding:4px 6px;text-align:right">Dégradé</th></tr></thead><tbody>${ofRows}</tbody></table></div>`;
+    ofListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px;overflow-x:auto"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">📋 Liste des OF fabriqués</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">Pilote</th><th style="padding:4px 6px;text-align:left">Type produit</th><th style="padding:4px 6px;text-align:center">Taille</th><th style="padding:4px 6px;text-align:left">Fibre</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Qté</th><th style="padding:4px 6px;text-align:right">Équiv</th><th style="padding:4px 6px;text-align:right">Objectif</th><th style="padding:4px 6px;text-align:right">TRS</th><th style="padding:4px 6px;text-align:right">Arrêt</th><th style="padding:4px 6px;text-align:right">Dégradé</th></tr></thead><tbody>${ofRows}</tbody></table></div>`;
   }
   // Events list (all non-prod events)
   let eventsListHtml='';
