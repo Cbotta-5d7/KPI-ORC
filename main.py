@@ -5414,10 +5414,10 @@ select{cursor:default}
         <!-- Titre + TRS jauge + valeur -->
         <div style="display:flex;align-items:center;gap:8px">
           <div style="flex-shrink:0;text-align:center">
-            <svg viewBox="0 0 100 58" style="width:100px;display:block;margin:0 auto">
+            <svg viewBox="0 0 100 58" style="width:130px;display:block;margin:0 auto">
               <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="rgba(0,0,0,.12)" stroke-width="11" stroke-linecap="round"/>
               <path id="gauge-poste-acc-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="11" stroke-linecap="round" stroke-dasharray="0,132"/>
-              <text x="50" y="46" text-anchor="middle" font-size="17" font-weight="800" fill="#15803d" id="gauge-poste-acc-pct">—</text>
+              <text x="50" y="46" text-anchor="middle" font-size="22" font-weight="800" fill="#15803d" id="gauge-poste-acc-pct">—</text>
             </svg>
           </div>
           <div style="flex:1;min-width:0">
@@ -5609,14 +5609,14 @@ select{cursor:default}
         <!-- Gauge + Pie: OF uniquement -->
         <div style="padding:6px;border-top:1px solid var(--border);display:flex;flex-direction:column;align-items:center;flex-shrink:0">
           <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;margin-bottom:2px;letter-spacing:.4px">TRS — OF en cours</div>
-          <svg viewBox="0 0 100 56" style="width:100%;max-width:140px">
+          <svg viewBox="0 0 100 56" style="width:100%;max-width:98px">
             <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
             <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
             <text x="50" y="46" text-anchor="middle" font-size="17" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
           </svg>
           <div class="gauge-lbl" style="font-size:calc(9px*var(--zf,1))">TRS OF</div>
           <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:4px;margin-bottom:2px">Répartition temps OF</div>
-          <svg id="pie-of" viewBox="0 0 130 150" style="width:100%;max-width:220px;height:auto;display:block;margin:0 auto"></svg>
+          <svg id="pie-of" viewBox="0 0 130 150" style="width:100%;max-width:154px;height:auto;display:block;margin:0 auto"></svg>
         </div>
         <!-- Bottom action buttons -->
         <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0;background:var(--card)">
@@ -6270,8 +6270,8 @@ select{cursor:default}
 </div>
 
 <!-- ════ MODAL: Déclarer un arrêt ════ -->
-<div class="overlay" id="m-stop">
-  <div class="mbox" style="width:70%;max-width:70vw">
+<div class="overlay" id="m-stop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:700;align-items:center;justify-content:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)" onclick="if(event.target===this)closeM('m-stop')">
+  <div class="mbox" style="width:70%;max-width:70vw" onclick="event.stopPropagation()">
     <div class="mhdr red">
       <h2>⛔ Déclarer un arrêt</h2>
       <button style="background:none;border:none;cursor:pointer;color:#fff;font-size:calc(16px*var(--zf,1))" onclick="closeM('m-stop')">✕</button>
@@ -8772,9 +8772,9 @@ function buildEditStopOpts(){
 function openEditStop(key){
   const ev=window._evMap[key];
   if(!ev) return;
+  _buildUnifiedTypeOpts(document.getElementById('es-type'),ev.type||'');
   document.getElementById('es-key').value=key;
   document.getElementById('es-pw').value='';
-  document.getElementById('es-type').value=ev.type||key||'';
   const d=ev.debut||'',f2=ev.fin||'';
   document.getElementById('es-deb').value=d.length>=5?d.slice(0,5):d;
   document.getElementById('es-fin').value=f2.length>=5?f2.slice(0,5):f2;
@@ -8788,9 +8788,7 @@ async function saveEditStop(){
   const ev=window._evMap[key];
   if(!ev) return;
   const pw=document.getElementById('es-pw').value||'';
-  const typeKey=document.getElementById('es-type').value;
-  const typeLabel=typeKey==='_pause'?'Pause':typeKey==='nettoyage'?'Nettoyage':typeKey==='autre'?'Arrêt libre':(EVENTS.find(e=>e[1]===typeKey)||[typeKey])[0]||typeKey;
-  const updates={'1':typeLabel,'17':document.getElementById('es-deb').value,'18':document.getElementById('es-fin').value,'36':document.getElementById('es-cmt').value};
+  const updates={'1':document.getElementById('es-type').value,'17':document.getElementById('es-deb').value,'18':document.getElementById('es-fin').value,'36':document.getElementById('es-cmt').value};
   const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num,updates})});
   const d=r?await r.json():{};
   if(d&&d.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Modifié','ok');}
@@ -9158,9 +9156,10 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   // ── Événements enrichis ──
   function _isPlanned(type){const t=(type||'').toLowerCase();return t.includes('pause')||t.includes('nettoyage')||t.includes('nett')||t.includes('réunion')||t.includes('reunion')||t.includes('meeting');}
   let totalPlannedActMin=0;
-  ofEvts.forEach(ev=>{if(!ev.is_degrade&&_isPlanned(ev.type)){const p=(ev.duree||'0:0:0').split(':').map(Number);totalPlannedActMin+=(p[0]||0)*60+(p[1]||0)+(p[2]||0)/60;}});
+  const plannedEvtBreakdown=[];
+  ofEvts.forEach(ev=>{if(!ev.is_degrade&&_isPlanned(ev.type)){const p=(ev.duree||'0:0:0').split(':').map(Number);const m=Math.round((p[0]||0)*60+(p[1]||0)+(p[2]||0)/60);totalPlannedActMin+=m;plannedEvtBreakdown.push(`${esc(ev.type)} ${m}min`);}});
   const budgetExcess=Math.round(Math.max(0,totalPlannedActMin-planMin));
-  const budgetWarnHtml2=budgetExcess>0&&planMin>0?`<div style="background:#fef3c7;border:1.5px solid #fde68a;border-radius:8px;padding:7px 10px;margin-bottom:8px;font-size:calc(10px*var(--zf,1));display:flex;align-items:center;gap:6px">⚠️ <span>Dépassement budget arrêts prévus : <b style="color:#b45309">+${budgetExcess} min</b> <span style="color:#94a3b8">(budget ${planMin} min)</span></span></div>`:'';
+  const budgetWarnHtml2=budgetExcess>0&&planMin>0?`<div style="background:#fef3c7;border:1.5px solid #fde68a;border-radius:8px;padding:7px 10px;margin-bottom:8px;font-size:calc(10px*var(--zf,1))">⚠️ <b style="color:#b45309">Dépassement budget arrêts prévus : +${budgetExcess} min</b> <span style="color:#94a3b8">(budget ${planMin} min)</span><div style="font-size:calc(9px*var(--zf,1));color:#92400e;margin-top:3px">${plannedEvtBreakdown.join(' · ')}</div></div>`:'';
   const evtsHtml2=ofEvts.length?ofEvts.map(ev=>{
     const planned=ev.is_degrade?null:_isPlanned(ev.type);
     const evDurParts=(ev.duree||'0:0:0').split(':').map(Number);
@@ -10589,10 +10588,11 @@ async function calcPeriodReport(autoLoad){
     (s.evt_rows||[]).forEach(r=>{allEvts.push({...r,date:s.date,poste:s.poste,pilote:s.pilot,_rowType:'evt'});});
   });
   allEvts.reverse();
+  window._rjEvts=allEvts;
   if(allEvts.length){
     const catCol=t=>{const tl=(t||'').toLowerCase();return tl.includes('nett')?'#f97316':tl.includes('pause')?'#94a3b8':(tl.includes('réunion')||tl.includes('reunion'))?'#8b5cf6':tl.includes('dégrad')?'#ca8a04':'#dc2626';};
-    const evtRows=allEvts.map(r=>`<tr style="border-bottom:1px solid var(--border);font-size:calc(10px*var(--zf,1))">
-      <td style="padding:4px 6px;font-weight:700;color:${catCol(r.type)}">${esc(r.type||'—')}</td>
+    const evtRows=allEvts.map((r,i)=>`<tr style="border-bottom:1px solid var(--border);font-size:calc(10px*var(--zf,1));cursor:pointer;transition:background .12s" onclick="showRjEvtDetail(${i})" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+      <td style="padding:4px 6px;font-weight:700;color:${catCol(r.type)};text-decoration:underline">${esc(r.type||'—')}</td>
       <td style="padding:4px 6px">${esc(r.date||'')} · ${esc(r.poste||'')}</td>
       <td style="padding:4px 6px;color:#0369a1;font-weight:700">${esc(r.of||'—')}</td>
       <td style="padding:4px 6px;text-align:center;white-space:nowrap">${esc(r.debut||'')}→${esc(r.fin||'')}</td>
@@ -10694,6 +10694,13 @@ async function calcPeriodReport(autoLoad){
       </div>
     </div>
   `;
+}
+function showRjEvtDetail(i){
+  const r=window._rjEvts&&window._rjEvts[i];
+  if(!r) return;
+  window._rptNetProd=null;
+  window._rptDegMin=null;
+  _renderAndOpenOfDetail({...r,_rowType:'evt',trs:-1},[]);
 }
 function showRjOfDetail(i){
   const r=window._rjOfs&&window._rjOfs[i];
