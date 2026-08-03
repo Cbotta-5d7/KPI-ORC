@@ -3183,7 +3183,10 @@ def api_period_report():
                 _qte_rp  = float(str(_rp[19] or 0).replace(",", "."))
                 _pcoef_rp = _eq_rp / _qte_rp if _qte_rp > 0 and _eq_rp > 0 else 1.0
                 _exp_rp  = prod_ref * _pct_rp * _adj_rp / 28800 if prod_ref > 0 else 0.0
-                _obj_rp  = round(_exp_rp, 1) if _exp_rp > 0 else -1
+                _xl_obj_rp = _rp[42] if len(_rp) > 42 else None
+                try: _obj_rp = round(float(str(_xl_obj_rp or "").replace(",",".")), 1) if _xl_obj_rp not in (None, "") else -1
+                except: _obj_rp = -1
+                if _obj_rp < 0 and _exp_rp > 0: _obj_rp = round(_exp_rp, 1)
             except:
                 _plan_rp = 0; _deg_rp = 0; _obj_rp = -1
             _of_rows_sd.append({
@@ -3349,9 +3352,16 @@ def api_session_report():
             _qte_of = float(str(raw_r[19] or 0).replace(",", "."))
             _pcoef_of = _eq_of / _qte_of if _qte_of > 0 and _eq_of > 0 else 1.0
             _exp_of = prod_ref * _pct_of * _adj_of_s / 28800 if prod_ref > 0 else 0.0
-            _obj_of = round(_exp_of, 1) if _exp_of > 0 else -1
+            _xl_obj_of = raw_r[42] if len(raw_r) > 42 else None
+            try: _obj_of = round(float(str(_xl_obj_of or "").replace(",",".")), 1) if _xl_obj_of not in (None, "") else -1
+            except: _obj_of = -1
+            if _obj_of < 0 and _exp_of > 0: _obj_of = round(_exp_of, 1)
             prod_rows[pi]["plan_stop_s"] = round(_plan_of_s)
             prod_rows[pi]["objectif"] = _obj_of
+            _xl_pc_of = raw_r[43] if len(raw_r) > 43 else None
+            try: prod_rows[pi]["perte_cad_of"] = str(round(float(str(_xl_pc_of or "").replace(",",".")), 1)) if _xl_pc_of not in (None, "") else ""
+            except: prod_rows[pi]["perte_cad_of"] = ""
+            prod_rows[pi]["budget_overrides"] = _sr_live_ov
         except: pass
     _xl_trs_sr = None
     _xl_perte_sr = None
@@ -7965,43 +7975,26 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   // Col 3 : Événements
   const col3Html=`${_sec('Événements ('+ofEvts.length+')')}${budgetWarnHtml2}${evtsHtml2}`;
 
-  // ── Graphiques KPI : Prod vs Objectif + Perte cadence ──
+  // ── KPI : Perte cadence + Réalisé vs Objectif ──
   const _equivNum=parseFloat(r.equiv||0)||0;
   const _objNum=r.objectif!=null&&r.objectif>=0?parseFloat(r.objectif):0;
   const _perteCadNum=r.perte_cad_of&&r.perte_cad_of!==''?parseFloat(r.perte_cad_of):null;
-  // Chart 1 : barres horizontales Équiv vs Objectif
-  let chart3Html='';
-  if(_objNum>0&&_equivNum>0){
-    const _maxBar=Math.max(_objNum,_equivNum)*1.05;
-    const _pctEq=Math.min(100,Math.round(_equivNum/_maxBar*100));
-    const _pctObj=Math.min(100,Math.round(_objNum/_maxBar*100));
-    const _colEq=_equivNum>=_objNum?'#16a34a':_equivNum/_objNum>=0.9?'#d97706':'#dc2626';
-    const _diffPct=Math.round((_equivNum-_objNum)/_objNum*100);
-    const _diffStr=_diffPct>=0?`+${_diffPct}%`:`${_diffPct}%`;
-    const _diffCol=_diffPct>=0?'#16a34a':'#dc2626';
-    chart3Html=`<div style="width:100%;margin-top:14px;border-top:1px solid #e2e8f0;padding-top:12px">
-      <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;text-align:center">Prod vs Objectif</div>
-      <div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:3px;display:flex;justify-content:space-between"><span>Objectif</span><span style="font-weight:700;color:#0369a1">${_objNum.toFixed(1)} éq</span></div>
-      <div style="background:#e5e7eb;border-radius:5px;height:12px;margin-bottom:8px;position:relative"><div style="background:#93c5fd;width:${_pctObj}%;height:12px;border-radius:5px"></div></div>
-      <div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:3px;display:flex;justify-content:space-between"><span>Réalisé</span><span style="font-weight:700;color:${_colEq}">${_equivNum.toFixed(1)} éq</span></div>
-      <div style="background:#e5e7eb;border-radius:5px;height:12px;margin-bottom:8px;position:relative"><div style="background:${_colEq};width:${_pctEq}%;height:12px;border-radius:5px"></div></div>
-      <div style="text-align:center;font-size:calc(13px*var(--zf,1));font-weight:900;color:${_diffCol};margin-top:4px">${_diffStr} vs objectif</div>
-    </div>`;
-  }
-  // Chart 2 : Perte de cadence (en minutes)
-  let chart4Html='';
-  if(_perteCadNum!==null){
-    const _absP=Math.abs(_perteCadNum);
-    const _pCol=_perteCadNum<=0?'#16a34a':_perteCadNum<=10?'#d97706':'#dc2626';
-    const _pLabel=_perteCadNum<=0?`Avance de ${_absP.toFixed(1)} min`:`Perte de ${_absP.toFixed(1)} min`;
-    const _pBar=Math.min(100,Math.round(_absP/30*100));
-    chart4Html=`<div style="width:100%;margin-top:12px;border-top:1px solid #e2e8f0;padding-top:12px">
-      <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;text-align:center">Perte de cadence</div>
-      <div style="text-align:center;font-size:calc(22px*var(--zf,1));font-weight:900;color:${_pCol};line-height:1.1;margin-bottom:6px">${_perteCadNum>0?'+':''}${_perteCadNum.toFixed(1)} min</div>
-      <div style="background:#e5e7eb;border-radius:5px;height:10px;margin:0 8px 6px"><div style="background:${_pCol};width:${_pBar}%;height:10px;border-radius:5px;transition:width .4s"></div></div>
-      <div style="text-align:center;font-size:calc(10px*var(--zf,1));color:#64748b">${_pLabel}</div>
-    </div>`;
-  }
+  const _pCol=_perteCadNum===null?'#94a3b8':_perteCadNum<=0?'#16a34a':_perteCadNum<=10?'#d97706':'#dc2626';
+  const _pValStr=_perteCadNum===null?'—':(_perteCadNum>0?'+':'')+_perteCadNum.toFixed(1)+' min';
+  const _eqCol=_objNum>0?(_equivNum>=_objNum?'#16a34a':_equivNum/_objNum>=0.9?'#d97706':'#dc2626'):'#0891b2';
+  const _eqPct=_objNum>0?Math.min(100,Math.round(_equivNum/_objNum*100)):0;
+  let chart3Html=`<div style="width:100%;margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px">
+    <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;text-align:center">Perte de cadence</div>
+    <div style="text-align:center;font-size:calc(26px*var(--zf,1));font-weight:900;color:${_pCol};line-height:1.05;margin-bottom:4px">${_pValStr}</div>
+    <div style="text-align:center;font-size:calc(10px*var(--zf,1));color:#94a3b8">pour cet OF</div>
+  </div>`;
+  let chart4Html=_objNum>0?`<div style="width:100%;margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px">
+    <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;text-align:center">Réalisé (éq)</div>
+    <div style="text-align:center;font-size:calc(28px*var(--zf,1));font-weight:900;color:${_eqCol};line-height:1.05;margin-bottom:2px">${_equivNum.toFixed(1)}</div>
+    <div style="text-align:center;font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:10px">cible : <b style="color:#0369a1">${_objNum.toFixed(1)} éq</b></div>
+    <div style="background:#e5e7eb;border-radius:8px;height:14px;margin:0 4px"><div style="background:${_eqCol};width:${_eqPct}%;height:14px;border-radius:8px;transition:width .4s;box-shadow:0 2px 4px rgba(0,0,0,.15)"></div></div>
+    <div style="text-align:center;font-size:calc(11px*var(--zf,1));font-weight:700;color:${_eqCol};margin-top:6px">${_eqPct}%</div>
+  </div>`:'';
   const trsBlock2=r.trs>=0?`<div style="text-align:right;background:#fff;border-radius:10px;padding:8px 14px;box-shadow:0 4px 12px rgba(0,0,0,.25)"><div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:${tc};line-height:1">${r.trs.toFixed(1)}%</div><div style="font-size:calc(9px*var(--zf,1));color:#94a3b8;text-transform:uppercase;letter-spacing:.1em">TRS</div></div>`:'';
 
   document.getElementById('of-detail-content').innerHTML=`
