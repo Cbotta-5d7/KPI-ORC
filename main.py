@@ -5596,7 +5596,7 @@ select{cursor:default}
       </div>
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
       <div class="recap-col" style="width:310px">
-        <div class="recap-hdr">Arrêts / pauses</div>
+        <div class="recap-hdr">Arrêts</div>
         <div class="recap-body" id="recap-list" style="max-height:120px;flex:none;overflow-y:auto"></div>
         <!-- Budget arrêts prévus -->
         <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;background:#fffbeb">
