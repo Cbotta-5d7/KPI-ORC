@@ -5646,14 +5646,20 @@ function goTab(tab) {
   const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour'};
   const ntEl=document.getElementById(nt[tab]);
   if(ntEl) ntEl.classList.add('on');
-  if(tab==='history') loadHist();
-  else if(_prevTab==='history') _resetHistFilters();
-  if(tab==='finposte') loadFPData();
-  if(tab==='rapports'){_rptSetLast7();loadRapports();rptBackToList();}
-  if(tab==='rpt-jour') loadRptJour();
-  if(tab==='main') { loadMainDecl(); refreshAccFpData(); }
   if(tab!=='prod') _clearFieldHighlights();
-  if(tab==='kpi') loadKPI();
+  if(tab==='finposte') loadFPData();
+  // Vues données : recharge le cache Excel d'abord, puis affiche
+  const _dataViews=['history','rapports','rpt-jour','kpi','main'];
+  if(_dataViews.includes(tab)){
+    if(tab!=='history'&&_prevTab==='history') _resetHistFilters();
+    fetch('/api/reload_excel',{method:'POST'}).catch(()=>{}).finally(()=>{
+      if(tab==='history') loadHist();
+      if(tab==='rapports'){_rptSetLast7();loadRapports();rptBackToList();}
+      if(tab==='rpt-jour') loadRptJour();
+      if(tab==='main'){loadMainDecl();refreshAccFpData();}
+      if(tab==='kpi') loadKPI();
+    });
+  } else if(_prevTab==='history') _resetHistFilters();
   if(tab==='settings') {
     _settingsUnlocked = false;
     document.getElementById('settings-lock').style.display = 'flex';
@@ -5858,10 +5864,10 @@ function applyState(s) {
   const rbtn=document.getElementById('btn-reunion');
   if(rbtn){rbtn.innerHTML=s.reunion_active?'<span class="act-icon">✓</span>Fin réunion':'<span class="act-icon">🗣️</span>Réunion';rbtn.style.animation=s.reunion_active?'blink .85s step-start infinite':'none';}
   // Nettoyage button blink
-  const _nettActive=(s.active_stops||[]).some(k=>k==='nettoyage'||(k||'').startsWith('nettoyage'));
+  window._nettActive=(s.active_stops||[]).some(k=>k==='nettoyage'||(k||'').startsWith('nettoyage'));
   const nbtnAcc=document.getElementById('btn-nettoyage-acc');const nbtnProd=document.getElementById('btn-nettoyage-prod');
-  if(nbtnAcc){nbtnAcc.style.animation=_nettActive?'blink .85s step-start infinite':'none';}
-  if(nbtnProd){nbtnProd.style.animation=_nettActive?'blink .85s step-start infinite':'none';}
+  if(nbtnAcc){nbtnAcc.style.animation=window._nettActive?'blink .85s step-start infinite':'none';}
+  if(nbtnProd){nbtnProd.style.animation=window._nettActive?'blink .85s step-start infinite':'none';}
 
   // TRS gauge
   updateGauge(s);
@@ -6805,6 +6811,12 @@ async function doReunion(){
 }
 
 function doNettoyage(){
+  if(window._nettActive){
+    // Nettoyage en cours → annuler
+    fetch('/api/end_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})
+      .then(()=>{pollState();pollEvts();if(_curTab==='main')loadMainDecl();});
+    return;
+  }
   // Populate budget labels from config
   const ap=_cfgArretsPrevus||{};
   const fmtMin=m=>m>0?`Budget autorisé : ${m} min`:'Non limité';
