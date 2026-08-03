@@ -3603,19 +3603,6 @@ def api_save_list():
     return jsonify({"ok":bool(ok)})
 
 
-@flask_app.route('/api/server_info')
-def api_server_info():
-    """Retourne l'IP locale du serveur — utilisé pour construire le lien encadrant."""
-    import socket
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-    except Exception:
-        ip = "127.0.0.1"
-    return jsonify({"ip": ip, "port": 5001})
-
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="fr">
@@ -4690,27 +4677,6 @@ select{cursor:default}
 
   <!-- ════ SETTINGS ════ -->
   <div id="v-settings" class="view" style="flex-direction:column;overflow-y:auto">
-    <!-- ── Dashboard encadrant (visible sans mot de passe) ── -->
-    <div class="ss" id="ss-dashboard" style="margin:14px 14px 0 14px;flex-shrink:0">
-      <h3>🖥️ Dashboard encadrant</h3>
-
-      <!-- Option 1 : lien réseau (nécessite autorisation pare-feu) -->
-      <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;margin-bottom:6px">📡 Option 1 — Lien réseau (nécessite l'autorisation IT du pare-feu)</div>
-      <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Partagez ce lien avec les encadrants. Nécessite que le pare-feu Windows autorise KPI-ORC.exe.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;max-width:720px;margin-bottom:16px" id="enc-links-grid">
-        <div style="color:var(--gray);font-size:calc(11px*var(--zf,1));grid-column:1/-1">Chargement…</div>
-      </div>
-
-      <!-- Option 2 : fichier HTML partagé (aucun pare-feu requis) -->
-      <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#15803d;margin-bottom:6px">📂 Option 2 — Fichier HTML partagé (aucun pare-feu requis)</div>
-      <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Le logiciel génère un fichier HTML dans un dossier réseau partagé. L'encadrant ouvre ce fichier dans son navigateur — s'actualise automatiquement toutes les 5 secondes.</div>
-      <div style="display:flex;gap:8px;align-items:center;max-width:680px;flex-wrap:wrap">
-        <input id="enc-share-path" placeholder="Ex: \\\\serveur\\partage\\kpi  ou  C:\\partage\\kpi" style="flex:1;min-width:280px;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))">
-        <button onclick="saveEncSharePath()" style="background:#15803d;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">💾 Enregistrer</button>
-        <button onclick="genEncHtml()" style="background:#0284c7;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">🔄 Générer maintenant</button>
-      </div>
-      <div id="enc-share-msg" style="margin-top:6px;font-size:calc(11px*var(--zf,1));font-weight:600;min-height:16px"></div>
-    </div>
     <div id="settings-lock">
       <div class="lock-card">
         <h3>🔒 Paramètres</h3>
@@ -5661,7 +5627,6 @@ function goTab(tab) {
     document.getElementById('lock-pw').value='';
     document.getElementById('lock-err').textContent='';
     setTimeout(()=>document.getElementById('lock-pw')?.focus(), 80);
-    if(typeof _initEncDashLinks==='function') _initEncDashLinks();
   }
 }
 
@@ -5680,7 +5645,6 @@ async function unlockSettings() {
     document.getElementById('v-settings-content').style.display='block';
     loadCfg();
     renderDegradeList(_degradeListLocal);
-    if(typeof _initEncDashLinks==='function') _initEncDashLinks();
   } else {
     document.getElementById('lock-err').textContent = d.error||'Mot de passe incorrect';
   }
@@ -10120,177 +10084,6 @@ function toast(msg,type,dur){
   clearTimeout(t._to);t._to=setTimeout(()=>t.style.opacity='0',dur||3000);
 }
 
-// ── Mode encadrant ─────────────────────────────────────────────────────────────
-(function(){
-  const params=new URLSearchParams(location.search);
-  const encMode=params.get('mode')==='encadrant';
-  const ecranId=params.get('ecran')||'1';
-
-  // Zoom: each encadrant screen has its own localStorage key
-  if(encMode){
-    const ZK='kpi_zoom_enc_'+ecranId;
-    const savedZoom=localStorage.getItem(ZK);
-    if(savedZoom) document.documentElement.style.setProperty('--zf',savedZoom);
-    // Override zoom save/load to use per-screen key
-    const _origZoom=window.setZoom;
-    window.setZoom=function(v){
-      document.documentElement.style.setProperty('--zf',v);
-      localStorage.setItem(ZK,v);
-    };
-    // Patch applyZoom if it uses 'kpi_zoom' key
-    const _stoOrig=window.localStorage.setItem.bind(localStorage);
-    // We'll intercept zoom writes below via MutationObserver on --zf
-  }
-
-  if(!encMode) return;
-
-  // ── CSS: hide pilot-only buttons ──
-  const style=document.createElement('style');
-  style.textContent=`
-    #btn-start,#btn-fin-poste,#btn-declarer-arret-main,#btn-degrade-acc,
-    #btn-nettoyage-acc,#btn-pause-acc,#btn-reunion-acc,
-    .acc-btn.acc-green[onclick*="doStartProd"],
-    .acc-btn.acc-green[onclick*="doFinPoste"],
-    .acc-btn.acc-amber[onclick*="toggleDegrade"],
-    .acc-btn[onclick*="doNettoyage"],
-    .acc-btn[onclick*="doPause"],
-    .acc-btn[onclick*="doReunion"],
-    #btn-declarer-arret,
-    #btn-fin-of,
-    #btn-annuler-prod,
-    #btn-inter-of,
-    #stop-bottom,#stop-bottom-main,
-    .act-stop,.act-pause,.act-nett,.act-reunion,.act-fin,
-    #v-preshift,
-    [onclick*="openStopModal"],[onclick*="toggleDegrade"],[onclick*="doStartProd"],
-    [onclick*="doFinPoste"],[onclick*="doPause"],[onclick*="doReunion"],
-    [onclick*="doNettoyage"],[onclick*="doCancelProd"],[onclick*="openDegradeModal"]
-    { display:none !important; }
-    #enc-badge{ display:inline-flex !important; }
-  `;
-  document.head.appendChild(style);
-
-  // ── Badge "Mode Encadrant" in header ──
-  const badge=document.createElement('div');
-  badge.id='enc-badge';
-  badge.style.cssText='display:none;align-items:center;gap:6px;background:#1d4ed8;color:#fff;border-radius:6px;padding:3px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;margin-left:8px';
-  badge.innerHTML='👁️ Écran '+ecranId;
-  const hdr=document.getElementById('hdr-right')||document.querySelector('.hdr');
-  if(hdr) hdr.appendChild(badge);
-
-  // ── Loading overlay (shown when pilot request is queued) ──
-  const overlay=document.createElement('div');
-  overlay.id='enc-overlay';
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);z-index:9999;display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px';
-  overlay.innerHTML='<div style="width:64px;height:64px;border:6px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:encSpin .8s linear infinite"></div><div style="color:#fff;font-size:calc(16px*var(--zf,1));font-weight:700">Synchronisation en cours…</div>';
-  document.body.appendChild(overlay);
-  const spinCss=document.createElement('style');
-  spinCss.textContent='@keyframes encSpin{to{transform:rotate(360deg)}}';
-  document.head.appendChild(spinCss);
-
-  function showOverlay(){ overlay.style.display='flex'; }
-  function hideOverlay(){ overlay.style.display='none'; }
-
-  // ── Fetch interceptor: show overlay on 503 (pilot busy), retry ──
-  const _origFetch=window.fetch;
-  window.fetch=async function(url,opts){
-    // Only intercept POST requests (reads pass through freely)
-    if(opts&&opts.method&&opts.method.toUpperCase()==='POST'){
-      // If we get 403 (pilot-only action), block silently
-      const resp=await _origFetch(url,opts);
-      if(resp.status===403){
-        toast('Action réservée au PC pilote','warn');
-        return resp;
-      }
-      if(resp.status===503){
-        // Pilot is writing, queue and retry
-        showOverlay();
-        await new Promise(r=>setTimeout(r,1500));
-        let retry=await _origFetch(url,opts);
-        let attempts=1;
-        while(retry.status===503&&attempts<5){
-          await new Promise(r=>setTimeout(r,1000*attempts));
-          retry=await _origFetch(url,opts);
-          attempts++;
-        }
-        hideOverlay();
-        return retry;
-      }
-      return resp;
-    }
-    return _origFetch(url,opts);
-  };
-
-  // ── Populate Dashboard links in settings ──
-  async function _buildEncLinks(){
-    const grid=document.getElementById('enc-links-grid');
-    if(!grid) return;
-    try{
-      const r=await _origFetch('/api/server_info');
-      const d=await r.json();
-      const ip=d.ip||location.hostname;
-      const port=d.port||5001;
-      const base='http://'+ip+':'+port+'/?mode=encadrant&ecran=';
-      grid.innerHTML=['1','2','3','4'].map(n=>`
-        <div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:10px;padding:10px 12px">
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#0369a1;margin-bottom:6px">📺 Écran ${n}</div>
-          <div style="font-size:calc(10px*var(--zf,1));color:#374151;word-break:break-all;margin-bottom:8px">${base}${n}</div>
-          <button onclick="navigator.clipboard.writeText('${base}${n}').then(()=>toast('Copié !','ok'))" style="background:#0284c7;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">📋 Copier</button>
-        </div>
-      `).join('');
-    }catch(e){
-      if(grid) grid.innerHTML='<div style="color:#dc2626;font-size:calc(11px*var(--zf,1))">Impossible de récupérer l\'IP du serveur.</div>';
-    }
-  }
-
-  // Also populate when accessed from pilot (settings visible to all)
-  window._buildEncLinks=_buildEncLinks;
-  document.addEventListener('DOMContentLoaded',()=>{
-    // Try immediately; will also be called when settings tab opens
-    setTimeout(_buildEncLinks, 500);
-  });
-
-})();
-
-// ── Shared folder encadrant HTML ──
-async function saveEncSharePath(){
-  const p=document.getElementById('enc-share-path').value.trim();
-  const r=await fetch('/api/enc_set_share',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p})});
-  const d=await r.json();
-  const msg=document.getElementById('enc-share-msg');
-  if(d.ok){msg.style.color='#15803d';msg.textContent='✓ Chemin enregistré. Génération automatique toutes les 5 secondes.';}
-  else{msg.style.color='#dc2626';msg.textContent='Erreur: '+(d.error||'inconnue');}
-}
-async function genEncHtml(){
-  const msg=document.getElementById('enc-share-msg');
-  msg.style.color='#0369a1';msg.textContent='Génération en cours…';
-  const r=await fetch('/api/enc_gen_html',{method:'POST'});
-  const d=await r.json();
-  if(d.ok){msg.style.color='#15803d';msg.textContent='✓ Fichier généré : '+d.path;}
-  else{msg.style.color='#dc2626';msg.textContent='Erreur: '+(d.error||'inconnue');}
-}
-
-// Populate enc links from pilot view too (called when settings tab shown)
-function _initEncDashLinks(){
-  if(window._buildEncLinks) window._buildEncLinks();
-  else{
-    // Non-encadrant mode: build links directly
-    fetch('/api/server_info').then(r=>r.json()).then(d=>{
-      const grid=document.getElementById('enc-links-grid');
-      if(!grid) return;
-      const ip=d.ip||location.hostname;
-      const port=d.port||5001;
-      const base='http://'+ip+':'+port+'/?mode=encadrant&ecran=';
-      grid.innerHTML=['1','2','3','4'].map(n=>`
-        <div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:10px;padding:10px 12px">
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#0369a1;margin-bottom:6px">📺 Écran ${n}</div>
-          <div style="font-size:calc(10px*var(--zf,1));color:#374151;word-break:break-all;margin-bottom:8px">${base}${n}</div>
-          <button onclick="navigator.clipboard.writeText('${base}${n}').then(()=>toast('Copié !','ok'))" style="background:#0284c7;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">📋 Copier</button>
-        </div>
-      `).join('');
-    }).catch(()=>{});
-  }
-}
 </script>
 </body>
 </html>"""
