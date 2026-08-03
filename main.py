@@ -8664,7 +8664,7 @@ function openEditRow(key) {
     document.getElementById('er-manqpers').value=row.manquant_pers||'';
     document.getElementById('er-comment-prod').value=row.comment||'';
   } else {
-    document.getElementById('er-evttype').value=row.type||'';
+    _buildUnifiedTypeOpts(document.getElementById('er-evttype'),row.type||'');
     document.getElementById('er-evtof').value=row.of||'';
     document.getElementById('er-evtdeb').value=(row.debut||'').slice(0,5);
     document.getElementById('er-evtfin').value=(row.fin||'').slice(0,5);
@@ -8736,16 +8736,37 @@ function deleteRow(key,rowNumId) {
 }
 
 // ── EDIT STOP (recap prod view) ──
-function buildEditStopOpts(){
-  const s=document.getElementById('es-type');
-  const s2=document.getElementById('er-evttype');
-  const allOpts=[['Pause','_pause'],['Nettoyage','nettoyage'],...EVENTS.map(e=>[e[0],e[0]]),['Arrêt libre','Arrêt libre']];
-  [s,s2].forEach(sel=>{
-    if(!sel) return;
-    allOpts.forEach(([lbl,val])=>{const o=document.createElement('option');o.value=val;o.textContent=lbl;sel.appendChild(o);});
+function _buildUnifiedTypeOpts(sel,currentVal){
+  if(!sel) return;
+  sel.innerHTML='<option value="">-- Sélectionner --</option>';
+  const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
+  const catLabel={ratt:'⚙ Rattrapage',nettoyage:'🧹 Nettoyage',pb:'⚠ Panne / Problème',autre:'Autre'};
+  const cats={};
+  evts.forEach(e=>{const c=e.cat||'autre';(cats[c]=cats[c]||[]).push(e);});
+  Object.entries(cats).forEach(([cat,items])=>{
+    const grp=document.createElement('optgroup');grp.label=catLabel[cat]||cat;
+    items.forEach(e=>{const o=document.createElement('option');o.value=e.label||'';o.textContent=e.label||'';grp.appendChild(o);});
+    sel.appendChild(grp);
   });
-  // es-type uses key values (not display)
+  const grpPlan=document.createElement('optgroup');grpPlan.label='📅 Arrêts prévus';
+  ['Nettoyage court','Nettoyage long','Nettoyage très long','Pause','Réunion'].forEach(lbl=>{
+    const o=document.createElement('option');o.value=lbl;o.textContent=lbl;grpPlan.appendChild(o);
+  });
+  sel.appendChild(grpPlan);
+  const motifs=window._degradeMotifs||[];
+  if(motifs.length){
+    const grpDeg=document.createElement('optgroup');grpDeg.label='🟡 Mode dégradé';
+    motifs.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;grpDeg.appendChild(o);});
+    sel.appendChild(grpDeg);
+  }
+  if(currentVal!==undefined) sel.value=currentVal;
+}
+
+function buildEditStopOpts(){
+  // es-type (m-editstop) uses internal keys for active stops
+  const s=document.getElementById('es-type');
   if(s){s.innerHTML='';[['Pause','_pause'],['Nettoyage','nettoyage'],...EVENTS,['Arrêt libre','autre']].forEach(([lbl,key])=>{const o=document.createElement('option');o.value=key;o.textContent=lbl;s.appendChild(o);});}
+  // er-evttype (m-editrow) is rebuilt each time openEditRow is called with the unified list
 }
 
 function openEditStop(key){
@@ -8767,8 +8788,10 @@ async function saveEditStop(){
   const ev=window._evMap[key];
   if(!ev) return;
   const pw=document.getElementById('es-pw').value||'';
-  const data={pw,row_num:ev.row_num,type:document.getElementById('es-type').value,heure_debut:document.getElementById('es-deb').value,heure_fin:document.getElementById('es-fin').value,comment:document.getElementById('es-cmt').value};
-  const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  const typeKey=document.getElementById('es-type').value;
+  const typeLabel=typeKey==='_pause'?'Pause':typeKey==='nettoyage'?'Nettoyage':typeKey==='autre'?'Arrêt libre':(EVENTS.find(e=>e[1]===typeKey)||[typeKey])[0]||typeKey;
+  const updates={'1':typeLabel,'17':document.getElementById('es-deb').value,'18':document.getElementById('es-fin').value,'36':document.getElementById('es-cmt').value};
+  const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num,updates})});
   const d=r?await r.json():{};
   if(d&&d.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Modifié','ok');}
   else toast(d?.error||'Mot de passe incorrect','err');
