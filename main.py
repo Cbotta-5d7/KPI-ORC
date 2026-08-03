@@ -3806,7 +3806,7 @@ body.stop-on #app-hdr{background:linear-gradient(90deg,#fff 0px,#fee2e2 160px,#7
 .zq{background:#fed7aa;border:1px solid #fb923c}.zq h4{color:#9a3412}
 .fr{display:flex;flex-direction:column;margin-bottom:4px}
 .fr label{font-size:calc(12.65px*var(--zf,1));font-weight:700;color:var(--gray);margin-bottom:2px;text-transform:uppercase;letter-spacing:.2px}
-.fr input,.fr select,.fr textarea{padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(12px*var(--zf,1));background:var(--card);color:var(--text);width:100%;outline:none;transition:border .15s}
+.fr input,.fr select,.fr textarea{padding:7px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(12px*var(--zf,1));background:var(--card);color:var(--text);width:100%;outline:none;transition:border .15s;min-height:32px}
 .fr input:focus,.fr select:focus{border-color:#6366f1}
 .fr textarea{resize:none;height:42px}
 .fr.comment-big textarea{height:80px;font-size:calc(13px*var(--zf,1));border:2px solid #f59e0b;background:#fffbeb;font-weight:500}
@@ -3819,7 +3819,7 @@ input[type=text],input[type=number],input[type=password],input[type=time],input[
 .tl-legend span{display:flex;align-items:center;gap:4px}
 .tl-legend i{display:inline-block;width:15px;height:13px;border-radius:2px;flex-shrink:0}
 select{cursor:default}
-.fr.big input{font-size:calc(16px*var(--zf,1));font-weight:700;padding:5px 6px;color:var(--green)}
+.fr.big input{font-size:calc(16px*var(--zf,1));font-weight:700;padding:8px 6px;color:var(--green)}
 .fr.ro input{background:#f8fafc;color:var(--gray)}
 /* Timeline */
 .tl-wrap{background:var(--card);border-radius:7px;padding:7px 8px;border:1px solid var(--border)}
@@ -9420,8 +9420,8 @@ async function calcPeriodReport(autoLoad){
       const dp=s.date.split('/');
       if(_vertA){
         const yA=padT+gH+4;
-        svgL+=`<text transform="rotate(-90,${cx},${yA})" x="${cx}" y="${yA}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
-        svgL+=`<text transform="rotate(-90,${cx},${yA+13})" x="${cx}" y="${yA+13}" text-anchor="end" font-size="10" fill="#6366f1">${esc((s.pilot||'').slice(0,14))}</text>`;
+        const _lbl=esc((dp[0]||'')+'/'+(dp[1]||'')+(s.pilot?' '+s.pilot.slice(0,12):''));
+        svgL+=`<text transform="rotate(-90,${cx},${yA})" x="${cx}" y="${yA}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${_lbl}</text>`;
       }else{
         svgL+=`<text x="${cx}" y="${padT+gH+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
         svgL+=`<text x="${cx}" y="${padT+gH+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
@@ -9458,8 +9458,8 @@ async function calcPeriodReport(autoLoad){
       const dp=s.date.split('/');
       if(_vertB){
         const yB=padT2+gH2+4;
-        svgL2+=`<text transform="rotate(-90,${cx2},${yB})" x="${cx2}" y="${yB}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
-        svgL2+=`<text transform="rotate(-90,${cx2},${yB+13})" x="${cx2}" y="${yB+13}" text-anchor="end" font-size="10" fill="#6366f1">${esc((s.pilot||'').slice(0,14))}</text>`;
+        const _lbl2=esc((dp[0]||'')+'/'+(dp[1]||'')+(s.pilot?' '+s.pilot.slice(0,12):''));
+        svgL2+=`<text transform="rotate(-90,${cx2},${yB})" x="${cx2}" y="${yB}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${_lbl2}</text>`;
       }else{
         svgL2+=`<text x="${cx2}" y="${padT2+gH2+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
         svgL2+=`<text x="${cx2}" y="${padT2+gH2+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
