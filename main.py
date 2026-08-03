@@ -10348,7 +10348,7 @@ def main():
         from threading import Thread
 
         def run_flask():
-            flask_app.run(host="0.0.0.0", port=5001, debug=False, use_reloader=False)
+            flask_app.run(host="127.0.0.1", port=5001, debug=False, use_reloader=False)
 
         t = Thread(target=run_flask, daemon=True)
         t.start()
@@ -10366,7 +10366,7 @@ def main():
     except ImportError:
         # Fallback: run as plain Flask server (dev mode)
         print("pywebview non disponible — démarrage en mode serveur sur http://127.0.0.1:5001")
-        flask_app.run(host="0.0.0.0", port=5001, debug=True, use_reloader=False)
+        flask_app.run(host="127.0.0.1", port=5001, debug=True, use_reloader=False)
 
 
 if __name__ == "__main__":
