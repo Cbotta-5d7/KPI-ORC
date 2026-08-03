@@ -4689,7 +4689,15 @@ select{cursor:default}
   </div>
 
   <!-- ════ SETTINGS ════ -->
-  <div id="v-settings" class="view" style="flex-direction:column">
+  <div id="v-settings" class="view" style="flex-direction:column;overflow-y:auto">
+    <!-- ── Dashboard encadrant (visible sans mot de passe) ── -->
+    <div class="ss" id="ss-dashboard" style="margin:14px 14px 0 14px;flex-shrink:0">
+      <h3>🖥️ Dashboard encadrant</h3>
+      <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:12px">Partagez ce lien avec les encadrants pour qu'ils accèdent à une vue lecture/supervision depuis leur PC. Les boutons de déclaration de production ne sont pas disponibles en mode encadrant.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;max-width:720px" id="enc-links-grid">
+        <div style="color:var(--gray);font-size:calc(11px*var(--zf,1));grid-column:1/-1">Chargement…</div>
+      </div>
+    </div>
     <div id="settings-lock">
       <div class="lock-card">
         <h3>🔒 Paramètres</h3>
@@ -4700,15 +4708,6 @@ select{cursor:default}
       </div>
     </div>
     <div id="v-settings-content">
-      <!-- ── Dashboard encadrant ── -->
-      <div class="ss" id="ss-dashboard">
-        <h3>🖥️ Dashboard encadrant</h3>
-        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:12px">Partagez ce lien avec les encadrants pour qu'ils accèdent à une vue lecture/supervision depuis leur PC. Les boutons de déclaration de production ne sont pas disponibles en mode encadrant.</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;max-width:720px" id="enc-links-grid">
-          <!-- populated by JS -->
-          <div style="color:var(--gray);font-size:calc(11px*var(--zf,1));grid-column:1/-1">Chargement…</div>
-        </div>
-      </div>
       <div class="ss">
         <h3>🔑 Changer le mot de passe administrateur</h3>
         <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Le MDP est enregistré dans la cellule G2 de l'onglet Listes du fichier Excel.</div>
@@ -5649,6 +5648,7 @@ function goTab(tab) {
     document.getElementById('lock-pw').value='';
     document.getElementById('lock-err').textContent='';
     setTimeout(()=>document.getElementById('lock-pw')?.focus(), 80);
+    if(typeof _initEncDashLinks==='function') _initEncDashLinks();
   }
 }
 
