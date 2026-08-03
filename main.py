@@ -4066,7 +4066,7 @@ select{cursor:default}
               <text x="50" y="46" text-anchor="middle" font-size="22" font-weight="800" fill="#15803d" id="gauge-poste-acc-pct">—</text>
             </svg>
           </div>
-          <div style="flex:1;min-width:0">
+          <div style="flex:0 0 auto;min-width:0">
             <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:#0369a1;text-transform:uppercase;letter-spacing:.5px">TRS du Poste</div>
             <div style="font-size:calc(13px*var(--zf,1));font-weight:700;color:#0369a1;margin-bottom:2px" id="gauge-poste-acc-lbl">—</div>
             <!-- Stats en grille uniforme -->
@@ -4693,10 +4693,23 @@ select{cursor:default}
     <!-- ── Dashboard encadrant (visible sans mot de passe) ── -->
     <div class="ss" id="ss-dashboard" style="margin:14px 14px 0 14px;flex-shrink:0">
       <h3>🖥️ Dashboard encadrant</h3>
-      <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:12px">Partagez ce lien avec les encadrants pour qu'ils accèdent à une vue lecture/supervision depuis leur PC. Les boutons de déclaration de production ne sont pas disponibles en mode encadrant.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;max-width:720px" id="enc-links-grid">
+
+      <!-- Option 1 : lien réseau (nécessite autorisation pare-feu) -->
+      <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;margin-bottom:6px">📡 Option 1 — Lien réseau (nécessite l'autorisation IT du pare-feu)</div>
+      <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Partagez ce lien avec les encadrants. Nécessite que le pare-feu Windows autorise KPI-ORC.exe.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;max-width:720px;margin-bottom:16px" id="enc-links-grid">
         <div style="color:var(--gray);font-size:calc(11px*var(--zf,1));grid-column:1/-1">Chargement…</div>
       </div>
+
+      <!-- Option 2 : fichier HTML partagé (aucun pare-feu requis) -->
+      <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#15803d;margin-bottom:6px">📂 Option 2 — Fichier HTML partagé (aucun pare-feu requis)</div>
+      <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Le logiciel génère un fichier HTML dans un dossier réseau partagé. L'encadrant ouvre ce fichier dans son navigateur — s'actualise automatiquement toutes les 5 secondes.</div>
+      <div style="display:flex;gap:8px;align-items:center;max-width:680px;flex-wrap:wrap">
+        <input id="enc-share-path" placeholder="Ex: \\\\serveur\\partage\\kpi  ou  C:\\partage\\kpi" style="flex:1;min-width:280px;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))">
+        <button onclick="saveEncSharePath()" style="background:#15803d;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">💾 Enregistrer</button>
+        <button onclick="genEncHtml()" style="background:#0284c7;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">🔄 Générer maintenant</button>
+      </div>
+      <div id="enc-share-msg" style="margin-top:6px;font-size:calc(11px*var(--zf,1));font-weight:600;min-height:16px"></div>
     </div>
     <div id="settings-lock">
       <div class="lock-card">
@@ -10261,6 +10274,24 @@ function toast(msg,type,dur){
   });
 
 })();
+
+// ── Shared folder encadrant HTML ──
+async function saveEncSharePath(){
+  const p=document.getElementById('enc-share-path').value.trim();
+  const r=await fetch('/api/enc_set_share',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p})});
+  const d=await r.json();
+  const msg=document.getElementById('enc-share-msg');
+  if(d.ok){msg.style.color='#15803d';msg.textContent='✓ Chemin enregistré. Génération automatique toutes les 5 secondes.';}
+  else{msg.style.color='#dc2626';msg.textContent='Erreur: '+(d.error||'inconnue');}
+}
+async function genEncHtml(){
+  const msg=document.getElementById('enc-share-msg');
+  msg.style.color='#0369a1';msg.textContent='Génération en cours…';
+  const r=await fetch('/api/enc_gen_html',{method:'POST'});
+  const d=await r.json();
+  if(d.ok){msg.style.color='#15803d';msg.textContent='✓ Fichier généré : '+d.path;}
+  else{msg.style.color='#dc2626';msg.textContent='Erreur: '+(d.error||'inconnue');}
+}
 
 // Populate enc links from pilot view too (called when settings tab shown)
 function _initEncDashLinks(){
