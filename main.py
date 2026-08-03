@@ -1405,6 +1405,9 @@ def load_postes_shift_map():
                     'utile_min':     _flt(ws.cell(ri, 19).value),  # col S: Temps utile
                     'fonct_min':     _flt(ws.cell(ri, 20).value),  # col T: Temps fonctionnement
                     'arret_min':     _flt(ws.cell(ri, 21).value),  # col U: Temps arret
+                    'pause_min':     _flt(ws.cell(ri, 10).value),  # col J: Total Pauses
+                    'nett_min':      _flt(ws.cell(ri, 11).value),  # col K: Nettoyage
+                    'reunion_min':   _flt(ws.cell(ri, 12).value),  # col L: Réunion
                     'perte_min':     _flt(ws.cell(ri, 23).value),  # col W: Perte cadence (min)
                     'degrade_min':   _flt(ws.cell(ri, 24).value),  # col X: Temps degrade
                     'pcs_theorique': _flt(ws.cell(ri, 25).value),  # col Y: Pièces théoriques
@@ -3106,7 +3109,7 @@ def api_period_report():
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
     agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_elapsed_s=0.0; agg_sum_expected=0.0
-    agg_sum_theorique=0.0
+    agg_sum_theorique=0.0; agg_arret_prevu=0.0; agg_obj_pcs=0.0
     agg_fibre_chg=0; agg_depassement=0.0; agg_degrade_min=0.0; stop_by_type={}; sessions_detail=[]
     jours=set(); pilotes=set(); postes_set=set()
     trs_by_day = {}
@@ -3183,6 +3186,11 @@ def api_period_report():
         agg_fonct   += fonct_min
         agg_stop    += net_stop_min
         agg_perte   += perte
+        agg_arret_prevu += (_xl.get('pause_min') or 0) + (_xl.get('nett_min') or 0) + (_xl.get('reunion_min') or 0)
+        for _rp_obj in s.get('prod_raws', []):
+            if len(_rp_obj) > 42 and _rp_obj[42] not in (None, ''):
+                try: agg_obj_pcs += float(str(_rp_obj[42]).replace(',', '.'))
+                except: pass
         agg_equiv   += s['tot_equiv']
         agg_pcs     += s['tot_pcs']
         agg_of      += s['nb_of']
@@ -3275,6 +3283,9 @@ def api_period_report():
         'trs_by_day':trs_by_day_list,
         'nb_fibre_chg':agg_fibre_chg,
         'depassement_min':round(agg_depassement,1),  # sum col M
+        'arret_prevu_min':round(agg_arret_prevu,1),  # sum cols J+K+L postes
+        'objectif_pcs':round(agg_obj_pcs),
+        'objectif_equiv':round(agg_sum_theorique,1),
         'sessions_detail':sessions_detail_sorted,
         'degrade_min_total': round(sum(_merged_degrade_s([re2 for _, re2 in s['evt_rows']]) for s in sessions.values()) / 60, 1),
         'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])[:15]],
@@ -9402,8 +9413,8 @@ async function calcPeriodReport(autoLoad){
     const sd=d.sessions_detail;
     const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),100);
     const _vertA=sd.length>8;
-    const CH=280,padT=20,padB=_vertA?80:56,padL=4,padR=4;
-    const gH=CH-padT-padB;
+    const gH=200,padT=20,padL=4,padR=4;
+    const CH=_vertA?padT+gH+150:padT+gH+60;
     const n=sd.length;
     const WB=Math.max(22,Math.min(60,Math.floor((420-padL-padR-n*4)/n)));
     const GP=5;
@@ -9439,8 +9450,8 @@ async function calcPeriodReport(autoLoad){
     const cadRef=Math.round((d.cadence_ref_pcs_min||0)*60);
     const maxCad=Math.max(...sd2.map(s=>s.cadence_h||0),cadRef,1);
     const _vertB=sd2.length>8;
-    const CH2=280,padT2=20,padB2=_vertB?80:56,padL2=4,padR2=4;
-    const gH2=CH2-padT2-padB2;
+    const gH2=200,padT2=20,padL2=4,padR2=4;
+    const CH2=_vertB?padT2+gH2+150:padT2+gH2+60;
     const n2=sd2.length;
     const WB2=Math.max(22,Math.min(60,Math.floor((420-padL2-padR2-n2*4)/n2)));
     const GP2=5;
@@ -9615,12 +9626,14 @@ async function calcPeriodReport(autoLoad){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;flex-shrink:0">
           <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#059669;font-weight:900">${Math.round(d.tot_pcs||0)}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Pièces</div></div>
           <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Équiv.</div></div>
+          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(13px*var(--zf,1));color:#059669;font-weight:900">${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Obj. pièces</div></div>
+          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(13px*var(--zf,1));color:#0891b2;font-weight:900">${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Obj. équiv.</div></div>
           <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#0369a1;font-weight:900">${d.cadence_h||0}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Cad./h</div></div>
           <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(16px*var(--zf,1));color:#0369a1;font-weight:900">${Math.round((d.cadence_ref_pcs_min||0)*100)/100}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Réf/min</div></div>
         </div>
         <!-- Lignes info -->
         <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
-          ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min','#f59e0b'],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes',d.nb_sessions,'#0891b2'],['OF',d.nb_of,'#0891b2'],['Chgt fibre',d.nb_fibre_chg||0,'#8b5cf6'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
+          ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#f97316'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min','#f59e0b'],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes',d.nb_sessions,'#0891b2'],['OF',d.nb_of,'#0891b2'],['Chgt fibre',d.nb_fibre_chg||0,'#8b5cf6']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
         </div>
       </div>
       <!-- Colonne droite : graphiques -->
