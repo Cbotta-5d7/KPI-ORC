@@ -5176,7 +5176,7 @@ select{cursor:default}
 @keyframes stopBannerBlink{0%,100%{background:#7f0000;border-top-color:#b91c1c}50%{background:#ff1a1a;box-shadow:0 0 30px rgba(255,0,0,.5),inset 0 0 40px rgba(255,255,255,.15);border-top-color:#fca5a5}}
 @keyframes girophareSpin{0%{box-shadow:0 0 12px 3px rgba(255,165,0,.95),0 0 28px rgba(220,38,38,.6),4px -4px 30px rgba(255,100,0,.9)}25%{box-shadow:4px 0 12px 3px rgba(220,38,38,.95),0 0 28px rgba(255,165,0,.6),-4px 4px 30px rgba(255,50,0,.9)}50%{box-shadow:0 4px 12px 3px rgba(255,50,0,.95),0 0 28px rgba(220,38,38,.6),-4px -4px 30px rgba(255,165,0,.9)}75%{box-shadow:-4px 0 12px 3px rgba(255,165,0,.95),0 0 28px rgba(255,50,0,.6),4px 4px 30px rgba(220,38,38,.9)}100%{box-shadow:0 0 12px 3px rgba(255,165,0,.95),0 0 28px rgba(220,38,38,.6),4px -4px 30px rgba(255,100,0,.9)}}
 #stop-bottom.on.stop-blink,#stop-bottom-main.on.stop-blink{animation:stopBannerBlink .9s ease-in-out infinite}
-.act-stop.girophare{animation:girophareSpin .55s linear infinite !important;border-color:rgba(255,165,0,.7) !important}
+.act-stop.girophare,.acc-red.girophare{animation:girophareSpin .55s linear infinite !important;border-color:rgba(255,165,0,.7) !important}
 /* KPI shift cards */
 .shift-kpis{display:flex;gap:8px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0}
 .skpi{flex:1;background:var(--bg);border-radius:var(--radius);padding:10px;border:1px solid var(--border);text-align:center}
@@ -5405,7 +5405,7 @@ select{cursor:default}
     <div class="main-hdr">
       <div class="mbtns" style="margin-left:0" id="main-action-btns">
         <button class="acc-btn acc-green" id="btn-start" onclick="doStartProd()"><span class="act-icon">▶</span><span>Démarrer production</span></button>
-        <button class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span>Déclarer un arrêt</span></button>
+        <button id="btn-declarer-arret-main" class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-main-lbl">Déclarer un arrêt</span></button>
         <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
         <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
       </div>
@@ -5591,7 +5591,7 @@ select{cursor:default}
         </div>
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row" style="justify-content:center">
-          <button id="btn-declarer-arret" class="act-btn act-btn-sm act-stop" style="flex:1" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span>Déclarer un arrêt</span></button>
+          <button id="btn-declarer-arret" class="act-btn act-btn-sm act-stop" style="flex:1" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-lbl">Déclarer un arrêt</span></button>
           <button id="btn-degrade-prod" class="act-btn act-btn-sm" onclick="toggleDegrade()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
           <button class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
           <button class="act-btn act-btn-sm act-pause" id="btn-pause" style="flex:1" onclick="doPause()"><span class="act-icon">☕</span><span>Pause</span></button>
@@ -5749,8 +5749,8 @@ select{cursor:default}
       <hr style="border:none;border-top:1px solid var(--border);margin-bottom:14px">
       <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
         <div id="ps-backdate-row" style="flex:1">
-          <button class="btn btn-green" style="width:100%;text-align:left;padding:10px 14px;font-size:calc(13px*var(--zf,1))" onclick="psChooseBackdate()">
-            ↩ Rétrodater le début de cet OF à <span id="ps-backdate-time" style="font-weight:800">--h--</span>
+          <button class="btn btn-green" style="width:100%;text-align:center;padding:10px 14px;font-size:calc(13px*var(--zf,1))" onclick="psChooseBackdate()">
+            ▶ Déclarer le commencement de cet OF à <span id="ps-backdate-time" style="font-weight:800">--h--</span>
           </button>
         </div>
         <button class="btn btn-sec" style="flex-shrink:0;padding:10px 18px;font-size:calc(13px*var(--zf,1))" onclick="psIgnorer()">Ignorer</button>
@@ -6245,12 +6245,12 @@ select{cursor:default}
           <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">✅ Temps utile</b><span style="color:#374151">Temps d'ouverture − arrêts prévus budgétés (pauses, nettoyages, réunions configurés en Paramètres). Temps disponible pour produire.</span></div></div>
           <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🏭 Temps de fonctionnement</b><span style="color:#374151">Durée OF − tous les arrêts déclarés (prévus + non prévus + dégradé). Temps réel de production.</span></div></div>
           <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🛑 Temps en arrêt</b><span style="color:#374151">Somme directe des durées déclarées. Un seul arrêt actif à la fois → pas de chevauchement possible.</span></div></div>
-          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">📉 Perte de cadence</b><span style="color:#374151">Ralentissement lié à l'effectif réduit. Ex : 1 opérateur = 70% → perte = 30% du potentiel. Configuré dans "Influence nb opérateur".</span></div></div>
+          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">📉 Perte de cadence</b><span style="color:#374151">Perte de temps (min) liée a une cadence plus lente. (Nb objectif / Nb Equiv) x 12 (cadence de ref en articles/min)</span></div></div>
           <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">📊 TRS</b><span style="color:#374151">Équiv produit ÷ Objectif × 100. 100% = objectif atteint. L'objectif est calculé sur la durée nette (hors arrêts prévus déduits).</span></div><div style="margin-top:5px;font-family:monospace;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:4px 10px;color:#1e40af;display:inline-block;font-size:calc(10px*var(--zf,1))">TRS = Équiv ÷ (Prod_réf × %cadence × Durée_nette / 28800) × 100</div></div>
-          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">⚡ Cadence/h</b><span style="color:#374151">Équiv ÷ Nb personnes ÷ Durée OF (heures). Production par personne par heure sur toute la durée (pauses comprises).</span></div><div style="margin-top:5px;font-family:monospace;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:4px 10px;color:#1e40af;display:inline-block;font-size:calc(10px*var(--zf,1))">Cadence/h = Équiv ÷ Nb_pers ÷ Durée_h</div></div>
+          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">⚡ Cadence/h</b><span style="color:#374151">Equiv / heures(temps utile) — Production par heure sur la durée utile (sans les arrêts prévus)</span></div><div style="margin-top:5px;font-family:monospace;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:4px 10px;color:#1e40af;display:inline-block;font-size:calc(10px*var(--zf,1))">Cadence/h = Équiv ÷ Nb_pers ÷ Durée_h</div></div>
           <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">📅 Arrêts prévus</b><span style="color:#374151">Cumul des arrêts planifiés déclarés (nettoyage, pause, réunion). Déduits avant le calcul de l'objectif TRS → ne pénalisent pas le TRS s'ils restent dans le budget.</span></div></div>
-          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🚨 Arrêts non prévus</b><span style="color:#374151">Cumul des arrêts non planifiés (pannes, problèmes, manquants…). Pèsent pleinement sur le TRS.</span></div></div>
-          <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🟡 Dégradé</b><span style="color:#374151">Durée totale en mode dégradé (production ralentie). Comptabilisée séparément et déduite du TRS.</span></div></div>
+          <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🚨 Arrêts non prévus</b><span style="color:#374151">Cumul des arrêts non planifiés (panne, problème, manquant, arrêts prévu hors budgets..).</span></div></div>
+          <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🟡 Dégradé</b><span style="color:#374151">Durée totale en mode dégradé (production ralentie). Comptabilisée séparément, n'influe pas le TRS.</span></div></div>
           <div style="padding:10px 14px;background:#f8fafc"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🎯 Objectif</b><span style="color:#374151">Production maximale attendue sur la durée nette de l'OF, selon l'effectif et le type de produit.</span></div><div style="margin-top:5px;font-family:monospace;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:4px 10px;color:#1e40af;display:inline-block;font-size:calc(10px*var(--zf,1))">Objectif = Prod_réf × %cadence × Durée_nette / 28800 ÷ Coeff</div></div>
         </div>
       </div>
@@ -6264,7 +6264,7 @@ select{cursor:default}
   <div class="mbox" style="width:380px;max-width:90vw;padding:24px" onclick="event.stopPropagation()">
     <div style="font-size:calc(17px*var(--zf,1));font-weight:900;color:#c2410c;margin-bottom:18px;text-align:center;letter-spacing:.05em">🧹 TYPE DE NETTOYAGE</div>
     <div style="display:flex;flex-direction:column;gap:12px">
-      <button class="btn" id="nett-btn-court" style="text-align:left;padding:14px 18px;border-radius:14px;border:2px solid #f97316;background:linear-gradient(145deg,#fff7ed,#fed7aa);font-size:calc(14px*var(--zf,1));font-weight:800;color:#9a3412;transition:all .15s;box-shadow:0 5px 0 #c2410c,0 7px 18px rgba(249,115,22,.22),inset 0 1px 0 rgba(255,255,255,.9)"
+      <button class="btn" id="nett-btn-court" style="text-align:center;padding:14px 18px;border-radius:14px;border:2px solid #f97316;background:linear-gradient(145deg,#fff7ed,#fed7aa);font-size:calc(14px*var(--zf,1));font-weight:800;color:#9a3412;transition:all .15s;box-shadow:0 5px 0 #c2410c,0 7px 18px rgba(249,115,22,.22),inset 0 1px 0 rgba(255,255,255,.9)"
         onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 7px 0 #c2410c,0 10px 24px rgba(249,115,22,.32),inset 0 1px 0 rgba(255,255,255,.9)'"
         onmouseout="this.style.transform='';this.style.boxShadow='0 5px 0 #c2410c,0 7px 18px rgba(249,115,22,.22),inset 0 1px 0 rgba(255,255,255,.9)'"
         onmousedown="this.style.transform='translateY(4px)';this.style.boxShadow='0 1px 0 #c2410c,0 2px 8px rgba(249,115,22,.15),inset 0 1px 0 rgba(255,255,255,.9)'"
@@ -6273,7 +6273,7 @@ select{cursor:default}
         🧹 Nettoyage court
         <span id="nett-lbl-court" style="font-size:calc(11px*var(--zf,1));font-weight:500;color:#ea580c;display:block;margin-top:3px"></span>
       </button>
-      <button class="btn" id="nett-btn-long" style="text-align:left;padding:14px 18px;border-radius:14px;border:2px solid #ea580c;background:linear-gradient(145deg,#fff7ed,#fdba74);font-size:calc(14px*var(--zf,1));font-weight:800;color:#9a3412;transition:all .15s;box-shadow:0 5px 0 #b45309,0 7px 18px rgba(234,88,12,.22),inset 0 1px 0 rgba(255,255,255,.9)"
+      <button class="btn" id="nett-btn-long" style="text-align:center;padding:14px 18px;border-radius:14px;border:2px solid #ea580c;background:linear-gradient(145deg,#fff7ed,#fdba74);font-size:calc(14px*var(--zf,1));font-weight:800;color:#9a3412;transition:all .15s;box-shadow:0 5px 0 #b45309,0 7px 18px rgba(234,88,12,.22),inset 0 1px 0 rgba(255,255,255,.9)"
         onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 7px 0 #b45309,0 10px 24px rgba(234,88,12,.32),inset 0 1px 0 rgba(255,255,255,.9)'"
         onmouseout="this.style.transform='';this.style.boxShadow='0 5px 0 #b45309,0 7px 18px rgba(234,88,12,.22),inset 0 1px 0 rgba(255,255,255,.9)'"
         onmousedown="this.style.transform='translateY(4px)';this.style.boxShadow='0 1px 0 #b45309,0 2px 8px rgba(234,88,12,.15),inset 0 1px 0 rgba(255,255,255,.9)'"
@@ -6282,7 +6282,7 @@ select{cursor:default}
         🧹 Nettoyage long
         <span id="nett-lbl-long" style="font-size:calc(11px*var(--zf,1));font-weight:500;color:#ea580c;display:block;margin-top:3px"></span>
       </button>
-      <button class="btn" id="nett-btn-grand" style="text-align:left;padding:14px 18px;border-radius:14px;border:2px solid #c2410c;background:linear-gradient(145deg,#fff7ed,#fb923c);font-size:calc(14px*var(--zf,1));font-weight:800;color:#7c2d12;transition:all .15s;box-shadow:0 5px 0 #92400e,0 7px 18px rgba(194,65,12,.25),inset 0 1px 0 rgba(255,255,255,.85)"
+      <button class="btn" id="nett-btn-grand" style="text-align:center;padding:14px 18px;border-radius:14px;border:2px solid #c2410c;background:linear-gradient(145deg,#fff7ed,#fb923c);font-size:calc(14px*var(--zf,1));font-weight:800;color:#7c2d12;transition:all .15s;box-shadow:0 5px 0 #92400e,0 7px 18px rgba(194,65,12,.25),inset 0 1px 0 rgba(255,255,255,.85)"
         onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 7px 0 #92400e,0 10px 24px rgba(194,65,12,.35),inset 0 1px 0 rgba(255,255,255,.85)'"
         onmouseout="this.style.transform='';this.style.boxShadow='0 5px 0 #92400e,0 7px 18px rgba(194,65,12,.25),inset 0 1px 0 rgba(255,255,255,.85)'"
         onmousedown="this.style.transform='translateY(4px)';this.style.boxShadow='0 1px 0 #92400e,0 2px 8px rgba(194,65,12,.15),inset 0 1px 0 rgba(255,255,255,.85)'"
@@ -7240,8 +7240,12 @@ function renderStopChipsMain(s) {
   if(!cont||!sb) return;
   const stops=s.active_stops||[];
   const hasAny=stops.length>0||s.is_paused;
-  if(!hasAny){sb.classList.remove('on','stop-blink');cont.innerHTML='';_lastMainChipKeys='';return;}
+  const btnMain=document.getElementById('btn-declarer-arret-main');
+  const lblMain=document.getElementById('btn-declarer-arret-main-lbl');
+  if(!hasAny){sb.classList.remove('on','stop-blink');cont.innerHTML='';_lastMainChipKeys='';if(btnMain)btnMain.classList.remove('girophare');if(lblMain)lblMain.textContent='Déclarer un arrêt';return;}
   sb.classList.add('on','stop-blink');
+  if(btnMain)btnMain.classList.add('girophare');
+  if(lblMain)lblMain.textContent='Déclarer un autre arrêt en même temps';
   const newKeys=stops.join(',')+(s.is_paused?'|pause':'');
   if(newKeys===_lastMainChipKeys){
     // Même set de stops : mettre à jour seulement les timers
@@ -7278,9 +7282,11 @@ function renderStopChips(s) {
   const stops=s.active_stops||[];
   const hasAny=stops.length>0||s.is_paused;
   const btnDeclarer=document.getElementById('btn-declarer-arret');
-  if(!hasAny){sb.classList.remove('on','stop-blink');cont.innerHTML='';if(btnDeclarer)btnDeclarer.classList.remove('girophare');return;}
+  const lblDeclarer=document.getElementById('btn-declarer-arret-lbl');
+  if(!hasAny){sb.classList.remove('on','stop-blink');cont.innerHTML='';if(btnDeclarer)btnDeclarer.classList.remove('girophare');if(lblDeclarer)lblDeclarer.textContent='Déclarer un arrêt';return;}
   sb.classList.add('on','stop-blink');
   if(btnDeclarer)btnDeclarer.classList.add('girophare');
+  if(lblDeclarer)lblDeclarer.textContent='Déclarer un autre arrêt en même temps';
   let html='';
   stops.forEach(k=>{
     const lbl=getEvtLabel(k);
@@ -7952,10 +7958,11 @@ function doCancelProd(){
   const evts=ST&&ST.evts?ST.evts:[];
   const listEl=document.getElementById('cancel-prod-list');
   if(listEl){
-    if(evts.length===0){
-      listEl.innerHTML='<div style="color:#6b7280;text-align:center;font-style:italic">Aucune déclaration enregistrée.</div>';
+    const ofStartLine=(()=>{const iso=ST&&ST.of_start_iso;if(!iso)return '';const d=new Date(iso);const hm=d.getHours().toString().padStart(2,'0')+'h'+d.getMinutes().toString().padStart(2,'0');return `<div style="padding:6px 0;font-weight:700;color:#374151">• OF en cours depuis ${hm}</div>`;})();
+    if(!evts||evts.length===0){
+      listEl.innerHTML=ofStartLine||'<div style="color:#374151;padding:6px 0">• OF en cours (aucun arrêt déclaré)</div>';
     } else {
-      listEl.innerHTML=evts.map(e=>{
+      listEl.innerHTML=ofStartLine+evts.map(e=>{
         const typ=e.key?getEvtLabel(e.key):(e.type||'Événement');
         const dur=e.duree||'';
         return `<div style="padding:4px 0;border-bottom:1px solid #fecaca;display:flex;justify-content:space-between"><span>• ${esc(typ)}</span><span style="color:#dc2626;font-weight:700">${dur}</span></div>`;
