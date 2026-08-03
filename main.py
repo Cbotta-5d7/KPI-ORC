@@ -50,6 +50,7 @@ DECL_HEADERS = [
     "","Commentaire","Prevu/Hors TRS",
     "Duree Arrets","Duree Prod Pure","Date_poste",
     "","Degrade_min","Objectif éq",
+    "Perte cadence OF (min)",
 ]
 
 POSTES = ["Matin","Midi","Nuit","Jour"]
@@ -2075,6 +2076,7 @@ def api_end_prod():
         "",
         round(_deg_s / 60.0, 2),
         _objectif_pcs,
+        round((_objectif_pcs - equiv) / (prod_ref / 480.0), 1) if prod_ref > 0 and isinstance(_objectif_pcs, (int, float)) and _objectif_pcs > 0 else "",
     ]
     evt_rows = build_decl_rows(
         dict(v, pilote=v.get("pilote",_S["pilot"] or ""), poste=v.get("poste",_S["poste"] or "")),
@@ -2393,6 +2395,8 @@ def api_history():
                 "duree_mq_mp": str(r[32] if len(r)>32 else ""),
                 "manquant_pers": str(r[33] if len(r)>33 else ""),
                 "comment": str(r[35] or ""),
+                "perte_cad_of": str(r[43] if len(r)>43 else ""),
+                "objectif": round(float(str(r[42] or 0).replace(",",".")), 1) if len(r)>42 and r[42] not in (None,"") else -1,
             })
         except: pass
     return jsonify(list(reversed(rows)))
@@ -3201,7 +3205,9 @@ def api_period_report():
                 "nb_pp":str(_rp[30] if len(_rp)>30 else ""),
                 "duree_mq_mp":str(_rp[32] if len(_rp)>32 else ""),
                 "manquant_pers":str(_rp[33] if len(_rp)>33 else ""),
+                "perte_cad_of":str(_rp[43] if len(_rp)>43 else ""),
                 "degrade_min":round(_deg_rp/60,1),"plan_stop_s":round(_plan_rp),"objectif":_obj_rp,
+                "budget_overrides":_xl.get('budget_overrides') or {},
             })
         _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or ""))} for _rn2, re2 in s.get('evt_rows',[])]
         agg_degrade_min += (_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s / 60.0)
@@ -4043,8 +4049,8 @@ select{cursor:default}
         <button class="acc-btn acc-green" id="btn-start" onclick="doStartProd()"><span class="act-icon">▶</span><span>Démarrer production</span></button>
         <button id="btn-declarer-arret-main" class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-main-lbl">Déclarer un arrêt</span></button>
         <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
-        <button class="acc-btn" onclick="doNettoyage()" style="background:radial-gradient(ellipse at 50% 25%,#fed7aa 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
-        <button class="acc-btn" onclick="doPause()" style="background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">☕</span><span>Pause</span></button>
+        <button id="btn-nettoyage-acc" class="acc-btn" onclick="doNettoyage()" style="background:radial-gradient(ellipse at 50% 25%,#fed7aa 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
+        <button id="btn-pause-acc" class="acc-btn" onclick="doPause()" style="background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">☕</span><span>Pause</span></button>
         <button class="acc-btn" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
       </div>
@@ -4224,7 +4230,7 @@ select{cursor:default}
         <div class="prod-act-row" style="justify-content:center">
           <button id="btn-declarer-arret" class="act-btn act-btn-sm act-stop" style="flex:1;aspect-ratio:unset !important;white-space:normal !important;height:auto !important;min-height:60px" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-lbl" style="white-space:normal;line-height:1.2;text-align:center">Déclarer un arrêt</span></button>
           <button id="btn-degrade-prod" class="act-btn act-btn-sm" onclick="toggleDegrade()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
-          <button class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
+          <button id="btn-nettoyage-prod" class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
           <button class="act-btn act-btn-sm act-pause" id="btn-pause" style="flex:1" onclick="doPause()"><span class="act-icon">☕</span><span>Pause</span></button>
           <button class="act-btn act-btn-sm" id="btn-reunion" onclick="doReunion()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         </div>
@@ -5833,11 +5839,19 @@ function applyState(s) {
   const bovP=document.getElementById('btn-bov-prod');if(bovP)bovP.style.display=_showBov?'':'none';
   window._budgetOverrides=s.budget_overrides||{};
   window._lastBudgetState=s.budget_state||null;
-  // Pause button text
+  // Pause button text + blink
   const pbtn=document.getElementById('btn-pause');
-  if(pbtn){pbtn.innerHTML=s.is_paused?'<span class="act-icon">▶</span>Reprendre':'<span class="act-icon">☕</span>Pause';}
+  if(pbtn){pbtn.innerHTML=s.is_paused?'<span class="act-icon">▶</span>Reprendre':'<span class="act-icon">☕</span>Pause';pbtn.style.animation=s.is_paused?'blink .85s step-start infinite':'none';}
+  const pbtnAcc=document.getElementById('btn-pause-acc');
+  if(pbtnAcc){pbtnAcc.style.animation=s.is_paused?'blink .85s step-start infinite':'none';}
+  // Réunion button text + blink
   const rbtn=document.getElementById('btn-reunion');
-  if(rbtn){rbtn.innerHTML=s.reunion_active?'<span class="act-icon">✓</span>Fin réunion':'<span class="act-icon">🗣️</span>Réunion';}
+  if(rbtn){rbtn.innerHTML=s.reunion_active?'<span class="act-icon">✓</span>Fin réunion':'<span class="act-icon">🗣️</span>Réunion';rbtn.style.animation=s.reunion_active?'blink .85s step-start infinite':'none';}
+  // Nettoyage button blink
+  const _nettActive=(s.active_stops||[]).some(k=>k==='nettoyage'||(k||'').startsWith('nettoyage'));
+  const nbtnAcc=document.getElementById('btn-nettoyage-acc');const nbtnProd=document.getElementById('btn-nettoyage-prod');
+  if(nbtnAcc){nbtnAcc.style.animation=_nettActive?'blink .85s step-start infinite':'none';}
+  if(nbtnProd){nbtnProd.style.animation=_nettActive?'blink .85s step-start infinite':'none';}
 
   // TRS gauge
   updateGauge(s);
@@ -7902,29 +7916,92 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   // ── Événements enrichis ──
   function _isPlanned(type){const t=(type||'').toLowerCase();return t.includes('pause')||t.includes('nettoyage')||t.includes('nett')||t.includes('réunion')||t.includes('reunion')||t.includes('meeting');}
   function _getBudgetKeyForType(type){const t=(type||'').toLowerCase();if(t.includes('nett')){if(t.includes('très')||t.includes('grand'))return 'clean_grand_min';if(t.includes('long'))return 'clean_long_min';return 'clean_short_min';}if(t.includes('réunion')||t.includes('reunion')||t.includes('meeting'))return 'meeting_tol_min';if(t.includes('pause'))return 'pause_min';return null;}
+  // Budget : utilise les overrides stockés dans le poste (Excel Z-AD), sinon config globale
+  const _bov=r.budget_overrides||{};
+  function _getBudgetMin(bk){if(!bk)return 0;const v=_bov[bk];return v!==undefined&&v!==null?v:(_cfgArretsPrevus[bk]||0);}
   let totalPlannedActMin=0;
   const byTypePlan={};
   ofEvts.forEach(ev=>{if(!ev.is_degrade&&_isPlanned(ev.type)){const p=(ev.duree||'0:0:0').split(':').map(Number);const m=Math.round((p[0]||0)*60+(p[1]||0)+(p[2]||0)/60);totalPlannedActMin+=m;byTypePlan[ev.type]=(byTypePlan[ev.type]||0)+m;}});
   const budgetExcess=Math.round(Math.max(0,totalPlannedActMin-planMin));
-  const budgetWarnHtml2=budgetExcess>0&&planMin>0?`<div style="background:#fef3c7;border:1.5px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:calc(10px*var(--zf,1))"><div style="font-weight:800;color:#b45309;margin-bottom:5px">⚠️ Dépassement budget arrêt prévu (+${budgetExcess} min)</div>${Object.entries(byTypePlan).map(([type,declared])=>{const bk=_getBudgetKeyForType(type);const bMin=bk?(_cfgArretsPrevus[bk]||0):0;return `<div style="font-size:calc(9.5px*var(--zf,1));color:#92400e;padding:3px 0;border-top:1px solid rgba(180,83,9,.15)">• ${esc(type)} : Déclaré <b>${declared} min</b>, Budget <b>${bMin} min</b></div>`;}).join('')}</div>`:'';
+  const budgetWarnHtml2=budgetExcess>0&&planMin>0?`<div style="background:#fef3c7;border:1.5px solid #fde68a;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:calc(10px*var(--zf,1))"><div style="font-weight:800;color:#b45309;margin-bottom:5px">⚠️ Dépassement budget arrêt prévu (+${budgetExcess} min)</div>${Object.entries(byTypePlan).map(([type,declared])=>{const bk=_getBudgetKeyForType(type);const bMin=_getBudgetMin(bk);return `<div style="font-size:calc(9.5px*var(--zf,1));color:#92400e;padding:3px 0;border-top:1px solid rgba(180,83,9,.15)">• ${esc(type)} : Déclaré <b>${declared} min</b>, Budget <b>${bMin} min</b></div>`;}).join('')}</div>`:'';
   const evtsHtml2=ofEvts.length?ofEvts.map(ev=>{
     const planned=ev.is_degrade?null:_isPlanned(ev.type);
     const evDurParts=(ev.duree||'0:0:0').split(':').map(Number);
     const evMin=Math.round((evDurParts[0]||0)*60+(evDurParts[1]||0)+(evDurParts[2]||0)/60);
+    const bk=planned&&!ev.is_degrade?_getBudgetKeyForType(ev.type):null;
+    const budgetMin=_getBudgetMin(bk);
+    const overMin=bk&&budgetMin>0?Math.max(0,evMin-budgetMin):0;
     const bgColor=ev.is_degrade?'#fffbeb':planned?'#eff6ff':'#fff7f7';
     const borderColor=ev.is_degrade?'#fde68a':planned?'#bfdbfe':'#fecaca';
     const typeColor=ev.is_degrade?'#b45309':planned?'#1d4ed8':'#dc2626';
     const badge=ev.is_degrade?`<span style="background:#fef3c7;color:#b45309;font-size:calc(9px*var(--zf,1));font-weight:800;padding:2px 7px;border-radius:10px;border:1px solid #fde68a">DÉGRADÉ</span>`:planned?`<span style="background:#dbeafe;color:#1d4ed8;font-size:calc(9px*var(--zf,1));font-weight:800;padding:2px 7px;border-radius:10px;border:1px solid #bfdbfe">✓ PRÉVU</span>`:`<span style="background:#fee2e2;color:#dc2626;font-size:calc(9px*var(--zf,1));font-weight:800;padding:2px 7px;border-radius:10px;border:1px solid #fecaca">✗ NON PRÉVU</span>`;
+    const overBadge=overMin>0?`<span style="background:#fee2e2;color:#dc2626;font-size:calc(9px*var(--zf,1));font-weight:800;padding:2px 7px;border-radius:10px;border:1px solid #fca5a5;margin-left:4px">🚨 +${overMin} min hors budget</span>`:'';
     const commentLine=ev.comment?`<div style="display:flex;align-items:flex-start;gap:5px;font-size:calc(10px*var(--zf,1));color:#92400e;background:#fffbeb;border-radius:5px;padding:4px 7px;margin-top:5px"><span style="flex-shrink:0">💬</span><span>${esc(ev.comment)}</span></div>`:'';
-    return `<div style="background:${bgColor};border:1.5px solid ${borderColor};border-radius:9px;padding:9px 11px;margin-bottom:7px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><span style="font-size:calc(12px*var(--zf,1));font-weight:800;color:${typeColor}">${esc(ev.type||'Arrêt')}</span>${badge}</div><span style="font-size:calc(14px*var(--zf,1));font-weight:900;color:${typeColor};white-space:nowrap;margin-left:8px">${evMin} min</span></div><div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:2px">${esc(ev.debut||'')} → ${esc(ev.fin||'')} · durée ${esc(ev.duree||'—')}</div>${commentLine}</div>`;
+    return `<div style="background:${bgColor};border:1.5px solid ${borderColor};border-radius:9px;padding:9px 11px;margin-bottom:7px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap"><span style="font-size:calc(12px*var(--zf,1));font-weight:800;color:${typeColor}">${esc(ev.type||'Arrêt')}</span>${badge}${overBadge}</div><span style="font-size:calc(14px*var(--zf,1));font-weight:900;color:${typeColor};white-space:nowrap;margin-left:8px">${evMin} min</span></div><div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:2px">${esc(ev.debut||'')} → ${esc(ev.fin||'')} · durée ${esc(ev.duree||'—')}</div>${commentLine}</div>`;
   }).join(''):`<div style="color:#94a3b8;font-size:calc(11px*var(--zf,1));text-align:center;padding:16px 0;border:1.5px dashed #e2e8f0;border-radius:8px">Aucun arrêt ni événement</div>`;
 
-  // ── Colonnes infos ──
+  // ── Colonnes infos (restructurées en 3 colonnes) ──
   const commentHtml3=r.comment?`<div style="background:#fffbeb;border-left:3px solid #fbbf24;padding:7px 10px;margin-top:10px;font-size:calc(11px*var(--zf,1));color:#92400e;border-radius:0 8px 8px 0;box-shadow:0 2px 5px rgba(251,191,36,.15)">💬 ${esc(r.comment)}</div>`:'';
-  const col1Html=[_sec('Identité'),_row('OF',r.of,'#1e3a8a'),_row('Date',r.date,'#374151'),_row('Poste',r.poste,'#374151'),_row('Pilote',r.pilote,'#374151'),_row('Co-Pilote',r.copilote,'#374151'),_row('Nb Personnes',r.nb_pers,'#374151'),_sec('Produit'),_row('Taille',r.taille,'#374151'),_row('Type produit',r.type_prod,'#374151'),_row('Code produit',r.code_prod,'#374151'),_row('Fibre',r.fibre,'#6366f1'),_row('Poids garnissage (g)',r.poids,'#374151'),_row('OF Taie',r.of_taie,'#374151'),_row('Réf Taie',r.ref_taie,'#374151'),_row('Traca',r.traca?(r.traca.split(';').filter(t=>t.trim()).join(' · ')):'' ,'#374151'),_row('Lots de 2',kitStr==='oui'?'✓ Oui':'Non',kitStr==='oui'?'#16a34a':'#94a3b8')].join('');
-  const col2Html=[_sec('Production'),_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Qté fabriquée',r.qte_fab,'#1e3a8a'),_row('Qté emballée',r.qte_emb,'#374151'),_row('Équivalence',r.equiv,'#0891b2'),_row('Cadence/h',r.cadence_h,'#374151'),_row('Cadence/h/pers',r.cadence_h_pers,'#374151'),_row('TRS %',r.trs>=0?r.trs.toFixed(1)+'%':'—',tc),_row('Objectif éq',r.objectif!=null&&r.objectif>=0?String(r.objectif):'','#0369a1'),_row('Prévu/Hors TRS',r.prevu_hors_trs,'#374151'),commentHtml3,`<div style="margin-top:10px">${_sec('Qualité')}${[_row('Qté init Taie',r.qte_init_taie,'#374151'),_row('Nb Taie 2nd choix',r.nb_taie2,'#f59e0b'),_row('Nb défauts couture',r.nb_def_cout,'#dc2626'),_row('Mq Taie',r.mq_taie,'#dc2626'),_row('Mq Housse/Encart',r.mq_housse,'#dc2626'),_row('Nb PP cousue',r.nb_pp,'#374151')].join('')}</div>`,`<div style="margin-top:4px">${_sec('Manquants')}${[_row('Manquant MP',r.duree_mq_mp,'#dc2626'),_row('Manquant Personnel/Réunion',r.manquant_pers,'#374151')].join('')}</div>`].join('');
+  // Col 1 : Identité + Produit + Qualité
+  const col1Html=[
+    _sec('Identité'),
+    _row('OF',r.of,'#1e3a8a'),_row('Pilote',r.pilote,'#374151'),_row('Co-Pilote',r.copilote,'#374151'),_row('Nb Personnes',r.nb_pers,'#374151'),
+    _sec('Produit'),
+    _row('Taille',r.taille,'#374151'),_row('Type produit',r.type_prod,'#374151'),_row('Code produit',r.code_prod,'#374151'),_row('Fibre',r.fibre,'#6366f1'),_row('Poids garnissage (g)',r.poids,'#374151'),_row('Lots de 2',kitStr==='oui'?'✓ Oui':'Non',kitStr==='oui'?'#16a34a':'#94a3b8'),
+    _sec('Qualité'),
+    _row('Réf Taie',r.ref_taie,'#374151'),_row('Nb Taie 2nd choix',r.nb_taie2,'#f59e0b'),_row('Nb défauts couture',r.nb_def_cout,'#dc2626'),_row('Mq Taie',r.mq_taie,'#dc2626'),_row('Mq Housse/Encart',r.mq_housse,'#dc2626'),_row('Nb PP cousue',r.nb_pp,'#374151'),
+  ].join('');
+  // Col 2 : Production + Manquants
+  const col2Html=[
+    _sec('Production'),
+    _row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),
+    _row('Qté fabriquée',r.qte_fab,'#1e3a8a'),_row('Qté emballée',r.qte_emb,'#374151'),
+    _row('Équivalence',r.equiv,'#0891b2'),_row('Cadence/h',r.cadence_h,'#374151'),_row('Cadence/h/pers',r.cadence_h_pers,'#374151'),
+    _row('TRS %',r.trs>=0?r.trs.toFixed(1)+'%':'—',tc),
+    _row('Objectif éq',r.objectif!=null&&r.objectif>=0?String(r.objectif):'','#0369a1'),
+    commentHtml3,
+    `<div style="margin-top:8px">${_sec('Manquants')}${[_row('Manquant MP',r.duree_mq_mp,'#dc2626'),_row('Manquant Personnel/Réunion',r.manquant_pers,'#374151')].join('')}</div>`,
+  ].join('');
+  // Col 3 : Événements
   const col3Html=`${_sec('Événements ('+ofEvts.length+')')}${budgetWarnHtml2}${evtsHtml2}`;
 
+  // ── Graphiques KPI : Prod vs Objectif + Perte cadence ──
+  const _equivNum=parseFloat(r.equiv||0)||0;
+  const _objNum=r.objectif!=null&&r.objectif>=0?parseFloat(r.objectif):0;
+  const _perteCadNum=r.perte_cad_of&&r.perte_cad_of!==''?parseFloat(r.perte_cad_of):null;
+  // Chart 1 : barres horizontales Équiv vs Objectif
+  let chart3Html='';
+  if(_objNum>0&&_equivNum>0){
+    const _maxBar=Math.max(_objNum,_equivNum)*1.05;
+    const _pctEq=Math.min(100,Math.round(_equivNum/_maxBar*100));
+    const _pctObj=Math.min(100,Math.round(_objNum/_maxBar*100));
+    const _colEq=_equivNum>=_objNum?'#16a34a':_equivNum/_objNum>=0.9?'#d97706':'#dc2626';
+    const _diffPct=Math.round((_equivNum-_objNum)/_objNum*100);
+    const _diffStr=_diffPct>=0?`+${_diffPct}%`:`${_diffPct}%`;
+    const _diffCol=_diffPct>=0?'#16a34a':'#dc2626';
+    chart3Html=`<div style="width:100%;margin-top:14px;border-top:1px solid #e2e8f0;padding-top:12px">
+      <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;text-align:center">Prod vs Objectif</div>
+      <div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:3px;display:flex;justify-content:space-between"><span>Objectif</span><span style="font-weight:700;color:#0369a1">${_objNum.toFixed(1)} éq</span></div>
+      <div style="background:#e5e7eb;border-radius:5px;height:12px;margin-bottom:8px;position:relative"><div style="background:#93c5fd;width:${_pctObj}%;height:12px;border-radius:5px"></div></div>
+      <div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:3px;display:flex;justify-content:space-between"><span>Réalisé</span><span style="font-weight:700;color:${_colEq}">${_equivNum.toFixed(1)} éq</span></div>
+      <div style="background:#e5e7eb;border-radius:5px;height:12px;margin-bottom:8px;position:relative"><div style="background:${_colEq};width:${_pctEq}%;height:12px;border-radius:5px"></div></div>
+      <div style="text-align:center;font-size:calc(13px*var(--zf,1));font-weight:900;color:${_diffCol};margin-top:4px">${_diffStr} vs objectif</div>
+    </div>`;
+  }
+  // Chart 2 : Perte de cadence (en minutes)
+  let chart4Html='';
+  if(_perteCadNum!==null){
+    const _absP=Math.abs(_perteCadNum);
+    const _pCol=_perteCadNum<=0?'#16a34a':_perteCadNum<=10?'#d97706':'#dc2626';
+    const _pLabel=_perteCadNum<=0?`Avance de ${_absP.toFixed(1)} min`:`Perte de ${_absP.toFixed(1)} min`;
+    const _pBar=Math.min(100,Math.round(_absP/30*100));
+    chart4Html=`<div style="width:100%;margin-top:12px;border-top:1px solid #e2e8f0;padding-top:12px">
+      <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;text-align:center">Perte de cadence</div>
+      <div style="text-align:center;font-size:calc(22px*var(--zf,1));font-weight:900;color:${_pCol};line-height:1.1;margin-bottom:6px">${_perteCadNum>0?'+':''}${_perteCadNum.toFixed(1)} min</div>
+      <div style="background:#e5e7eb;border-radius:5px;height:10px;margin:0 8px 6px"><div style="background:${_pCol};width:${_pBar}%;height:10px;border-radius:5px;transition:width .4s"></div></div>
+      <div style="text-align:center;font-size:calc(10px*var(--zf,1));color:#64748b">${_pLabel}</div>
+    </div>`;
+  }
   const trsBlock2=r.trs>=0?`<div style="text-align:right;background:#fff;border-radius:10px;padding:8px 14px;box-shadow:0 4px 12px rgba(0,0,0,.25)"><div style="font-size:calc(28px*var(--zf,1));font-weight:900;color:${tc};line-height:1">${r.trs.toFixed(1)}%</div><div style="font-size:calc(9px*var(--zf,1));color:#94a3b8;text-transform:uppercase;letter-spacing:.1em">TRS</div></div>`:'';
 
   document.getElementById('of-detail-content').innerHTML=`
@@ -7939,14 +8016,16 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     </div>
     <!-- Timeline bandeau plein-largeur -->
     ${tlBandHtml}
-    <!-- Corps 4 colonnes -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr minmax(250px,310px);flex:1;min-height:0;overflow:hidden">
+    <!-- Corps 3 colonnes + panneau graphiques -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr minmax(240px,300px);flex:1;min-height:0;overflow:hidden">
       <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col1Html}</div>
       <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col2Html}</div>
       <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col3Html}</div>
       <div style="padding:12px 10px;overflow-y:auto;background:linear-gradient(180deg,#f8fafc 0%,#fff 100%);display:flex;flex-direction:column;align-items:center">
         <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;text-align:center">Répartition temps</div>
         ${chartHtml2}
+        ${chart3Html}
+        ${chart4Html}
       </div>
     </div>`;
   const box=document.getElementById('of-detail-box');
@@ -8085,15 +8164,16 @@ async function doFinPoste(){
   const fpd=await apiFetch('/api/fin_poste_data');
   if(fpd){
     window._ecartFpData=fpd;
-    const hasIssue=(fpd.gap_intervals&&fpd.gap_intervals.length>0)||((fpd.overflow_s||0)>60)||((fpd.ecart_s||0)>60);
-    if(hasIssue){_showEcartModal(fpd);}else{goTab('finposte');}
+    const _sigGaps=(fpd.gap_intervals||[]).filter(g=>(g.duree_min||0)>=2);
+    const hasIssue=_sigGaps.length>0||((fpd.overflow_s||0)>120)||((fpd.ecart_s||0)>120);
+    if(hasIssue){_showEcartModal({...fpd,gap_intervals:_sigGaps});}else{goTab('finposte');}
   } else goTab('finposte');
 }
 
 async function _doGoFinPoste(){
   if(!_ecartChecked){
     const fpd=await apiFetch('/api/fin_poste_data');
-    if(fpd&&(fpd.ecart_s||0)>60){
+    if(fpd&&((fpd.ecart_s||0)>120||(fpd.overflow_s||0)>120||(fpd.gap_intervals||[]).filter(g=>(g.duree_min||0)>=2).length>0)){
       window._ecartFpData=fpd;
       _showEcartModal(fpd);
       return;
