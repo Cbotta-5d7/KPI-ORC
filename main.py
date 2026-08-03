@@ -5173,6 +5173,10 @@ select{cursor:default}
 .chip-tim{font-size:calc(18px*var(--zf,1));font-weight:800;font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
 .btn-endstop{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer;white-space:nowrap}
 .btn-endstop:hover{filter:brightness(.9)}
+@keyframes stopBannerBlink{0%,100%{background:#7f0000;border-top-color:#b91c1c}50%{background:#ff1a1a;box-shadow:0 0 30px rgba(255,0,0,.5),inset 0 0 40px rgba(255,255,255,.15);border-top-color:#fca5a5}}
+@keyframes girophareSpin{0%{box-shadow:0 0 12px 3px rgba(255,165,0,.95),0 0 28px rgba(220,38,38,.6),4px -4px 30px rgba(255,100,0,.9)}25%{box-shadow:4px 0 12px 3px rgba(220,38,38,.95),0 0 28px rgba(255,165,0,.6),-4px 4px 30px rgba(255,50,0,.9)}50%{box-shadow:0 4px 12px 3px rgba(255,50,0,.95),0 0 28px rgba(220,38,38,.6),-4px -4px 30px rgba(255,165,0,.9)}75%{box-shadow:-4px 0 12px 3px rgba(255,165,0,.95),0 0 28px rgba(255,50,0,.6),4px 4px 30px rgba(220,38,38,.9)}100%{box-shadow:0 0 12px 3px rgba(255,165,0,.95),0 0 28px rgba(220,38,38,.6),4px -4px 30px rgba(255,100,0,.9)}}
+#stop-bottom.on.stop-blink,#stop-bottom-main.on.stop-blink{animation:stopBannerBlink .9s ease-in-out infinite}
+.act-stop.girophare{animation:girophareSpin .55s linear infinite !important;border-color:rgba(255,165,0,.7) !important}
 /* KPI shift cards */
 .shift-kpis{display:flex;gap:8px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0}
 .skpi{flex:1;background:var(--bg);border-radius:var(--radius);padding:10px;border:1px solid var(--border);text-align:center}
@@ -5587,7 +5591,7 @@ select{cursor:default}
         </div>
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row" style="justify-content:center">
-          <button class="act-btn act-btn-sm act-stop" style="flex:1" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span>Déclarer un arrêt</span></button>
+          <button id="btn-declarer-arret" class="act-btn act-btn-sm act-stop" style="flex:1" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span>Déclarer un arrêt</span></button>
           <button id="btn-degrade-prod" class="act-btn act-btn-sm" onclick="toggleDegrade()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
           <button class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
           <button class="act-btn act-btn-sm act-pause" id="btn-pause" style="flex:1" onclick="doPause()"><span class="act-icon">☕</span><span>Pause</span></button>
@@ -6288,7 +6292,7 @@ select{cursor:default}
         <span id="nett-lbl-grand" style="font-size:calc(11px*var(--zf,1));font-weight:500;color:#c2410c;display:block;margin-top:3px"></span>
       </button>
     </div>
-    <button class="btn btn-sec" style="margin-top:16px;width:100%;font-size:calc(13px*var(--zf,1));border-radius:10px;padding:10px" onclick="closeM('m-nett-type')">✕ Annuler</button>
+    <button class="btn btn-sec" style="margin-top:16px;width:100%;font-size:calc(13px*var(--zf,1));border-radius:10px;padding:10px;text-align:center" onclick="closeM('m-nett-type')">✕ Annuler</button>
   </div>
 </div>
 
@@ -6452,12 +6456,28 @@ select{cursor:default}
     <div id="m-degrade-title" style="font-size:calc(17px*var(--zf,1));font-weight:900;color:#b45309;margin-bottom:18px;text-align:center;letter-spacing:.05em">🟡 MODE DÉGRADÉ</div>
     <div id="m-degrade-body" style="margin-bottom:16px"></div>
     <div style="display:flex;gap:8px">
-      <button class="btn" id="m-degrade-confirm" onclick="_confirmDegrade()" style="flex:1;background:linear-gradient(145deg,#fefce8,#fef08a);border:2px solid #ca8a04;color:#713f12;font-weight:800;font-size:calc(14px*var(--zf,1));border-radius:12px;padding:11px;box-shadow:0 5px 0 #92400e,0 7px 18px rgba(202,138,4,.25),inset 0 1px 0 rgba(255,255,255,.9);transition:all .15s"
+      <button class="btn" id="m-degrade-confirm" onclick="_confirmDegrade()" style="flex:1;background:linear-gradient(145deg,#fefce8,#fef08a);border:2px solid #ca8a04;color:#713f12;font-weight:800;font-size:calc(14px*var(--zf,1));border-radius:12px;padding:11px;text-align:center;box-shadow:0 5px 0 #92400e,0 7px 18px rgba(202,138,4,.25),inset 0 1px 0 rgba(255,255,255,.9);transition:all .15s"
         onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 7px 0 #92400e,0 10px 24px rgba(202,138,4,.35),inset 0 1px 0 rgba(255,255,255,.9)'"
         onmouseout="this.style.transform='';this.style.boxShadow='0 5px 0 #92400e,0 7px 18px rgba(202,138,4,.25),inset 0 1px 0 rgba(255,255,255,.9)'"
         onmousedown="this.style.transform='translateY(4px)';this.style.boxShadow='0 1px 0 #92400e,0 2px 8px rgba(202,138,4,.15),inset 0 1px 0 rgba(255,255,255,.9)'"
         onmouseup="this.style.transform='translateY(-2px)';this.style.boxShadow='0 7px 0 #92400e,0 10px 24px rgba(202,138,4,.35),inset 0 1px 0 rgba(255,255,255,.9)'">✓ Confirmer</button>
-      <button class="btn btn-sec" onclick="closeM('m-degrade')" style="flex:1;border-radius:12px;padding:11px;font-size:calc(14px*var(--zf,1))">✕ Annuler</button>
+      <button class="btn btn-sec" onclick="closeM('m-degrade')" style="flex:1;border-radius:12px;padding:11px;font-size:calc(14px*var(--zf,1));text-align:center">✕ Annuler</button>
+    </div>
+  </div>
+</div>
+
+<div id="m-cancel-prod" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:5200;align-items:center;justify-content:center;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
+  <div class="mbox" style="max-width:440px;width:90%;padding:28px;border:2px solid #fca5a5" onclick="event.stopPropagation()">
+    <div style="font-size:calc(20px*var(--zf,1));font-weight:900;color:#dc2626;text-align:center;margin-bottom:8px">⚠️ ANNULER LA PRODUCTION</div>
+    <div style="font-size:calc(13px*var(--zf,1));color:#7f1d1d;text-align:center;margin-bottom:16px;font-weight:700">Cette action va effacer TOUTES les déclarations qui ont eu lieu :</div>
+    <div id="cancel-prod-list" style="background:#fff1f2;border:1px solid #fca5a5;border-radius:10px;padding:12px;margin-bottom:18px;max-height:220px;overflow-y:auto;font-size:calc(12px*var(--zf,1));color:#374151"></div>
+    <div style="display:flex;gap:10px">
+      <button class="btn" onclick="_doConfirmCancelProd()" style="flex:1;background:linear-gradient(145deg,#fef2f2,#fecaca);border:2px solid #dc2626;color:#7f1d1d;font-weight:800;font-size:calc(14px*var(--zf,1));border-radius:12px;padding:12px;text-align:center;box-shadow:0 5px 0 #991b1b,0 7px 18px rgba(220,38,38,.25),inset 0 1px 0 rgba(255,255,255,.9);transition:all .15s"
+        onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 7px 0 #991b1b,0 10px 24px rgba(220,38,38,.35),inset 0 1px 0 rgba(255,255,255,.9)'"
+        onmouseout="this.style.transform='';this.style.boxShadow='0 5px 0 #991b1b,0 7px 18px rgba(220,38,38,.25),inset 0 1px 0 rgba(255,255,255,.9)'"
+        onmousedown="this.style.transform='translateY(4px)';this.style.boxShadow='0 1px 0 #991b1b,0 2px 8px rgba(220,38,38,.15),inset 0 1px 0 rgba(255,255,255,.9)'"
+        onmouseup="this.style.transform='translateY(-2px)';this.style.boxShadow='0 7px 0 #991b1b,0 10px 24px rgba(220,38,38,.35),inset 0 1px 0 rgba(255,255,255,.9)'">🗑 OK, j'annule cet OF</button>
+      <button class="btn btn-sec" onclick="closeM('m-cancel-prod')" style="flex:1;border-radius:12px;padding:12px;font-size:calc(14px*var(--zf,1));text-align:center">↩ Retour</button>
     </div>
   </div>
 </div>
@@ -7220,8 +7240,8 @@ function renderStopChipsMain(s) {
   if(!cont||!sb) return;
   const stops=s.active_stops||[];
   const hasAny=stops.length>0||s.is_paused;
-  if(!hasAny){sb.classList.remove('on');cont.innerHTML='';_lastMainChipKeys='';return;}
-  sb.classList.add('on');
+  if(!hasAny){sb.classList.remove('on','stop-blink');cont.innerHTML='';_lastMainChipKeys='';return;}
+  sb.classList.add('on','stop-blink');
   const newKeys=stops.join(',')+(s.is_paused?'|pause':'');
   if(newKeys===_lastMainChipKeys){
     // Même set de stops : mettre à jour seulement les timers
@@ -7257,8 +7277,10 @@ function renderStopChips(s) {
   if(!cont||!sb) return;
   const stops=s.active_stops||[];
   const hasAny=stops.length>0||s.is_paused;
-  if(!hasAny){sb.classList.remove('on');cont.innerHTML='';return;}
-  sb.classList.add('on');
+  const btnDeclarer=document.getElementById('btn-declarer-arret');
+  if(!hasAny){sb.classList.remove('on','stop-blink');cont.innerHTML='';if(btnDeclarer)btnDeclarer.classList.remove('girophare');return;}
+  sb.classList.add('on','stop-blink');
+  if(btnDeclarer)btnDeclarer.classList.add('girophare');
   let html='';
   stops.forEach(k=>{
     const lbl=getEvtLabel(k);
@@ -7926,7 +7948,24 @@ async function skipInterposte(){
   if(window._finPosteMode){window._finPosteMode=false;await _doGoFinPoste();}else{goTab('prod');}
 }
 
-async function doCancelProd(){
+function doCancelProd(){
+  const evts=ST&&ST.evts?ST.evts:[];
+  const listEl=document.getElementById('cancel-prod-list');
+  if(listEl){
+    if(evts.length===0){
+      listEl.innerHTML='<div style="color:#6b7280;text-align:center;font-style:italic">Aucune déclaration enregistrée.</div>';
+    } else {
+      listEl.innerHTML=evts.map(e=>{
+        const typ=e.key?getEvtLabel(e.key):(e.type||'Événement');
+        const dur=e.duree||'';
+        return `<div style="padding:4px 0;border-bottom:1px solid #fecaca;display:flex;justify-content:space-between"><span>• ${esc(typ)}</span><span style="color:#dc2626;font-weight:700">${dur}</span></div>`;
+      }).join('')+'<div style="margin-top:6px;font-weight:700;color:#dc2626;text-align:center">⚠️ Toutes ces données seront supprimées.</div>';
+    }
+  }
+  openM('m-cancel-prod');
+}
+async function _doConfirmCancelProd(){
+  closeM('m-cancel-prod');
   await fetch('/api/force_reset_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   await pollState();
   goTab('main');
@@ -8432,12 +8471,12 @@ function openDegradeModal(){
   if(tl) tl.textContent='🟡 MODE DÉGRADÉ — Choisir le motif';
   if(!bd) return;
   if(!motifs.length){
-    bd.innerHTML='<div style="color:#fbbf24;font-size:calc(12px*var(--zf,1));text-align:center;padding:12px;background:rgba(220,38,38,.15);border-radius:10px;border:1px solid rgba(220,38,38,.3)">Aucun motif configuré.<br>Veuillez d\'abord les ajouter dans les Paramètres.</div>';
+    bd.innerHTML='<div style="color:#92400e;font-size:calc(12px*var(--zf,1));text-align:center;padding:12px;background:#fffbeb;border-radius:10px;border:1px solid #fbbf24">Aucun motif configuré.<br>Veuillez d\'abord les ajouter dans les Paramètres.</div>';
     document.getElementById('m-degrade-confirm').style.display='none';
   } else {
     let html='<div style="display:flex;flex-direction:column;gap:8px">';
     motifs.forEach(function(m,i){
-      html+=`<label style="display:flex;align-items:center;gap:10px;padding:12px 16px;border:1.5px solid rgba(202,138,4,.35);border-radius:12px;cursor:pointer;background:linear-gradient(135deg,rgba(202,138,4,.15) 0%,rgba(146,64,14,.18) 100%);box-shadow:0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08);transition:all .15s" onmouseover="this.style.boxShadow='0 0 20px rgba(202,138,4,.4),0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.12)'" onmouseout="this.style.boxShadow='0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08)'"><input type="radio" name="deg-motif" value="${esc(m)}" ${i===0?'checked':''}> <span style="font-weight:800;color:#fcd34d;font-size:calc(13px*var(--zf,1));text-shadow:0 0 10px rgba(202,138,4,.5)">${esc(m)}</span></label>`;
+      html+=`<label style="display:flex;align-items:center;gap:10px;padding:12px 16px;border:1.5px solid #fbbf24;border-radius:12px;cursor:pointer;background:linear-gradient(135deg,#fffbeb,#fef3c7);box-shadow:0 2px 8px rgba(202,138,4,.15),inset 0 1px 0 rgba(255,255,255,.8);transition:all .15s" onmouseover="this.style.background='linear-gradient(135deg,#fef3c7,#fde68a)';this.style.boxShadow='0 4px 14px rgba(202,138,4,.25),inset 0 1px 0 rgba(255,255,255,.8)'" onmouseout="this.style.background='linear-gradient(135deg,#fffbeb,#fef3c7)';this.style.boxShadow='0 2px 8px rgba(202,138,4,.15),inset 0 1px 0 rgba(255,255,255,.8)'"><input type="radio" name="deg-motif" value="${esc(m)}" ${i===0?'checked':''}> <span style="font-weight:800;color:#92400e;font-size:calc(13px*var(--zf,1))">${esc(m)}</span></label>`;
     });
     html+='</div>';
     bd.innerHTML=html;
