@@ -5407,6 +5407,9 @@ select{cursor:default}
         <button class="acc-btn acc-green" id="btn-start" onclick="doStartProd()"><span class="act-icon">▶</span><span>Démarrer production</span></button>
         <button id="btn-declarer-arret-main" class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-main-lbl">Déclarer un arrêt</span></button>
         <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
+        <button class="acc-btn" onclick="doNettoyage()" style="background:radial-gradient(ellipse at 50% 25%,#fed7aa 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
+        <button class="acc-btn" onclick="doPause()" style="background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">☕</span><span>Pause</span></button>
+        <button class="acc-btn" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
       </div>
     </div>
@@ -5741,6 +5744,14 @@ select{cursor:default}
       <input type="hidden" id="ps-start-iso">
       <input type="hidden" id="ps-gap-s">
       <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Déclarer comme :</div>
+      <!-- Raccourcis rapides -->
+      <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px">
+        <button class="btn" style="background:linear-gradient(145deg,#fff7ed,#fed7aa);border:2px solid #f97316;color:#9a3412;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 12px;border-radius:10px;box-shadow:0 3px 0 #c2410c" onclick="psPick('Nettoyage court')">🧹 Nettoyage court</button>
+        <button class="btn" style="background:linear-gradient(145deg,#fff7ed,#fdba74);border:2px solid #ea580c;color:#9a3412;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 12px;border-radius:10px;box-shadow:0 3px 0 #b45309" onclick="psPick('Nettoyage long')">🧹 Nettoyage long</button>
+        <button class="btn" style="background:linear-gradient(145deg,#fff7ed,#fb923c);border:2px solid #c2410c;color:#7c2d12;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 12px;border-radius:10px;box-shadow:0 3px 0 #92400e" onclick="psPick('Nettoyage très long')">🧹 Nettoyage très long</button>
+        <button class="btn" style="background:linear-gradient(145deg,#f8fafc,#e2e8f0);border:2px solid #64748b;color:#334155;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 12px;border-radius:10px;box-shadow:0 3px 0 #475569" onclick="psPick('Pause')">☕ Pause</button>
+        <button class="btn" style="background:linear-gradient(145deg,#f5f3ff,#ddd6fe);border:2px solid #8b5cf6;color:#4c1d95;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 12px;border-radius:10px;box-shadow:0 3px 0 #6d28d9" onclick="psPick('Réunion')">🗣️ Réunion</button>
+      </div>
       <div id="ps-stop-btns" style="margin-bottom:10px"></div>
       <div style="margin-bottom:10px;display:flex;gap:6px">
         <input id="ps-custom" placeholder="Ou saisir librement…" style="flex:1;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
@@ -7752,6 +7763,13 @@ async function psIgnorer(){
   closeM('m-preshift');
   _pendingGapIdx++;
   _showNextGap();
+}
+
+// ── Sélection rapide dans m-preshift ──
+function psPick(lbl){
+  const el=document.getElementById('ps-custom');
+  if(el) el.value=lbl;
+  confirmPsAsStop();
 }
 
 // ── Choix pré-poste ──
