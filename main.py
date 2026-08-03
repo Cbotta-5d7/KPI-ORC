@@ -3124,7 +3124,45 @@ def api_period_report():
         trs_by_day[day]['elapsed_s'] += elapsed_s
         trs_by_day[day]['sum_expected'] += _xl_theorique
         _cad_s = _xl.get('cadence_h') or (round(s['tot_equiv']/utile_min*60) if utile_min>0 else 0)
-        _of_rows_sd = [{"of":str(r[1] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"qte_fab":str(r[19] or ""),"equiv":str(r[21] or ""),"fibre":str(r[11] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"nb_pers":str(r[6] or ""),"trs":str(r[24] or ""),"degrade_min":round(_deg_overlap_s(_hms_to_sec(str(r[16] or "00:00:00")),_hms_to_sec(str(r[17] or "00:00:00")),_deg_ivs_pr)/60,1)} for r in s.get('prod_raws',[])]
+        _of_rows_sd = []
+        for _rp in s.get('prod_raws', []):
+            try:
+                _deb_rp = _hms_to_sec(str(_rp[16] or "00:00:00"))
+                _fin_rp = _hms_to_sec(str(_rp[17] or "00:00:00"))
+                _dur_rp = _fin_rp - _deb_rp if _fin_rp > _deb_rp else _hms_to_sec(str(_rp[18] or "00:00:00"))
+                _plan_rp = _deg_overlap_s(_deb_rp, _fin_rp, _plan_ivs_pr)
+                _deg_rp  = _deg_overlap_s(_deb_rp, _fin_rp, _deg_ivs_pr)
+                _nb_p_rp = max(1, int(float(str(_rp[6] or 1) or 1)))
+                _pct_rp  = get_pct_cadence(_nb_p_rp)
+                _adj_rp  = max(1.0, _dur_rp - _plan_rp - _deg_rp)
+                _eq_rp   = float(str(_rp[21] or 0).replace(",", "."))
+                _qte_rp  = float(str(_rp[19] or 0).replace(",", "."))
+                _pcoef_rp = _eq_rp / _qte_rp if _qte_rp > 0 and _eq_rp > 0 else 1.0
+                _exp_rp  = prod_ref * _pct_rp * _adj_rp / 28800 if prod_ref > 0 else 0.0
+                _obj_rp  = round(_exp_rp / _pcoef_rp, 1) if _exp_rp > 0 else -1
+            except:
+                _plan_rp = 0; _deg_rp = 0; _obj_rp = -1
+            _of_rows_sd.append({
+                "of":str(_rp[1] or ""),"debut":str(_rp[16] or "")[:5],"fin":str(_rp[17] or "")[:5],
+                "duree":str(_rp[18] or ""),"qte_fab":str(_rp[19] or ""),"qte_emb":str(_rp[20] or ""),
+                "equiv":str(_rp[21] or ""),"cadence_h":str(_rp[22] if len(_rp)>22 else ""),
+                "cadence_h_pers":str(_rp[23] if len(_rp)>23 else ""),"fibre":str(_rp[11] or ""),
+                "taille":str(_rp[7] or ""),"code_prod":str(_rp[8] or ""),"type_prod":str(_rp[9] or ""),
+                "poids":str(_rp[10] or ""),"of_taie":str(_rp[12] or ""),"traca":str(_rp[13] or ""),
+                "ref_taie":str(_rp[14] or ""),"nb_pers":str(_rp[6] or ""),"copilote":str(_rp[5] or ""),
+                "trs":str(_rp[24] if len(_rp)>24 else ""),
+                "comment":str(_rp[35] if len(_rp)>35 else ""),
+                "prevu_hors_trs":str(_rp[36] if len(_rp)>36 else ""),
+                "qte_init_taie":str(_rp[25] if len(_rp)>25 else ""),
+                "nb_taie2":str(_rp[26] if len(_rp)>26 else ""),
+                "nb_def_cout":str(_rp[27] if len(_rp)>27 else ""),
+                "mq_taie":str(_rp[28] if len(_rp)>28 else ""),
+                "mq_housse":str(_rp[29] if len(_rp)>29 else ""),
+                "nb_pp":str(_rp[30] if len(_rp)>30 else ""),
+                "duree_mq_mp":str(_rp[32] if len(_rp)>32 else ""),
+                "manquant_pers":str(_rp[33] if len(_rp)>33 else ""),
+                "degrade_min":round(_deg_rp/60,1),"plan_stop_s":round(_plan_rp),"objectif":_obj_rp,
+            })
         _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or ""))} for _rn2, re2 in s.get('evt_rows',[])]
         agg_degrade_min += (_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s / 60.0)
         sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd,'_deb_dt':_pdeb})
@@ -10176,7 +10214,7 @@ async function loadKPI(){
 
 // ── HISTORY ROW DETAIL ──
 function showHistRowDetail(key){
-  const r=window._rowMap&&window._rowMap[String(key)];
+  let r=window._rowMap&&window._rowMap[String(key)];
   if(!r) return;
   const isProd=r._rowType==='prod';
   let ofEvts=[];
