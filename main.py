@@ -4105,30 +4105,30 @@ select{cursor:default}
     <!-- KPI accueil — POSTE ACTUEL -->
     <div style="background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;padding:4px 8px;display:flex;gap:6px;align-items:stretch;flex-wrap:wrap">
 
-      <!-- Tableau de bord pilote -->
-      <div id="acc-pilot-card" style="min-width:221px;max-width:260px;background:linear-gradient(145deg,#1e3a8a,#1e40af);border-radius:10px;padding:8px 14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;box-shadow:0 2px 8px rgba(30,58,138,.25)">
-        <div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.55)">Tableau de bord</div>
-        <div id="acc-pilot-name" style="font-size:calc(16px*var(--zf,1));font-weight:800;color:#fff;text-align:center;word-break:break-word;line-height:1.2">—</div>
-        <div id="acc-pilot-poste" style="font-size:calc(12px*var(--zf,1));color:rgba(255,255,255,.65);text-align:center">—</div>
-        <div id="acc-pilot-plage" style="font-size:calc(12px*var(--zf,1));color:rgba(255,255,255,.85);font-weight:700;text-align:center;margin-top:1px;display:none"></div>
+      <!-- Tableau de bord pilote — affiché à DROITE via order:10 -->
+      <div id="acc-pilot-card" style="order:10;min-width:280px;flex:1;max-width:380px;background:linear-gradient(145deg,#1e3a8a,#1e40af);border-radius:10px;padding:12px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(30,58,138,.25)">
+        <div style="font-size:calc(13px*var(--zf,1));font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,.55)">Tableau de bord</div>
+        <div id="acc-pilot-name" style="font-size:calc(24px*var(--zf,1));font-weight:900;color:#fff;text-align:center;word-break:break-word;line-height:1.15">—</div>
+        <div id="acc-pilot-poste" style="font-size:calc(16px*var(--zf,1));color:rgba(255,255,255,.7);text-align:center">—</div>
+        <div id="acc-pilot-plage" style="font-size:calc(16px*var(--zf,1));color:rgba(255,255,255,.9);font-weight:700;text-align:center;margin-top:2px;display:none"></div>
       </div>
 
       <!-- POSTE ACTUEL encart principal -->
       <div style="flex:0 0 auto;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:6px 10px;display:flex;align-items:center;gap:10px">
         <!-- Répartition temps (pie) — à GAUCHE -->
         <div style="flex-shrink:0;text-align:center">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Répartition</div>
-          <svg id="pie-poste-acc" viewBox="0 0 130 100" style="width:110px;height:85px;display:block;margin:0 auto"></svg>
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Répartition</div>
+          <svg id="pie-poste-acc" viewBox="0 0 130 100" style="width:220px;height:170px;display:block;margin:0 auto"></svg>
         </div>
         <!-- Jauge TRS — au centre -->
         <div style="flex-shrink:0;text-align:center">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">TRS Poste</div>
-          <svg viewBox="0 0 100 62" style="width:110px;height:68px;display:block;margin:0 auto">
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">TRS Poste</div>
+          <svg viewBox="0 0 100 62" style="width:220px;height:136px;display:block;margin:0 auto">
             <path d="M8,54 A42,42 0 0,1 92,54" fill="none" stroke="rgba(0,0,0,.12)" stroke-width="11" stroke-linecap="round"/>
             <path id="gauge-poste-acc-arc" d="M8,54 A42,42 0 0,1 92,54" fill="none" stroke="#16a34a" stroke-width="11" stroke-linecap="round" stroke-dasharray="0,132"/>
             <text x="50" y="50" text-anchor="middle" font-size="20" font-weight="800" fill="#15803d" id="gauge-poste-acc-pct">—</text>
           </svg>
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;margin-top:-4px" id="gauge-poste-acc-lbl">—</div>
+          <div style="font-size:calc(13px*var(--zf,1));font-weight:700;color:#0369a1;margin-top:-4px" id="gauge-poste-acc-lbl">—</div>
         </div>
         <!-- Stats — à droite -->
         <div style="flex:0 0 auto">
@@ -4148,7 +4148,7 @@ select{cursor:default}
       </div>
 
       <!-- Arrêts prévus — barres budget -->
-      <div style="flex:0 0 auto;min-width:140px;background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column">
+      <div style="flex:0 0 auto;min-width:196px;background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
           <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">⏱ Arrêts prévus du poste</span>
           <button onclick="openBudgetOverrideModal()" id="btn-bov-acc" style="display:none;background:none;border:1px solid #92400e;border-radius:4px;color:#92400e;font-size:calc(10px*var(--zf,1));padding:1px 7px;cursor:pointer" title="Modifier le budget pour ce poste">✏️</button>
