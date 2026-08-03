@@ -2344,11 +2344,22 @@ def api_history():
     all_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() in ("production","prod","")]
     def _hist_key(item):
         _, r = item
-        # Use col AN (idx 39) as date, fall back to col C (idx 2)
         d_val = (r[39] if len(r) > 39 and r[39] else None) or (r[2] if r[2] else None)
-        d_str = _row_date(d_val) if d_val else ""
-        p = d_str.split("/") if d_str else []
-        d_tup = (int(p[2]), int(p[1]), int(p[0])) if len(p) == 3 else (0, 0, 0)
+        d_tup = (0, 0, 0)
+        if d_val:
+            if hasattr(d_val, 'year'):
+                d_tup = (d_val.year, d_val.month, d_val.day)
+            else:
+                s = str(d_val)
+                p = s.split("/")
+                if len(p) == 3:
+                    try: d_tup = (int(p[2]), int(p[1]), int(p[0]))
+                    except: pass
+                else:
+                    q = s[:10].split("-")
+                    if len(q) == 3:
+                        try: d_tup = (int(q[0]), int(q[1]), int(q[2]))
+                        except: pass
         t_str = str(r[16] or "")[:5]
         return (d_tup, t_str)
     all_rows.sort(key=_hist_key, reverse=True)
@@ -4263,31 +4274,31 @@ select{cursor:default}
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
       <div class="recap-col" style="width:310px">
         <div class="recap-hdr">Arrêts</div>
-        <div class="recap-body" id="recap-list" style="max-height:120px;flex:none;overflow-y:auto"></div>
+        <div class="recap-body" id="recap-list"></div>
         <!-- Budget arrêts prévus -->
         <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;background:#fffbeb">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <span style="font-size:calc(9px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">⏱ Arrêts prévus du poste</span>
-            <button onclick="openBudgetOverrideModal()" id="btn-bov-prod" style="display:none;background:none;border:1px solid #92400e;border-radius:4px;color:#92400e;font-size:calc(9px*var(--zf,1));padding:1px 6px;cursor:pointer" title="Modifier le budget pour ce poste">✏️</button>
+            <span style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">⏱ Arrêts prévus du poste</span>
+            <button onclick="openBudgetOverrideModal()" id="btn-bov-prod" style="display:none;background:none;border:1px solid #92400e;border-radius:4px;color:#92400e;font-size:calc(11px*var(--zf,1));padding:1px 6px;cursor:pointer" title="Modifier le budget pour ce poste">✏️</button>
           </div>
           <div id="budget-bars-prod"></div>
         </div>
         <!-- Gauge + Pie: OF uniquement -->
         <div style="padding:6px;border-top:1px solid var(--border);display:flex;flex-direction:column;align-items:center;flex-shrink:0">
-          <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;margin-bottom:2px;letter-spacing:.4px">TRS — OF en cours</div>
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;margin-bottom:2px;letter-spacing:.4px">TRS — OF en cours</div>
           <svg viewBox="0 0 100 56" style="width:100%;max-width:98px">
             <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
             <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
             <text x="50" y="46" text-anchor="middle" font-size="17" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
           </svg>
-          <div class="gauge-lbl" style="font-size:calc(9px*var(--zf,1))">TRS OF</div>
-          <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:4px;margin-bottom:2px">Répartition temps OF</div>
+          <div class="gauge-lbl" style="font-size:calc(11px*var(--zf,1))">TRS OF</div>
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:4px;margin-bottom:2px">Répartition temps OF</div>
           <div id="pie-of" style="width:100%;max-width:154px"></div>
         </div>
         <!-- Bottom action buttons -->
         <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0;background:var(--card)">
-          <button class="act-btn act-cancel" onclick="doCancelProd()" style="width:100%;min-height:44px;padding:8px 12px;font-size:calc(14px*var(--zf,1))"><span class="act-icon" style="font-size:calc(18px*var(--zf,1))">✖</span>Annuler prod</button>
-          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()" title="Remplir le formulaire" style="width:100%;min-height:121px;padding:10px 12px;font-size:calc(20px*var(--zf,1));margin-top:8px"><span class="act-icon" style="font-size:calc(33px*var(--zf,1))">✅</span>Fin d'OF/prod</button>
+          <button class="act-btn act-cancel" onclick="doCancelProd()" style="width:100%;min-height:44px;padding:8px 12px;font-size:calc(17px*var(--zf,1))"><span class="act-icon" style="font-size:calc(22px*var(--zf,1))">✖</span>Annuler prod</button>
+          <button class="act-btn act-endprod" id="btn-endprod" onclick="doEndProdPreview()" title="Remplir le formulaire" style="width:100%;min-height:121px;padding:10px 12px;font-size:calc(24px*var(--zf,1));margin-top:8px"><span class="act-icon" style="font-size:calc(40px*var(--zf,1))">✅</span>Fin d'OF/prod</button>
         </div>
       </div>
     </div>
@@ -7435,16 +7446,14 @@ function updateGauge(s){
   const stopS=s.stop_wall_s||0;
   const ofDur=s.of_elapsed_s||0;
   const prodSof=Math.max(0,ofDur-stopS);
-  // Horizontal bars for pie-of (Prod en cours)
+  // Barre unique segmentée pour pie-of (Prod en cours)
   const _pOfEl=document.getElementById('pie-of');
   if(_pOfEl){
-    const _ofData=[{label:'Prod',value:prodSof,color:'#16a34a'},{label:'Arrêts',value:stopS,color:'#dc2626'}];
-    const _ofTot=_ofData.reduce((a,b)=>a+b.value,0);
-    _pOfEl.innerHTML=_ofData.map(d=>{
-      const _pct=_ofTot>0?Math.round(d.value/_ofTot*100):0;
-      const _min=Math.round(d.value/60);
-      return`<div style="margin-bottom:5px"><div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:${d.color};margin-bottom:2px;white-space:nowrap">${d.label} — ${_min}min</div><div style="background:#e2e8f0;border-radius:3px;height:14px;position:relative;overflow:hidden"><div style="height:100%;background:${d.color};border-radius:3px;width:${_pct}%;opacity:.85;position:absolute;top:0;left:0"></div><span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:calc(9px*var(--zf,1));font-weight:800;color:#1e293b">${_pct}%</span></div></div>`;
-    }).join('');
+    const _ofTot=prodSof+stopS;
+    const _pctP=_ofTot>0?Math.round(prodSof/_ofTot*100):0;
+    const _pctA=_ofTot>0?100-_pctP:0;
+    const _minP=Math.round(prodSof/60),_minA=Math.round(stopS/60);
+    _pOfEl.innerHTML=`<div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:var(--gray);margin-bottom:4px;text-align:center">Prod <span style="color:#16a34a">${_minP}min</span> · Arrêts <span style="color:#dc2626">${_minA}min</span></div><div style="height:20px;border-radius:5px;overflow:hidden;display:flex;width:100%"><div style="width:${_pctP}%;background:#16a34a;display:flex;align-items:center;justify-content:center;font-size:calc(10px*var(--zf,1));font-weight:800;color:#fff;white-space:nowrap;overflow:hidden">${_pctP>10?_pctP+'%':''}</div><div style="width:${_pctA}%;background:#dc2626;display:flex;align-items:center;justify-content:center;font-size:calc(10px*var(--zf,1));font-weight:800;color:#fff;white-space:nowrap;overflow:hidden">${_pctA>10?_pctA+'%':''}</div></div>`;
   }
   // For poste pie — compute from shift start
   const shiftTotal=s.shift_start_iso?(Date.now()-new Date(s.shift_start_iso).getTime())/1000:0;
@@ -9391,8 +9400,8 @@ async function calcPeriodReport(autoLoad){
   if(d.sessions_detail&&d.sessions_detail.length>0){
     const sd=d.sessions_detail;
     const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),100);
-    const _vertA=sd.length>5;
-    const CH=280,padT=20,padB=_vertA?90:56,padL=4,padR=4;
+    const _vertA=sd.length>8;
+    const CH=280,padT=20,padB=_vertA?80:56,padL=4,padR=4;
     const gH=CH-padT-padB;
     const n=sd.length;
     const WB=Math.max(22,Math.min(60,Math.floor((420-padL-padR-n*4)/n)));
@@ -9410,10 +9419,9 @@ async function calcPeriodReport(autoLoad){
       if(s.trs>=0)svgB+=`<text x="${cx}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${s.trs.toFixed(0)}%</text>`;
       const dp=s.date.split('/');
       if(_vertA){
-        const yA=padT+gH+6;
+        const yA=padT+gH+4;
         svgL+=`<text transform="rotate(-90,${cx},${yA})" x="${cx}" y="${yA}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
-        svgL+=`<text transform="rotate(-90,${cx},${yA+13})" x="${cx}" y="${yA+13}" text-anchor="end" font-size="10" fill="#6366f1">${esc((s.pilot||'').slice(0,12))}</text>`;
-        svgL+=`<text transform="rotate(-90,${cx},${yA+26})" x="${cx}" y="${yA+26}" text-anchor="end" font-size="10" fill="#94a3b8">${esc((s.poste||'').slice(0,12))}</text>`;
+        svgL+=`<text transform="rotate(-90,${cx},${yA+13})" x="${cx}" y="${yA+13}" text-anchor="end" font-size="10" fill="#6366f1">${esc((s.pilot||'').slice(0,14))}</text>`;
       }else{
         svgL+=`<text x="${cx}" y="${padT+gH+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
         svgL+=`<text x="${cx}" y="${padT+gH+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
@@ -9429,8 +9437,8 @@ async function calcPeriodReport(autoLoad){
     const sd2=d.sessions_detail;
     const cadRef=Math.round((d.cadence_ref_pcs_min||0)*60);
     const maxCad=Math.max(...sd2.map(s=>s.cadence_h||0),cadRef,1);
-    const _vertB=sd2.length>5;
-    const CH2=280,padT2=20,padB2=_vertB?90:56,padL2=4,padR2=4;
+    const _vertB=sd2.length>8;
+    const CH2=280,padT2=20,padB2=_vertB?80:56,padL2=4,padR2=4;
     const gH2=CH2-padT2-padB2;
     const n2=sd2.length;
     const WB2=Math.max(22,Math.min(60,Math.floor((420-padL2-padR2-n2*4)/n2)));
@@ -9449,10 +9457,9 @@ async function calcPeriodReport(autoLoad){
       if(v>0)svgB2+=`<text x="${cx2}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${v}</text>`;
       const dp=s.date.split('/');
       if(_vertB){
-        const yB=padT2+gH2+6;
+        const yB=padT2+gH2+4;
         svgL2+=`<text transform="rotate(-90,${cx2},${yB})" x="${cx2}" y="${yB}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
-        svgL2+=`<text transform="rotate(-90,${cx2},${yB+13})" x="${cx2}" y="${yB+13}" text-anchor="end" font-size="10" fill="#6366f1">${esc((s.pilot||'').slice(0,12))}</text>`;
-        svgL2+=`<text transform="rotate(-90,${cx2},${yB+26})" x="${cx2}" y="${yB+26}" text-anchor="end" font-size="10" fill="#94a3b8">${esc((s.poste||'').slice(0,12))}</text>`;
+        svgL2+=`<text transform="rotate(-90,${cx2},${yB+13})" x="${cx2}" y="${yB+13}" text-anchor="end" font-size="10" fill="#6366f1">${esc((s.pilot||'').slice(0,14))}</text>`;
       }else{
         svgL2+=`<text x="${cx2}" y="${padT2+gH2+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
         svgL2+=`<text x="${cx2}" y="${padT2+gH2+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
