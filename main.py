@@ -4249,13 +4249,13 @@ select{cursor:default}
             <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
             <div class="fr"><label>Co-Pilote</label><select id="f-copilote" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave()" onfocus="openCodeInput('nb_pers','Nb Personnes','num',2);this.blur()" readonly></div>
+            <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave();_applyFormAndUpdateGauge()" onclick="openCodeInput('nb_pers','Nb Personnes','num',2)"></div>
           </div>
           <!-- Zone Production -->
           <div class="fzone zp">
             <h4>🏭 Production</h4>
-            <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()" onfocus="openCodeInput('qte_fab','Qté Fabriquée','num',5);this.blur()" readonly></div>
-            <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()" onfocus="openCodeInput('qte_emb','Qté Emballée','num',5);this.blur()" readonly></div>
+            <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0" oninput="scheduleAutoSave();_applyFormAndUpdateGauge()" onclick="openCodeInput('qte_fab','Qté Fabriquée','num',5)"></div>
+            <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave();_applyFormAndUpdateGauge()" onclick="openCodeInput('qte_emb','Qté Emballée','num',5)"></div>
             <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
@@ -7889,13 +7889,26 @@ let _codeInputTarget = null;
 let _csDigits = ['','','','','','','','',''];
 let _csFormat = '6_3'; // '9' for 9-digit, '6_3' for 6+sep+3, 'num' for variable-length numeric
 let _csMaxLen = 9;
+let _csNumBuf = ''; // 'num' mode: digits typed so far (right-push style)
 function _csRender(){
   const container=document.getElementById('code-slots');if(!container) return;
   const N=_csMaxLen;
+  let inner='';
+  if(_csFormat==='num'){
+    // Right-push: leading zeros = gray, typed digits = blue
+    const display=_csNumBuf.padStart(N,'0');
+    const nTyped=_csNumBuf.length;
+    for(let i=0;i<N;i++){
+      const isTyped=i>=N-nTyped;
+      const cls='cs'+(isTyped?' cs-filled':'')+(nTyped===N?' cs-done':'');
+      inner+=`<div class="${cls}" id="cs-${i}">${display[i]}</div>`;
+    }
+    container.innerHTML=inner;
+    return;
+  }
   const slice=_csDigits.slice(0,N);
   const allFilled=slice.every(d=>d);
   const aiActive=allFilled?-1:slice.findIndex(d=>!d);
-  let inner='';
   for(let i=0;i<N;i++){
     if(_csFormat==='6_3'&&i===6) inner+=`<div style="font-size:calc(26px*var(--zf,1));font-weight:900;color:#94a3b8;line-height:1;align-self:center;margin:0 3px">_</div>`;
     const d=_csDigits[i]||'';
@@ -7905,6 +7918,16 @@ function _csRender(){
   container.innerHTML=inner;
 }
 function _csKeydown(e){
+  if(_csFormat==='num'){
+    if(/^[0-9]$/.test(e.key)){
+      e.preventDefault();
+      if(_csNumBuf.length<_csMaxLen){_csNumBuf+=e.key;_csRender();if(_csNumBuf.length>=_csMaxLen)setTimeout(_codeInputConfirm,80);}
+    } else if(e.key==='Backspace'){
+      e.preventDefault();_csNumBuf=_csNumBuf.slice(0,-1);_csRender();
+    } else if(e.key==='Enter'){e.preventDefault();_codeInputConfirm();}
+    else if(e.key==='Escape'){e.preventDefault();closeM('m-code-input');}
+    return;
+  }
   if(/^[0-9]$/.test(e.key)){
     e.preventDefault();
     const pos=_csDigits.slice(0,_csMaxLen).findIndex(d=>!d);
@@ -7926,14 +7949,11 @@ function openCodeInput(fieldId, label, fmt, maxLen) {
   _csMaxLen = fmt==='num'?(maxLen||5):9;
   document.getElementById('code-input-lbl').textContent = label || 'Code';
   _csDigits = Array(9).fill('');
-  if(fmt==='num'){
-    const curVal=String(parseInt((document.getElementById('f-'+fieldId)||{}).value||'')||'').replace(/\D/g,'');
-    curVal.slice(0,_csMaxLen).split('').forEach((d,i)=>{_csDigits[i]=d;});
-  }
+  _csNumBuf = ''; // always start empty for 'num' mode
   const hint=document.getElementById('cs-hint');
   if(hint){
     if(fmt==='9') hint.textContent='Tapez les 9 chiffres du N° OF';
-    else if(fmt==='num') hint.textContent=`Saisissez la valeur (max ${_csMaxLen} chiffres)`;
+    else if(fmt==='num') hint.textContent=`Saisissez la valeur · max ${_csMaxLen} chiffres · ⌫ pour effacer`;
     else hint.textContent='Tapez les 6 premiers puis les 3 derniers chiffres';
   }
   _csRender();
@@ -7942,9 +7962,8 @@ function openCodeInput(fieldId, label, fmt, maxLen) {
 }
 function _codeInputConfirm() {
   if(_csFormat==='num'){
-    const digits=_csDigits.slice(0,_csMaxLen).join('');
-    const numVal=parseInt(digits,10);
-    if(!digits||isNaN(numVal)||numVal<=0){toast('Valeur requise','err');return;}
+    const numVal=parseInt(_csNumBuf,10);
+    if(!_csNumBuf||isNaN(numVal)||numVal<=0){toast('Valeur requise','err');return;}
     const field=document.getElementById('f-'+_codeInputTarget);
     if(field){field.value=numVal;scheduleAutoSave();}
     closeM('m-code-input');
