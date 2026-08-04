@@ -2187,6 +2187,7 @@ def api_preview_end_prod():
         "debut":_S["of_start"].strftime("%H:%M:%S"),
         "now_str":now.strftime("%H:%M:%S"),
         "of_num":v.get("of_num",""),
+        "degrade_s":round(_prev_deg_s,0),
     })
 
 @flask_app.route('/api/start_stop', methods=['POST'])
@@ -5069,10 +5070,10 @@ select{cursor:default}
       </div>
       <div class="card" style="padding:8px;margin-bottom:0">
         <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:4px">Timeline</div>
-        <svg id="ep-tl" viewBox="0 0 800 52" preserveAspectRatio="none" style="width:100%;height:52px;display:block">
+        <svg id="ep-tl" viewBox="0 0 800 60" preserveAspectRatio="none" style="width:100%;height:60px;display:block">
           <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
         </svg>
-        <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span></div>
+        <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Prod dégradé</span></div>
       </div>
     </div>
     <div class="mftr">
@@ -7093,8 +7094,10 @@ function renderEPModal(d,f){
   const ofNum=f.of_num||d.of_num||'';
   document.getElementById('ep-title').textContent=`⏹ Fin d'OF/prod${ofNum?' — '+ofNum:''}`;
   // Graphs
+  const _epDegS=d.degrade_s||0;
   drawPie('ep-pie',[
-    {label:'Prod',value:d.prod_s||0,color:'#16a34a'},
+    {label:'Prod',value:Math.max(0,(d.prod_s||0)-_epDegS),color:'#16a34a'},
+    {label:'Dégradé',value:_epDegS,color:'#f59e0b'},
     {label:'Arrêts',value:d.stop_s||0,color:'#dc2626'},
   ]);
   drawGauge('ep-gauge-arc','ep-gauge-pct',d.trs>=0?d.trs:0);
@@ -7162,15 +7165,21 @@ function drawPie(svgId, segments, opts) {
   const svg=document.getElementById(svgId);if(!svg) return;
   const fCenter=(opts&&opts.fCenter)||13;
   const fSub=(opts&&opts.fSub)||7;
-  const fLeg=(opts&&opts.fLeg)||7;
+  const showLeg=!(opts&&opts.fLeg===0);
+  const fLeg=showLeg?((opts&&opts.fLeg)||9):0;
   const total=segments.reduce((a,s)=>a+s.value,0);
-  if(total<=0){svg.innerHTML=`<text x="65" y="60" text-anchor="middle" font-size="${fCenter}" fill="#94a3b8">Pas de données</text>`;return;}
-  const cx=65,cy=57,r=44,ir=24;let html='',startAngle=-Math.PI/2;
+  const cx=65,cy=57,r=44,ir=24;
   const visSegs=segments.filter(s=>s.value>0&&(s.value/total)*2*Math.PI>=0.001);
+  const legBase=cy+r+9;
+  const legLineH=12;
+  const totalH=showLeg&&visSegs.length>0?(legBase+visSegs.length*legLineH+4):(cy+r+6);
+  svg.setAttribute('viewBox',`0 0 130 ${totalH}`);
+  svg.style.height='auto';
+  if(total<=0){svg.innerHTML=`<text x="${cx}" y="${cy}" text-anchor="middle" font-size="${fCenter}" fill="#94a3b8">Pas de données</text>`;return;}
+  let html='',startAngle=-Math.PI/2;
   if(visSegs.length===1){
-    // 100% — arc dégénéré : dessiner un anneau plein
     html+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${visSegs[0].color}"/>`;
-    html+=`<circle cx="${cx}" cy="${cy}" r="${ir}" fill="#fff"/>`;
+    html+=`<circle cx="${cx}" cy="${cy}" r="${ir}" fill="var(--card,#fff)"/>`;
   } else {
     segments.forEach(seg=>{
       if(seg.value<=0) return;
@@ -7187,12 +7196,14 @@ function drawPie(svgId, segments, opts) {
   const m=segments[0],mp=total>0?Math.round(m.value/total*100):0;
   html+=`<text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="${fCenter}" font-weight="800" fill="#1a1f5e">${mp}%</text>`;
   html+=`<text x="${cx}" y="${cy+15}" text-anchor="middle" font-size="${fSub}" fill="#64748b">${esc(m.label)}</text>`;
-  const legBase=(opts&&opts.legY)||108;
-  let lx=0;segments.filter(s=>s.value>0).forEach(s=>{
-    const p=Math.round(s.value/total*100);
-    html+=`<rect x="${lx}" y="${legBase}" width="8" height="8" fill="${s.color}" rx="1"/>`;
-    html+=`<text x="${lx+11}" y="${legBase+8}" font-size="${fLeg}" fill="#475569" font-weight="600">${esc(s.label)} ${p}%</text>`;lx+=65;
-  });
+  if(showLeg){
+    visSegs.forEach((s,i)=>{
+      const p=Math.round(s.value/total*100);
+      const ly=legBase+i*legLineH;
+      html+=`<rect x="2" y="${ly}" width="8" height="8" fill="${s.color}" rx="1"/>`;
+      html+=`<text x="13" y="${ly+7}" font-size="${fLeg}" fill="#475569" font-weight="600">${esc(s.label)} ${p}%</text>`;
+    });
+  }
   svg.innerHTML=html;
 }
 
@@ -7484,7 +7495,24 @@ function updateGauge(s){
   const shiftTotal=s.shift_start_iso?(Date.now()-new Date(s.shift_start_iso).getTime())/1000:0;
   const shiftStop=_todayStopAccum||0;
   const shiftProd=Math.max(0,shiftTotal-shiftStop);
-  const postePieData=[{label:'Prod',value:shiftProd,color:'#16a34a'},{label:'Arrêts',value:shiftStop,color:'#dc2626'}];
+  let _accDegS=0;
+  const _accShiftMs=s.shift_start_iso?new Date(s.shift_start_iso).getTime():0;
+  (s.degrade_periods_iso||[]).forEach(function(p){
+    if(!p.start||!p.end||!_accShiftMs) return;
+    const _d0=Math.max(new Date(p.start).getTime(),_accShiftMs);
+    const _d1=new Date(p.end).getTime();
+    if(_d1>_d0) _accDegS+=(_d1-_d0)/1000;
+  });
+  if(s.degrade_active&&s.degrade_start_iso&&_accShiftMs){
+    const _d0=Math.max(new Date(s.degrade_start_iso).getTime(),_accShiftMs);
+    const _d1=Date.now();
+    if(_d1>_d0) _accDegS+=(_d1-_d0)/1000;
+  }
+  const postePieData=[
+    {label:'Prod',value:Math.max(0,shiftProd-_accDegS),color:'#16a34a'},
+    {label:'Dégradé',value:_accDegS,color:'#f59e0b'},
+    {label:'Arrêts',value:shiftStop,color:'#dc2626'}
+  ];
   drawPie('pie-poste-acc',postePieData,{fCenter:24,fSub:10,fLeg:0});
 }
 // Accumulateurs poste (mis à jour à chaque loadMainDecl)
@@ -8642,10 +8670,12 @@ async function loadFPData(){
   // Graphs
   const prodS=d.tot_s||0;
   const stopS=stopTotal;
+  const _fpDegS=(d.degrade_min||0)*60;
   drawPie('fp-pie',[
-    {label:'Prod',value:prodS,color:'#16a34a'},
+    {label:'Prod',value:Math.max(0,prodS-_fpDegS),color:'#16a34a'},
+    {label:'Dégradé',value:_fpDegS,color:'#f59e0b'},
     {label:'Arrêts',value:stopS,color:'#dc2626'},
-  ],{fLeg:9,legY:118});
+  ],{fLeg:9});
   const trsS=d.trs_shift!==undefined?d.trs_shift:d.trs;
   drawGauge('fp-gauge-arc','fp-gauge-pct',trsS>=0?trsS:0);
 }
@@ -10054,9 +10084,10 @@ async function loadSessionReport(date,pilot,poste,itemId){
     </div>`;
   // Dessiner gauge et pie (éléments maintenant dans le DOM)
   drawPie('rpt-pie',[
-    {label:'Prod',value:tempsFonctionnement,color:'#16a34a'},
+    {label:'Prod',value:Math.max(0,tempsFonctionnement-degMin),color:'#16a34a'},
+    {label:'Dégradé',value:degMin,color:'#f59e0b'},
     {label:'Arrêts',value:netStopMin,color:'#dc2626'}
-  ],{fCenter:16,fSub:10,fLeg:10,legY:118});
+  ],{fCenter:16,fSub:10,fLeg:10});
 }
 
 function rptBackToList(){
