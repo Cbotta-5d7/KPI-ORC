@@ -7397,7 +7397,7 @@ function updateGauge(s){
     const _d1=Math.min(new Date(p.end).getTime(),_nowMs);
     if(_d1>_d0) _degS+=(_d1-_d0)/1000;
   });
-  const _adjS=Math.max(1,effOfS-_degS/2);
+  const _adjS=Math.max(1,effOfS);
   const _nbPersLive=s.form?parseInt(s.form.nb_pers||1)||1:1;
   const _pctLive=(_persPctMapLocal&&_persPctMapLocal[String(_nbPersLive)])?(_persPctMapLocal[String(_nbPersLive)]/100):1.0;
   let trs=-1;
