@@ -7390,8 +7390,10 @@ function updateGauge(s){
   const prodRef=s.prod_ref||200;
   const ofS=s.of_elapsed_s||0;
   const effOfS=Math.max(1,ofS-ofDed);
-  const qFab=s.form?parseFloat(s.form.qte_fab||0):0;
-  const typeProd=s.form?s.form.type_prod||'':'';
+  const _domQFab=parseFloat((document.getElementById('f-qte_fab')||{}).value||'');
+  const qFab=isNaN(_domQFab)?parseFloat((s.form&&s.form.qte_fab)||0):_domQFab;
+  const _domTypeProd=(document.getElementById('f-type_prod')||{}).value||'';
+  const typeProd=_domTypeProd||(s.form?s.form.type_prod||'':'');
   const coef=(window._equivCoefs&&typeProd&&window._equivCoefs[typeProd])||1;
   const equiv=qFab*coef;
   // Calculer le temps dégradé pour cet OF (live)
@@ -7409,7 +7411,8 @@ function updateGauge(s){
     if(_d1>_d0) _degS+=(_d1-_d0)/1000;
   });
   const _adjS=Math.max(1,effOfS);
-  const _nbPersLive=s.form?parseInt(s.form.nb_pers||1)||1:1;
+  const _domNbPers=parseInt((document.getElementById('f-nb_pers')||{}).value||'');
+  const _nbPersLive=isNaN(_domNbPers)?(s.form?parseInt(s.form.nb_pers||1)||1:1):Math.max(1,_domNbPers);
   const _pctLive=(_persPctMapLocal&&_persPctMapLocal[String(_nbPersLive)])?(_persPctMapLocal[String(_nbPersLive)]/100):1.0;
   let trs=-1;
   if(ofS>0&&prodRef>0&&equiv>0){
