@@ -9421,6 +9421,17 @@ async function calcPeriodReport(autoLoad){
   const trsCol=d.trs_periode>=90?'#16a34a':d.trs_periode>=70?'#f59e0b':d.trs_periode>=0?'#dc2626':'#94a3b8';
   const pertRaw=d.perte_cadence_min||0;
   const pertHtml=pertRaw<0?`<span style="color:#16a34a;font-weight:900">${Math.abs(Math.round(pertRaw))} min de gain</span>`:pertRaw>0?`<span style="color:#dc2626;font-weight:900">${Math.round(pertRaw)} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
+  const _ouv_rj=d.ouverture_min||0;
+  const _cH=(v,r)=>!r?'#64748b':v/r>=0.88?'#16a34a':v/r>=0.70?'#f59e0b':'#dc2626';
+  const _cL=(v,r)=>!r?'#64748b':v/r<=0.08?'#16a34a':v/r<=0.25?'#f59e0b':'#dc2626';
+  const _colFonctRj=_cH(d.temps_fonctionnement_min||0,_ouv_rj);
+  const _colArretRj=_cL(d.net_stop_min||0,_ouv_rj);
+  const _impRj=Math.max(0,(d.net_stop_min||0)-(d.arret_prevu_min||0));
+  const _colImpRj=_cL(_impRj,_ouv_rj);
+  const _colDegRj=_cL(d.tot_degrade_min||0,_ouv_rj);
+  const _colPerteRj=pertRaw<=0?'#16a34a':_cL(pertRaw,_ouv_rj);
+  const _objPcsRj=d.objectif_pcs||0;
+  const _colPcsRj=!_objPcsRj?'#16a34a':((d.tot_pcs||0)/_objPcsRj>=0.95?'#16a34a':(d.tot_pcs||0)/_objPcsRj>=0.75?'#f59e0b':'#dc2626');
   // ── Chart A : TRS par équipe — barres verticales SVG ──────────────────────────
   let chartTrsHtml='';
   if(d.sessions_detail&&d.sessions_detail.length>0){
@@ -9638,8 +9649,8 @@ async function calcPeriodReport(autoLoad){
         </div>
         <!-- Stats 2×2 -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;flex-shrink:0">
-          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#059669;font-weight:900">${Math.round(d.tot_pcs||0)}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Pièces</div></div>
-          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Équiv.</div></div>
+          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:${_colPcsRj};font-weight:900">${Math.round(d.tot_pcs||0)}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Pièces</div></div>
+          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#64748b;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Équiv.</div></div>
           <div class="fp-card" style="padding:6px 8px;text-align:center;background:rgba(0,0,0,.04)"><div style="font-size:calc(17px*var(--zf,1));color:#059669;font-weight:900;opacity:.75">${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Obj. pièces</div></div>
           <div class="fp-card" style="padding:6px 8px;text-align:center;background:rgba(0,0,0,.04)"><div style="font-size:calc(17px*var(--zf,1));color:#0891b2;font-weight:900;opacity:.75">${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Obj. équiv.</div></div>
           <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#0369a1;font-weight:900">${d.cadence_h||0}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Cad./h</div></div>
@@ -9647,7 +9658,7 @@ async function calcPeriodReport(autoLoad){
         </div>
         <!-- Lignes info -->
         <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
-          ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min','#dc2626'],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#f97316'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min','#f59e0b'],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes',d.nb_sessions,'#0891b2'],['Nombre d\'OF',d.nb_of,'#0891b2'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#8b5cf6']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
+          ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
         </div>
       </div>
       <!-- Colonne droite : graphiques -->
@@ -9906,6 +9917,14 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const perteCadenceRaw=Math.round(d.perte_cadence_min||0);
   const perteCadenceHtml=perteCadenceRaw<0?`<span style="color:#16a34a;font-weight:800">${Math.abs(perteCadenceRaw)} min de gain</span>`:perteCadenceRaw>0?`<span style="color:#dc2626;font-weight:800">${perteCadenceRaw} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
   const degMin=(d.degrade_min!=null)?Math.round(d.degrade_min):Math.round((d.degrade_s||0)/60);
+  const _cHRp=(v,r)=>!r?'#64748b':v/r>=0.88?'#16a34a':v/r>=0.70?'#f59e0b':'#dc2626';
+  const _cLRp=(v,r)=>!r?'#64748b':v/r<=0.08?'#16a34a':v/r<=0.25?'#f59e0b':'#dc2626';
+  const _colFonctRp=_cHRp(tempsFonctionnement,ouvertureMin);
+  const _colArretRp=_cLRp(netStopMin,ouvertureMin);
+  const _colDegRp=_cLRp(degMin,ouvertureMin);
+  const _colPerteRp=perteCadenceRaw<=0?'#16a34a':_cLRp(perteCadenceRaw,ouvertureMin);
+  const _objPcsRp=(d.prod_rows||[]).reduce((s,r)=>{const o=parseFloat(r.objectif||'-1');return s+(o>=0?o:0);},0);
+  const _colPcsRp=!_objPcsRp?'#16a34a':(totQteFab/_objPcsRp>=0.95?'#16a34a':totQteFab/_objPcsRp>=0.75?'#f59e0b':'#dc2626');
   const tlDebut=d.actual_debut||d.model_debut;
   const tlFin=d.actual_fin||d.model_fin;
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
@@ -9940,24 +9959,24 @@ async function loadSessionReport(date,pilot,poste,itemId){
           ${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?`<div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:3px;font-weight:600">${esc(d.actual_debut||d.model_debut)} → ${esc(d.actual_fin||d.model_fin)}</div>`:''}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
-          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#059669;font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Pièces</div></div>
-          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Équiv.</div></div>
+          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:${_colPcsRp};font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Pièces</div></div>
+          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#64748b;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Équiv.</div></div>
         </div>
         <div style="display:flex;align-items:center;gap:5px">
-          <div class="fp-card" style="padding:6px;text-align:center;flex:1"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#0369a1;font-weight:900">${d.is_live?'—':cadenceH}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Cad./h</div></div>
+          <div class="fp-card" style="padding:6px;text-align:center;flex:1"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#64748b;font-weight:900">${d.is_live?'—':cadenceH}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Cad./h</div></div>
           <div style="text-align:center;flex-shrink:0"><div style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#0369a1">${Math.round(cadenceRefPcsMin*10)/10}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">réf pcs/min</div></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
-          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#7c3aed;font-weight:900">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Nb OF</div></div>
-          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#8b5cf6;font-weight:900">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
+          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#64748b;font-weight:900">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Nb OF</div></div>
+          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#64748b;font-weight:900">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px">
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#374151">${d.is_live?'—':ouvertureMin+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#059669">${d.is_live?'—':tempsUtile+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#16a34a">${d.is_live?'—':tempsFonctionnement+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#dc2626">${netStopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
-          ${degMin>0?`<div class="fp-card" style="padding:5px 6px;border-left:3px solid #ca8a04"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#b45309">${degMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en mode dégradé</div></div>`:''}
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${d.is_live?'<span style="color:#94a3b8">—</span>':perteCadenceHtml}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#64748b">${d.is_live?'—':ouvertureMin+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#64748b">${d.is_live?'—':tempsUtile+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:${_colFonctRp}">${d.is_live?'—':tempsFonctionnement+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:${_colArretRp}">${netStopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
+          ${degMin>0?`<div class="fp-card" style="padding:5px 6px;border-left:3px solid ${_colDegRp}"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:${_colDegRp}">${degMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en mode dégradé</div></div>`:''}
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${d.is_live?'<span style="color:#94a3b8">—</span>':`<span style="color:${_colPerteRp};font-weight:800">${perteCadenceRaw<=0?Math.abs(perteCadenceRaw)+' min de gain':perteCadenceRaw+' min de perte'}</span>`}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
         </div>
       </div>
       </div>`;
