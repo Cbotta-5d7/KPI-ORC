@@ -4105,16 +4105,28 @@ select{cursor:default}
     <!-- KPI accueil — POSTE ACTUEL -->
     <div style="background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;padding:4px 8px;display:flex;gap:6px;align-items:stretch;flex-wrap:wrap">
 
-      <!-- Tableau de bord pilote — affiché à DROITE via order:10 -->
-      <div id="acc-pilot-card" style="order:10;min-width:280px;flex:1;max-width:380px;background:linear-gradient(145deg,#1e3a8a,#1e40af);border-radius:10px;padding:12px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(30,58,138,.25)">
+      <!-- Tableau de bord pilote — affiché à GAUCHE via order:1 -->
+      <div id="acc-pilot-card" style="order:1;min-width:280px;flex:1;max-width:380px;background:linear-gradient(145deg,#1e3a8a,#1e40af);border-radius:10px;padding:12px 20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(30,58,138,.25)">
         <div style="font-size:calc(13px*var(--zf,1));font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,.55)">Tableau de bord</div>
         <div id="acc-pilot-name" style="font-size:calc(24px*var(--zf,1));font-weight:900;color:#fff;text-align:center;word-break:break-word;line-height:1.15">—</div>
         <div id="acc-pilot-poste" style="font-size:calc(16px*var(--zf,1));color:rgba(255,255,255,.7);text-align:center">—</div>
         <div id="acc-pilot-plage" style="font-size:calc(16px*var(--zf,1));color:rgba(255,255,255,.9);font-weight:700;text-align:center;margin-top:2px;display:none"></div>
       </div>
 
+      <!-- Option 1 : Progression du poste -->
+      <div id="acc-progression" style="order:3;flex:0 0 auto;min-width:180px;background:var(--card,#fff);border:1px solid var(--border,#e2e8f0);border-radius:10px;padding:8px 12px;display:none;flex-direction:column;gap:7px">
+        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px">⏱ Avancement poste</div>
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:4px"><span id="acc-prog-deb">—</span><span id="acc-prog-fin">—</span></div>
+          <div style="height:12px;background:#e2e8f0;border-radius:6px;overflow:hidden"><div id="acc-prog-bar" style="height:100%;background:#0369a1;border-radius:6px;width:0%;transition:width .8s"></div></div>
+          <div style="text-align:center;font-size:calc(13px*var(--zf,1));font-weight:800;color:#0369a1;margin-top:4px" id="acc-prog-pct">—</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:calc(10px*var(--zf,1));color:#64748b;border-top:1px solid var(--border,#e2e8f0);padding-top:5px">
+          <span>Production</span><span style="font-weight:800;color:#16a34a" id="acc-prog-pcs">—</span>
+        </div>
+      </div>
       <!-- POSTE ACTUEL encart principal -->
-      <div style="flex:0 0 auto;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:6px 10px;display:flex;align-items:center;gap:10px">
+      <div style="order:4;flex:0 0 auto;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:6px 10px;display:flex;align-items:center;gap:10px">
         <!-- Répartition temps (pie) — à GAUCHE -->
         <div style="flex-shrink:0;text-align:center">
           <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Répartition</div>
@@ -4148,7 +4160,7 @@ select{cursor:default}
       </div>
 
       <!-- Arrêts prévus — barres budget -->
-      <div style="flex:0 0 auto;min-width:196px;background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column">
+      <div style="order:2;flex:0 0 auto;min-width:196px;background:#fefce8;border:1px solid #fde68a;border-radius:10px;padding:4px 10px;display:flex;flex-direction:column">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
           <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.5px">⏱ Arrêts prévus du poste</span>
           <button onclick="openBudgetOverrideModal()" id="btn-bov-acc" style="display:none;background:none;border:1px solid #92400e;border-radius:4px;color:#92400e;font-size:calc(10px*var(--zf,1));padding:1px 7px;cursor:pointer" title="Modifier le budget pour ce poste">✏️</button>
@@ -6314,6 +6326,8 @@ async function loadMainKPI() {
     });
     prodTotEl.textContent=Math.round(tPcs)+' pcs / '+Math.round(tEq*10)/10+' éq';
   }
+  // Refresh progression pcs
+  {const pcsEl=document.getElementById('acc-prog-pcs');const ptEl=document.getElementById('acc-prod-total');if(pcsEl&&ptEl)pcsEl.textContent=ptEl.textContent||'—';}
 
   // Previous sessions from history (group by pilot+date, exclude current session)
   const allRows=await apiFetch('/api/history');
@@ -9626,14 +9640,14 @@ async function calcPeriodReport(autoLoad){
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;flex-shrink:0">
           <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#059669;font-weight:900">${Math.round(d.tot_pcs||0)}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Pièces</div></div>
           <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#0891b2;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Équiv.</div></div>
-          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(13px*var(--zf,1));color:#059669;font-weight:900">${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Obj. pièces</div></div>
-          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(13px*var(--zf,1));color:#0891b2;font-weight:900">${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Obj. équiv.</div></div>
+          <div class="fp-card" style="padding:6px 8px;text-align:center;background:rgba(0,0,0,.04)"><div style="font-size:calc(17px*var(--zf,1));color:#059669;font-weight:900;opacity:.75">${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Obj. pièces</div></div>
+          <div class="fp-card" style="padding:6px 8px;text-align:center;background:rgba(0,0,0,.04)"><div style="font-size:calc(17px*var(--zf,1));color:#0891b2;font-weight:900;opacity:.75">${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Obj. équiv.</div></div>
           <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#0369a1;font-weight:900">${d.cadence_h||0}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Cad./h</div></div>
           <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(16px*var(--zf,1));color:#0369a1;font-weight:900">${Math.round((d.cadence_ref_pcs_min||0)*100)/100}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Réf/min</div></div>
         </div>
         <!-- Lignes info -->
         <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
-          ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#f97316'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min','#f59e0b'],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes',d.nb_sessions,'#0891b2'],['OF',d.nb_of,'#0891b2'],['Chgt fibre',d.nb_fibre_chg||0,'#8b5cf6']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
+          ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#374151'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#059669'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min','#16a34a'],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min','#dc2626'],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min','#dc2626'],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#f97316'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min','#f59e0b'],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',pertRaw>0?'#dc2626':pertRaw<0?'#16a34a':'#64748b'],['Postes',d.nb_sessions,'#0891b2'],['Nombre d\'OF',d.nb_of,'#0891b2'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#8b5cf6']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
         </div>
       </div>
       <!-- Colonne droite : graphiques -->
@@ -10090,18 +10104,41 @@ async function loadCfg(){
   updateAccModelInfo();
 }
 
+function _updateAccProg(debStr,finStr){
+  const progEl=document.getElementById('acc-progression');
+  if(!progEl) return;
+  if(!debStr||!finStr){progEl.style.display='none';return;}
+  progEl.style.display='flex';
+  const _hm=s=>{const p=(s||'').split(':');return (parseInt(p[0])||0)*60+(parseInt(p[1])||0);};
+  const debMin=_hm(debStr);let finMin=_hm(finStr);
+  if(finMin<=debMin) finMin+=24*60;
+  const now=new Date();let nowMin=now.getHours()*60+now.getMinutes();
+  if(nowMin<debMin) nowMin+=24*60;
+  const pct=Math.min(100,Math.max(0,Math.round((nowMin-debMin)/(finMin-debMin)*100)));
+  const debEl=document.getElementById('acc-prog-deb');
+  const finEl=document.getElementById('acc-prog-fin');
+  const barEl=document.getElementById('acc-prog-bar');
+  const pctEl=document.getElementById('acc-prog-pct');
+  if(debEl) debEl.textContent=debStr;
+  if(finEl) finEl.textContent=finStr;
+  if(barEl) barEl.style.width=pct+'%';
+  if(pctEl) pctEl.textContent=pct+'% du temps écoulé';
+  const prodTotEl=document.getElementById('acc-prod-total');
+  const pcsEl=document.getElementById('acc-prog-pcs');
+  if(pcsEl&&prodTotEl) pcsEl.textContent=prodTotEl.textContent||'—';
+}
 function updateAccModelInfo(){
   const el=document.getElementById('acc-model-info');
   const plage=document.getElementById('acc-pilot-plage');
   const poste=ST&&ST.poste;
-  if(!poste){if(plage){plage.style.display='none';}return;}
+  if(!poste){if(plage){plage.style.display='none';}_updateAccProg(null,null);return;}
   const DAY_KEYS=['dim','lun','mar','mer','jeu','ven','sam'];
   const dk=DAY_KEYS[new Date().getDay()];
   const mEff=_cfgModels.find(m=>m.nom===poste);
   const mBase=_cfgModelsBase.find(m=>m.nom===poste);
   const jEff=mEff&&mEff.jours&&mEff.jours[dk]||{};
   const jBase=mBase&&mBase.jours&&mBase.jours[dk]||{};
-  if(!jEff.debut&&!jEff.fin){if(plage)plage.style.display='none';return;}
+  if(!jEff.debut&&!jEff.fin){if(plage)plage.style.display='none';_updateAccProg(null,null);return;}
   const isOverridden=(jEff.debut!==jBase.debut)||(jEff.fin!==jBase.fin);
   if(plage){
     plage.style.display='block';
@@ -10111,6 +10148,7 @@ function updateAccModelInfo(){
       plage.textContent=`${esc(jEff.debut)} → ${esc(jEff.fin)}`;
     }
   }
+  _updateAccProg(jEff.debut,jEff.fin);
 }
 
 async function saveArretsPrevus(){
