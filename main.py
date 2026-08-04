@@ -4244,18 +4244,18 @@ select{cursor:default}
             <h4>📋 Identification</h4>
             <div class="fr"><label>N° OF *</label><input id="f-of_num" oninput="scheduleAutoSave()" onfocus="openCodeInput('of_num','N° OF','9')"></div>
             <div class="fr"><label>Code Produit</label><input id="f-code_prod" oninput="scheduleAutoSave()" onfocus="openCodeInput('code_prod','Code Produit')"></div>
-            <div class="fr"><label>Type Produit</label><select id="f-type_prod" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
+            <div class="fr"><label>Type Produit</label><select id="f-type_prod" onchange="scheduleAutoSave();_applyFormAndUpdateGauge()"><option value="">--</option></select></div>
             <div class="fr ro"><label>Date</label><input id="f-date" readonly></div>
             <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
             <div class="fr"><label>Co-Pilote</label><select id="f-copilote" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave()" onfocus="openCodeInput('nb_pers','Nb Personnes','num',2);this.blur()" readonly></div>
           </div>
           <!-- Zone Production -->
           <div class="fzone zp">
             <h4>🏭 Production</h4>
-            <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()" onfocus="openCodeInput('qte_fab','Qté Fabriquée','num',5);this.blur()" readonly></div>
+            <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave()" onfocus="openCodeInput('qte_emb','Qté Emballée','num',5);this.blur()" readonly></div>
             <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
@@ -7887,32 +7887,32 @@ function calcDur(d,f){
 // ── CODE INPUT OVERLAY ──
 let _codeInputTarget = null;
 let _csDigits = ['','','','','','','','',''];
-let _csFormat = '6_3'; // '9' for 9-digit straight, '6_3' for 6+separator+3
+let _csFormat = '6_3'; // '9' for 9-digit, '6_3' for 6+sep+3, 'num' for variable-length numeric
+let _csMaxLen = 9;
 function _csRender(){
-  let allFilled=true;
-  for(let i=0;i<9;i++){
-    const el=document.getElementById('cs-'+i);if(!el) continue;
+  const container=document.getElementById('code-slots');if(!container) return;
+  const N=_csMaxLen;
+  const slice=_csDigits.slice(0,N);
+  const allFilled=slice.every(d=>d);
+  const aiActive=allFilled?-1:slice.findIndex(d=>!d);
+  let inner='';
+  for(let i=0;i<N;i++){
+    if(_csFormat==='6_3'&&i===6) inner+=`<div style="font-size:calc(26px*var(--zf,1));font-weight:900;color:#94a3b8;line-height:1;align-self:center;margin:0 3px">_</div>`;
     const d=_csDigits[i]||'';
-    el.textContent=d||'X';
-    el.className='cs'+(d?' cs-filled':'');
-    if(!d) allFilled=false;
+    const cls='cs'+(d?' cs-filled':'')+(i===aiActive?' cs-active':'')+(allFilled?' cs-done':'');
+    inner+=`<div class="${cls}" id="cs-${i}">${d||'X'}</div>`;
   }
-  if(allFilled){for(let i=0;i<9;i++){const e=document.getElementById('cs-'+i);if(e)e.classList.add('cs-done');}}
-  else{
-    const ai=_csDigits.findIndex(d=>!d);
-    const activeEl=document.getElementById('cs-'+ai);
-    if(activeEl) activeEl.classList.add('cs-active');
-  }
+  container.innerHTML=inner;
 }
 function _csKeydown(e){
   if(/^[0-9]$/.test(e.key)){
     e.preventDefault();
-    const pos=_csDigits.findIndex(d=>!d);
-    if(pos!==-1){_csDigits[pos]=e.key;_csRender();if(_csDigits.every(d=>d))setTimeout(_codeInputConfirm,80);}
+    const pos=_csDigits.slice(0,_csMaxLen).findIndex(d=>!d);
+    if(pos!==-1){_csDigits[pos]=e.key;_csRender();if(_csDigits.slice(0,_csMaxLen).every(d=>d))setTimeout(_codeInputConfirm,80);}
   } else if(e.key==='Backspace'){
     e.preventDefault();
-    let pos=_csDigits.findIndex(d=>!d);
-    if(pos===-1) pos=9;
+    let pos=_csDigits.slice(0,_csMaxLen).findIndex(d=>!d);
+    if(pos===-1) pos=_csMaxLen;
     if(pos>0){_csDigits[pos-1]='';_csRender();}
   } else if(e.key==='Enter'){
     e.preventDefault();_codeInputConfirm();
@@ -7920,20 +7920,37 @@ function _csKeydown(e){
     e.preventDefault();closeM('m-code-input');
   }
 }
-function openCodeInput(fieldId, label, fmt) {
+function openCodeInput(fieldId, label, fmt, maxLen) {
   _codeInputTarget = fieldId;
   _csFormat = fmt || '6_3';
+  _csMaxLen = fmt==='num'?(maxLen||5):9;
   document.getElementById('code-input-lbl').textContent = label || 'Code';
   _csDigits = Array(9).fill('');
-  const sep=document.getElementById('cs-sep');
+  if(fmt==='num'){
+    const curVal=String(parseInt((document.getElementById('f-'+fieldId)||{}).value||'')||'').replace(/\D/g,'');
+    curVal.slice(0,_csMaxLen).split('').forEach((d,i)=>{_csDigits[i]=d;});
+  }
   const hint=document.getElementById('cs-hint');
-  if(sep) sep.style.display=_csFormat==='9'?'none':'';
-  if(hint) hint.textContent=_csFormat==='9'?'Tapez les 9 chiffres du N° OF':'Tapez les 6 premiers puis les 3 derniers chiffres';
+  if(hint){
+    if(fmt==='9') hint.textContent='Tapez les 9 chiffres du N° OF';
+    else if(fmt==='num') hint.textContent=`Saisissez la valeur (max ${_csMaxLen} chiffres)`;
+    else hint.textContent='Tapez les 6 premiers puis les 3 derniers chiffres';
+  }
   _csRender();
   openM('m-code-input');
   setTimeout(()=>{const s=document.getElementById('code-slots');if(s)s.focus();},80);
 }
 function _codeInputConfirm() {
+  if(_csFormat==='num'){
+    const digits=_csDigits.slice(0,_csMaxLen).join('');
+    const numVal=parseInt(digits,10);
+    if(!digits||isNaN(numVal)||numVal<=0){toast('Valeur requise','err');return;}
+    const field=document.getElementById('f-'+_codeInputTarget);
+    if(field){field.value=numVal;scheduleAutoSave();}
+    closeM('m-code-input');
+    _applyFormAndUpdateGauge();
+    return;
+  }
   const all=_csDigits.join('');
   if(_csFormat==='9'){
     if(!/^[0-9]{9}$/.test(all)){toast('Format requis : 9 chiffres (ex : 123456789)','err');return;}
@@ -7957,6 +7974,16 @@ function _checkFormAutoConfirm(){
   if(/^[0-9]{9}$/.test(ofVal)&&/^[0-9]{6}_[0-9]{3}$/.test(cpVal)){
     setTimeout(doStartProd,500);
   }
+}
+function _applyFormAndUpdateGauge(){
+  if(!window.ST) return;
+  if(!ST.form) ST.form={};
+  const _v=id=>{const el=document.getElementById(id);return el?el.value:null;};
+  const qf=_v('f-qte_fab');if(qf!==null&&qf!=='') ST.form.qte_fab=parseFloat(qf)||0;
+  const qe=_v('f-qte_emb');if(qe!==null&&qe!=='') ST.form.qte_emb=parseFloat(qe)||0;
+  const np=_v('f-nb_pers');if(np!==null&&np!=='') ST.form.nb_pers=parseInt(np)||1;
+  const tp=_v('f-type_prod');if(tp!==null&&tp!=='') ST.form.type_prod=tp;
+  updateGauge(ST);
 }
 
 // ── OF DETAIL REPORT ──
