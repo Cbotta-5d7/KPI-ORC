@@ -423,7 +423,7 @@ def _option_b_trs(prod_raw_rows, deg_ivs, prod_ref, plan_ivs=None):
             pct = get_pct_cadence(nb_p)
             ovl = _deg_overlap_s(deb_s, fin_s, deg_ivs)
             plan_ovl = _deg_overlap_s(deb_s, fin_s, plan_ivs) if plan_ivs else 0.0
-            adj_s = max(1.0, dur_s - ovl - plan_ovl)
+            adj_s = max(1.0, dur_s - plan_ovl)
             sum_expected += prod_ref * pct * adj_s / 28800
             tot_equiv += eq
         except: pass
@@ -4381,7 +4381,7 @@ select{cursor:default}
     <!-- Timeline compact -->
     <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
       <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline du poste</div>
-      <svg id="fp-tl" viewBox="0 0 800 52" preserveAspectRatio="none" style="width:100%;height:52px;display:block">
+      <svg id="fp-tl" viewBox="0 0 800 62" preserveAspectRatio="none" style="width:100%;height:62px;display:block">
         <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
       </svg>
       <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
@@ -7273,15 +7273,19 @@ async function _confirmDegrade(){
   const r=document.querySelector('input[name="deg-motif"]:checked');
   if(!r) return;
   closeM('m-degrade');
+  window._degradeActive=true;
   try{
-    await fetch('/api/start_degrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({motif:r.value})});
-  }catch(e){toast('Erreur connexion','err');}
+    const resp=await fetch('/api/start_degrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({motif:r.value})});
+    if(!resp.ok){const d=await resp.json().catch(()=>({}));toast(d.error||'Erreur démarrage dégradé','err');window._degradeActive=false;}
+  }catch(e){toast('Erreur connexion','err');window._degradeActive=false;}
   await pollState();
 }
 async function stopDegrade(){
+  window._degradeActive=false;
   try{
-    await fetch('/api/stop_degrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
-  }catch(e){toast('Erreur connexion','err');}
+    const resp=await fetch('/api/stop_degrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    if(!resp.ok){const d=await resp.json().catch(()=>({}));toast(d.error||'Erreur arrêt dégradé','err');window._degradeActive=true;}
+  }catch(e){toast('Erreur connexion','err');window._degradeActive=true;}
   await pollState();
 }
 // ── Budget override ─────────────────────────────────────────────────────────
@@ -10065,7 +10069,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     <!-- Timeline -->
     <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
       <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline${plageStr}</div>
-      <svg viewBox="0 0 800 52" preserveAspectRatio="none" style="width:100%;height:52px;display:block">${tlContent}</svg>
+      <svg viewBox="0 0 800 62" preserveAspectRatio="none" style="width:100%;height:62px;display:block">${tlContent}</svg>
       <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Rattrapage</span><span><i style="background:#38bdf8"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
     </div>
     <!-- Productions (pleine largeur) -->
