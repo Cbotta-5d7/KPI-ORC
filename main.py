@@ -1501,6 +1501,7 @@ def _state_json():
         "budget_overrides": _S.get("budget_overrides", {}),
         "pers_pct_map": {str(k): round(v*100,1) for k,v in _pers_pct_map.items()},
         "reunion_active": t_running("reunion"),
+        "equiv_coefs": {t: eqv for t, eqv in zip(get_list("types_prod_col") or [], get_list("equivalences_col") or []) if eqv},
     }
 
 @flask_app.route('/')
@@ -5812,6 +5813,11 @@ async function pollEvts() {
 function applyState(s) {
   // Sync pers_pct_map depuis state (toujours à jour)
   if(s.pers_pct_map) _persPctMapLocal=s.pers_pct_map;
+  // Sync équivalences depuis state — garantit _equivCoefs à jour toutes les 5s
+  if(s.equiv_coefs&&Object.keys(s.equiv_coefs).length){
+    window._equivCoefs=window._equivCoefs||{};
+    Object.entries(s.equiv_coefs).forEach(([t,v])=>{const n=parseFloat(String(v).replace(',','.'));if(n>0)window._equivCoefs[t]=n;});
+  }
   // Header
   const hp=document.getElementById('hdr-pilot-lbl');
   if(hp&&s.pilot) hp.textContent=`${s.pilot} — ${s.poste||''}`;
