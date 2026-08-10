@@ -6085,33 +6085,22 @@ function startTicker() {
     // Arrêt totaux du poste (stops wall + pauses, merged — no double-counting)
     const tall=document.getElementById('sc-all-stops');
     if(tall) tall.textContent=fmtDur(sw+pauseNow);
-    // Pièces théoriques : avec déduction budget + ajustement mode dégradé
+    // Pièces théoriques — mis à jour toutes les secondes depuis le ticker
     const thEl=document.getElementById('sc-theo');
-    if(thEl&&ST.prod_ref){
+    if(thEl){
       const typeProd=document.getElementById('f-type_prod')?.value||ST.form?.type_prod||'';
       const coef=(window._equivCoefs&&window._equivCoefs[typeProd])||1;
       const _ofDedT=(ST.budget_state&&ST.budget_state.total_of_deductible_s)||0;
       const effOfElT=Math.max(1,_ofElapAtPoll+dt-_ofDedT);
-      // Calculer les secondes en mode dégradé (cadence ÷ 2)
-      let _degST=0;
-      const _ofStartMsT=ST.of_start_iso?new Date(ST.of_start_iso).getTime():0;
-      const _nowMsT=Date.now();
-      if(ST.degrade_active&&ST.degrade_start_iso&&_ofStartMsT>0){
-        const _dsTmp=Math.max(new Date(ST.degrade_start_iso).getTime(),_ofStartMsT);
-        _degST=Math.max(0,(_nowMsT-_dsTmp)/1000);
-      }
-      (ST.degrade_periods_iso||[]).forEach(function(p){
-        if(!p.start||!p.end||!_ofStartMsT) return;
-        const _d0=Math.max(new Date(p.start).getTime(),_ofStartMsT);
-        const _d1=Math.min(new Date(p.end).getTime(),_nowMsT);
-        if(_d1>_d0) _degST+=(_d1-_d0)/1000;
-      });
       const _adjEffOfElT=Math.max(1,effOfElT);
       const _nbPersTheo=parseInt(document.getElementById('f-nb_pers')?.value||'1')||1;
       const _pctTheo=(_persPctMapLocal&&_persPctMapLocal[String(_nbPersTheo)]!=null)?(_persPctMapLocal[String(_nbPersTheo)]/100):1.0;
-      const theo=Math.round(ST.prod_ref*_pctTheo*_adjEffOfElT/28800/coef);
+      const _prodRefTheo=ST.prod_ref||0;
+      const theo=_prodRefTheo>0?Math.round(_prodRefTheo*_pctTheo*_adjEffOfElT/28800/coef):0;
       thEl.textContent=theo>0?theo+' pièces':'—';
     }
+    // TRS gauge — recalcul toutes les secondes pour refléter immédiatement tout changement de formulaire
+    updateGauge(ST);
     // Mise à jour bannière accueil (durée OF et arrêts)
     if(ST.prod_active&&_curTab==='main'){
       const mpbDur=document.getElementById('mpb-dur');
