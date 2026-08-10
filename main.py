@@ -4182,7 +4182,7 @@ select{cursor:default}
       <table class="ktbl">
         <thead><tr>
           <th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th>
-          <th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>
+          <th>Début</th><th>Fin</th><th>Durée</th><th>Détails</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>
         </tr></thead>
         <tbody id="main-body"></tbody>
       </table>
@@ -6174,7 +6174,7 @@ async function loadMainDecl() {
     const lastFin=inShiftDecls.map(r=>r.fin||'').filter(Boolean).sort().pop();
     if(lastFin){const[h,m,s]=(lastFin+'::').split(':').map(Number);const d=new Date();d.setHours(h,m,s||0,0);_lastProdDeclTime=d;}
   }
-  if(!allRows.length){bd.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();updateGauge(ST);return;}
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();updateGauge(ST);return;}
   window._rowMap={};
   bd.innerHTML=allRows.map(r=>{
     const key=r.row_num||r.debut;
@@ -6183,7 +6183,8 @@ async function loadMainDecl() {
     const t=parseFloat(r.trs||0);
     const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.is_degrade?'<span class="row-tag tag-e" style="border-color:#ca8a04;color:#ca8a04">🟡 Dégradé</span>':(r.type&&r.type.toLowerCase().includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>'));
     const details=isProd?esc(r.taille||''):esc(r.type||'');
-    const qty=isProd?esc(String(r.qte_fab||'')):esc(r.duree||'');
+    const qty=isProd?esc(String(r.qte_fab||'')):'';
+    const dur=esc(r.duree||'');
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
     const cmt=esc(r.comment||'');
     const fibre=r.fibre||'';const fibreShort=esc(fibre.slice(0,9));
@@ -6192,7 +6193,7 @@ async function loadMainDecl() {
       <td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600;cursor:${fibre?'pointer':''}" title="${esc(fibre)}" onclick="${fibre?'showFibre(\''+esc(fibre)+'\')':''}">${fibreShort}${fibre.length>9?'…':''}</td>
       <td style="font-size:calc(10px*var(--zf,1))">${esc(r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
-      <td style="font-size:calc(11px*var(--zf,1))">${details}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
+      <td style="font-size:calc(11px*var(--zf,1))">${dur}</td><td style="font-size:calc(11px*var(--zf,1))">${details}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
       <td><button onclick="openEditRow('${esc(String(key))}')" class="btn-edit" title="Modifier">✏</button></td>
     </tr>`;
@@ -9406,8 +9407,8 @@ async function loadHist(){
     if(db!==da) return db-da;
     return (b.debut||'').localeCompare(a.debut||'');
   });
-  hd.innerHTML='<th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Détails</th><th>Qté/Durée</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
-  if(!allRows.length){bd.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
+  hd.innerHTML='<th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Durée</th><th>Détails</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="13" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
   window._rowMap=window._rowMap||{};
   window._histEvtsAll=evtsFiltered; // pour showHistRowDetail
   bd.innerHTML=allRows.map(r=>{
@@ -9419,7 +9420,8 @@ async function loadHist(){
     const t=parseFloat(r.trs||0);
     const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.is_degrade?'<span class="row-tag tag-e" style="border-color:#ca8a04;color:#ca8a04">🟡 Dégradé</span>':(rt.includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':rt.includes('pause')?'<span class="row-tag tag-n" style="border-color:#f59e0b;color:#f59e0b">⏸ Pause</span>':(rt.includes('réunion')||rt.includes('reunion'))?'<span class="row-tag tag-n" style="border-color:#8b5cf6;color:#8b5cf6">👥 Réunion</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>'));
     const details=isProd?esc(r.taille||''):esc(r.type||'');
-    const qty=isProd?esc(String(r.qte_fab||'')):esc(r.duree||'');
+    const qty=isProd?esc(String(r.qte_fab||'')):'';
+    const dur=esc(r.duree||'');
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
     const cmt=esc(r.comment||'');
     const fbrH=r.fibre||'';const fbrShH=esc(fbrH.slice(0,9));
@@ -9428,7 +9430,7 @@ async function loadHist(){
       <td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600;cursor:${fbrH?'pointer':''}" title="${esc(fbrH)}" onclick="${fbrH?'showFibre(\''+esc(fbrH)+'\')':''}">${fbrShH}${fbrH.length>9?'…':''}</td>
       <td style="font-size:calc(10px*var(--zf,1))">${esc(r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td style="text-align:center;font-size:calc(10px*var(--zf,1));color:#374151">${isProd?esc(r.nb_pers||''):'—'}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
-      <td style="font-size:calc(11px*var(--zf,1))">${details}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
+      <td style="font-size:calc(11px*var(--zf,1))">${dur}</td><td style="font-size:calc(11px*var(--zf,1))">${details}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
       <td><button onclick="openEditRow('${esc(String(key))}')" class="btn-edit" title="Modifier">✏</button></td>
     </tr>`;
