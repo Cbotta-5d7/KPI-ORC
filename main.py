@@ -8168,11 +8168,12 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   const _objNum=r.objectif!=null&&r.objectif>=0?parseFloat(r.objectif):0;
   const _perteCadNum=r.perte_cad_of&&r.perte_cad_of!==''?parseFloat(r.perte_cad_of):null;
   const _pCol=_perteCadNum===null?'#94a3b8':_perteCadNum<=0?'#16a34a':_perteCadNum<=10?'#d97706':'#dc2626';
-  const _pValStr=_perteCadNum===null?'—':(_perteCadNum>0?'+':'')+_perteCadNum.toFixed(1)+' min';
+  const _pValStr=_perteCadNum===null?'—':Math.abs(_perteCadNum).toFixed(1)+' min';
+  const _pLabel=_perteCadNum!==null&&_perteCadNum<0?'Gain de cadence':'Perte de cadence';
   const _eqCol=_objNum>0?(_equivNum>=_objNum?'#16a34a':_equivNum/_objNum>=0.9?'#d97706':'#dc2626'):'#0891b2';
   const _eqPct=_objNum>0?Math.min(100,Math.round(_equivNum/_objNum*100)):0;
   let chart3Html=`<div style="width:100%;margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px">
-    <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;text-align:center">Perte de cadence</div>
+    <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;text-align:center">${_pLabel}</div>
     <div style="text-align:center;font-size:calc(26px*var(--zf,1));font-weight:900;color:${_pCol};line-height:1.05;margin-bottom:4px">${_pValStr}</div>
     <div style="text-align:center;font-size:calc(10px*var(--zf,1));color:#94a3b8">pour cet OF</div>
   </div>`;
