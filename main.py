@@ -8163,7 +8163,6 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     _row('TRS %',r.trs>=0?r.trs.toFixed(1)+'%':'—',tc),
     _row('Objectif éq',r.objectif!=null&&r.objectif>=0?String(r.objectif):'','#0369a1'),
     commentHtml3,
-    `<div style="margin-top:8px">${_sec('Manquants')}${[_row('Manquant MP',r.duree_mq_mp,'#dc2626'),_row('Manquant Personnel/Réunion',r.manquant_pers,'#374151')].join('')}</div>`,
   ].join('');
   // Col 3 : Événements
   const col3Html=`${_sec('Événements ('+ofEvts.length+')')}${budgetWarnHtml2}${evtsHtml2}`;
