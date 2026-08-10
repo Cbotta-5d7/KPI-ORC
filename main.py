@@ -7006,17 +7006,22 @@ function fillTracaUI(val){
 }
 // ── fin Traca multi-lots ───────────────────────────────────────────────────────
 
+// Champs critiques TRS — ne pas écraser si l'utilisateur vient de les modifier
+const _TRS_FIELDS=new Set(['type_prod','nb_pers','qte_fab','qte_emb']);
+window._formUserTs=0; // horodatage dernière modif utilisateur sur un champ TRS
 function fillFormFromState(form){
   if(!form) return;
+  const _guard=Date.now()-(window._formUserTs||0)<4000;
   FORM_FIELDS.forEach(k=>{
     const el=document.getElementById('f-'+k);
     if(!el) return;
+    if(_guard&&_TRS_FIELDS.has(k)) return; // user modified recently — skip overwrite
     const v=form[k];
     if(v!==undefined&&v!==null&&v!=='') el.value=v;
   });
   // Ensure nb_pers defaults to 10 if not set or 0
   const npEl=document.getElementById('f-nb_pers');
-  if(npEl&&(!npEl.value||npEl.value==='0')) npEl.value='10';
+  if(npEl&&(!npEl.value||npEl.value==='0')&&!_guard) npEl.value='10';
   const ofEl=document.getElementById('pob-of');
   if(ofEl) ofEl.textContent=form.of_num||'—';
   fillTracaUI(form.traca||'');
@@ -7245,7 +7250,9 @@ function renderBudgetBars(containerId,bs){
 }
 
 // ── Mode dégradé ──────────────────────────────────────────────────────────────
+window._degradeInFlight=false;
 function toggleDegrade(){
+  if(window._degradeInFlight) return;
   if(window._degradeActive) stopDegrade();
   else openDegradeModal();
 }
@@ -7273,20 +7280,24 @@ async function _confirmDegrade(){
   const r=document.querySelector('input[name="deg-motif"]:checked');
   if(!r) return;
   closeM('m-degrade');
+  window._degradeInFlight=true;
   window._degradeActive=true;
   try{
     const resp=await fetch('/api/start_degrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({motif:r.value})});
     if(!resp.ok){const d=await resp.json().catch(()=>({}));toast(d.error||'Erreur démarrage dégradé','err');window._degradeActive=false;}
   }catch(e){toast('Erreur connexion','err');window._degradeActive=false;}
   await pollState();
+  window._degradeInFlight=false;
 }
 async function stopDegrade(){
+  window._degradeInFlight=true;
   window._degradeActive=false;
   try{
     const resp=await fetch('/api/stop_degrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
     if(!resp.ok){const d=await resp.json().catch(()=>({}));toast(d.error||'Erreur arrêt dégradé','err');window._degradeActive=true;}
   }catch(e){toast('Erreur connexion','err');window._degradeActive=true;}
   await pollState();
+  window._degradeInFlight=false;
 }
 // ── Budget override ─────────────────────────────────────────────────────────
 function openBudgetOverrideModal(){
@@ -8004,12 +8015,15 @@ function _checkFormAutoConfirm(){
 function _applyFormAndUpdateGauge(){
   if(!window.ST) return;
   if(!ST.form) ST.form={};
+  window._formUserTs=Date.now(); // marque modif utilisateur — empêche fillFormFromState d'écraser
   const _v=id=>{const el=document.getElementById(id);return el?el.value:null;};
   const qf=_v('f-qte_fab');if(qf!==null&&qf!=='') ST.form.qte_fab=parseFloat(qf)||0;
   const qe=_v('f-qte_emb');if(qe!==null&&qe!=='') ST.form.qte_emb=parseFloat(qe)||0;
   const np=_v('f-nb_pers');if(np!==null&&np!=='') ST.form.nb_pers=parseInt(np)||1;
   const tp=_v('f-type_prod');if(tp!==null&&tp!=='') ST.form.type_prod=tp;
   updateGauge(ST);
+  // Sauvegarde immédiate pour que le prochain pollState voie la bonne valeur
+  if(ST.prod_active){try{const _f=collectForm();fetch('/api/save_form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:_f})});}catch(e){}}
 }
 
 // ── OF DETAIL REPORT ──
@@ -10214,9 +10228,10 @@ function _updateAccProg(debStr,finStr){
   progEl.style.display='flex';
   const _hm=s=>{const p=(s||'').split(':');return (parseInt(p[0])||0)*60+(parseInt(p[1])||0);};
   const debMin=_hm(debStr);let finMin=_hm(finStr);
-  if(finMin<=debMin) finMin+=24*60;
+  const _isOvernight=finMin<=debMin;
+  if(_isOvernight) finMin+=24*60;
   const now=new Date();let nowMin=now.getHours()*60+now.getMinutes();
-  if(nowMin<debMin) nowMin+=24*60;
+  if(_isOvernight&&nowMin<debMin) nowMin+=24*60; // +24h seulement pour postes de nuit
   const pct=Math.min(100,Math.max(0,Math.round((nowMin-debMin)/(finMin-debMin)*100)));
   const debEl=document.getElementById('acc-prog-deb');
   const finEl=document.getElementById('acc-prog-fin');
