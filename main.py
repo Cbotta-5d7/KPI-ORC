@@ -4543,7 +4543,7 @@ select{cursor:default}
 
   <!-- ════ MODAL ÉCART FIN DE POSTE ════ -->
   <div id="m-ecart-poste" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
-    <div class="card" style="width:min(1160px,95vw);max-height:92vh;overflow-y:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #dc2626">
+    <div class="card" style="width:min(1260px,98vw);max-height:96vh;overflow:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #dc2626">
       <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:6px">📊 Réconciliation fin de poste</div>
       <div id="ecart-guide" style="font-size:calc(12px*var(--zf,1));margin-bottom:10px;padding:8px 12px;border-radius:6px;line-height:1.5"></div>
       <div id="ecart-info" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:calc(12px*var(--zf,1))"></div>
@@ -8438,7 +8438,10 @@ function _showEcartModal(fpd){
           '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">'+
             '<span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:#dc2626">⚠ '+esc(g.debut)+' → '+esc(g.fin)+
               ' <span style="font-weight:400;color:#9f1239">('+g.duree_min+' min)</span></span>'+
+            '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+            '<button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:3px 12px;background:#0369a1;border-color:#0369a1" onclick="ecartSetOfDebut(\''+esc(g.debut)+'\',\''+esc(g.fin)+'\')">📌 Déclarer début OF à '+esc(g.debut)+'</button>'+
             '<button class="btn btn-ghost" style="font-size:calc(11px*var(--zf,1));padding:3px 10px;color:#dc2626;border-color:#fca5a5" onclick="ecartToggleGapForm('+gi+')">+ Déclarer un arrêt</button>'+
+            '</div>'+
           '</div>'+
           '<div id="ecart-gap-form-'+gi+'" style="display:none;margin-top:8px;border-top:1px solid #fca5a5;padding-top:8px">'+
             '<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">'+
@@ -8616,6 +8619,22 @@ async function saveEcartOf(btn){
   }
 }
 
+async function ecartSetOfDebut(gapDebut,gapFin){
+  const fpd=window._ecartFpData;
+  if(!fpd||!fpd.of_list||!fpd.of_list.length){toast('Aucun OF trouvé','err');return;}
+  // Find OF whose debut matches gapFin (first OF after the gap)
+  let of=fpd.of_list.find(o=>o.debut===gapFin);
+  if(!of) of=fpd.of_list.filter(o=>o.debut>=gapFin).sort((a,b)=>a.debut.localeCompare(b.debut))[0];
+  if(!of){toast('Aucun OF à modifier','err');return;}
+  const r=await apiFetch('/api/update_of_time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({of_num:of.of,old_debut:of.debut,new_debut:gapDebut,new_fin:of.fin})});
+  if(r&&r.ok){
+    toast('Début OF '+of.of+' mis à jour à '+gapDebut,'ok');
+    const fpd2=await apiFetch('/api/fin_poste_data');
+    if(fpd2){window._ecartFpData=fpd2;_showEcartModal(fpd2);}
+  } else {
+    toast('Erreur mise à jour OF','err');
+  }
+}
 async function loadFPData(){
   const d=await apiFetch('/api/fin_poste_data');
   if(!d) return;
@@ -9532,7 +9551,7 @@ async function calcPeriodReport(autoLoad){
     const sd=d.sessions_detail;
     const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),100);
     const _vertA=sd.length>8;
-    const gH=200,padT=20,padL=4,padR=4;
+    const gH=130,padT=20,padL=4,padR=4;
     const CH=_vertA?padT+gH+150:padT+gH+60;
     const n=sd.length;
     const WB=Math.max(22,Math.min(60,Math.floor((420-padL-padR-n*4)/n)));
@@ -9569,7 +9588,7 @@ async function calcPeriodReport(autoLoad){
     const cadRef=Math.round((d.cadence_ref_pcs_min||0)*60);
     const maxCad=Math.max(...sd2.map(s=>s.cadence_h||0),cadRef,1);
     const _vertB=sd2.length>8;
-    const gH2=200,padT2=20,padL2=4,padR2=4;
+    const gH2=130,padT2=20,padL2=4,padR2=4;
     const CH2=_vertB?padT2+gH2+150:padT2+gH2+60;
     const n2=sd2.length;
     const WB2=Math.max(22,Math.min(60,Math.floor((420-padL2-padR2-n2*4)/n2)));
