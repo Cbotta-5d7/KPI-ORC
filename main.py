@@ -4714,7 +4714,7 @@ select{cursor:default}
   </div>
 
   <!-- ════ KPI VIEW ════ -->
-  <div id="v-kpi" class="view" style="flex-direction:column;overflow:hidden;background:#f1f5f9">
+  <div id="v-kpi" class="view" style="flex-direction:column;overflow-y:auto;background:#f1f5f9">
     <!-- Header -->
     <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;flex-shrink:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:var(--navy)">📈 Evolution perf.</span>
@@ -4728,39 +4728,39 @@ select{cursor:default}
       <select id="kpi-poste" style="font-size:calc(11px*var(--zf,1));padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;color:#1e3a8a;font-weight:600;outline:none"><option value="">Poste</option></select>
     </div>
     <!-- 3 courbes côte à côte (compact) -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;height:200px;flex-shrink:0;background:#fff;border-bottom:1px solid #e2e8f0">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;min-height:260px;flex-shrink:0;background:#fff;border-bottom:1px solid #e2e8f0">
       <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px;border-right:1px solid #f1f5f9">
         <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📈 TRS par poste (%)</div>
-        <div id="kpi-trs-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+        <div id="kpi-trs-chart" style="flex:1;min-height:200px;overflow-x:auto;overflow-y:hidden"></div>
       </div>
-      <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px;border-right:1px solid #f1f5f9;background:#fafafa">
+      <div style="display:flex;flex-direction:column;padding:6px 10px 4px;border-right:1px solid #f1f5f9;background:#fafafa">
         <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">🛑 Arrêts cumulés (min)</div>
-        <div id="kpi-arr-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+        <div id="kpi-arr-chart" style="flex:1;min-height:200px;overflow-x:auto;overflow-y:hidden"></div>
       </div>
-      <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px">
+      <div style="display:flex;flex-direction:column;padding:6px 10px 4px">
         <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#6366f1;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📦 Nombre d'OF par poste</div>
-        <div id="kpi-of-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+        <div id="kpi-of-chart" style="flex:1;min-height:200px;overflow-x:auto;overflow-y:hidden"></div>
       </div>
     </div>
     <!-- Corps principal -->
-    <div style="flex:1;overflow:hidden;display:grid;grid-template-columns:1fr 210px;min-height:0">
+    <div style="min-height:400px;display:grid;grid-template-columns:1fr 210px;">
       <!-- Gauche : cadence + 2 évolutions -->
-      <div style="display:flex;flex-direction:column;overflow:hidden;border-right:1px solid #e2e8f0;min-height:0">
-        <div style="flex:2;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9;min-height:0">
+      <div style="display:flex;flex-direction:column;border-right:1px solid #e2e8f0;">
+        <div style="min-height:210px;padding:6px 10px;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9;">
           <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⚡ Évolution cadence (éq./h)</div>
-          <div id="kpi-cad-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+          <div id="kpi-cad-chart" style="flex:1;min-height:160px;overflow-x:auto;overflow-y:hidden"></div>
         </div>
-        <div style="flex:1;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#f8fafc;border-bottom:1px solid #f1f5f9;min-height:0">
+        <div style="min-height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
           <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Équivalence</div>
-          <div id="kpi-qte-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+          <div id="kpi-qte-chart" style="flex:1;min-height:90px;overflow-x:auto;overflow-y:hidden"></div>
         </div>
-        <div style="flex:1;padding:6px 10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;min-height:0">
+        <div style="min-height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#fff;">
           <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#8b5cf6;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">🧵 Changements de fibre par poste</div>
-          <div id="kpi-fibre-chart" style="flex:1;min-height:0;overflow:hidden"></div>
+          <div id="kpi-fibre-chart" style="flex:1;min-height:90px;overflow-x:auto;overflow-y:hidden"></div>
         </div>
       </div>
       <!-- Droite : donut + pareto -->
-      <div style="display:flex;flex-direction:column;overflow:hidden;background:#fff;min-height:0">
+      <div style="display:flex;flex-direction:column;background:#fff;">
         <div style="padding:7px 10px;border-bottom:1px solid #f1f5f9;flex-shrink:0;display:flex;flex-direction:column;align-items:center">
           <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.5px;margin-bottom:3px;align-self:flex-start">Prod vs Arrêts</div>
           <div style="display:flex;align-items:center;gap:8px">
@@ -5732,7 +5732,7 @@ function goTab(tab) {
     if(tab!=='history'&&_prevTab==='history') _resetHistFilters();
     fetch('/api/reload_excel',{method:'POST'}).catch(()=>{}).finally(()=>{
       if(tab==='history') loadHist();
-      if(tab==='rapports'){_rptSetLast7();loadRapports();rptBackToList();}
+      if(tab==='rapports'){loadRapports(true);rptBackToList();}
       if(tab==='rpt-jour') loadRptJour();
       if(tab==='main'){loadMainDecl();refreshAccFpData();}
       if(tab==='kpi') loadKPI();
@@ -9560,7 +9560,7 @@ async function calcPeriodReport(autoLoad){
     const sd=d.sessions_detail;
     const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),100);
     const _vertA=sd.length>8;
-    const gH=130,padT=20,padL=4,padR=4;
+    const gH=91,padT=20,padL=4,padR=4;
     const CH=_vertA?padT+gH+150:padT+gH+60;
     const n=sd.length;
     const WB=Math.max(22,Math.min(60,Math.floor((420-padL-padR-n*4)/n)));
@@ -9597,7 +9597,7 @@ async function calcPeriodReport(autoLoad){
     const cadRef=Math.round((d.cadence_ref_pcs_min||0)*60);
     const maxCad=Math.max(...sd2.map(s=>s.cadence_h||0),cadRef,1);
     const _vertB=sd2.length>8;
-    const gH2=130,padT2=20,padL2=4,padR2=4;
+    const gH2=91,padT2=20,padL2=4,padR2=4;
     const CH2=_vertB?padT2+gH2+150:padT2+gH2+60;
     const n2=sd2.length;
     const WB2=Math.max(22,Math.min(60,Math.floor((420-padL2-padR2-n2*4)/n2)));
@@ -9679,7 +9679,7 @@ async function calcPeriodReport(autoLoad){
       <td style="padding:4px 6px;text-align:right;color:${arretMin>0?'#dc2626':'#94a3b8'}">${arretMin>0?arretMin+' min':'—'}</td>
       <td style="padding:4px 6px;text-align:right;color:${r.degrade_min>0?'#f59e0b':'#94a3b8'}">${r.degrade_min>0?Math.round(r.degrade_min)+' min':'—'}</td>
     </tr>`;}).join('');
-    ofListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px;overflow-x:auto"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">📋 Liste des OF fabriqués</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">Pilote</th><th style="padding:4px 6px;text-align:left">Type produit</th><th style="padding:4px 6px;text-align:center">Taille</th><th style="padding:4px 6px;text-align:left">Fibre</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Qté</th><th style="padding:4px 6px;text-align:right">Équiv</th><th style="padding:4px 6px;text-align:right">Objectif</th><th style="padding:4px 6px;text-align:right">TRS</th><th style="padding:4px 6px;text-align:right">Arrêt</th><th style="padding:4px 6px;text-align:right">Dégradé</th></tr></thead><tbody>${ofRows}</tbody></table></div>`;
+    ofListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">📋 Liste des OF fabriqués</div><div style="overflow-x:auto;overflow-y:auto;max-height:240px"><table style="width:100%;border-collapse:collapse"><thead style="position:sticky;top:0;z-index:1"><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">Pilote</th><th style="padding:4px 6px;text-align:left">Type produit</th><th style="padding:4px 6px;text-align:center">Taille</th><th style="padding:4px 6px;text-align:left">Fibre</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Qté</th><th style="padding:4px 6px;text-align:right">Équiv</th><th style="padding:4px 6px;text-align:right">Objectif</th><th style="padding:4px 6px;text-align:right">TRS</th><th style="padding:4px 6px;text-align:right">Arrêt</th><th style="padding:4px 6px;text-align:right">Dégradé</th></tr></thead><tbody>${ofRows}</tbody></table></div></div>`;
   }
   // Events list (all non-prod events)
   let eventsListHtml='';
@@ -9699,7 +9699,7 @@ async function calcPeriodReport(autoLoad){
       <td style="padding:4px 6px;text-align:right;font-weight:700">${esc(r.duree||'—')}</td>
       <td style="padding:4px 6px;color:var(--gray);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.comment||'')}">${esc(r.comment||'—')}</td>
     </tr>`).join('');
-    eventsListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px;overflow-x:auto"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">⏱ Liste des événements (${allEvts.length})</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">Type</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Durée</th><th style="padding:4px 6px;text-align:left">Commentaire</th></tr></thead><tbody>${evtRows}</tbody></table></div>`;
+    eventsListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">⏱ Liste des événements (${allEvts.length})</div<div style="overflow-x:auto;overflow-y:auto;max-height:240px"><table style="width:100%;border-collapse:collapse"><thead style="position:sticky;top:0;z-index:1"><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">Type</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Durée</th><th style="padding:4px 6px;text-align:left">Commentaire</th></tr></thead><tbody>${evtRows}</tbody></table></div></div>`;
   }
   // Pie chart: fonctionnement vs arrêts
   const fonctMin=d.temps_fonctionnement_min||0;
@@ -9756,13 +9756,14 @@ async function calcPeriodReport(autoLoad){
       _rjBanner.style.display='none';
     }
   }
+  const _is3postes=autoLoad||(d.sessions_detail&&d.sessions_detail.length>0&&d.sessions_detail.length<=3);
   resultEl.innerHTML=`
     <div style="display:flex;gap:10px;height:100%;min-height:0;align-items:stretch">
       <!-- Colonne gauche : KPI synthèse — 320px -->
-      <div style="flex:0 0 320px;display:flex;flex-direction:column;gap:5px;overflow:hidden">
-        <!-- TRS + pie côte à côte -->
+      <div style="flex:0 0 300px;display:flex;flex-direction:column;gap:5px;overflow-y:auto;overflow-x:hidden">
+        <!-- TRS + pie côte à côte (pie masqué en mode 3postes, il va dans les graphiques) -->
         <div style="display:flex;align-items:center;gap:10px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:10px;flex-shrink:0">
-          ${pieSmall}
+          ${_is3postes?'':pieSmall}
           <div style="flex:1;text-align:center">
             <div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
             <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);font-weight:600;margin-top:3px">TRS période</div>
@@ -9785,11 +9786,12 @@ async function calcPeriodReport(autoLoad){
       </div>
       <!-- Colonne droite : graphiques -->
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
-        <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">
-          <div style="flex:7;min-width:0;display:flex;flex-direction:column;gap:6px">
-            <div style="display:flex;gap:6px">${chartTrsHtml}${chartCadHtml}</div>
+        <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start;flex-wrap:nowrap">
+          ${_is3postes&&pieSmall?`<div style="flex-shrink:0">${pieSmall}</div>`:''}
+          <div style="flex:1;min-width:0;display:flex;gap:6px;flex-wrap:wrap">
+            ${chartTrsHtml}${chartCadHtml}
           </div>
-          <div style="flex:3;min-width:0">${paretoRjHtml}</div>
+          <div style="flex-shrink:0;min-width:120px">${paretoRjHtml}</div>
         </div>
         ${ofListHtml}
         ${eventsListHtml}
@@ -9856,7 +9858,7 @@ function _rptSetLast7(){
   const f=document.getElementById('rpt-from');const t=document.getElementById('rpt-to');
   if(f)f.value=fmt(d7);if(t)t.value=fmt(today);
 }
-async function loadRapports(){
+async function loadRapports(defaultMode){
   const listEl=document.getElementById('rpt-list');
   if(!listEl) return;
   listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:calc(12px*var(--zf,1))">Chargement…</div>';
@@ -9865,11 +9867,21 @@ async function loadRapports(){
     listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun poste disponible</div>';
     return;
   }
-  // Filtre par dates (rpt-from / rpt-to en yyyy-mm-dd, sessions en dd/mm/yyyy)
+  function _dmy2ymd(d){const p=d.split('/');return p.length===3?p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0'):'';}
   const fromVal=(document.getElementById('rpt-from')||{}).value||'';
   const toVal=(document.getElementById('rpt-to')||{}).value||'';
-  function _dmy2ymd(d){const p=d.split('/');return p.length===3?p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0'):'';}
-  const filtered=(fromVal||toVal)?sessions.filter(s=>{const y=_dmy2ymd(s.date);return(!fromVal||y>=fromVal)&&(!toVal||y<=toVal);}):sessions;
+  let filtered;
+  if(defaultMode&&!fromVal&&!toVal){
+    // Par défaut : 10 postes les plus récents, mise à jour du filtre date
+    const sorted=[...sessions].sort((a,b)=>_dmy2ymd(b.date).localeCompare(_dmy2ymd(a.date)));
+    filtered=sorted.slice(0,10);
+    const dates=filtered.map(s=>_dmy2ymd(s.date)).filter(Boolean).sort();
+    const fEl=document.getElementById('rpt-from');const tEl=document.getElementById('rpt-to');
+    if(fEl&&dates.length)fEl.value=dates[0];
+    if(tEl&&dates.length)tEl.value=dates[dates.length-1];
+  } else {
+    filtered=(fromVal||toVal)?sessions.filter(s=>{const y=_dmy2ymd(s.date);return(!fromVal||y>=fromVal)&&(!toVal||y<=toVal);}):sessions;
+  }
   if(!filtered.length){
     listEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun poste sur cette période</div>';
     return;
@@ -10610,17 +10622,28 @@ def generate_dashboard_html():
             '  if(typeof _origShowApp==="function")_origShowApp(s);\n'
             '  setTimeout(function(){if(typeof goTab==="function")goTab("history");},50);\n'
             '};\n'
-            # After full init: add banner, hide write-only nav items
+            # After full init: hide write-only elements, add compact CSS
             'document.addEventListener("DOMContentLoaded",function(){\n'
             '  setTimeout(function(){\n'
-            '    ["#btn-params","#tab-main","#ht-prod","#ht-main"].forEach(function(sel){\n'
+            '    ["#ht-prod","#ht-main","#ht-cfg","#zoom-btn","#rj-period-banner"].forEach(function(sel){\n'
             '      var el=document.querySelector(sel);if(el)el.style.display="none";\n'
             '    });\n'
-            '    var banner=document.createElement("div");\n'
-            '    banner.style.cssText="position:fixed;top:0;left:0;right:0;background:#1e3a5f;color:#fff;text-align:center;font-size:13px;padding:4px 8px;z-index:9999;font-family:sans-serif;";\n'
-            '    banner.innerHTML="<strong>📊 KPI-ORC Dashboard</strong> &nbsp;|&nbsp; Généré le ' + gen_at_escaped + ' &nbsp;|&nbsp; <em>Lecture seule</em>";\n'
-            '    document.body.prepend(banner);\n'
-            '    document.body.style.paddingTop="28px";\n'
+            '    document.querySelectorAll("[onclick]").forEach(function(el){\n'
+            '      if(el.getAttribute("onclick")==="doLogout()")el.style.display="none";\n'
+            '    });\n'
+            '    var hdr=document.getElementById("app-hdr");\n'
+            '    if(hdr){hdr.style.overflowX="auto";}\n'
+            '    var s=document.createElement("style");\n'
+            '    s.textContent=[\n'
+            '      "#rpt-left-kpi .fp-card{padding:3px 4px!important}",\n'
+            '      "#rpt-left-kpi .fp-big{font-size:calc(11px*var(--zf,1))!important}",\n'
+            '      "#rpt-left-kpi .fp-lbl{font-size:calc(7px*var(--zf,1))!important}",\n'
+            '      "#rpt-pie{width:100px!important;height:100px!important}",\n'
+            '      "#app-hdr img{height:38px!important}",\n'
+            '      ".htab{padding:4px 8px!important;font-size:calc(11px*var(--zf,1))!important}",\n'
+            '      "#app{overflow-x:auto!important}"\n'
+            '    ].join("");\n'
+            '    document.head.appendChild(s);\n'
             '  },500);\n'
             '});\n'
             '})();\n'
