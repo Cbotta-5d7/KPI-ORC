@@ -4811,6 +4811,15 @@ select{cursor:default}
         </div>
       </div>
       <div class="ss">
+        <h3>🔄 Mise à jour données &amp; Dashboard</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:12px">Recharge toutes les données depuis Excel, ou regénère le fichier <code>dashboard.html</code> dans le dossier du logiciel.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-prim" style="background:#0369a1;border-color:#0369a1;font-size:calc(13px*var(--zf,1));padding:10px 22px" onclick="reloadAllData()">🔄 Mise à jour DATA</button>
+          <button class="btn btn-prim" style="background:#6d28d9;border-color:#6d28d9;font-size:calc(13px*var(--zf,1));padding:10px 22px" onclick="generateDashboard()">📊 Mise à jour Dashboard</button>
+          <span id="dash-gen-status" style="font-size:calc(11px*var(--zf,1));color:var(--gray)"></span>
+        </div>
+      </div>
+      <div class="ss">
         <h3>📂 Fichier Excel de données</h3>
         <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Chemin complet vers le fichier Excel (.xlsx) contenant les onglets Declarations et Listes.</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
@@ -10498,9 +10507,134 @@ function toast(msg,type,dur){
   clearTimeout(t._to);t._to=setTimeout(()=>t.style.opacity='0',dur||3000);
 }
 
+async function reloadAllData(){
+  toast('Rechargement des données depuis Excel…','ok',4000);
+  await fetch('/api/reload_excel',{method:'POST'}).catch(()=>{});
+  if(typeof loadHist==='function')loadHist();
+  if(typeof loadRapports==='function')loadRapports();
+  if(typeof loadRptJour==='function')loadRptJour();
+  if(typeof loadKPI==='function')loadKPI();
+  if(typeof loadMainDecl==='function')loadMainDecl();
+  toast('Données rechargées','ok');
+}
+async function generateDashboard(){
+  const st=document.getElementById('dash-gen-status');
+  if(st)st.textContent='⏳ Génération en cours…';
+  toast('Génération du dashboard…','ok',5000);
+  const r=await fetch('/api/generate_dashboard',{method:'POST'}).catch(()=>null);
+  const d=r?await r.json().catch(()=>({})):{};
+  if(d.ok){
+    if(st)st.textContent='✓ dashboard.html généré à '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    toast('Dashboard généré !','ok');
+  }else{
+    if(st)st.textContent='✗ Erreur : '+(d.error||'?');
+    toast('Erreur génération dashboard','err');
+  }
+}
 </script>
 </body>
 </html>"""
+
+def generate_dashboard_html():
+    import json as _json, datetime as _dt
+    try:
+        with flask_app.test_client() as c:
+            history = c.get('/api/history').get_json(force=True) or []
+            events_list = c.get('/api/events_list').get_json(force=True) or []
+            past_sessions = c.get('/api/past_sessions').get_json(force=True) or []
+            session_reports = {}
+            for s in past_sessions:
+                d = s.get('date',''); p = s.get('pilot',''); po = s.get('poste','')
+                if d and p and po:
+                    key = f"{d}||{p}||{po}"
+                    resp = c.get(f'/api/session_report?date={d}&pilot={_json.dumps(p)[1:-1]}&poste={_json.dumps(po)[1:-1]}')
+                    if resp.status_code == 200:
+                        session_reports[key] = resp.get_json(force=True) or {}
+            today = _dt.date.today()
+            fmt = lambda dd: dd.strftime('%Y-%m-%d')
+            period_last3 = c.get('/api/period_report?max_sessions=3&skip_current=1').get_json(force=True) or {}
+            period_last7 = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=7))}&date_to={fmt(today)}').get_json(force=True) or {}
+            period_last31 = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=31))}&date_to={fmt(today)}').get_json(force=True) or {}
+            period_last6m = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=180))}&date_to={fmt(today)}').get_json(force=True) or {}
+        gen_at = _dt.datetime.now().strftime('%d/%m/%Y %H:%M')
+        dash_json = _json.dumps({
+            'history': history, 'events_list': events_list, 'past_sessions': past_sessions,
+            'session_reports': session_reports,
+            'period_last3': period_last3, 'period_last7': period_last7,
+            'period_last31': period_last31, 'period_last6m': period_last6m,
+            'generated_at': gen_at
+        }, ensure_ascii=False, separators=(',', ':'))
+        inject = (
+            '<script>\nwindow.DASH=' + dash_json + ';\n'
+            '(function(){\n'
+            # Hide non-dashboard elements
+            'document.addEventListener("DOMContentLoaded",function(){\n'
+            '  var _hide=["#btn-params","#tab-main","#tab-accueil","#nav-param"];\n'
+            '  _hide.forEach(function(s){var el=document.querySelector(s);if(el)el.style.display="none";});\n'
+            '  var banner=document.createElement("div");\n'
+            '  banner.style.cssText="position:fixed;top:0;left:0;right:0;background:#1e3a5f;color:#fff;text-align:center;font-size:13px;padding:4px 8px;z-index:9999;font-family:sans-serif;";\n'
+            '  banner.innerHTML="<strong>📊 KPI-ORC Dashboard</strong> &nbsp;|&nbsp; Généré le ' + gen_at.replace("'","\\'") + ' &nbsp;|&nbsp; <em>Lecture seule</em>";\n'
+            '  document.body.prepend(banner);\n'
+            '  document.body.style.paddingTop="28px";\n'
+            '});\n'
+            # Override apiFetch to serve data from window.DASH
+            'var _origFetch=window.fetch;\n'
+            'window.apiFetch=async function(url,opts){\n'
+            '  if(!window.DASH)return null;\n'
+            '  var d=window.DASH;\n'
+            '  if(url.indexOf("/api/history")!==-1)return d.history;\n'
+            '  if(url.indexOf("/api/events_list")!==-1)return d.events_list;\n'
+            '  if(url.indexOf("/api/past_sessions")!==-1)return d.past_sessions;\n'
+            '  if(url.indexOf("/api/session_report")!==-1){\n'
+            '    var params=new URL(url,location.href).searchParams;\n'
+            '    var key=params.get("date")+"||"+params.get("pilot")+"||"+params.get("poste");\n'
+            '    return d.session_reports[key]||{};\n'
+            '  }\n'
+            '  if(url.indexOf("/api/period_report")!==-1){\n'
+            '    var pu=new URL(url,location.href).searchParams;\n'
+            '    var ms=pu.get("max_sessions"),sk=pu.get("skip_current");\n'
+            '    if(ms==="3"&&sk==="1")return d.period_last3;\n'
+            '    var df=pu.get("date_from")||"",dt=pu.get("date_to")||"";\n'
+            '    if(!df)return d.period_last3;\n'
+            '    var daysMs=(new Date(dt)-new Date(df))/(86400000);\n'
+            '    if(daysMs<=8)return d.period_last7;\n'
+            '    if(daysMs<=32)return d.period_last31;\n'
+            '    return d.period_last6m;\n'
+            '  }\n'
+            '  if(url.indexOf("/api/reload_excel")!==-1)return {ok:true};\n'
+            '  return null;\n'
+            '};\n'
+            # Override fetch for the goTab reload call
+            'window.fetch=function(url,opts){\n'
+            '  if(typeof url==="string"&&url.indexOf("/api/reload_excel")!==-1)return Promise.resolve({ok:true,json:function(){return Promise.resolve({ok:true});}});\n'
+            '  if(typeof url==="string"&&(url.indexOf("/api/generate_dashboard")!==-1||url.indexOf("/api/")!==-1))return Promise.resolve({ok:false,json:function(){return Promise.resolve({});}});\n'
+            '  return _origFetch.apply(this,arguments);\n'
+            '};\n'
+            # Navigate to history tab on load, skip login
+            'window.addEventListener("DOMContentLoaded",function(){\n'
+            '  if(typeof goTab==="function")setTimeout(function(){goTab("history");},300);\n'
+            '  var lp=document.getElementById("login-page");if(lp)lp.style.display="none";\n'
+            '  var ap=document.getElementById("app-page");if(ap)ap.style.display="";\n'
+            '});\n'
+            '})();\n'
+            '</script>\n'
+        )
+        dashboard_html = HTML_TEMPLATE.replace('</body>', inject + '</body>')
+        base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+        output_path = os.path.join(base_dir, 'dashboard.html')
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(dashboard_html)
+        return True, output_path
+    except Exception as e:
+        import traceback
+        return False, traceback.format_exc()
+
+@flask_app.route('/api/generate_dashboard', methods=['POST'])
+def api_generate_dashboard():
+    ok, info = generate_dashboard_html()
+    if ok:
+        return jsonify({'ok': True, 'path': info})
+    return jsonify({'ok': False, 'error': str(info)}), 500
 
 def _session_autosave():
     while True:
@@ -10515,6 +10649,13 @@ def main():
     threading.Thread(target=load_lists, daemon=True).start()
     threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_session_autosave, daemon=True).start()
+    def _dashboard_bg():
+        time.sleep(90)
+        while True:
+            try: generate_dashboard_html()
+            except: pass
+            time.sleep(30 * 60)
+    threading.Thread(target=_dashboard_bg, daemon=True).start()
     _start_periodic_excel_sync()
 
     # Recover pending Excel write after crash
