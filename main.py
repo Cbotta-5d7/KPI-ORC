@@ -1764,17 +1764,39 @@ def api_start_prod():
         _S["interposte_s"] = gap_s
         ip_debut_hms = model_debut_str
         ip_debut_iso = model_debut_dt.isoformat()
-        if gap_s >= 120:
+        if gap_s >= 60:
             shift_model_start_str = model_debut_str
             shift_model_start_iso = model_debut_dt.isoformat()
             gaps = _get_uncovered_gaps(model_debut_dt, now, pilot)
             pre_shift_gap_s = sum(g["duree_s"] for g in gaps) if gaps else 0.0
-    elif _S["last_of_end"]:
-        gap_s = (now - _S["last_of_end"]).total_seconds()
-        ip_debut_hms = _S["last_of_end"].strftime("%H:%M")
-        ip_debut_iso = _S["last_of_end"].isoformat()
-        if gap_s >= 120:
-            gaps = _get_uncovered_gaps(_S["last_of_end"], now, pilot)
+    else:
+        # Trouver la fin de la dernière déclaration (prod OU arrêt) pour détecter les trous inter-OF
+        _today_s = now.strftime("%d/%m/%Y")
+        _shift_date_s = (_S.get("shift_start") or now).strftime("%d/%m/%Y")
+        _last_fin_s = _hms_to_sec(_S["last_of_end"].strftime("%H:%M:%S")) if _S["last_of_end"] else 0.0
+        for _, _r in _decl_cache:
+            _rd = _row_date(_r[2])
+            if _rd not in (_today_s, _shift_date_s): continue
+            if str(_r[4] or "") != pilot: continue
+            _fs = _hms_to_sec(str(_r[17] or "00:00:00"))
+            if _fs > _last_fin_s: _last_fin_s = _fs
+        if _last_fin_s > 0:
+            _lh = int(_last_fin_s // 3600); _lm = int((_last_fin_s % 3600) // 60); _ls = int(_last_fin_s % 60)
+            last_decl_dt = now.replace(hour=_lh, minute=_lm, second=_ls, microsecond=0)
+            if last_decl_dt > now: last_decl_dt -= datetime.timedelta(days=1)
+            gap_s = max(0.0, (now - last_decl_dt).total_seconds())
+            _S["interposte_s"] = gap_s
+            ip_debut_hms = last_decl_dt.strftime("%H:%M")
+            ip_debut_iso = last_decl_dt.isoformat()
+            if gap_s >= 60:
+                gaps = _get_uncovered_gaps(last_decl_dt, now, pilot)
+        elif _S["last_of_end"]:
+            gap_s = max(0.0, (now - _S["last_of_end"]).total_seconds())
+            _S["interposte_s"] = gap_s
+            ip_debut_hms = _S["last_of_end"].strftime("%H:%M")
+            ip_debut_iso = _S["last_of_end"].isoformat()
+            if gap_s >= 60:
+                gaps = _get_uncovered_gaps(_S["last_of_end"], now, pilot)
     return jsonify({"ok":True,"gap_s":round(gap_s,0),
                     "pre_shift_gap_s":round(pre_shift_gap_s,0),
                     "gaps": gaps,
@@ -3528,6 +3550,82 @@ def api_add_stop_decl():
         return jsonify({"ok":False,"error":str(e)}),500
     return jsonify({"ok":True})
 
+@flask_app.route('/api/add_past_decl', methods=['POST'])
+@require_pilot
+def api_add_past_decl():
+    """Ajoute une déclaration (prod ou arrêt) antérieure dans la plage du poste en cours."""
+    data = request.json or {}
+    decl_type = str(data.get("decl_type","")).strip()
+    debut_hms = str(data.get("debut_hms","")).strip()
+    fin_hms   = str(data.get("fin_hms","")).strip()
+    if not decl_type or not debut_hms or not fin_hms:
+        return jsonify({"ok":False,"error":"decl_type/debut/fin requis"}),400
+    pilot = _S.get("pilot",""); poste = _S.get("poste","")
+    if not pilot: return jsonify({"ok":False,"error":"Non connecté"}),400
+    now = datetime.datetime.now()
+    try:
+        dh,dm = [int(x) for x in debut_hms.split(":")[:2]]
+        fh,fm = [int(x) for x in fin_hms.split(":")[:2]]
+        debut_dt = now.replace(hour=dh, minute=dm, second=0, microsecond=0)
+        fin_dt   = now.replace(hour=fh, minute=fm, second=0, microsecond=0)
+        if fin_dt <= debut_dt: fin_dt += datetime.timedelta(days=1)
+        dur_s = max(0, (fin_dt - debut_dt).total_seconds())
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)}),400
+    # Vérification dans la plage du poste
+    sd = _S.get("shift_debut_dt"); sf = _S.get("shift_fin_dt")
+    if sd and debut_dt < sd:
+        return jsonify({"ok":False,"error":f"Avant le début du poste ({sd.strftime('%H:%M')})"}),400
+    if sf and fin_dt > sf:
+        return jsonify({"ok":False,"error":f"Après la fin du poste ({sf.strftime('%H:%M')})"}),400
+    shift_dt = _S.get("shift_start") or now
+    shift_date_str = shift_dt.strftime("%d/%m/%Y")
+    date_str = debut_dt.strftime("%d/%m/%Y")
+    if decl_type == "arret":
+        stop_type = str(data.get("type","")).strip()
+        if not stop_type: return jsonify({"ok":False,"error":"Type d'arrêt requis"}),400
+        row = [
+            stop_type, _S.get("form",{}).get("of_num",""), date_str, poste, pilot,
+            "","","","","","","","","","","",
+            debut_dt.strftime("%H:%M:%S"), fin_dt.strftime("%H:%M:%S"), fmt(dur_s),
+            "","","","","","","","","","","","","","","","",
+            str(data.get("comment","")), "","","", shift_date_str,
+        ]
+    elif decl_type == "prod":
+        v = data
+        qte_fab = _n(v.get("qte_fab",0))
+        nb_pers = max(1, _n(v.get("nb_pers",1)) or 1)
+        equiv = calc_equiv(qte_fab, v.get("taille",""), v.get("type_prod",""))
+        of_hrs = dur_s / 3600
+        c1 = round(equiv / of_hrs, 2) if of_hrs > 0 else 0
+        c2 = round(equiv / (nb_pers * of_hrs), 2) if of_hrs > 0 else 0
+        prod_ref = get_prod_ref(); trs_str = ""
+        if prod_ref > 0 and dur_s > 0:
+            _pct = get_pct_cadence(nb_pers)
+            trs_str = str(round(equiv / (prod_ref * _pct * max(1.0,dur_s) / 28800) * 100, 1))
+        row = [
+            "Production", v.get("of_num",""), date_str, poste, pilot,
+            v.get("copilote",""), v.get("nb_pers",""), v.get("taille",""),
+            v.get("code_prod",""), v.get("type_prod",""), v.get("poids",""), v.get("fibre",""),
+            v.get("of_taie",""), v.get("traca",""), v.get("ref_taie",""),
+            "Oui" if v.get("kit") else "Non",
+            debut_dt.strftime("%H:%M:%S"), fin_dt.strftime("%H:%M:%S"), fmt(dur_s),
+            qte_fab, _n(v.get("qte_emb",0)), equiv, c1, c2, trs_str,
+            _n(v.get("qte_init_taie",0)), _n(v.get("nb_taie2_choix",0)), _n(v.get("nb_def_cout",0)),
+            _n(v.get("mq_taie",0)), _n(v.get("mq_housse_encart",0)), _n(v.get("nb_pp_cousue",0)),
+            "", "", "", "", v.get("comment",""), "", fmt(0), fmt(dur_s),
+            shift_date_str, "", 0, "", "",
+        ]
+    else:
+        return jsonify({"ok":False,"error":"Type invalide"}),400
+    write_excel_bg([], [row])
+    try:
+        next_rn = max((rn for rn,_ in _decl_cache), default=1) + 1
+        padded = tuple(row) + ('',) * max(0, 40 - len(row))
+        _decl_cache.append((next_rn, padded))
+    except: pass
+    return jsonify({"ok":True})
+
 @flask_app.route('/api/reload_excel', methods=['POST'])
 def api_reload_excel():
     """Force un rechargement du cache Excel depuis le disque."""
@@ -4116,10 +4214,11 @@ select{cursor:default}
         <button class="acc-btn acc-green" id="btn-start" onclick="doStartProd()"><span class="act-icon">▶</span><span>Démarrer production</span></button>
         <button id="btn-declarer-arret-main" class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-main-lbl">Déclarer un arrêt</span></button>
         <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
-        <button id="btn-nettoyage-acc" class="acc-btn" onclick="doNettoyage()" style="background:radial-gradient(ellipse at 50% 25%,#fed7aa 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon" style="font-size:calc(14px*var(--zf,1));font-weight:900">NET</span><span>Nettoyage</span></button>
+        <button id="btn-nettoyage-acc" class="acc-btn" onclick="doNettoyage()" style="background:radial-gradient(ellipse at 50% 25%,#fed7aa 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">&#9851;</span><span>Nettoyage</span></button>
         <button id="btn-pause-acc" class="acc-btn" onclick="doPause()" style="background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">☕</span><span>Pause</span></button>
         <button id="btn-reunion-acc" class="acc-btn" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
+        <button class="acc-btn" onclick="openPastDecl()" style="background:radial-gradient(ellipse at 50% 25%,#e9d5ff 0%,#7c3aed 55%,#4c1d95 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">📝</span><span>Décl. antérieure</span></button>
       </div>
     </div>
     <!-- KPI accueil — POSTE ACTUEL -->
@@ -4309,7 +4408,7 @@ select{cursor:default}
         <div class="prod-act-row" style="justify-content:center">
           <button id="btn-declarer-arret" class="act-btn act-btn-sm act-stop" style="flex:1;aspect-ratio:unset !important;white-space:normal !important;height:auto !important;min-height:60px" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-lbl" style="white-space:normal;line-height:1.2;text-align:center">Déclarer un arrêt</span></button>
           <button id="btn-degrade-prod" class="act-btn act-btn-sm" onclick="toggleDegrade()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
-          <button id="btn-nettoyage-prod" class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon" style="font-size:calc(14px*var(--zf,1));font-weight:900">NET</span><span>Nettoyage</span></button>
+          <button id="btn-nettoyage-prod" class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon">&#9851;</span><span>Nettoyage</span></button>
           <button class="act-btn act-btn-sm act-pause" id="btn-pause" style="flex:1" onclick="doPause()"><span class="act-icon">☕</span><span>Pause</span></button>
           <button class="act-btn act-btn-sm" id="btn-reunion" onclick="doReunion()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         </div>
@@ -4490,6 +4589,70 @@ select{cursor:default}
             ▶ Signaler le début de l'OF à <span id="ps-backdate-time" style="font-weight:900;color:#15803d">--h--</span>
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ MODAL DÉCLARATION ANTÉRIEURE ════ -->
+  <div id="m-past-decl" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;align-items:center;justify-content:center">
+    <div class="card" style="width:min(480px,98vw);max-height:92vh;overflow-y:auto;padding:18px 20px;background:#fff;border-radius:12px;border-top:4px solid #7c3aed">
+      <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:12px">📝 Déclaration antérieure</div>
+      <!-- Plage horaire -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Heure début</label>
+          <input type="time" id="pd-debut" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"></div>
+        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Heure fin</label>
+          <input type="time" id="pd-fin" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"></div>
+      </div>
+      <!-- Type -->
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button id="pd-btn-prod" onclick="pdSwitchType('prod')" style="flex:1;padding:8px;border:2px solid #7c3aed;border-radius:8px;background:#fff;font-size:calc(12px*var(--zf,1));font-weight:800;cursor:pointer;color:#7c3aed">▶ Production</button>
+        <button id="pd-btn-arret" onclick="pdSwitchType('arret')" style="flex:1;padding:8px;border:2px solid #94a3b8;border-radius:8px;background:#fff;font-size:calc(12px*var(--zf,1));font-weight:800;cursor:pointer;color:#64748b">🛑 Arrêt</button>
+      </div>
+      <!-- Formulaire prod -->
+      <div id="pd-form-prod" style="display:none;display:flex;flex-direction:column;gap:7px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">N° OF *</label>
+            <input id="pd-of" placeholder="Ex: 123456_001" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Code produit *</label>
+            <input id="pd-code" placeholder="Code article" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Type produit *</label>
+            <select id="pd-type-prod" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Taille *</label>
+            <select id="pd-taille" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Nb personnes *</label>
+            <input id="pd-nbpers" type="number" min="1" placeholder="10" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Qté fab. *</label>
+            <input id="pd-qtefab" type="number" min="0" placeholder="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Qté emb.</label>
+            <input id="pd-qteemb" type="number" min="0" placeholder="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Poids garnissage *</label>
+            <input id="pd-poids" type="number" min="0" step="0.1" placeholder="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Fibre *</label>
+            <select id="pd-fibre" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
+        </div>
+        <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Traça fibre</label>
+          <input id="pd-traca" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+        <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Commentaire</label>
+          <input id="pd-comment-prod" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+      </div>
+      <!-- Formulaire arrêt -->
+      <div id="pd-form-arret" style="display:none;flex-direction:column;gap:8px">
+        <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:3px">Type d'arrêt *</label>
+          <select id="pd-stop-type" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
+        <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:3px">Commentaire</label>
+          <input id="pd-comment-arret" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+      </div>
+      <!-- Actions -->
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-ghost" onclick="closeM('m-past-decl')">Annuler</button>
+        <button class="btn btn-prim" style="background:#7c3aed;border-color:#7c3aed" onclick="submitPastDecl()">✓ Enregistrer</button>
       </div>
     </div>
   </div>
@@ -6523,7 +6686,7 @@ async function doStartProd() {
   _pendingGapIdx=0;
   _isFirstOfGaps=!!(d.shift_model_start);
   // Fallback : si _get_uncovered_gaps n'a rien renvoyé mais gap > 1 min, créer un gap synthétique
-  if(_pendingGaps.length===0 && _pendingGapS>=120){
+  if(_pendingGaps.length===0 && _pendingGapS>=60){
     _pendingGaps=[{debut:d.ip_debut_hms||'',fin:d.ip_fin_hms||'',duree_s:_pendingGapS}];
   }
   _showNextGap();
@@ -10550,6 +10713,85 @@ async function reloadAllData(){
   if(typeof loadMainDecl==='function')loadMainDecl();
   toast('Données rechargées','ok');
 }
+// ── DÉCLARATION ANTÉRIEURE ──
+let _pdType='prod';
+function openPastDecl(){
+  _pdType='prod';
+  // Pré-remplir l'heure de début avec la fin de la dernière décl si connue
+  const shiftDebut=(ST&&ST.shift_debut_iso)?new Date(ST.shift_debut_iso):null;
+  const shiftFin=(ST&&ST.shift_fin_iso)?new Date(ST.shift_fin_iso):null;
+  const pad=n=>String(n).padStart(2,'0');
+  if(shiftDebut){document.getElementById('pd-debut').value=pad(shiftDebut.getHours())+':'+pad(shiftDebut.getMinutes());}
+  if(shiftFin){document.getElementById('pd-fin').value=pad(shiftFin.getHours())+':'+pad(shiftFin.getMinutes());}
+  // Copier les options depuis les selects du formulaire principal (toujours à jour)
+  function _copyOpts(srcId,dstId){const src=document.getElementById(srcId);const dst=document.getElementById(dstId);if(!src||!dst)return;while(dst.options.length>1)dst.remove(1);Array.from(src.options).slice(1).forEach(o=>{const n=document.createElement('option');n.value=o.value;n.textContent=o.text;dst.appendChild(n);});}
+  _copyOpts('f-type_prod','pd-type-prod');_copyOpts('f-taille','pd-taille');_copyOpts('f-fibre','pd-fibre');
+  // Peupler le select arrêt
+  const stopSel=document.getElementById('pd-stop-type');
+  if(stopSel){
+    stopSel.innerHTML='<option value="">— Choisir —</option>';
+    const cats=[
+      {label:'⚙ Rattrapage',keys:['ratt']},{label:'🔴 Technique',keys:['pb']},
+      {label:'♻ Nettoyage',keys:['nettoyage']},{label:'🔵 Organisationnel',keys:['organisation','autre']},
+      {label:'⏸ Pause / Réunion',keys:['pause','reunion']},
+    ];
+    const allEvts=(_evtsList&&_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}))).concat([
+      {label:'Pause',cat:'pause'},{label:'Réunion',cat:'reunion'},
+      {label:'Nettoyage court',cat:'nettoyage'},{label:'Nettoyage long',cat:'nettoyage'},{label:'Nettoyage très long',cat:'nettoyage'},
+    ]);
+    cats.forEach(c=>{
+      const items=[...new Set(allEvts.filter(e=>c.keys.includes(e.cat)).map(e=>e.label))];
+      if(!items.length)return;
+      const grp=document.createElement('optgroup');grp.label=c.label;
+      items.forEach(lbl=>{const o=document.createElement('option');o.value=lbl;o.textContent=lbl;grp.appendChild(o);});
+      stopSel.appendChild(grp);
+    });
+  }
+  pdSwitchType('prod');
+  openM('m-past-decl');
+}
+function pdSwitchType(t){
+  _pdType=t;
+  const bProd=document.getElementById('pd-btn-prod');const bArret=document.getElementById('pd-btn-arret');
+  const fProd=document.getElementById('pd-form-prod');const fArret=document.getElementById('pd-form-arret');
+  if(bProd){bProd.style.borderColor=t==='prod'?'#7c3aed':'#94a3b8';bProd.style.color=t==='prod'?'#7c3aed':'#64748b';bProd.style.background=t==='prod'?'#f5f3ff':'#fff';}
+  if(bArret){bArret.style.borderColor=t==='arret'?'#dc2626':'#94a3b8';bArret.style.color=t==='arret'?'#dc2626':'#64748b';bArret.style.background=t==='arret'?'#fef2f2':'#fff';}
+  if(fProd){fProd.style.display=t==='prod'?'flex':'none';}
+  if(fArret){fArret.style.display=t==='arret'?'flex':'none';}
+}
+async function submitPastDecl(){
+  const debut=(document.getElementById('pd-debut')||{}).value||'';
+  const fin=(document.getElementById('pd-fin')||{}).value||'';
+  if(!debut||!fin){toast('Renseigner heure début et fin','err');return;}
+  if(debut>=fin){toast('Heure fin doit être après début','err');return;}
+  let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin};
+  if(_pdType==='prod'){
+    const of_num=(document.getElementById('pd-of')||{}).value||'';
+    const code=(document.getElementById('pd-code')||{}).value||'';
+    const type_prod=(document.getElementById('pd-type-prod')||{}).value||'';
+    const taille=(document.getElementById('pd-taille')||{}).value||'';
+    const nb_pers=(document.getElementById('pd-nbpers')||{}).value||'';
+    const qte_fab=(document.getElementById('pd-qtefab')||{}).value||'0';
+    const poids=(document.getElementById('pd-poids')||{}).value||'';
+    const fibre=(document.getElementById('pd-fibre')||{}).value||'';
+    if(!of_num||!code||!type_prod||!taille||!nb_pers||!poids||!fibre){toast('Champs obligatoires manquants (*)','err');return;}
+    body=Object.assign(body,{of_num,code_prod:code,type_prod,taille,nb_pers,qte_fab,qte_emb:(document.getElementById('pd-qteemb')||{}).value||'0',poids,fibre,traca:(document.getElementById('pd-traca')||{}).value||'',comment:(document.getElementById('pd-comment-prod')||{}).value||''});
+  } else {
+    const stop_type=(document.getElementById('pd-stop-type')||{}).value||'';
+    if(!stop_type){toast('Choisir un type d\'arrêt','err');return;}
+    body=Object.assign(body,{type:stop_type,comment:(document.getElementById('pd-comment-arret')||{}).value||''});
+  }
+  const r=await fetch('/api/add_past_decl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>null);
+  const d=r?await r.json().catch(()=>({})):{};
+  if(d.ok){
+    closeM('m-past-decl');
+    toast('Déclaration ajoutée','ok');
+    await pollState();
+  } else {
+    toast('Erreur : '+(d.error||'?'),'err');
+  }
+}
+
 async function generateDashboard(){
   const st=document.getElementById('dash-gen-status');
   if(st)st.textContent='⏳ Génération en cours…';
