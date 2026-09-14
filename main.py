@@ -4829,7 +4829,7 @@ select{cursor:default}
       </div>
       <div class="ss">
         <h3>🔄 Mise à jour données &amp; Dashboard</h3>
-        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:12px">Recharge toutes les données depuis Excel, ou regénère le fichier <code>dashboard.html</code> dans le dossier du logiciel.</div>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:12px">Recharge toutes les données depuis Excel, ou regénère le fichier <code>Rapport ORC1.html</code> dans le dossier du logiciel.</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <button class="btn btn-prim" style="background:#0369a1;border-color:#0369a1;font-size:calc(13px*var(--zf,1));padding:10px 22px" onclick="reloadAllData()">🔄 Mise à jour DATA</button>
           <button class="btn btn-prim" style="background:#6d28d9;border-color:#6d28d9;font-size:calc(13px*var(--zf,1));padding:10px 22px" onclick="generateDashboard()">📊 Mise à jour Dashboard</button>
@@ -10555,8 +10555,8 @@ async function generateDashboard(){
   const r=await fetch('/api/generate_dashboard',{method:'POST'}).catch(()=>null);
   const d=r?await r.json().catch(()=>({})):{};
   if(d.ok){
-    if(st)st.textContent='✓ dashboard.html généré à '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-    toast('Dashboard généré !','ok');
+    if(st)st.textContent='✓ Rapport ORC1.html généré à '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    toast('Rapport ORC1 généré !','ok');
   }else{
     if(st)st.textContent='✗ Erreur : '+(d.error||'?');
     toast('Erreur génération dashboard','err');
@@ -10650,6 +10650,7 @@ def generate_dashboard_html():
             '    document.querySelectorAll("[onclick]").forEach(function(el){\n'
             '      if(el.getAttribute("onclick")==="doLogout()")el.style.display="none";\n'
             '    });\n'
+            '    document.title="Rapport ORC1";\n'
             '    var hdr=document.getElementById("app-hdr");\n'
             '    if(hdr){hdr.style.overflowX="auto";}\n'
             '    var s=document.createElement("style");\n'
@@ -10670,7 +10671,7 @@ def generate_dashboard_html():
         )
         dashboard_html = HTML_TEMPLATE.replace('</body>', inject + '</body>')
         base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
-        output_path = os.path.join(base_dir, 'dashboard.html')
+        output_path = os.path.join(base_dir, 'Rapport ORC1.html')
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(dashboard_html)
         return True, output_path
