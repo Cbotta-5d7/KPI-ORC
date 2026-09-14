@@ -2892,6 +2892,17 @@ def api_fin_poste_data():
     cadence_h_fp = round(tot_eq * 60 / temps_utile_fp) if temps_utile_fp > 0 else 0
     _sorted_of_fib = sorted([o for o in of_list if o.get("fibre")], key=lambda x: x.get("debut",""))
     nb_fibre_chg_fp = sum(1 for i in range(1, len(_sorted_of_fib)) if _sorted_of_fib[i]["fibre"] != _sorted_of_fib[i-1]["fibre"])
+    decl_list = []
+    for _rn_dl, _r_dl in _decl_cache:
+        _rd_dl = _row_date(_r_dl[2])
+        if _rd_dl != shift_date_str and _rd_dl != today: continue
+        if str(_r_dl[4] or "") != pilot: continue
+        _deb_dl = str(_r_dl[16] or "")[:5]
+        _fin_dl = str(_r_dl[17] or "")[:5]
+        if not _deb_dl or not _fin_dl: continue
+        _type_dl = str(_r_dl[0] or "").strip() or "Production"
+        decl_list.append({"type": _type_dl, "of": str(_r_dl[1] or ""), "debut": _deb_dl, "fin": _fin_dl, "comment": str(_r_dl[23] or "") if len(_r_dl) > 23 else ""})
+    decl_list.sort(key=lambda x: x["debut"])
     return jsonify({
         "pilot":pilot,"date":today,
         "nb_of":len(of_list),"trs":trs_poste,"trs_shift":trs_poste_shift,
@@ -2919,6 +2930,7 @@ def api_fin_poste_data():
         "reunion_min": reunion_min_fp,
         "depassement_min": depassement_min_fp,
         "nb_fibre_chg": nb_fibre_chg_fp,
+        "decl_list": decl_list,
     })
 
 @flask_app.route('/api/history_today')
@@ -4776,6 +4788,7 @@ select{cursor:default}
     <div class="card" style="width:min(1260px,98vw);max-height:96vh;overflow:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #dc2626">
       <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:6px">📊 Réconciliation fin de poste</div>
       <div id="ecart-guide" style="font-size:calc(12px*var(--zf,1));margin-bottom:10px;padding:8px 12px;border-radius:6px;line-height:1.5"></div>
+      <div id="ecart-timeline" style="margin-bottom:12px"></div>
       <div id="ecart-info" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:calc(12px*var(--zf,1))"></div>
       <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Plages non justifiées</div>
       <div id="ecart-gaps" style="margin-bottom:14px"></div>
@@ -8657,6 +8670,64 @@ function _showEcartModal(fpd){
     '<span style="color:var(--gray)">Arrêts déclarés :</span><b>'+stop_min+' min</b>'+
     '<span style="color:#dc2626;font-weight:700">Écart :</span><b style="color:#dc2626;font-weight:900">'+ecart_min+' min</b>'+
     '</div>';
+  // ── Timeline des déclarations ─────────────────────────────────────────────
+  const tlEl=document.getElementById('ecart-timeline');
+  if(tlEl){
+    const decls=fpd.decl_list||[];
+    const _isProd=t=>{const tl=(t||'').toLowerCase();return tl===''||tl==='production'||tl==='prod';};
+    const _typeColor=t=>{
+      const tl=(t||'').toLowerCase();
+      if(_isProd(t))return{bg:'#bbf7d0',border:'#86efac',text:'#15803d'};
+      if(tl.includes('pause'))return{bg:'#f1f5f9',border:'#cbd5e1',text:'#475569'};
+      if(tl.includes('nettoyage'))return{bg:'#e0f2fe',border:'#7dd3fc',text:'#0369a1'};
+      if(tl.includes('dégrad')||tl.includes('degrad'))return{bg:'#fef9c3',border:'#fde047',text:'#854d0e'};
+      return{bg:'#fee2e2',border:'#fca5a5',text:'#dc2626'};
+    };
+    // Build merged timeline: interleave decls and gaps
+    const _hm2min=h=>{if(!h)return null;const p=h.split(':');return parseInt(p[0]||0)*60+parseInt(p[1]||0);};
+    const mdMin=_hm2min(modelDebut);
+    const mfMin=_hm2min(modelFin);
+    if(decls.length===0&&gaps.length===0){
+      tlEl.innerHTML='';
+    } else {
+      // Build sorted list of blocks: decls + gaps
+      const blocks=[];
+      decls.forEach(d=>{
+        const s=_hm2min(d.debut),e=_hm2min(d.fin);
+        if(s==null||e==null)return;
+        blocks.push({kind:'decl',debut:d.debut,fin:d.fin,s,e,type:d.type,of:d.of,comment:d.comment});
+      });
+      gaps.forEach(g=>{
+        const s=_hm2min(g.debut),e=_hm2min(g.fin);
+        if(s==null||e==null)return;
+        blocks.push({kind:'gap',debut:g.debut,fin:g.fin,s,e,duree_min:g.duree_min});
+      });
+      blocks.sort((a,b)=>a.s-b.s||(a.e-b.e));
+      let html='<div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">📅 Récapitulatif des déclarations</div>';
+      html+='<div style="display:flex;flex-direction:column;gap:4px">';
+      blocks.forEach(b=>{
+        if(b.kind==='gap'){
+          html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fef2f2;border:1.5px dashed #fca5a5;border-radius:6px">'+
+            '<span style="font-size:18px;line-height:1">⛔</span>'+
+            '<span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:700;color:#dc2626">Plage non couverte : '+esc(b.debut)+' → '+esc(b.fin)+'</span>'+
+            '<span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#9f1239;background:#fecaca;padding:2px 6px;border-radius:4px">'+b.duree_min+' min</span>'+
+          '</div>';
+        } else {
+          const c=_typeColor(b.type);
+          const isProd=_isProd(b.type);
+          const lbl=isProd?(b.of?'OF '+esc(b.of):'Production'):(esc(b.type)||'Arrêt');
+          html+='<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:'+c.bg+';border:1px solid '+c.border+';border-radius:6px">'+
+            '<span style="font-size:16px;line-height:1">'+(isProd?'🟢':'🔶')+'</span>'+
+            '<span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:700;color:'+c.text+'">'+lbl+'</span>'+
+            '<span style="font-size:calc(11px*var(--zf,1));color:'+c.text+';opacity:.85">'+esc(b.debut)+' → '+esc(b.fin)+'</span>'+
+            (b.comment?'<span style="font-size:calc(10px*var(--zf,1));color:#64748b;font-style:italic;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(b.comment)+'">'+esc(b.comment)+'</span>':'')+
+          '</div>';
+        }
+      });
+      html+='</div>';
+      tlEl.innerHTML=html;
+    }
+  }
   // Prefill plage horaire du poste
   const pdebut=document.getElementById('ecart-plage-debut');
   const pfin=document.getElementById('ecart-plage-fin');
@@ -9786,6 +9857,10 @@ async function calcPeriodReport(autoLoad){
   const _colPerteRj=pertRaw<=0?'#16a34a':_cL(pertRaw,_ouv_rj);
   const _objPcsRj=d.objectif_pcs||0;
   const _colPcsRj=!_objPcsRj?'#16a34a':((d.tot_pcs||0)/_objPcsRj>=0.95?'#16a34a':(d.tot_pcs||0)/_objPcsRj>=0.75?'#f59e0b':'#dc2626');
+  const _objEquivRj=d.objectif_equiv||0;
+  const _colEquivRj=!_objEquivRj?'#64748b':((d.tot_equiv||0)>=_objEquivRj?'#16a34a':'#dc2626');
+  const _cadRefHRj=Math.round((d.cadence_ref_pcs_min||0)*60);
+  const _colCadRj=!_cadRefHRj?'#0369a1':((d.cadence_h||0)>=_cadRefHRj?'#16a34a':'#dc2626');
   // ── Chart A : TRS par équipe — barres verticales SVG ──────────────────────────
   let chartTrsHtml='';
   if(d.sessions_detail&&d.sessions_detail.length>0){
@@ -10005,8 +10080,8 @@ async function calcPeriodReport(autoLoad){
         <!-- Stats fusionnées -->
         <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
           <div class="fp-card" style="padding:5px 8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
-          <div class="fp-card" style="padding:5px 8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#64748b">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
-          <div class="fp-card" style="padding:5px 8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#0369a1">Cad/h : ${d.cadence_h||0} <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
+          <div class="fp-card" style="padding:5px 8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
+          <div class="fp-card" style="padding:5px 8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
         </div>
         <!-- Lignes info -->
         <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
@@ -10288,6 +10363,10 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const _colPerteRp=perteCadenceRaw<=0?'#16a34a':_cLRp(perteCadenceRaw,ouvertureMin);
   const _objPcsRp=(d.prod_rows||[]).reduce((s,r)=>{const o=parseFloat(r.objectif||'-1');return s+(o>=0?o:0);},0);
   const _colPcsRp=!_objPcsRp?'#16a34a':(totQteFab/_objPcsRp>=0.95?'#16a34a':totQteFab/_objPcsRp>=0.75?'#f59e0b':'#dc2626');
+  const _objEquivRp=d.objectif_equiv||0;
+  const _colEquivRp=!_objEquivRp?'#64748b':((d.tot_equiv||0)>=_objEquivRp?'#16a34a':'#dc2626');
+  const _cadRefHRp=Math.round(cadenceRefPcsMin*60);
+  const _colCadRp=!_cadRefHRp?'#0369a1':((!d.is_live&&cadenceH>=_cadRefHRp)?'#16a34a':'#dc2626');
   const tlDebut=d.actual_debut||d.model_debut;
   const tlFin=d.actual_fin||d.model_fin;
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
@@ -10322,8 +10401,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
           ${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?`<div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:3px;font-weight:600">${esc(d.actual_debut||d.model_debut)} → ${esc(d.actual_fin||d.model_fin)}</div>`:''}
         </div>
         <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colPcsRp}">${Math.round(totQteFab)} <span style="font-weight:600;color:var(--gray)">Pièces</span>${_objPcsRp>0?` <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${Math.round(_objPcsRp)})</span>`:''}</div></div>
-        <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#64748b">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span></div></div>
-        <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#0369a1">${d.is_live?'Cad/h : —':`Cad/h : ${cadenceH}`} <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round(cadenceRefPcsMin*10)/10}/min)</span></div></div>
+        <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colEquivRp}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span></div></div>
+        <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colCadRp}">${d.is_live?'Cad/h : —':`Cad/h : ${cadenceH}`} <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round(cadenceRefPcsMin*10)/10}/min)</span></div></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#64748b;font-weight:900">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Nb OF</div></div>
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#64748b;font-weight:900">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
