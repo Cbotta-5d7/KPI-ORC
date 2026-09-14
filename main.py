@@ -8284,8 +8284,7 @@ function _renderAndOpenOfDetail(r, ofEvts) {
         <button onclick="closeM('m-of-detail')" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:10px;width:36px;height:36px;font-size:calc(17px*var(--zf,1));cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
       </div>
       <div style="padding:18px 22px;overflow-y:auto;flex:1;background:#fff">
-        ${[_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Date',r.date,'#374151'),_row('Poste',r.poste,'#374151'),_row('Pilote',r.pilote,'#374151'),_row('OF associé',r.of,'#1e3a8a')].join('')}
-        ${commentHtmlE}
+        ${[_row('Heure début',r.debut,'#374151'),_row('Heure fin',r.fin,'#374151'),_row('Durée',r.duree,'#059669'),_row('Date',r.date,'#374151'),_row('Poste',r.poste,'#374151'),_row('Pilote',r.pilote,'#374151'),_row('OF associé',r.of,'#1e3a8a'),_row('Commentaire',r.comment,'#92400e')].join('')}
       </div>`;
     const box=document.getElementById('of-detail-box');
     if(box){box.style.width='min(480px,96vw)';box.style.height='auto';box.style.maxHeight='80vh';}
@@ -9930,7 +9929,7 @@ async function calcPeriodReport(autoLoad){
       <td style="padding:4px 6px;color:#0369a1;font-weight:700">${esc(r.of||'—')}</td>
       <td style="padding:4px 6px;text-align:center;white-space:nowrap">${esc(r.debut||'')}→${esc(r.fin||'')}</td>
       <td style="padding:4px 6px;text-align:right;font-weight:700">${esc(r.duree||'—')}</td>
-      <td style="padding:4px 6px;color:var(--gray);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.comment||'')}">${esc(r.comment||'—')}</td>
+      <td style="padding:4px 6px;color:var(--gray);max-width:260px;min-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.comment||'')}">${esc(r.comment||'—')}</td>
     </tr>`).join('');
     eventsListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">⏱ Liste des événements (${allEvts.length})</div<div style="overflow-x:auto;overflow-y:auto;max-height:240px"><table style="width:100%;border-collapse:collapse"><thead style="position:sticky;top:0;z-index:1"><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">Type</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Durée</th><th style="padding:4px 6px;text-align:left">Commentaire</th></tr></thead><tbody>${evtRows}</tbody></table></div></div>`;
   }
@@ -10003,14 +10002,11 @@ async function calcPeriodReport(autoLoad){
             <div style="font-size:calc(10px*var(--zf,1));color:#94a3b8;margin-top:2px">${d.nb_jours}j · ${d.nb_sessions} postes · ${d.nb_of} OF</div>
           </div>
         </div>
-        <!-- Stats 2×2 -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;flex-shrink:0">
-          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:${_colPcsRj};font-weight:900">${Math.round(d.tot_pcs||0)}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Pièces</div></div>
-          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#64748b;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Équiv.</div></div>
-          <div class="fp-card" style="padding:6px 8px;text-align:center;background:rgba(0,0,0,.04)"><div style="font-size:calc(17px*var(--zf,1));color:#059669;font-weight:900;opacity:.75">${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Obj. pièces</div></div>
-          <div class="fp-card" style="padding:6px 8px;text-align:center;background:rgba(0,0,0,.04)"><div style="font-size:calc(17px*var(--zf,1));color:#0891b2;font-weight:900;opacity:.75">${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Obj. équiv.</div></div>
-          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(17px*var(--zf,1));color:#0369a1;font-weight:900">${d.cadence_h||0}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Cad./h</div></div>
-          <div class="fp-card" style="padding:6px 8px;text-align:center"><div style="font-size:calc(16px*var(--zf,1));color:#0369a1;font-weight:900">${Math.round((d.cadence_ref_pcs_min||0)*100)/100}</div><div style="font-size:calc(10px*var(--zf,1));color:#94a3b8">Réf/min</div></div>
+        <!-- Stats fusionnées -->
+        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <div class="fp-card" style="padding:5px 8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
+          <div class="fp-card" style="padding:5px 8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#64748b">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
+          <div class="fp-card" style="padding:5px 8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#0369a1">Cad/h : ${d.cadence_h||0} <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
         </div>
         <!-- Lignes info -->
         <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
@@ -10021,10 +10017,10 @@ async function calcPeriodReport(autoLoad){
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start;flex-wrap:nowrap">
           ${_is3postes&&pieSmall?`<div style="flex-shrink:0">${pieSmall}</div>`:''}
-          <div style="flex:1;min-width:0;display:flex;gap:6px;flex-wrap:wrap">
+          <div style="flex:3;min-width:0;display:flex;gap:6px;flex-wrap:wrap">
             ${chartTrsHtml}${chartCadHtml}
           </div>
-          <div style="flex-shrink:0;min-width:120px">${paretoRjHtml}</div>
+          <div style="flex:1;min-width:120px">${paretoRjHtml}</div>
         </div>
         ${ofListHtml}
         ${eventsListHtml}
@@ -10325,14 +10321,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <svg id="rpt-pie" viewBox="0 0 130 130" style="width:150px;height:150px;display:block;margin:0 auto"></svg>
           ${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?`<div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:3px;font-weight:600">${esc(d.actual_debut||d.model_debut)} → ${esc(d.actual_fin||d.model_fin)}</div>`:''}
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
-          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:${_colPcsRp};font-weight:900">${Math.round(totQteFab)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Pièces</div></div>
-          <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#64748b;font-weight:900">${Math.round(d.tot_equiv||0)}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Équiv.</div></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:5px">
-          <div class="fp-card" style="padding:6px;text-align:center;flex:1"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#64748b;font-weight:900">${d.is_live?'—':cadenceH}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Cad./h</div></div>
-          <div style="text-align:center;flex-shrink:0"><div style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#0369a1">${Math.round(cadenceRefPcsMin*10)/10}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">réf pcs/min</div></div>
-        </div>
+        <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colPcsRp}">${Math.round(totQteFab)} <span style="font-weight:600;color:var(--gray)">Pièces</span>${_objPcsRp>0?` <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${Math.round(_objPcsRp)})</span>`:''}</div></div>
+        <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#64748b">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span></div></div>
+        <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#0369a1">${d.is_live?'Cad/h : —':`Cad/h : ${cadenceH}`} <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round(cadenceRefPcsMin*10)/10}/min)</span></div></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#64748b;font-weight:900">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Nb OF</div></div>
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#64748b;font-weight:900">${nbChangFibre}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Chg. fibre</div></div>
