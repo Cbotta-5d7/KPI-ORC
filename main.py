@@ -2859,12 +2859,13 @@ def api_fin_poste_data():
     _sum_exp_fp = None
     if _pers_pct_map and _filtered_prod_raw_fp:
         _deg_ivs_fp = _merged_degrade_ivs([r_s for _, r_s in shift_evt_rows])
-        trs_poste_shift, _sum_exp_fp = _option_b_trs(_filtered_prod_raw_fp, _deg_ivs_fp, prod_ref, _plan_ivs_fp)
+        _, _sum_exp_fp = _option_b_trs(_filtered_prod_raw_fp, _deg_ivs_fp, prod_ref, _plan_ivs_fp)
         perte_cadence_fp = round((_sum_exp_fp - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 and _sum_exp_fp > 0 else 0.0
     else:
-        if prod_ref > 0 and _adj_fp > 0 and tot_eq > 0:
-            trs_poste_shift = round(tot_eq / (prod_ref * _adj_fp / 28800) * 100, 1)
         perte_cadence_fp = round((prod_ref * _adj_fp / 28800 - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 else 0.0
+    # TRS poste = équivalences / (prod_ref × (durée_ouverture − arrêts_budgétés) / 28800)
+    # _adj_fp inclut déjà la déduction des pauses/nettoyages/réunions dans leur budget
+    trs_poste_shift = round(tot_eq / (prod_ref * _adj_fp / 28800) * 100, 1) if prod_ref > 0 and _adj_fp > 0 and tot_eq > 0 else -1.0
     tot_pcs_fp = sum(float(str(r[19] or 0).replace(",",".") or 0) for r in _filtered_prod_raw_fp)
     cadence_h_fp = round(tot_eq * 60 / temps_utile_fp) if temps_utile_fp > 0 else 0
     _sorted_of_fib = sorted([o for o in of_list if o.get("fibre")], key=lambda x: x.get("debut",""))
@@ -4115,7 +4116,7 @@ select{cursor:default}
         <button class="acc-btn acc-green" id="btn-start" onclick="doStartProd()"><span class="act-icon">▶</span><span>Démarrer production</span></button>
         <button id="btn-declarer-arret-main" class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-main-lbl">Déclarer un arrêt</span></button>
         <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
-        <button id="btn-nettoyage-acc" class="acc-btn" onclick="doNettoyage()" style="background:radial-gradient(ellipse at 50% 25%,#fed7aa 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
+        <button id="btn-nettoyage-acc" class="acc-btn" onclick="doNettoyage()" style="background:radial-gradient(ellipse at 50% 25%,#fed7aa 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon" style="font-size:calc(14px*var(--zf,1));font-weight:900">NET</span><span>Nettoyage</span></button>
         <button id="btn-pause-acc" class="acc-btn" onclick="doPause()" style="background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">☕</span><span>Pause</span></button>
         <button id="btn-reunion-acc" class="acc-btn" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
@@ -4308,7 +4309,7 @@ select{cursor:default}
         <div class="prod-act-row" style="justify-content:center">
           <button id="btn-declarer-arret" class="act-btn act-btn-sm act-stop" style="flex:1;aspect-ratio:unset !important;white-space:normal !important;height:auto !important;min-height:60px" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-lbl" style="white-space:normal;line-height:1.2;text-align:center">Déclarer un arrêt</span></button>
           <button id="btn-degrade-prod" class="act-btn act-btn-sm" onclick="toggleDegrade()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
-          <button id="btn-nettoyage-prod" class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon">🧹</span><span>Nettoyage</span></button>
+          <button id="btn-nettoyage-prod" class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon" style="font-size:calc(14px*var(--zf,1));font-weight:900">NET</span><span>Nettoyage</span></button>
           <button class="act-btn act-btn-sm act-pause" id="btn-pause" style="flex:1" onclick="doPause()"><span class="act-icon">☕</span><span>Pause</span></button>
           <button class="act-btn act-btn-sm" id="btn-reunion" onclick="doReunion()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         </div>
@@ -8462,12 +8463,13 @@ function _showEcartModal(fpd){
       gaps.forEach((g,gi)=>{
         const div=document.createElement('div');
         div.style.cssText='background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:8px 10px;margin-bottom:6px';
+        const hasNextOf=(fpd.of_list||[]).some(o=>o.debut>=g.fin);
         div.innerHTML=
           '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">'+
             '<span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:#dc2626">⚠ '+esc(g.debut)+' → '+esc(g.fin)+
               ' <span style="font-weight:400;color:#9f1239">('+g.duree_min+' min)</span></span>'+
             '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
-            '<button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:3px 12px;background:#0369a1;border-color:#0369a1" onclick="ecartSetOfDebut(\''+esc(g.debut)+'\',\''+esc(g.fin)+'\')">📌 Déclarer début OF à '+esc(g.debut)+'</button>'+
+            (hasNextOf?'<button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:3px 12px;background:#0369a1;border-color:#0369a1" onclick="ecartSetOfDebut(\''+esc(g.debut)+'\',\''+esc(g.fin)+'\')">📌 Déclarer début OF à '+esc(g.debut)+'</button>':'')+
             '<button class="btn btn-ghost" style="font-size:calc(11px*var(--zf,1));padding:3px 10px;color:#dc2626;border-color:#fca5a5" onclick="ecartToggleGapForm('+gi+')">+ Déclarer un arrêt</button>'+
             '</div>'+
           '</div>'+
@@ -10704,7 +10706,7 @@ def main():
         while True:
             try: generate_dashboard_html()
             except: pass
-            time.sleep(30 * 60)
+            time.sleep(2 * 60)
     threading.Thread(target=_dashboard_bg, daemon=True).start()
     _start_periodic_excel_sync()
 
