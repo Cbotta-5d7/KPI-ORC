@@ -9858,9 +9858,9 @@ async function calcPeriodReport(autoLoad){
   const _objPcsRj=d.objectif_pcs||0;
   const _colPcsRj=!_objPcsRj?'#16a34a':((d.tot_pcs||0)/_objPcsRj>=0.95?'#16a34a':(d.tot_pcs||0)/_objPcsRj>=0.75?'#f59e0b':'#dc2626');
   const _objEquivRj=d.objectif_equiv||0;
-  const _colEquivRj=!_objEquivRj?'#64748b':((d.tot_equiv||0)>=_objEquivRj?'#16a34a':'#dc2626');
+  const _colEquivRj=!_objEquivRj?'#64748b':((d.tot_equiv||0)/_objEquivRj>=0.95?'#16a34a':(d.tot_equiv||0)/_objEquivRj>=0.75?'#f59e0b':'#dc2626');
   const _cadRefHRj=Math.round((d.cadence_ref_pcs_min||0)*60);
-  const _colCadRj=!_cadRefHRj?'#0369a1':((d.cadence_h||0)>=_cadRefHRj?'#16a34a':'#dc2626');
+  const _colCadRj=!_cadRefHRj?'#0369a1':((d.cadence_h||0)/_cadRefHRj>=0.95?'#16a34a':(d.cadence_h||0)/_cadRefHRj>=0.75?'#f59e0b':'#dc2626');
   // ── Chart A : TRS par équipe — barres verticales SVG ──────────────────────────
   let chartTrsHtml='';
   if(d.sessions_detail&&d.sessions_detail.length>0){
@@ -9943,16 +9943,17 @@ async function calcPeriodReport(autoLoad){
     const maxMp=d.stop_pareto[0].min,totMp=d.stop_pareto.reduce((a,e)=>a+e.min,0);
     const rows3=d.stop_pareto.map(e=>{
       const pct=Math.round(e.min/maxMp*100),col=STOP_COL[e.cat]||'#94a3b8',pctTot=totMp>0?Math.round(e.min/totMp*100):0;
-      return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px;white-space:nowrap">
-        <div style="flex:0 0 120px;display:flex;align-items:center;gap:4px;min-width:0">
-          <div style="width:8px;height:8px;border-radius:2px;background:${col};flex-shrink:0"></div>
-          <span style="font-size:calc(10px*var(--zf,1));color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.type)}</span>
+      return `<div style="margin-bottom:5px">
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+          <div style="width:7px;height:7px;border-radius:2px;background:${col};flex-shrink:0"></div>
+          <span style="font-size:calc(10px*var(--zf,1));color:#374151;word-break:break-word;line-height:1.2">${esc(e.type)}</span>
         </div>
-        <div style="flex:1;background:#f1f5f9;border-radius:3px;height:16px;min-width:40px;position:relative;overflow:hidden">
-          <div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div>
-          <span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:calc(9px*var(--zf,1));font-weight:800;color:#1e293b">${pctTot}%</span>
+        <div style="display:flex;align-items:center;gap:4px">
+          <div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden">
+            <div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div>
+          </div>
+          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m</span>
         </div>
-        <div style="flex:0 0 32px;font-size:calc(10px*var(--zf,1));color:#6b7280;text-align:right;white-space:nowrap">${Math.round(e.min)}m</div>
       </div>`;
     }).join('');
     paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex-shrink:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">🛑 Pareto des arrêts</div>${rows3}</div>`;
@@ -10364,9 +10365,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const _objPcsRp=(d.prod_rows||[]).reduce((s,r)=>{const o=parseFloat(r.objectif||'-1');return s+(o>=0?o:0);},0);
   const _colPcsRp=!_objPcsRp?'#16a34a':(totQteFab/_objPcsRp>=0.95?'#16a34a':totQteFab/_objPcsRp>=0.75?'#f59e0b':'#dc2626');
   const _objEquivRp=d.objectif_equiv||0;
-  const _colEquivRp=!_objEquivRp?'#64748b':((d.tot_equiv||0)>=_objEquivRp?'#16a34a':'#dc2626');
+  const _colEquivRp=!_objEquivRp?'#64748b':((d.tot_equiv||0)/_objEquivRp>=0.95?'#16a34a':(d.tot_equiv||0)/_objEquivRp>=0.75?'#f59e0b':'#dc2626');
   const _cadRefHRp=Math.round(cadenceRefPcsMin*60);
-  const _colCadRp=!_cadRefHRp?'#0369a1':((!d.is_live&&cadenceH>=_cadRefHRp)?'#16a34a':'#dc2626');
+  const _colCadRp=!_cadRefHRp?'#0369a1':((!d.is_live&&cadenceH/_cadRefHRp>=0.95)?'#16a34a':(!d.is_live&&cadenceH/_cadRefHRp>=0.75)?'#f59e0b':'#dc2626');
   const tlDebut=d.actual_debut||d.model_debut;
   const tlFin=d.actual_fin||d.model_fin;
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
@@ -11068,12 +11069,24 @@ def main():
     threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_session_autosave, daemon=True).start()
     def _dashboard_bg():
+        import datetime as _bdt, traceback as _btb
+        _base = (os.path.dirname(sys.executable) if getattr(sys, 'frozen', False)
+                 else os.path.dirname(os.path.abspath(__file__)))
+        _log = os.path.join(_base, '_dashboard_auto.log')
         time.sleep(90)
         while True:
+            _ts = _bdt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             try:
-                import urllib.request as _ur
-                _ur.urlopen('http://127.0.0.1:5001/api/generate_dashboard', data=b'', timeout=60)
-            except: pass
+                ok, info = generate_dashboard_html()
+                try:
+                    with open(_log, 'a', encoding='utf-8') as _f:
+                        _f.write(f"[{_ts}] {'OK' if ok else 'ERREUR: ' + str(info)[:800]}\n")
+                except: pass
+            except Exception as _ex:
+                try:
+                    with open(_log, 'a', encoding='utf-8') as _f:
+                        _f.write(f"[{_ts}] EXCEPTION: {_btb.format_exc()[:800]}\n")
+                except: pass
             time.sleep(5 * 60)
     threading.Thread(target=_dashboard_bg, daemon=True).start()
     _start_periodic_excel_sync()
