@@ -4,9 +4,26 @@ from flask import Flask, request, jsonify, render_template_string
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Border, Side, PatternFill
 
-CONFIG_FILE  = os.path.join(os.path.expanduser("~"), "kpi_orc_config.json")
-SESSION_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_session.json")
-PENDING_FILE = os.path.join(os.path.expanduser("~"), "kpi_orc_pending.json")
+# Dossier de l'exe (PyInstaller) ou du script — tout est portable dans ce dossier
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+CONFIG_FILE  = os.path.join(BASE_DIR, "kpi_orc_config.json")
+SESSION_FILE = os.path.join(BASE_DIR, "kpi_orc_session.json")
+PENDING_FILE = os.path.join(BASE_DIR, "kpi_orc_pending.json")
+
+# Migration automatique depuis HOME (première fois après mise à jour)
+def _migrate_from_home():
+    _home = os.path.expanduser("~")
+    for fname in ("kpi_orc_config.json", "kpi_orc_session.json", "kpi_orc_pending.json"):
+        src = os.path.join(_home, fname)
+        dst = os.path.join(BASE_DIR, fname)
+        if os.path.exists(src) and not os.path.exists(dst):
+            try: shutil.copy(src, dst)
+            except: pass
+_migrate_from_home()
 
 EVENTS = [
     ("Pochon / Fibre",       "ratt_pochon",      "ratt"),
@@ -6745,6 +6762,8 @@ function doCancelProd(){
 async function _doConfirmCancelProd(){
   closeM('m-cancel-prod');
   await fetch('/api/force_reset_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  localStorage.removeItem('kpiorc_form');
+  FORM_FIELDS.forEach(k=>{const el=document.getElementById('f-'+k);if(el)el.value='';});
   await pollState();
   goTab('main');
   toast('Production annulée','ok');
