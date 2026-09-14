@@ -4250,7 +4250,7 @@ select{cursor:default}
         <button id="btn-pause-acc" class="acc-btn" onclick="doPause()" style="background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">☕</span><span>Pause</span></button>
         <button id="btn-reunion-acc" class="acc-btn" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
-        <button class="acc-btn" onclick="openPastDecl()" style="margin-left:auto;background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">📝</span><span>Faire une déclaration antérieure</span></button>
+        <button class="acc-btn" onclick="openPastDecl()" style="margin-left:auto;background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">📝</span><span>Faire une régul</span></button>
       </div>
     </div>
     <!-- KPI accueil — POSTE ACTUEL -->
@@ -11071,8 +11071,8 @@ def main():
         time.sleep(90)
         while True:
             try:
-                with flask_app.app_context():
-                    generate_dashboard_html()
+                import urllib.request as _ur
+                _ur.urlopen('http://127.0.0.1:5001/api/generate_dashboard', data=b'', timeout=60)
             except: pass
             time.sleep(5 * 60)
     threading.Thread(target=_dashboard_bg, daemon=True).start()
