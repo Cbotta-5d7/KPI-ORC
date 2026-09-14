@@ -3618,7 +3618,27 @@ def api_add_past_decl():
         ]
     else:
         return jsonify({"ok":False,"error":"Type invalide"}),400
-    write_excel_bg([], [row])
+    # Écriture directe sans déclencher load_history() pour éviter la race condition
+    def _write_bg():
+        _path = cfg.get("db_path","")
+        if not _path: return
+        for _attempt in range(5):
+            try:
+                with _excel_lock:
+                    _wb = _get_wb(_path)
+                    if _wb is None:
+                        time.sleep(2); continue
+                    _ws = _ensure_decl_sheet(_wb)
+                    _ws.append(row)
+                    _format_row(_ws, _ws.max_row)
+                    _safe_excel_save(_wb, _path)
+                return
+            except PermissionError:
+                time.sleep(2)
+            except:
+                return
+    threading.Thread(target=_write_bg, daemon=True).start()
+    # Ajout immédiat au cache en mémoire (pas de reload qui écraserait l'entrée)
     try:
         next_rn = max((rn for rn,_ in _decl_cache), default=1) + 1
         padded = tuple(row) + ('',) * max(0, 40 - len(row))
@@ -4214,11 +4234,11 @@ select{cursor:default}
         <button class="acc-btn acc-green" id="btn-start" onclick="doStartProd()"><span class="act-icon">▶</span><span>Démarrer production</span></button>
         <button id="btn-declarer-arret-main" class="acc-btn acc-red" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-main-lbl">Déclarer un arrêt</span></button>
         <button id="btn-degrade-acc" class="acc-btn acc-amber" onclick="toggleDegrade()"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
-        <button id="btn-nettoyage-acc" class="acc-btn" onclick="doNettoyage()" style="background:radial-gradient(ellipse at 50% 25%,#fed7aa 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🚿</span><span>Nettoyage</span></button>
+        <button id="btn-nettoyage-acc" class="acc-btn" onclick="doNettoyage()" style="background:radial-gradient(ellipse at 50% 25%,#fed7aa 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon"><svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><line x1="6" y1="2" x2="15" y2="15" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/><path d="M3 15 Q6 13 9 14.5 Q12 16 15 14 Q18 12 21 14 L20 21 Q16 23 12 22 Q8 22 4 21 Z" fill="#fff" opacity="0.9"/><line x1="8" y1="15" x2="7" y2="21" stroke="rgba(0,0,0,0.2)" stroke-width="1.2"/><line x1="12" y1="15" x2="12" y2="22" stroke="rgba(0,0,0,0.2)" stroke-width="1.2"/><line x1="16" y1="15" x2="17" y2="21" stroke="rgba(0,0,0,0.2)" stroke-width="1.2"/></svg></span><span>Nettoyage</span></button>
         <button id="btn-pause-acc" class="acc-btn" onclick="doPause()" style="background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">☕</span><span>Pause</span></button>
         <button id="btn-reunion-acc" class="acc-btn" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
-        <button class="acc-btn" onclick="openPastDecl()" style="background:radial-gradient(ellipse at 50% 25%,#e9d5ff 0%,#7c3aed 55%,#4c1d95 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">📝</span><span>Décl. antérieure</span></button>
+        <button class="acc-btn" onclick="openPastDecl()" style="margin-left:auto;background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">📝</span><span>Faire une déclaration antérieure</span></button>
       </div>
     </div>
     <!-- KPI accueil — POSTE ACTUEL -->
@@ -4408,7 +4428,7 @@ select{cursor:default}
         <div class="prod-act-row" style="justify-content:center">
           <button id="btn-declarer-arret" class="act-btn act-btn-sm act-stop" style="flex:1;aspect-ratio:unset !important;white-space:normal !important;height:auto !important;min-height:60px" onclick="openStopModal()"><span class="act-icon"><span class="stop-icon">🛑<span class="stop-icon-x">✕</span></span></span><span id="btn-declarer-arret-lbl" style="white-space:normal;line-height:1.2;text-align:center">Déclarer un arrêt</span></button>
           <button id="btn-degrade-prod" class="act-btn act-btn-sm" onclick="toggleDegrade()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#fde68a 0%,#f59e0b 55%,#92400e 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🐌</span><span>Mode dégradé</span></button>
-          <button id="btn-nettoyage-prod" class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon">🚿</span><span>Nettoyage</span></button>
+          <button id="btn-nettoyage-prod" class="act-btn act-btn-sm act-nett" style="flex:1" onclick="doNettoyage()"><span class="act-icon"><svg width="22" height="22" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><line x1="6" y1="2" x2="15" y2="15" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><path d="M3 15 Q6 13 9 14.5 Q12 16 15 14 Q18 12 21 14 L20 21 Q16 23 12 22 Q8 22 4 21 Z" fill="currentColor" opacity="0.9"/><line x1="8" y1="15" x2="7" y2="21" stroke="rgba(0,0,0,0.2)" stroke-width="1.2"/><line x1="12" y1="15" x2="12" y2="22" stroke="rgba(0,0,0,0.2)" stroke-width="1.2"/><line x1="16" y1="15" x2="17" y2="21" stroke="rgba(0,0,0,0.2)" stroke-width="1.2"/></svg></span><span>Nettoyage</span></button>
           <button class="act-btn act-btn-sm act-pause" id="btn-pause" style="flex:1" onclick="doPause()"><span class="act-icon">☕</span><span>Pause</span></button>
           <button class="act-btn act-btn-sm" id="btn-reunion" onclick="doReunion()" style="flex:1;background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         </div>
@@ -4613,7 +4633,7 @@ select{cursor:default}
       <div id="pd-form-prod" style="display:none;display:flex;flex-direction:column;gap:7px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">N° OF *</label>
-            <input id="pd-of" placeholder="Ex: 123456_001" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+            <input id="pd-of" placeholder="Ex: 123456" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Code produit *</label>
             <input id="pd-code" placeholder="Code article" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
         </div>
@@ -4622,6 +4642,12 @@ select{cursor:default}
             <select id="pd-type-prod" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Taille *</label>
             <select id="pd-taille" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Co-Pilote</label>
+            <select id="pd-copilote" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">--</option></select></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Lot de 2</label>
+            <select id="pd-kit" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">Non</option><option value="oui">Oui</option></select></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Nb personnes *</label>
@@ -4637,10 +4663,33 @@ select{cursor:default}
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Fibre *</label>
             <select id="pd-fibre" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
         </div>
-        <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Traça fibre</label>
-          <input id="pd-traca" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
-        <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Commentaire</label>
-          <input id="pd-comment-prod" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+        <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:4px">Traça fibre (jusqu'à 3)</label>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <input id="pd-traca1" placeholder="Traça 1" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+            <input id="pd-traca2" placeholder="Traça 2 (optionnel)" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+            <input id="pd-traca3" placeholder="Traça 3 (optionnel)" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Code Taie</label>
+            <input id="pd-ref-taie" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Nb Taie 2nd Choix</label>
+            <input id="pd-nb-taie2" type="number" min="0" value="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Nb Défaut Couture</label>
+            <input id="pd-nb-def-cout" type="number" min="0" value="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">MQ Taie</label>
+            <input id="pd-mq-taie" type="number" min="0" value="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">MQ Housse/Encart</label>
+            <input id="pd-mq-housse" type="number" min="0" value="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">PP Cousu et emballé</label>
+            <input id="pd-nb-pp" type="number" min="0" value="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Commentaire</label>
+            <input id="pd-comment-prod" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+        </div>
       </div>
       <!-- Formulaire arrêt -->
       <div id="pd-form-arret" style="display:none;flex-direction:column;gap:8px">
@@ -10725,7 +10774,7 @@ function openPastDecl(){
   if(shiftFin){document.getElementById('pd-fin').value=pad(shiftFin.getHours())+':'+pad(shiftFin.getMinutes());}
   // Copier les options depuis les selects du formulaire principal (toujours à jour)
   function _copyOpts(srcId,dstId){const src=document.getElementById(srcId);const dst=document.getElementById(dstId);if(!src||!dst)return;while(dst.options.length>1)dst.remove(1);Array.from(src.options).slice(1).forEach(o=>{const n=document.createElement('option');n.value=o.value;n.textContent=o.text;dst.appendChild(n);});}
-  _copyOpts('f-type_prod','pd-type-prod');_copyOpts('f-taille','pd-taille');_copyOpts('f-fibre','pd-fibre');
+  _copyOpts('f-type_prod','pd-type-prod');_copyOpts('f-taille','pd-taille');_copyOpts('f-fibre','pd-fibre');_copyOpts('f-copilote','pd-copilote');
   // Peupler le select arrêt
   const stopSel=document.getElementById('pd-stop-type');
   if(stopSel){
@@ -10775,7 +10824,11 @@ async function submitPastDecl(){
     const poids=(document.getElementById('pd-poids')||{}).value||'';
     const fibre=(document.getElementById('pd-fibre')||{}).value||'';
     if(!of_num||!code||!type_prod||!taille||!nb_pers||!poids||!fibre){toast('Champs obligatoires manquants (*)','err');return;}
-    body=Object.assign(body,{of_num,code_prod:code,type_prod,taille,nb_pers,qte_fab,qte_emb:(document.getElementById('pd-qteemb')||{}).value||'0',poids,fibre,traca:(document.getElementById('pd-traca')||{}).value||'',comment:(document.getElementById('pd-comment-prod')||{}).value||''});
+    const _t1=(document.getElementById('pd-traca1')||{}).value||'';
+    const _t2=(document.getElementById('pd-traca2')||{}).value||'';
+    const _t3=(document.getElementById('pd-traca3')||{}).value||'';
+    const _traca=[_t1,_t2,_t3].filter(Boolean).join(';');
+    body=Object.assign(body,{of_num,code_prod:code,type_prod,taille,nb_pers,qte_fab,qte_emb:(document.getElementById('pd-qteemb')||{}).value||'0',poids,fibre,traca:_traca,copilote:(document.getElementById('pd-copilote')||{}).value||'',kit:(document.getElementById('pd-kit')||{}).value||'',ref_taie:(document.getElementById('pd-ref-taie')||{}).value||'',nb_taie2_choix:(document.getElementById('pd-nb-taie2')||{}).value||'0',nb_def_cout:(document.getElementById('pd-nb-def-cout')||{}).value||'0',mq_taie:(document.getElementById('pd-mq-taie')||{}).value||'0',mq_housse_encart:(document.getElementById('pd-mq-housse')||{}).value||'0',nb_pp_cousue:(document.getElementById('pd-nb-pp')||{}).value||'0',comment:(document.getElementById('pd-comment-prod')||{}).value||''});
   } else {
     const stop_type=(document.getElementById('pd-stop-type')||{}).value||'';
     if(!stop_type){toast('Choisir un type d\'arrêt','err');return;}
@@ -10841,6 +10894,7 @@ def generate_dashboard_html():
         }, ensure_ascii=False, separators=(',', ':'))
         gen_at_escaped = gen_at.replace("'", "\\'")
         inject = (
+            '<meta http-equiv="refresh" content="300">\n'
             '<script>\nwindow.DASH=' + dash_json + ';\n'
             '(function(){\n'
             # Fake state: makes the app think a user is "logged in" (no prod active)
@@ -10946,9 +11000,11 @@ def main():
     def _dashboard_bg():
         time.sleep(90)
         while True:
-            try: generate_dashboard_html()
+            try:
+                with flask_app.app_context():
+                    generate_dashboard_html()
             except: pass
-            time.sleep(2 * 60)
+            time.sleep(5 * 60)
     threading.Thread(target=_dashboard_bg, daemon=True).start()
     _start_periodic_excel_sync()
 
