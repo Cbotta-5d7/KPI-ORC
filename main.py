@@ -4785,36 +4785,58 @@ select{cursor:default}
 
   <!-- ════ MODAL ÉCART FIN DE POSTE ════ -->
   <div id="m-ecart-poste" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
-    <div class="card" style="width:min(1260px,98vw);max-height:96vh;overflow:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid #dc2626">
-      <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:6px">📊 Réconciliation fin de poste</div>
-      <div id="ecart-guide" style="font-size:calc(12px*var(--zf,1));margin-bottom:10px;padding:8px 12px;border-radius:6px;line-height:1.5"></div>
-      <div id="ecart-timeline" style="margin-bottom:12px"></div>
-      <div id="ecart-info" style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:calc(12px*var(--zf,1))"></div>
-      <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Plages non justifiées</div>
-      <div id="ecart-gaps" style="margin-bottom:14px"></div>
-      <div id="ecart-of-panel" style="margin-bottom:10px">
-        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Modifier les horaires des OFs</div>
-        <div id="ecart-of-list" style="display:flex;flex-direction:column;gap:6px"></div>
-      </div>
-      <!-- Modifier la plage horaire du poste -->
-      <div id="ecart-plage-panel" style="margin-bottom:14px">
-        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#0369a1;letter-spacing:.06em;margin-bottom:6px">Modifier la plage horaire de mon poste</div>
-        <div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:10px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-          <div>
-            <label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:600;display:block;margin-bottom:3px">Heure de début</label>
-            <input type="time" id="ecart-plage-debut" style="padding:5px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:110px">
-          </div>
-          <div>
-            <label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:600;display:block;margin-bottom:3px">Heure de fin</label>
-            <input type="time" id="ecart-plage-fin" style="padding:5px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:110px">
-          </div>
-          <button class="btn btn-prim" style="font-size:calc(12px*var(--zf,1));padding:6px 16px;background:#0369a1;border-color:#0369a1" onclick="saveEcartPlageHoraire()">✓ Appliquer</button>
-          <span style="font-size:calc(10px*var(--zf,1));color:#64748b;align-self:center">Modifie uniquement pour ce poste aujourd'hui</span>
+    <div style="width:min(700px,98vw);max-height:94vh;background:#fff;border-radius:14px;border-top:4px solid #dc2626;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.45)">
+      <!-- Header -->
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1">
+          <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:var(--navy)">Fin de poste</div>
+          <div id="ecart-subtitle" style="font-size:calc(11px*var(--zf,1));color:#64748b;margin-top:2px"></div>
         </div>
+        <button onclick="closeM('m-ecart-poste')" style="background:none;border:none;font-size:18px;cursor:pointer;color:#94a3b8;padding:2px 8px;border-radius:4px;flex-shrink:0" title="Fermer">✕</button>
       </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
-        <button class="btn btn-ghost" style="font-size:calc(12px*var(--zf,1))" onclick="closeM('m-ecart-poste')">Annuler</button>
-        <button id="ecart-valider-btn" class="btn btn-sec" onclick="skipEcartPoste()">Valider et terminer</button>
+      <!-- Status banner -->
+      <div id="ecart-guide" style="flex-shrink:0;padding:8px 20px;border-bottom:1px solid var(--border);line-height:1.5"></div>
+      <!-- Scrollable content -->
+      <div style="flex:1;overflow-y:auto;padding:14px 20px;display:flex;flex-direction:column;gap:10px">
+        <div id="ecart-timeline"></div>
+        <!-- Options avancées -->
+        <details id="ecart-advanced" style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+          <summary style="padding:8px 12px;cursor:pointer;font-size:calc(11px*var(--zf,1));font-weight:700;color:#64748b;list-style:none;display:flex;align-items:center;gap:6px;background:#f8fafc;user-select:none">⚙ Options avancées</summary>
+          <div style="padding:10px 12px;display:flex;flex-direction:column;gap:12px">
+            <div id="ecart-of-panel">
+              <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">Modifier les horaires des OFs</div>
+              <div id="ecart-of-list" style="display:flex;flex-direction:column;gap:6px"></div>
+            </div>
+            <div id="ecart-plage-panel">
+              <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#0369a1;letter-spacing:.06em;margin-bottom:6px">Modifier la plage horaire de mon poste</div>
+              <div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:10px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+                <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:600;display:block;margin-bottom:3px">Heure de début</label>
+                  <input type="time" id="ecart-plage-debut" style="padding:5px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:110px"></div>
+                <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:600;display:block;margin-bottom:3px">Heure de fin</label>
+                  <input type="time" id="ecart-plage-fin" style="padding:5px 8px;border:1.5px solid #bae6fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:110px"></div>
+                <button class="btn btn-prim" style="font-size:calc(12px*var(--zf,1));padding:6px 16px;background:#0369a1;border-color:#0369a1" onclick="saveEcartPlageHoraire()">✓ Appliquer</button>
+                <span style="font-size:calc(10px*var(--zf,1));color:#64748b;align-self:center">Modifie uniquement pour ce poste aujourd'hui</span>
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+      <!-- Footer -->
+      <div style="flex-shrink:0;padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center">
+        <button class="btn btn-ghost" style="font-size:calc(12px*var(--zf,1))" onclick="closeM('m-ecart-poste')">← Revenir</button>
+        <button id="ecart-valider-btn" class="btn btn-prim" style="font-size:calc(13px*var(--zf,1));padding:8px 22px" onclick="ecartValiderClick()">Terminer le poste →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation: terminer avec gaps -->
+  <div id="m-ecart-confirm" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:700;align-items:center;justify-content:center">
+    <div class="card" style="width:min(440px,94vw);padding:24px;background:#fff;border-radius:12px;border-top:4px solid #f59e0b">
+      <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:#92400e;margin-bottom:10px">⚠ Plages non justifiées</div>
+      <div id="ecart-confirm-msg" style="font-size:calc(12px*var(--zf,1));color:#78350f;margin-bottom:20px;line-height:1.7"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeM('m-ecart-confirm')">← Revenir</button>
+        <button class="btn" style="background:#f59e0b;border-color:#f59e0b;color:#fff;font-weight:700;font-size:calc(12px*var(--zf,1));padding:6px 16px;border-radius:6px;cursor:pointer" onclick="_ecartConfirmTerminer()">Terminer quand même →</button>
       </div>
     </div>
   </div>
@@ -8619,58 +8641,31 @@ async function _doGoFinPoste(){
 }
 
 function _showEcartModal(fpd){
-  const ecart_min=Math.round((fpd.ecart_s||0)/60);
   const model_min=Math.round((fpd.model_dur_s||0)/60);
-  const prod_min=Math.round((fpd.tot_s||0)/60);
-  const stop_min=Math.max(0,model_min-prod_min-ecart_min);
   const modelDebut=fpd.model_debut||'';
   const modelFin=fpd.model_fin||'';
   const overflow_min=Math.round(fpd.overflow_min||0);
   const gaps=fpd.gap_intervals||[];
   const hasGaps=gaps.length>0;
-  // Réinitialiser le panneau plage horaire au style normal avant d'appliquer la surcharge
-  const _pP=document.getElementById('ecart-plage-panel');
-  if(_pP){
-    _pP.style.cssText='margin-bottom:14px';
-    const _pD=_pP.querySelectorAll('div');
-    if(_pD[0]) _pD[0].style.color='#0369a1';
-    if(_pD[1]){_pD[1].style.background='#f0f9ff';_pD[1].style.borderColor='#bae6fd';}
-  }
-  // Guide header — basé sur les gaps réels, pas sur ecart_min
+  // Subtitle
+  const subEl=document.getElementById('ecart-subtitle');
+  if(subEl) subEl.textContent=(modelDebut&&modelFin)?'Plage du poste : '+modelDebut+' → '+modelFin+' ('+model_min+' min)':'';
+  // Guide banner
   const guidEl=document.getElementById('ecart-guide');
   if(guidEl){
     if(overflow_min>0){
-      guidEl.style.cssText='font-size:calc(12px*var(--zf,1));margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#fef2f2;border:1px solid #fca5a5;line-height:1.5';
-      guidEl.innerHTML='<span style="color:#dc2626;font-weight:800;font-size:calc(13px*var(--zf,1))">⚠ Dépassement de plage : +'+overflow_min+' min au-delà de '+esc(modelFin)+'</span><br>'+
-        '<span style="color:#7f1d1d">Un ou plusieurs OFs se terminent après la fin de la plage modèle. Modifiez la plage ci-dessous.</span>';
-      // Mettre le panneau de modification de plage en rouge pour signaler l'urgence
-      const plagePanel=document.getElementById('ecart-plage-panel');
-      if(plagePanel){
-        plagePanel.style.cssText='margin-bottom:14px;border-radius:10px;border:2px solid #dc2626;padding:10px;background:#fef2f2';
-        const divs=plagePanel.querySelectorAll('div');
-        if(divs[0]) divs[0].style.color='#dc2626'; // label titre
-        if(divs[1]){ divs[1].style.background='#fef2f2'; divs[1].style.borderColor='#fca5a5'; }
-      }
+      guidEl.style.cssText='flex-shrink:0;padding:8px 20px;border-bottom:1px solid var(--border);background:#fef2f2;font-size:calc(12px*var(--zf,1))';
+      guidEl.innerHTML='<span style="color:#dc2626;font-weight:800">⚠ Dépassement de plage : +'+overflow_min+' min au-delà de '+esc(modelFin)+'</span> — corrigez via <i>Options avancées</i>.';
     } else if(!hasGaps){
-      guidEl.style.cssText='font-size:calc(12px*var(--zf,1));margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#f0fdf4;border:1px solid #bbf7d0;line-height:1.5';
-      guidEl.innerHTML='<span style="color:#16a34a;font-weight:800;font-size:calc(13px*var(--zf,1))">✓ Toute la plage '+esc(modelDebut)+' → '+esc(modelFin)+' est couverte !</span>';
+      guidEl.style.cssText='flex-shrink:0;padding:8px 20px;border-bottom:1px solid var(--border);background:#f0fdf4;font-size:calc(12px*var(--zf,1))';
+      guidEl.innerHTML='<span style="color:#16a34a;font-weight:800">✓ Tout est couvert !</span> Vous pouvez terminer le poste.';
     } else {
       const gapTotal=gaps.reduce((a,g)=>a+(g.duree_min||0),0);
-      guidEl.style.cssText='font-size:calc(12px*var(--zf,1));margin-bottom:10px;padding:8px 12px;border-radius:6px;background:#fff7ed;border:1px solid #fed7aa;line-height:1.5';
-      guidEl.innerHTML='Objectif : couvrir <b>'+esc(modelDebut)+' → '+esc(modelFin)+'</b> ('+model_min+' min).<br>'+
-        '<span style="color:#dc2626;font-weight:700">'+gapTotal+' min de plages non couvertes ('+gaps.length+' écart'+(gaps.length>1?'s':'')+').</span> '+
-        '<span style="color:var(--gray)">Déclarez les arrêts manquants ou corrigez les horaires des OFs.</span>';
+      guidEl.style.cssText='flex-shrink:0;padding:8px 20px;border-bottom:1px solid var(--border);background:#fff7ed;font-size:calc(12px*var(--zf,1))';
+      guidEl.innerHTML='<span style="color:#b45309;font-weight:800">⚠ '+gapTotal+' min non justifiées ('+gaps.length+' plage'+(gaps.length>1?'s':'')+').</span> Déclarez les arrêts ou terminez quand même.';
     }
   }
-  // Stats
-  document.getElementById('ecart-info').innerHTML=
-    '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:3px 16px;font-size:calc(12px*var(--zf,1))">'+
-    '<span style="color:var(--gray)">Durée modèle :</span><b>'+model_min+' min</b>'+
-    '<span style="color:var(--gray)">Prod déclarée :</span><b>'+prod_min+' min</b>'+
-    '<span style="color:var(--gray)">Arrêts déclarés :</span><b>'+stop_min+' min</b>'+
-    '<span style="color:#dc2626;font-weight:700">Écart :</span><b style="color:#dc2626;font-weight:900">'+ecart_min+' min</b>'+
-    '</div>';
-  // ── Timeline des déclarations ─────────────────────────────────────────────
+  // ── Timeline : déclarations + gaps intégrés ───────────────────────────────
   const tlEl=document.getElementById('ecart-timeline');
   if(tlEl){
     const decls=fpd.decl_list||[];
@@ -8683,121 +8678,113 @@ function _showEcartModal(fpd){
       if(tl.includes('dégrad')||tl.includes('degrad'))return{bg:'#fef9c3',border:'#fde047',text:'#854d0e'};
       return{bg:'#fee2e2',border:'#fca5a5',text:'#dc2626'};
     };
-    // Build merged timeline: interleave decls and gaps
     const _hm2min=h=>{if(!h)return null;const p=h.split(':');return parseInt(p[0]||0)*60+parseInt(p[1]||0);};
-    const mdMin=_hm2min(modelDebut);
-    const mfMin=_hm2min(modelFin);
-    if(decls.length===0&&gaps.length===0){
-      tlEl.innerHTML='';
+    const blocks=[];
+    decls.forEach(d=>{
+      const s=_hm2min(d.debut),e=_hm2min(d.fin);
+      if(s==null||e==null)return;
+      blocks.push({kind:'decl',debut:d.debut,fin:d.fin,s,e,type:d.type,of:d.of,comment:d.comment});
+    });
+    gaps.forEach(g=>{
+      const s=_hm2min(g.debut),e=_hm2min(g.fin);
+      if(s==null||e==null)return;
+      blocks.push({kind:'gap',debut:g.debut,fin:g.fin,s,e,duree_min:g.duree_min});
+    });
+    blocks.sort((a,b)=>a.s-b.s||(a.e-b.e));
+    let html='';
+    let gapIdx=0;
+    if(blocks.length===0){
+      html='<div style="color:#94a3b8;font-size:calc(12px*var(--zf,1));padding:8px 0">Aucune déclaration pour ce poste.</div>';
     } else {
-      // Build sorted list of blocks: decls + gaps
-      const blocks=[];
-      decls.forEach(d=>{
-        const s=_hm2min(d.debut),e=_hm2min(d.fin);
-        if(s==null||e==null)return;
-        blocks.push({kind:'decl',debut:d.debut,fin:d.fin,s,e,type:d.type,of:d.of,comment:d.comment});
-      });
-      gaps.forEach(g=>{
-        const s=_hm2min(g.debut),e=_hm2min(g.fin);
-        if(s==null||e==null)return;
-        blocks.push({kind:'gap',debut:g.debut,fin:g.fin,s,e,duree_min:g.duree_min});
-      });
-      blocks.sort((a,b)=>a.s-b.s||(a.e-b.e));
-      let html='<div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);letter-spacing:.06em;margin-bottom:6px">📅 Récapitulatif des déclarations</div>';
-      html+='<div style="display:flex;flex-direction:column;gap:4px">';
       blocks.forEach(b=>{
         if(b.kind==='gap'){
-          html+='<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#fef2f2;border:1.5px dashed #fca5a5;border-radius:6px">'+
-            '<span style="font-size:18px;line-height:1">⛔</span>'+
-            '<span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:700;color:#dc2626">Plage non couverte : '+esc(b.debut)+' → '+esc(b.fin)+'</span>'+
-            '<span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#9f1239;background:#fecaca;padding:2px 6px;border-radius:4px">'+b.duree_min+' min</span>'+
-          '</div>';
+          const gi=gapIdx++;
+          html+=`<div style="background:#fef2f2;border:1.5px dashed #fca5a5;border-radius:8px;padding:10px 12px;margin-bottom:4px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <span style="font-size:16px;line-height:1">⛔</span>
+              <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:700;color:#dc2626">${esc(b.debut)} → ${esc(b.fin)}</span>
+              <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#9f1239;background:#fecaca;padding:2px 8px;border-radius:10px;white-space:nowrap">${b.duree_min} min</span>
+            </div>
+            <div style="border-top:1px solid #fecaca;padding-top:8px;display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">
+              <div><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">Début</label>
+                <input type="time" id="ecart-gap-debut-${gi}" value="${esc(b.debut)}" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:88px"></div>
+              <div><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">Fin</label>
+                <input type="time" id="ecart-gap-fin-${gi}" value="${esc(b.fin)}" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:88px"></div>
+              <div style="flex:1;min-width:150px"><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">Type d'arrêt</label>
+                ${_buildEcartStopSelect(gi)}</div>
+              <button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:5px 12px;background:#dc2626;border-color:#dc2626" onclick="saveEcartGapStop(${gi})">✓ Déclarer</button>
+            </div>
+          </div>`;
         } else {
           const c=_typeColor(b.type);
           const isProd=_isProd(b.type);
           const lbl=isProd?(b.of?'OF '+esc(b.of):'Production'):(esc(b.type)||'Arrêt');
-          html+='<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:'+c.bg+';border:1px solid '+c.border+';border-radius:6px">'+
-            '<span style="font-size:16px;line-height:1">'+(isProd?'🟢':'🔶')+'</span>'+
-            '<span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:700;color:'+c.text+'">'+lbl+'</span>'+
-            '<span style="font-size:calc(11px*var(--zf,1));color:'+c.text+';opacity:.85">'+esc(b.debut)+' → '+esc(b.fin)+'</span>'+
-            (b.comment?'<span style="font-size:calc(10px*var(--zf,1));color:#64748b;font-style:italic;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(b.comment)+'">'+esc(b.comment)+'</span>':'')+
-          '</div>';
+          const dur=(b.e!=null&&b.s!=null)?(b.e-b.s):null;
+          html+=`<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:${c.bg};border:1px solid ${c.border};border-radius:7px;margin-bottom:4px">
+            <span style="font-size:15px;line-height:1">${isProd?'🟢':'🔶'}</span>
+            <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:700;color:${c.text}">${lbl}</span>
+            <span style="font-size:calc(11px*var(--zf,1));color:${c.text};opacity:.8;white-space:nowrap">${esc(b.debut)} → ${esc(b.fin)}</span>
+            ${dur?`<span style="font-size:calc(10px*var(--zf,1));color:${c.text};opacity:.55;white-space:nowrap">${dur} min</span>`:''}
+            ${b.comment?`<span style="font-size:calc(10px*var(--zf,1));color:#64748b;font-style:italic;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(b.comment)}">${esc(b.comment)}</span>`:''}
+          </div>`;
         }
       });
-      html+='</div>';
-      tlEl.innerHTML=html;
     }
+    tlEl.innerHTML=html;
   }
-  // Prefill plage horaire du poste
+  // OFs list (dans accordéon avancé)
+  const list=document.getElementById('ecart-of-list');
+  if(list){
+    list.innerHTML='';
+    (fpd.of_list||[]).forEach(of=>{
+      const div=document.createElement('div');
+      div.style.cssText='display:flex;align-items:center;gap:8px;padding:8px;background:#f8fafc;border-radius:6px;border:1px solid var(--border);flex-wrap:wrap';
+      div.innerHTML='<span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:700;min-width:80px">'+(of.of||'OF')+
+        ' <span style="font-weight:400;color:var(--gray);font-size:calc(11px*var(--zf,1))">'+esc(of.taille||'')+'</span> '+
+        '<span style="font-size:calc(10px*var(--zf,1));color:#64748b">'+esc(of.debut||'')+'→'+esc(of.fin||'')+'</span></span>'+
+        '<div style="display:flex;align-items:center;gap:4px">'+
+        '<input type="time" class="ecart-debut" value="'+(of.debut||'')+'" data-oldebut="'+(of.debut||'')+'" data-ofnum="'+(of.of||'')+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));width:90px">'+
+        '<span style="color:var(--gray)">→</span>'+
+        '<input type="time" class="ecart-fin" value="'+(of.fin||'')+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));width:90px">'+
+        '<button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:3px 10px" onclick="saveEcartOf(this)">✓</button>'+
+        '</div>';
+      list.appendChild(div);
+    });
+  }
+  // Prefill plage horaire
   const pdebut=document.getElementById('ecart-plage-debut');
   const pfin=document.getElementById('ecart-plage-fin');
   if(pdebut)pdebut.value=fpd.model_debut||'';
   if(pfin)pfin.value=fpd.model_fin||'';
-  // Gap intervals
-  const gapsEl=document.getElementById('ecart-gaps');
-  if(gapsEl){
-    if(!hasGaps){
-      // Ne pas afficher "Aucune plage non couverte" quand il y a un dépassement
-      gapsEl.innerHTML=overflow_min>0?''
-        :'<div style="color:#16a34a;font-size:calc(12px*var(--zf,1));font-weight:700;padding:4px 0">✓ Aucune plage non couverte</div>';
-    } else {
-      gapsEl.innerHTML='';
-      gaps.forEach((g,gi)=>{
-        const div=document.createElement('div');
-        div.style.cssText='background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:8px 10px;margin-bottom:6px';
-        const hasNextOf=(fpd.of_list||[]).some(o=>o.debut>=g.fin);
-        div.innerHTML=
-          '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">'+
-            '<span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:#dc2626">⚠ '+esc(g.debut)+' → '+esc(g.fin)+
-              ' <span style="font-weight:400;color:#9f1239">('+g.duree_min+' min)</span></span>'+
-            '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
-            (hasNextOf?'<button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:3px 12px;background:#0369a1;border-color:#0369a1" onclick="ecartSetOfDebut(\''+esc(g.debut)+'\',\''+esc(g.fin)+'\')">📌 Déclarer début OF à '+esc(g.debut)+'</button>':'')+
-            '<button class="btn btn-ghost" style="font-size:calc(11px*var(--zf,1));padding:3px 10px;color:#dc2626;border-color:#fca5a5" onclick="ecartToggleGapForm('+gi+')">+ Déclarer un arrêt</button>'+
-            '</div>'+
-          '</div>'+
-          '<div id="ecart-gap-form-'+gi+'" style="display:none;margin-top:8px;border-top:1px solid #fca5a5;padding-top:8px">'+
-            '<div style="display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap">'+
-              '<div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);display:block;margin-bottom:2px">Début</label>'+
-                '<input type="time" id="ecart-gap-debut-'+gi+'" value="'+esc(g.debut)+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));width:90px"></div>'+
-              '<div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);display:block;margin-bottom:2px">Fin</label>'+
-                '<input type="time" id="ecart-gap-fin-'+gi+'" value="'+esc(g.fin)+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));width:90px"></div>'+
-              '<div style="flex:1;min-width:160px"><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);display:block;margin-bottom:2px">Type d\'arrêt</label>'+
-                _buildEcartStopSelect(gi)+'</div>'+
-              '<button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:5px 12px" onclick="saveEcartGapStop('+gi+')">✓ Ajouter</button>'+
-            '</div>'+
-          '</div>';
-        gapsEl.appendChild(div);
-      });
-    }
-  }
-  // OFs list
-  const list=document.getElementById('ecart-of-list');
-  list.innerHTML='';
-  (fpd.of_list||[]).forEach(of=>{
-    const div=document.createElement('div');
-    div.style.cssText='display:flex;align-items:center;gap:8px;padding:8px;background:#f8fafc;border-radius:6px;border:1px solid var(--border);flex-wrap:wrap';
-    div.innerHTML='<span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:700;min-width:80px">'+(of.of||'OF')+
-      ' <span style="font-weight:400;color:var(--gray);font-size:calc(11px*var(--zf,1))">'+esc(of.taille||'')+'</span> '+
-      '<span style="font-size:calc(10px*var(--zf,1));color:#64748b">'+esc(of.debut||'')+'→'+esc(of.fin||'')+'</span></span>'+
-      '<div style="display:flex;align-items:center;gap:4px">'+
-      '<input type="time" class="ecart-debut" value="'+(of.debut||'')+'" data-oldebut="'+(of.debut||'')+'" data-ofnum="'+(of.of||'')+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));width:90px">'+
-      '<span style="color:var(--gray)">→</span>'+
-      '<input type="time" class="ecart-fin" value="'+(of.fin||'')+'" style="padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));width:90px">'+
-      '<button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:3px 10px" onclick="saveEcartOf(this)">✓</button>'+
-      '</div>';
-    list.appendChild(div);
-  });
-  // Griser "Valider et terminer" tant que tout n'est pas résolu
-  const valBtn=document.getElementById('ecart-valider-btn');
-  if(valBtn){
-    const locked=hasGaps||overflow_min>0;
-    valBtn.disabled=locked;
-    valBtn.style.opacity=locked?'0.4':'1';
-    valBtn.style.cursor=locked?'not-allowed':'pointer';
-    valBtn.title=locked?(hasGaps?'Justifiez toutes les plages non couvertes avant de terminer':'Résolvez le dépassement de plage avant de terminer'):'';
-  }
+  // Ouvrir accordéon si dépassement
+  const advD=document.getElementById('ecart-advanced');
+  if(advD) advD.open=(overflow_min>0);
   openM('m-ecart-poste');
 }
+
+function ecartValiderClick(){
+  const fpd=window._ecartFpData||{};
+  const gaps=(fpd.gap_intervals||[]).filter(g=>(g.duree_min||0)>=2);
+  const overflow_min=Math.round(fpd.overflow_min||0);
+  if(gaps.length>0||overflow_min>0){
+    const gapTotal=gaps.reduce((a,g)=>a+(g.duree_min||0),0);
+    const gapList=gaps.map(g=>'• '+esc(g.debut)+' → '+esc(g.fin)+' ('+g.duree_min+' min)').join('<br>');
+    const msg=overflow_min>0
+      ?'Un ou plusieurs OFs se terminent <b>+'+overflow_min+' min</b> après la fin du poste.<br>Voulez-vous terminer quand même ?'
+      :'Il reste <b>'+gapTotal+' min</b> de plages sans déclaration :<br><span style="color:#9f1239;font-size:calc(11px*var(--zf,1))">'+gapList+'</span><br><br>Voulez-vous terminer quand même ?';
+    document.getElementById('ecart-confirm-msg').innerHTML=msg;
+    openM('m-ecart-confirm');
+  } else {
+    skipEcartPoste();
+  }
+}
+
+function _ecartConfirmTerminer(){
+  closeM('m-ecart-confirm');
+  skipEcartPoste();
+}
+
+function ecartToggleGapForm(gi){ /* no-op — forms now always visible */ }
 
 function ecartToggleGapForm(gi){
   const f=document.getElementById('ecart-gap-form-'+gi);
