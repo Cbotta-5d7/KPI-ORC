@@ -10274,7 +10274,7 @@ async function calcPeriodReport(autoLoad){
         </div>
       </div>`;
     }).join('');
-    paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex-shrink:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">🛑 Pareto des arrêts</div>${rows3}</div>`;
+    paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex-shrink:0;display:flex;flex-direction:column;max-height:340px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px;flex-shrink:0">🛑 Pareto des arrêts</div><div style="overflow-y:auto;flex:1">${rows3}</div></div>`;
   }
   // OF list table
   let ofListHtml='';
@@ -11387,24 +11387,28 @@ def main():
     threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_session_autosave, daemon=True).start()
     def _dashboard_bg():
-        import datetime as _bdt, traceback as _btb
+        import datetime as _bdt, urllib.request as _ur
         _base = (os.path.dirname(sys.executable) if getattr(sys, 'frozen', False)
                  else os.path.dirname(os.path.abspath(__file__)))
         _log = os.path.join(_base, '_dashboard_auto.log')
-        time.sleep(90)
+        time.sleep(30)
         while True:
             _ts = _bdt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             try:
-                ok, info = generate_dashboard_html()
-                try:
-                    with open(_log, 'a', encoding='utf-8') as _f:
-                        _f.write(f"[{_ts}] {'OK' if ok else 'ERREUR: ' + str(info)[:800]}\n")
-                except: pass
+                _req = _ur.Request(
+                    'http://127.0.0.1:5001/api/generate_dashboard',
+                    data=b'{}',
+                    headers={'Content-Type': 'application/json'}
+                )
+                with _ur.urlopen(_req, timeout=180) as _resp:
+                    _status = _resp.status
+                _msg = f"OK (HTTP {_status})"
             except Exception as _ex:
-                try:
-                    with open(_log, 'a', encoding='utf-8') as _f:
-                        _f.write(f"[{_ts}] EXCEPTION: {_btb.format_exc()[:800]}\n")
-                except: pass
+                _msg = f"ERREUR: {str(_ex)[:300]}"
+            try:
+                with open(_log, 'a', encoding='utf-8') as _f:
+                    _f.write(f"[{_ts}] {_msg}\n")
+            except: pass
             time.sleep(5 * 60)
     threading.Thread(target=_dashboard_bg, daemon=True).start()
     _start_periodic_excel_sync()
