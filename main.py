@@ -11446,7 +11446,7 @@ def main():
     threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_session_autosave, daemon=True).start()
     def _dashboard_bg():
-        import datetime as _bdt
+        import datetime as _bdt, http.client as _hc
         _base = (os.path.dirname(sys.executable) if getattr(sys, 'frozen', False)
                  else os.path.dirname(os.path.abspath(__file__)))
         _log = os.path.join(_base, '_dashboard_auto.log')
@@ -11454,9 +11454,17 @@ def main():
         while True:
             _ts = _bdt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             try:
-                with flask_app.app_context():
-                    ok, info = generate_dashboard_html()
-                _msg = f"OK: {os.path.basename(str(info))}" if ok else f"ERREUR: {str(info)[:300]}"
+                # http.client ne passe pas par les proxies systeme — connexion directe a localhost
+                _conn = _hc.HTTPConnection('127.0.0.1', 5001, timeout=120)
+                _conn.request('POST', '/api/generate_dashboard', body=b'{}',
+                              headers={'Content-Type': 'application/json'})
+                _resp = _conn.getresponse()
+                _body = _resp.read().decode('utf-8', errors='replace')
+                _conn.close()
+                if _resp.status == 200 and '"ok":true' in _body:
+                    _msg = f"OK (HTTP {_resp.status})"
+                else:
+                    _msg = f"ERREUR HTTP {_resp.status}: {_body[:200]}"
             except Exception as _ex:
                 _msg = f"ERREUR: {str(_ex)[:300]}"
             try:
