@@ -4687,9 +4687,9 @@ select{cursor:default}
       <div id="pd-form-prod" style="display:none;display:flex;flex-direction:column;gap:7px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">N° OF *</label>
-            <input id="pd-of" placeholder="Ex: 123456" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+            <input id="pd-of" placeholder="Ex: 123456789" onfocus="openCodeInputFull('pd-of','N° OF','9')" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));cursor:pointer"></div>
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Code produit *</label>
-            <input id="pd-code" placeholder="Code article" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+            <input id="pd-code" placeholder="Ex: 123456_012" onfocus="openCodeInputFull('pd-code','Code Produit')" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));cursor:pointer"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Type produit *</label>
@@ -4794,9 +4794,9 @@ select{cursor:default}
         <input type="hidden" id="ofpf-id">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">N° OF *</label>
-            <input id="ofpf-of" placeholder="Ex: 123456" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
+            <input id="ofpf-of" placeholder="Ex: 123456789" onfocus="openCodeInputFull('ofpf-of','N° OF','9')" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box;cursor:pointer"></div>
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Code produit *</label>
-            <input id="ofpf-code" placeholder="Code article" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
+            <input id="ofpf-code" placeholder="Ex: 123456_012" onfocus="openCodeInputFull('ofpf-code','Code Produit')" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box;cursor:pointer"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Type produit *</label>
@@ -5002,6 +5002,16 @@ select{cursor:default}
       </div>
     </div>
   </div>
+
+<!-- Overlay chargement Excel -->
+<div id="excel-loading-overlay" style="display:none;position:fixed;inset:0;z-index:19999;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);background:rgba(15,23,42,.55);align-items:center;justify-content:center;flex-direction:column;gap:16px">
+  <div style="background:#fff;border-radius:16px;padding:28px 36px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;gap:14px">
+    <svg width="48" height="48" viewBox="0 0 48 48" style="animation:spin 1s linear infinite"><circle cx="24" cy="24" r="20" fill="none" stroke="#e2e8f0" stroke-width="4"/><path d="M44 24a20 20 0 0 0-20-20" fill="none" stroke="#1d4ed8" stroke-width="4" stroke-linecap="round"/></svg>
+    <div style="font-size:15px;font-weight:800;color:#1e293b">Chargement en cours</div>
+    <div style="font-size:12px;color:#64748b;font-weight:500">Veuillez patienter…</div>
+  </div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
 <!-- Modal saisie code formaté (DDDDDD_DDD) -->
 <div id="m-code-input" class="modal" style="position:fixed;inset:0;z-index:9999;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);background:rgba(0,0,0,0.75);align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-code-input')">
@@ -7740,14 +7750,17 @@ function renderEPModal(d,f){
   drawTLFromISO('ep-tl',epDisplayEvts,new Date(_epS).toISOString(),new Date(_epE).toISOString());
 }
 
+function showExcelLoading(){const el=document.getElementById('excel-loading-overlay');if(el)el.style.display='flex';}
+function hideExcelLoading(){const el=document.getElementById('excel-loading-overlay');if(el)el.style.display='none';}
+
 async function confirmEndProd(){
   const f=collectForm();
   closeM('m-endprod');
+  showExcelLoading();
   const r=await fetch('/api/end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
-  if(!r) return;
+  if(!r){hideExcelLoading();return;}
   const d=await r.json();
   if(d.ok){
-    // Clear all form fields for next prod
     FORM_FIELDS.forEach(k=>{
       const el=document.getElementById('f-'+k);
       if(!el) return;
@@ -7757,9 +7770,10 @@ async function confirmEndProd(){
     try{localStorage.removeItem('kpiorc_form');}catch(e){}
     await pollState();
     await pollEvts();
+    hideExcelLoading();
     goTab('main');
     toast('Production enregistrée','ok');
-  } else toast(d.error||'Erreur','err');
+  } else {hideExcelLoading();toast(d.error||'Erreur','err');}
 }
 
 async function forceResetProd(){
@@ -8564,7 +8578,13 @@ function _csKeydown(e){
     e.preventDefault();closeM('m-code-input');
   }
 }
+let _codeInputFullId = null; // when set, overrides 'f-' + _codeInputTarget
+function openCodeInputFull(fullId, label, fmt, maxLen){
+  _codeInputFullId = fullId;
+  openCodeInput('__full__', label, fmt, maxLen);
+}
 function openCodeInput(fieldId, label, fmt, maxLen) {
+  if(fieldId!=='__full__') _codeInputFullId=null;
   _codeInputTarget = fieldId;
   _csFormat = fmt || '6_3';
   _csMaxLen = fmt==='num'?(maxLen||5):9;
@@ -8582,30 +8602,32 @@ function openCodeInput(fieldId, label, fmt, maxLen) {
   setTimeout(()=>{const s=document.getElementById('code-slots');if(s)s.focus();},80);
 }
 function _codeInputConfirm() {
+  const _getField=()=>_codeInputFullId?document.getElementById(_codeInputFullId):document.getElementById('f-'+_codeInputTarget);
+  const _isMain=!_codeInputFullId;
   if(_csFormat==='num'){
     const numVal=parseInt(_csNumBuf,10);
     if(!_csNumBuf||isNaN(numVal)||numVal<=0){toast('Valeur requise','err');return;}
-    const field=document.getElementById('f-'+_codeInputTarget);
-    if(field){field.value=numVal;scheduleAutoSave();}
+    const field=_getField();
+    if(field){field.value=numVal;if(_isMain)scheduleAutoSave();}
     closeM('m-code-input');
-    _applyFormAndUpdateGauge();
+    if(_isMain)_applyFormAndUpdateGauge();
     return;
   }
   const all=_csDigits.join('');
   if(_csFormat==='9'){
     if(!/^[0-9]{9}$/.test(all)){toast('Format requis : 9 chiffres (ex : 123456789)','err');return;}
-    const field=document.getElementById('f-'+_codeInputTarget);
-    if(field){field.value=all;scheduleAutoSave();field.blur();}
+    const field=_getField();
+    if(field){field.value=all;if(_isMain)scheduleAutoSave();field.blur();}
   } else {
     const d6=_csDigits.slice(0,6).join('');
     const d3=_csDigits.slice(6,9).join('');
     const v=d6+'_'+d3;
     if(!/^[0-9]{6}_[0-9]{3}$/.test(v)){toast('Format requis : 6 chiffres_3 chiffres (ex : 123456_789)','err');return;}
-    const field=document.getElementById('f-'+_codeInputTarget);
-    if(field){field.value=v;scheduleAutoSave();field.blur();}
+    const field=_getField();
+    if(field){field.value=v;if(_isMain)scheduleAutoSave();field.blur();}
   }
   closeM('m-code-input');
-  _checkFormAutoConfirm();
+  if(_isMain)_checkFormAutoConfirm();
 }
 function _checkFormAutoConfirm(){
   if(window.ST&&window.ST.prod_active) return;
@@ -9001,14 +9023,7 @@ function _showEcartModal(fpd){
   if(tlEl){
     const decls=fpd.decl_list||[];
     const _isProd=t=>{const tl=(t||'').toLowerCase();return tl===''||tl==='production'||tl==='prod';};
-    const _typeColor=t=>{
-      const tl=(t||'').toLowerCase();
-      if(_isProd(t))return{bg:'#bbf7d0',border:'#86efac',text:'#15803d'};
-      if(tl.includes('pause'))return{bg:'#f1f5f9',border:'#cbd5e1',text:'#475569'};
-      if(tl.includes('nettoyage'))return{bg:'#e0f2fe',border:'#7dd3fc',text:'#0369a1'};
-      if(tl.includes('dégrad')||tl.includes('degrad'))return{bg:'#fef9c3',border:'#fde047',text:'#854d0e'};
-      return{bg:'#fee2e2',border:'#fca5a5',text:'#dc2626'};
-    };
+    const _typeColor=()=>({bg:'#dbeafe',border:'#93c5fd',text:'#1d4ed8'});
     const _hm2min=h=>{if(!h)return null;const p=h.split(':');return parseInt(p[0]||0)*60+parseInt(p[1]||0);};
     const blocks=[];
     decls.forEach(d=>{
@@ -9052,7 +9067,7 @@ function _showEcartModal(fpd){
           const lbl=isProd?(b.of?'OF '+esc(b.of):'Production'):(esc(b.type)||'Arrêt');
           const dur=(b.e!=null&&b.s!=null)?(b.e-b.s):null;
           html+=`<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:${c.bg};border:1px solid ${c.border};border-radius:7px;margin-bottom:4px">
-            <span style="font-size:15px;line-height:1">${isProd?'🟢':'🔶'}</span>
+            <span style="font-size:15px;line-height:1">${isProd?'🟦':'🔵'}</span>
             <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:700;color:${c.text}">${lbl}</span>
             <span style="font-size:calc(11px*var(--zf,1));color:${c.text};opacity:.8;white-space:nowrap">${esc(b.debut)} → ${esc(b.fin)}</span>
             ${dur?`<span style="font-size:calc(10px*var(--zf,1));color:${c.text};opacity:.55;white-space:nowrap">${dur} min</span>`:''}
@@ -9141,7 +9156,7 @@ async function saveEcartGapStop(gi){
 
 function _buildEcartStopSelect(gi){
   // Rassemble tous les types d'arrêt depuis paramètres
-  const pauses=new Set(['Pause']);
+  const pauses=new Set(['Pause','Réunion','Réunion / Formation']);
   const nettoyage=new Set(['Nettoyage court','Nettoyage long','Nettoyage très long']);
   const pannes=new Set();
   const organisation=new Set();
@@ -10720,7 +10735,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           ${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?`<div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:3px;font-weight:600">${esc(d.actual_debut||d.model_debut)} → ${esc(d.actual_fin||d.model_fin)}</div>`:''}
         </div>
         <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colPcsRp}">${Math.round(totQteFab)} <span style="font-weight:600;color:var(--gray)">Pièces</span>${_objPcsRp>0?` <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${Math.round(_objPcsRp)})</span>`:''}</div></div>
-        <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colEquivRp}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span></div></div>
+        <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colEquivRp}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span>${_objEquivRp>0?` <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${Math.round(_objEquivRp)})</span>`:''}</div></div>
         <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colCadRp}">${d.is_live?'Cad/h : —':`Cad/h : ${cadenceH}`} <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round(cadenceRefPcsMin*10)/10}/min)</span></div></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
           <div class="fp-card" style="padding:6px;text-align:center"><div class="fp-big" style="font-size:calc(16px*var(--zf,1));color:#64748b;font-weight:900">${d.nb_of||0}</div><div class="fp-lbl" style="font-size:calc(9px*var(--zf,1))">Nb OF</div></div>
@@ -11223,8 +11238,10 @@ async function submitPastDecl(){
     if(!stop_type){toast('Choisir un type d\'arrêt','err');return;}
     body=Object.assign(body,{type:stop_type,comment:(document.getElementById('pd-comment-arret')||{}).value||''});
   }
+  showExcelLoading();
   const r=await fetch('/api/add_past_decl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>null);
   const d=r?await r.json().catch(()=>({})):{};
+  hideExcelLoading();
   if(d.ok){
     closeM('m-past-decl');
     toast('Déclaration ajoutée','ok');
