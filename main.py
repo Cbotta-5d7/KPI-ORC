@@ -4290,8 +4290,9 @@ select{cursor:default}
         <button id="btn-pause-acc" class="acc-btn" onclick="doPause()" style="background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">☕</span><span>Pause</span></button>
         <button id="btn-reunion-acc" class="acc-btn" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
+        <div style="width:1px;background:rgba(255,255,255,.25);align-self:stretch;margin:0 4px;flex-shrink:0"></div>
         <button class="acc-btn" onclick="openPastDecl()" style="margin-left:auto;background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">📝</span><span>Faire une régul</span></button>
-        <button class="acc-btn" id="btn-of-prepares" onclick="openOfPrepares()" style="background:radial-gradient(ellipse at 50% 25%,#a5b4fc 0%,#6366f1 55%,#3730a3 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none;position:relative"><span class="act-icon">📋</span><span>OF préparés</span><span id="ofp-badge" style="display:none;position:absolute;top:4px;right:4px;background:#f59e0b;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:900;align-items:center;justify-content:center;line-height:1"></span></button>
+        <button class="acc-btn" id="btn-of-prepares" onclick="openOfPrepares()" style="background:radial-gradient(ellipse at 50% 25%,#a5b4fc 0%,#6366f1 55%,#3730a3 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none;position:relative"><span class="act-icon">📋</span><span>Prépa OF en avance</span><span id="ofp-badge" style="display:none;position:absolute;top:4px;right:4px;background:#f59e0b;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:900;align-items:center;justify-content:center;line-height:1"></span></button>
       </div>
     </div>
     <!-- KPI accueil — POSTE ACTUEL -->
@@ -4764,7 +4765,7 @@ select{cursor:default}
     <div style="width:min(640px,96vw);max-height:90vh;background:#fff;border-radius:14px;border-top:4px solid #6366f1;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)">
       <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0">
         <div style="flex:1">
-          <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:#3730a3">📋 OF préparés</div>
+          <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:#3730a3">📋 Prépa OF en avance</div>
           <div style="font-size:calc(11px*var(--zf,1));color:#6b7280">Préparez vos OF à l'avance pour les lancer rapidement</div>
         </div>
         <button onclick="closeM('m-of-prepares')" style="background:none;border:none;font-size:18px;cursor:pointer;color:#6b7280;line-height:1">✕</button>
@@ -4809,14 +4810,6 @@ select{cursor:default}
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Lot de 2</label>
             <select id="ofpf-kit" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">Non</option><option value="oui">Oui</option></select></div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Nb personnes *</label>
-            <input id="ofpf-nbpers" type="number" min="1" placeholder="10" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
-          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Qté fab. *</label>
-            <input id="ofpf-qtefab" type="number" min="0" placeholder="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
-          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Qté emb.</label>
-            <input id="ofpf-qteemb" type="number" min="0" placeholder="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
-        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Poids garnissage *</label>
             <input id="ofpf-poids" type="number" min="0" step="0.1" placeholder="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
@@ -4844,12 +4837,8 @@ select{cursor:default}
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">MQ Housse/Encart</label>
             <input id="ofpf-mq-housse" type="number" min="0" value="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">PP Cousu et emballé</label>
-            <input id="ofpf-nb-pp" type="number" min="0" value="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
-          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Commentaire</label>
-            <input id="ofpf-comment-prod" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
-        </div>
+        <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">PP Cousu et emballé</label>
+          <input id="ofpf-nb-pp" type="number" min="0" value="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
       </div>
       <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">
         <button onclick="closeOfPrepForm()" style="padding:9px 18px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;font-size:calc(12px*var(--zf,1));color:#374151;font-weight:600">Annuler</button>
@@ -6982,10 +6971,10 @@ function openOfPrepForm(id){
   _ofpCopyOpts('f-fibre','ofpf-fibre');
   _ofpCopyOpts('f-copilote','ofpf-copilote');
   // Clear form
-  ['ofpf-of','ofpf-code','ofpf-traca1','ofpf-traca2','ofpf-traca3','ofpf-ref-taie','ofpf-comment-prod'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  ['ofpf-of','ofpf-code','ofpf-traca1','ofpf-traca2','ofpf-traca3','ofpf-ref-taie'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   ['ofpf-type-prod','ofpf-taille','ofpf-copilote','ofpf-fibre'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   ['ofpf-kit'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
-  ['ofpf-nbpers','ofpf-qtefab','ofpf-qteemb','ofpf-poids'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  ['ofpf-poids'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
   ['ofpf-nb-taie2','ofpf-nb-def-cout','ofpf-mq-taie','ofpf-mq-housse','ofpf-nb-pp'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='0';});
   // Fill if editing
   if(id){
@@ -6993,12 +6982,10 @@ function openOfPrepForm(id){
     if(o){
       const _sv=(fId,val)=>{const el=document.getElementById(fId);if(el)el.value=val!==undefined&&val!==null?val:'';};
       _sv('ofpf-of',o.of_num);_sv('ofpf-code',o.code_prod);_sv('ofpf-type-prod',o.type_prod);_sv('ofpf-taille',o.taille);
-      _sv('ofpf-copilote',o.copilote);_sv('ofpf-kit',o.kit);_sv('ofpf-nbpers',o.nb_pers);
-      _sv('ofpf-qtefab',o.qte_fab);_sv('ofpf-qteemb',o.qte_emb);_sv('ofpf-poids',o.poids);_sv('ofpf-fibre',o.fibre);
+      _sv('ofpf-copilote',o.copilote);_sv('ofpf-kit',o.kit);_sv('ofpf-poids',o.poids);_sv('ofpf-fibre',o.fibre);
       const tra=o.traca||'';const tras=tra.split('|');_sv('ofpf-traca1',tras[0]||'');_sv('ofpf-traca2',tras[1]||'');_sv('ofpf-traca3',tras[2]||'');
       _sv('ofpf-ref-taie',o.ref_taie);_sv('ofpf-nb-taie2',o.nb_taie2_choix||0);_sv('ofpf-nb-def-cout',o.nb_def_cout||0);
       _sv('ofpf-mq-taie',o.mq_taie||0);_sv('ofpf-mq-housse',o.mq_housse_encart||0);_sv('ofpf-nb-pp',o.nb_pp_cousue||0);
-      _sv('ofpf-comment-prod',o.comment);
     }
   }
   openM('m-of-prep-form');
@@ -7013,18 +7000,17 @@ async function saveOfPrepForm(){
   const traca=[_gv('ofpf-traca1'),_gv('ofpf-traca2'),_gv('ofpf-traca3')].filter(Boolean).join('|');
   const data={
     of_num,code_prod:_gv('ofpf-code'),type_prod:_gv('ofpf-type-prod'),taille:_gv('ofpf-taille'),
-    copilote:_gv('ofpf-copilote'),kit:_gv('ofpf-kit'),nb_pers:_gv('ofpf-nbpers'),
-    qte_fab:_gv('ofpf-qtefab'),qte_emb:_gv('ofpf-qteemb'),poids:_gv('ofpf-poids'),fibre:_gv('ofpf-fibre'),
+    copilote:_gv('ofpf-copilote'),kit:_gv('ofpf-kit'),poids:_gv('ofpf-poids'),fibre:_gv('ofpf-fibre'),
     traca,ref_taie:_gv('ofpf-ref-taie'),nb_taie2_choix:_gv('ofpf-nb-taie2')||'0',
     nb_def_cout:_gv('ofpf-nb-def-cout')||'0',mq_taie:_gv('ofpf-mq-taie')||'0',
     mq_housse_encart:_gv('ofpf-mq-housse')||'0',nb_pp_cousue:_gv('ofpf-nb-pp')||'0',
     comment:_gv('ofpf-comment-prod')
   };
   const id=_gv('ofpf-id');
-  let url,method;
-  if(id){url='/api/of_prepares/update/'+encodeURIComponent(id);}
-  else{url='/api/of_prepares/add';}
-  const r=await apiFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  const url=id?'/api/of_prepares/update/'+encodeURIComponent(id):'/api/of_prepares/add';
+  let rr;
+  try{rr=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});}catch(e){toast('Erreur réseau','err');return;}
+  const r=rr&&rr.ok?await rr.json():null;
   if(!r||!r.ok){toast('Erreur enregistrement','err');return;}
   _ofpList=r.list||[];
   _renderOfpList();
@@ -7035,7 +7021,9 @@ async function saveOfPrepForm(){
 
 async function deleteOfPrep(id){
   if(!confirm('Supprimer cet OF préparé ?'))return;
-  const r=await apiFetch('/api/of_prepares/delete/'+encodeURIComponent(id),{method:'POST'});
+  let rr;
+  try{rr=await fetch('/api/of_prepares/delete/'+encodeURIComponent(id),{method:'POST'});}catch(e){toast('Erreur réseau','err');return;}
+  const r=rr&&rr.ok?await rr.json():null;
   if(!r||!r.ok){toast('Erreur suppression','err');return;}
   _ofpList=r.list||[];
   _renderOfpList();
@@ -7087,7 +7075,7 @@ async function doStartProdFromOFPrep(id){
   closeM('m-of-choice');
   const o=_ofpList.find(x=>x.id===id);
   if(!o){toast('OF introuvable','err');return;}
-  await apiFetch('/api/of_prepares/delete/'+encodeURIComponent(id),{method:'POST'});
+  try{await fetch('/api/of_prepares/delete/'+encodeURIComponent(id),{method:'POST'});}catch(e){}
   _ofpList=_ofpList.filter(x=>x.id!==id);
   _updateOfpBadge();
   _fillFormFromOFPrep(o);
