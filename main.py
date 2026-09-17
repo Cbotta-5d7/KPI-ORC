@@ -225,6 +225,7 @@ _write_pending = 0   # nombre d'écritures Excel en attente
 _write_failed = False  # True si un write a définitivement échoué (timeout 15 min)
 _backup_lock = threading.Lock()
 _backup_pending = 0  # nombre de déclarations en attente dans le fichier backup
+_hist_loading = 0   # nombre de load_history() en cours (overlay côté UI)
 cfg = {}
 
 flask_app = Flask(__name__)
@@ -966,9 +967,10 @@ def get_list(h):
     return _lists.get(h,[])
 
 def load_history():
-    global _decl_cache, _excel_busy
+    global _decl_cache, _excel_busy, _hist_loading
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return
+    _hist_loading += 1
     try:
         wb = load_workbook(path, read_only=True, data_only=True)
         _excel_busy = False
@@ -1014,13 +1016,16 @@ def load_history():
                     unified[35] = row[57] if len(row)>57 else None  # Commentaire
                     _decl_cache.append((i, unified))
         wb.close()
+        _hist_loading = max(0, _hist_loading - 1)
     except PermissionError:
         _excel_busy = True
+        _hist_loading = max(0, _hist_loading - 1)
         def _retry():
             import time as _t; _t.sleep(5)
             load_history()
         threading.Thread(target=_retry, daemon=True).start()
-    except: pass
+    except:
+        _hist_loading = max(0, _hist_loading - 1)
 
 # ── Calcul équivalence ────────────────────────────────────────────────────────
 def calc_equiv(qte, taille, type_prod):
@@ -1608,6 +1613,7 @@ def _state_json():
         "write_pending": _write_pending > 0,
         "write_failed": _write_failed,
         "backup_pending": _backup_pending,
+        "hist_loading": _hist_loading > 0,
         "pause_periods": [[_dt_str(a), _dt_str(b)] for a, b in _S.get("pause_periods", [])],
         "shift_debut_iso": _dt_str(_S.get("shift_debut_dt")),
         "shift_fin_iso": _dt_str(_S.get("shift_fin_dt")),
@@ -4293,6 +4299,14 @@ select{cursor:default}
   <button onclick="document.getElementById('excel-write-failed-banner').style.display='none'" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:calc(11px*var(--zf,1))">✕</button>
 </div>
 
+<!-- ════ OVERLAY CHARGEMENT ════ -->
+<div id="hist-loading-overlay" style="display:none;position:fixed;inset:0;z-index:99990;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);background:rgba(0,0,0,0.45);align-items:center;justify-content:center;flex-direction:column;gap:18px;pointer-events:all">
+  <div style="background:#fff;border-radius:16px;padding:32px 44px;display:flex;flex-direction:column;align-items:center;gap:16px;box-shadow:0 8px 40px rgba(0,0,0,.35);min-width:260px">
+    <div style="width:48px;height:48px;border:5px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:spin 0.8s linear infinite"></div>
+    <div style="font-size:calc(15px*var(--zf,1));font-weight:700;color:#1e293b;letter-spacing:.01em">Chargement en cours...</div>
+    <div style="font-size:calc(12px*var(--zf,1));color:#64748b;text-align:center">Veuillez patienter,<br>les données sont en cours d'enregistrement.</div>
+  </div>
+</div>
 <!-- ════ LOGIN ════ -->
 <div id="v-login" class="view on">
   <div class="login-card">
@@ -6352,6 +6366,12 @@ async function pollState() {
     _curStopElap=s.timers&&s.timers[k]?s.timers[k].elapsed:0;
   } else {
     _curStopKey=null; _curStopElap=0;
+  }
+
+  // Overlay chargement (bloque l'UI pendant load_history post-déclaration)
+  const _hlOverlay=document.getElementById('hist-loading-overlay');
+  if(_hlOverlay){
+    _hlOverlay.style.display=s.hist_loading?'flex':'none';
   }
 
   // Bannière enregistrement Excel en attente / backup
