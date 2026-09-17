@@ -11620,31 +11620,32 @@ def main():
     threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_session_autosave, daemon=True).start()
     def _dashboard_bg():
-        import datetime as _bdt, http.client as _hc
+        import datetime as _bdt
         _base = (os.path.dirname(sys.executable) if getattr(sys, 'frozen', False)
                  else os.path.dirname(os.path.abspath(__file__)))
         _log = os.path.join(_base, '_dashboard_auto.log')
-        time.sleep(60)  # attendre que Flask soit bien démarré
-        while True:
-            _ts = _bdt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # Log de démarrage immédiat pour prouver que le thread tourne
+        def _wlog(msg):
             try:
-                # http.client ne passe pas par les proxies systeme — connexion directe a localhost
-                _conn = _hc.HTTPConnection('127.0.0.1', 5001, timeout=120)
-                _conn.request('POST', '/api/generate_dashboard', body=b'{}',
-                              headers={'Content-Type': 'application/json'})
-                _resp = _conn.getresponse()
-                _body = _resp.read().decode('utf-8', errors='replace')
-                _conn.close()
-                if _resp.status == 200 and '"ok":true' in _body:
-                    _msg = f"OK (HTTP {_resp.status})"
-                else:
-                    _msg = f"ERREUR HTTP {_resp.status}: {_body[:200]}"
-            except Exception as _ex:
-                _msg = f"ERREUR: {str(_ex)[:300]}"
-            try:
+                _ts2 = _bdt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 with open(_log, 'a', encoding='utf-8') as _f:
-                    _f.write(f"[{_ts}] {_msg}\n")
-            except: pass
+                    _f.write(f"[{_ts2}] {msg}\n")
+            except Exception as _we:
+                pass  # si le log échoue on continue quand même
+        _wlog("Thread démarré — attente 60s")
+        time.sleep(60)  # attendre que Flask soit bien démarré
+        _wlog("Première génération en cours...")
+        while True:
+            _msg = "ERREUR: non exécuté"
+            try:
+                _ok, _info = generate_dashboard_html()
+                if _ok:
+                    _msg = f"OK → {_info}"
+                else:
+                    _msg = f"ERREUR génération: {str(_info)[:300]}"
+            except BaseException as _ex:
+                _msg = f"EXCEPTION: {type(_ex).__name__}: {str(_ex)[:300]}"
+            _wlog(_msg)
             time.sleep(5 * 60)
     threading.Thread(target=_dashboard_bg, daemon=True).start()
     threading.Thread(target=_backup_flush_bg, daemon=True).start()
