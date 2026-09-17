@@ -220,6 +220,8 @@ _lists = {}
 _decl_cache = []   # liste de (row_num, row_data) - toutes déclarations (prod + events)
 _prod_ref_cached = 0.0
 _excel_busy = False  # True quand le fichier Excel est verrouillé (ouvert par Excel)
+_write_pending = 0   # nombre d'écritures Excel en attente
+_write_failed = False  # True si un write a définitivement échoué (timeout 15 min)
 cfg = {}
 
 flask_app = Flask(__name__)
@@ -1139,20 +1141,27 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
     return rows
 
 def write_excel_bg(prod_row, evt_rows):
-    """Écrit la ligne production + lignes arrêts dans la feuille Declarations."""
+    """Écrit la ligne production + lignes arrêts dans la feuille Declarations.
+    Retry illimité tant que le fichier Excel est ouvert. Bannière d'alerte côté UI."""
+    global _write_pending, _write_failed
     path = cfg.get("db_path","")
     if not path: return
+    _write_pending += 1
+    _write_failed = False
     try:
         with open(PENDING_FILE,"w",encoding="utf-8") as f:
             json.dump({"db_path":path,"prod_row":prod_row,"evt_rows":evt_rows},f,ensure_ascii=False,default=str)
     except: pass
     def _bg():
-        for attempt in range(15):
+        global _write_pending, _write_failed
+        _start = time.time()
+        _MAX_WAIT_S = 15 * 60  # abandon après 15 minutes
+        while True:
             try:
                 with _excel_lock:
                     wb = _get_wb(path)
                     if wb is None:
-                        time.sleep(4)
+                        time.sleep(5)
                         continue
                     ws = _ensure_decl_sheet(wb)
                     if prod_row:
@@ -1164,11 +1173,17 @@ def write_excel_bg(prod_row, evt_rows):
                     _safe_excel_save(wb, path)
                     try: os.remove(PENDING_FILE)
                     except: pass
-                    break  # success — exit retry loop
+                    _write_pending = max(0, _write_pending - 1)
+                    break  # succès
             except PermissionError:
-                # Excel a le fichier ouvert — on réessaie dans 5s
+                # Excel a le fichier ouvert — on réessaie tant qu'il est fermé
+                if time.time() - _start > _MAX_WAIT_S:
+                    _write_pending = max(0, _write_pending - 1)
+                    _write_failed = True
+                    break
                 time.sleep(5)
             except Exception:
+                _write_pending = max(0, _write_pending - 1)
                 break
         threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_bg, daemon=True).start()
@@ -1508,6 +1523,8 @@ def _state_json():
         "shift_duration_s": get_shift_duration_s(_S["poste"]),
         "shift_start_iso": _dt_str(_S.get("shift_start")),
         "excel_busy": _excel_busy,
+        "write_pending": _write_pending > 0,
+        "write_failed": _write_failed,
         "pause_periods": [[_dt_str(a), _dt_str(b)] for a, b in _S.get("pause_periods", [])],
         "shift_debut_iso": _dt_str(_S.get("shift_debut_dt")),
         "shift_fin_iso": _dt_str(_S.get("shift_fin_dt")),
@@ -4171,6 +4188,21 @@ select{cursor:default}
 </head>
 <body>
 
+<!-- ════ BANNIERE ECRITURE EN ATTENTE ════ -->
+<div id="excel-write-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:29999;background:#dc2626;color:#fff;padding:10px 20px;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 16px rgba(220,38,38,.5);font-size:calc(13px*var(--zf,1));font-weight:700">
+  <div style="display:flex;align-items:center;gap:10px">
+    <div style="width:10px;height:10px;border-radius:50%;background:#fef08a;animation:blink .6s step-start infinite;flex-shrink:0"></div>
+    <span>⚠️ ENREGISTREMENT EN ATTENTE — Le fichier Excel est ouvert. Fermez-le pour sauvegarder la déclaration.</span>
+  </div>
+  <div style="font-size:calc(11px*var(--zf,1));opacity:.85;white-space:nowrap">Retry automatique...</div>
+</div>
+<div id="excel-write-failed-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:29999;background:#7f1d1d;color:#fff;padding:10px 20px;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 16px rgba(127,29,29,.6);font-size:calc(13px*var(--zf,1));font-weight:700">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span>🚨 ENREGISTREMENT ÉCHOUÉ — La déclaration n'a pas pu être sauvegardée après 15 min. Contactez l'admin.</span>
+  </div>
+  <button onclick="document.getElementById('excel-write-failed-banner').style.display='none'" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:calc(11px*var(--zf,1))">✕</button>
+</div>
+
 <!-- ════ LOGIN ════ -->
 <div id="v-login" class="view on">
   <div class="login-card">
@@ -6230,6 +6262,24 @@ async function pollState() {
     _curStopElap=s.timers&&s.timers[k]?s.timers[k].elapsed:0;
   } else {
     _curStopKey=null; _curStopElap=0;
+  }
+
+  // Bannière enregistrement Excel en attente
+  const _wpBanner=document.getElementById('excel-write-banner');
+  const _wfBanner=document.getElementById('excel-write-failed-banner');
+  const _prevWp=window._writePendingWas||false;
+  window._writePendingWas=!!s.write_pending;
+  if(_wpBanner){
+    _wpBanner.style.display=s.write_pending?'flex':'none';
+    // Ajuster le padding du body pour laisser la place à la bannière
+    document.body.style.paddingTop=s.write_pending?'48px':'';
+  }
+  if(_wfBanner){
+    if(s.write_failed) _wfBanner.style.display='flex';
+  }
+  // Toast de confirmation quand le write se termine
+  if(_prevWp && !s.write_pending && !s.write_failed){
+    toast('✅ Déclaration enregistrée dans Excel !','ok',4000);
   }
 
   applyState(s);
