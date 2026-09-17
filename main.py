@@ -3222,7 +3222,22 @@ def api_past_sessions():
                 trs = _xl_trs_ps
             elif _pers_pct_map and _prod_raws_ps:
                 _deg_ivs_ps = _merged_degrade_ivs([re for _, re in _evts_ps])
-                trs, _ = _option_b_trs(_prod_raws_ps, _deg_ivs_ps, prod_ref)
+                # Recalcul plan_ivs identique à session_report (arrêts planifiés capés au budget)
+                _blab_ps = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
+                _xl_bov_ps = {k: v for k, v in (postes_map.get(_pk, {}).get('budget_overrides') or {}).items() if v is not None}
+                _plan_bdata_ps = {bk: float((_xl_bov_ps.get(bk) if _xl_bov_ps.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab_ps}
+                _plan_used_ps2 = {bk: 0.0 for bk in _blab_ps}
+                _plan_ivs_ps = []
+                for _, _rp in _evts_ps:
+                    _bk_p = _get_arret_budget_key(str(_rp[0] or ''))
+                    if _bk_p and _bk_p in _plan_bdata_ps:
+                        _ds_p = _hms_to_sec(str(_rp[16] or '00:00:00'))
+                        _fs_p = _norm_fin(_ds_p, _hms_to_sec(str(_rp[17] or '00:00:00')))
+                        _dur_p = _fs_p - _ds_p
+                        if _dur_p > 0 and _plan_used_ps2[_bk_p] < _plan_bdata_ps[_bk_p]:
+                            _plan_ivs_ps.append((_ds_p, _ds_p + min(_dur_p, _plan_bdata_ps[_bk_p] - _plan_used_ps2[_bk_p])))
+                        _plan_used_ps2[_bk_p] += _dur_p
+                trs, _ = _option_b_trs(_prod_raws_ps, _deg_ivs_ps, prod_ref, _plan_ivs_ps)
             else:
                 planned_ded = _compute_planned_deduction_s(_evts_ps)
                 if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
