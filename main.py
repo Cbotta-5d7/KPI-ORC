@@ -13,6 +13,7 @@ else:
 CONFIG_FILE  = os.path.join(BASE_DIR, "kpi_orc_config.json")
 SESSION_FILE = os.path.join(BASE_DIR, "kpi_orc_session.json")
 PENDING_FILE = os.path.join(BASE_DIR, "kpi_orc_pending.json")
+BACKUP_FILE  = os.path.join(BASE_DIR, "kpi_orc_backup.json")
 
 # Migration automatique depuis HOME (première fois après mise à jour)
 def _migrate_from_home():
@@ -222,6 +223,8 @@ _prod_ref_cached = 0.0
 _excel_busy = False  # True quand le fichier Excel est verrouillé (ouvert par Excel)
 _write_pending = 0   # nombre d'écritures Excel en attente
 _write_failed = False  # True si un write a définitivement échoué (timeout 15 min)
+_backup_lock = threading.Lock()
+_backup_pending = 0  # nombre de déclarations en attente dans le fichier backup
 cfg = {}
 
 flask_app = Flask(__name__)
@@ -1140,9 +1143,88 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
         rows.append(_base_row("Pause", ps, pe))
     return rows
 
+def _append_to_backup(prod_row, evt_rows):
+    """Ajoute une déclaration non écrite au fichier backup JSON (liste)."""
+    global _backup_pending
+    entry = {"prod_row": prod_row, "evt_rows": evt_rows, "ts": time.strftime("%Y-%m-%d %H:%M:%S")}
+    with _backup_lock:
+        items = []
+        try:
+            if os.path.exists(BACKUP_FILE):
+                with open(BACKUP_FILE, encoding="utf-8") as f:
+                    items = json.load(f)
+        except: pass
+        items.append(entry)
+        try:
+            with open(BACKUP_FILE, "w", encoding="utf-8") as f:
+                json.dump(items, f, ensure_ascii=False, default=str)
+        except: pass
+        _backup_pending = len(items)
+
+
+def _flush_backup():
+    """Tente d'écrire toutes les déclarations du backup dans Excel.
+    Retourne True si le backup est vide après la tentative."""
+    global _backup_pending
+    path = cfg.get("db_path", "")
+    if not path or not os.path.exists(BACKUP_FILE): return True
+    with _backup_lock:
+        try:
+            with open(BACKUP_FILE, encoding="utf-8") as f:
+                items = json.load(f)
+        except:
+            return True
+        if not items:
+            _backup_pending = 0
+            return True
+    # Essayer d'écrire item par item dans Excel
+    remaining = []
+    flushed = 0
+    for item in items:
+        try:
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None:
+                    remaining.append(item)
+                    continue
+                ws = _ensure_decl_sheet(wb)
+                pr = item.get("prod_row")
+                if pr:
+                    ws.append(pr)
+                    _format_row(ws, ws.max_row)
+                for er in item.get("evt_rows", []):
+                    ws.append(er)
+                    _format_row(ws, ws.max_row)
+                _safe_excel_save(wb, path)
+                flushed += 1
+        except PermissionError:
+            remaining.append(item)
+        except Exception:
+            remaining.append(item)
+    with _backup_lock:
+        try:
+            with open(BACKUP_FILE, "w", encoding="utf-8") as f:
+                json.dump(remaining, f, ensure_ascii=False, default=str)
+        except: pass
+        _backup_pending = len(remaining)
+    if flushed > 0:
+        threading.Thread(target=load_history, daemon=True).start()
+    return len(remaining) == 0
+
+
+def _backup_flush_bg():
+    """Thread qui tente de vider le backup toutes les 30 secondes."""
+    while True:
+        time.sleep(30)
+        try:
+            if os.path.exists(BACKUP_FILE) and _backup_pending > 0:
+                _flush_backup()
+        except: pass
+
+
 def write_excel_bg(prod_row, evt_rows):
     """Écrit la ligne production + lignes arrêts dans la feuille Declarations.
-    Retry illimité tant que le fichier Excel est ouvert. Bannière d'alerte côté UI."""
+    3 tentatives rapides (15 s). Si Excel reste bloqué → backup immédiat + retry toutes les 30 s."""
     global _write_pending, _write_failed
     path = cfg.get("db_path","")
     if not path: return
@@ -1154,9 +1236,7 @@ def write_excel_bg(prod_row, evt_rows):
     except: pass
     def _bg():
         global _write_pending, _write_failed
-        _start = time.time()
-        _MAX_WAIT_S = 15 * 60  # abandon après 15 minutes
-        while True:
+        for _attempt in range(3):
             try:
                 with _excel_lock:
                     wb = _get_wb(path)
@@ -1174,17 +1254,19 @@ def write_excel_bg(prod_row, evt_rows):
                     try: os.remove(PENDING_FILE)
                     except: pass
                     _write_pending = max(0, _write_pending - 1)
-                    break  # succès
+                    threading.Thread(target=load_history, daemon=True).start()
+                    return  # succès
             except PermissionError:
-                # Excel a le fichier ouvert — on réessaie tant qu'il est fermé
-                if time.time() - _start > _MAX_WAIT_S:
-                    _write_pending = max(0, _write_pending - 1)
-                    _write_failed = True
-                    break
                 time.sleep(5)
             except Exception:
                 _write_pending = max(0, _write_pending - 1)
-                break
+                threading.Thread(target=load_history, daemon=True).start()
+                return
+        # Toujours bloqué après 3 tentatives → on sauvegarde dans le backup
+        _append_to_backup(prod_row, evt_rows)
+        try: os.remove(PENDING_FILE)
+        except: pass
+        _write_pending = max(0, _write_pending - 1)
         threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_bg, daemon=True).start()
 
@@ -1525,6 +1607,7 @@ def _state_json():
         "excel_busy": _excel_busy,
         "write_pending": _write_pending > 0,
         "write_failed": _write_failed,
+        "backup_pending": _backup_pending,
         "pause_periods": [[_dt_str(a), _dt_str(b)] for a, b in _S.get("pause_periods", [])],
         "shift_debut_iso": _dt_str(_S.get("shift_debut_dt")),
         "shift_fin_iso": _dt_str(_S.get("shift_fin_dt")),
@@ -4192,13 +4275,20 @@ select{cursor:default}
 <div id="excel-write-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:29999;background:#dc2626;color:#fff;padding:10px 20px;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 16px rgba(220,38,38,.5);font-size:calc(13px*var(--zf,1));font-weight:700">
   <div style="display:flex;align-items:center;gap:10px">
     <div style="width:10px;height:10px;border-radius:50%;background:#fef08a;animation:blink .6s step-start infinite;flex-shrink:0"></div>
-    <span>⚠️ ENREGISTREMENT EN ATTENTE — Le fichier Excel est ouvert. Fermez-le pour sauvegarder la déclaration.</span>
+    <span>🔴 ATTENTION — Le fichier Excel est ouvert. Enregistrement en cours de tentative...</span>
   </div>
-  <div style="font-size:calc(11px*var(--zf,1));opacity:.85;white-space:nowrap">Retry automatique...</div>
+  <div style="font-size:calc(11px*var(--zf,1));opacity:.85;white-space:nowrap">Retry automatique toutes les 5 s</div>
+</div>
+<div id="excel-backup-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:29998;background:#d97706;color:#fff;padding:10px 20px;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 16px rgba(217,119,6,.5);font-size:calc(13px*var(--zf,1));font-weight:700">
+  <div style="display:flex;align-items:center;gap:10px">
+    <div style="width:10px;height:10px;border-radius:50%;background:#fef08a;animation:blink 1s step-start infinite;flex-shrink:0"></div>
+    <span id="excel-backup-banner-text">⚠️ SAUVEGARDE EN ATTENTE — Excel est ouvert. Les déclarations sont conservées en sécurité et seront enregistrées automatiquement à la fermeture.</span>
+  </div>
+  <div style="font-size:calc(11px*var(--zf,1));opacity:.85;white-space:nowrap">Retry toutes les 30 s</div>
 </div>
 <div id="excel-write-failed-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:29999;background:#7f1d1d;color:#fff;padding:10px 20px;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 16px rgba(127,29,29,.6);font-size:calc(13px*var(--zf,1));font-weight:700">
   <div style="display:flex;align-items:center;gap:10px">
-    <span>🚨 ENREGISTREMENT ÉCHOUÉ — La déclaration n'a pas pu être sauvegardée après 15 min. Contactez l'admin.</span>
+    <span>🚨 ENREGISTREMENT ÉCHOUÉ — La déclaration n'a pas pu être sauvegardée. Contactez l'admin.</span>
   </div>
   <button onclick="document.getElementById('excel-write-failed-banner').style.display='none'" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:calc(11px*var(--zf,1))">✕</button>
 </div>
@@ -6264,22 +6354,36 @@ async function pollState() {
     _curStopKey=null; _curStopElap=0;
   }
 
-  // Bannière enregistrement Excel en attente
+  // Bannière enregistrement Excel en attente / backup
   const _wpBanner=document.getElementById('excel-write-banner');
+  const _bkBanner=document.getElementById('excel-backup-banner');
+  const _bkText=document.getElementById('excel-backup-banner-text');
   const _wfBanner=document.getElementById('excel-write-failed-banner');
   const _prevWp=window._writePendingWas||false;
+  const _prevBk=window._backupPendingWas||0;
   window._writePendingWas=!!s.write_pending;
+  window._backupPendingWas=s.backup_pending||0;
   if(_wpBanner){
     _wpBanner.style.display=s.write_pending?'flex':'none';
-    // Ajuster le padding du body pour laisser la place à la bannière
-    document.body.style.paddingTop=s.write_pending?'48px':'';
+    document.body.style.paddingTop=(s.write_pending||(s.backup_pending>0))?'52px':'';
+  }
+  if(_bkBanner){
+    _bkBanner.style.display=(s.backup_pending>0&&!s.write_pending)?'flex':'none';
+    if(_bkText&&s.backup_pending>0){
+      const n=s.backup_pending;
+      _bkText.textContent='⚠️ SAUVEGARDE EN ATTENTE — '+n+' déclaration'+(n>1?'s':'')+' conservée'+(n>1?'s':'')+' en sécurité. Fermez le fichier Excel pour les enregistrer automatiquement.';
+    }
   }
   if(_wfBanner){
     if(s.write_failed) _wfBanner.style.display='flex';
   }
-  // Toast de confirmation quand le write se termine
-  if(_prevWp && !s.write_pending && !s.write_failed){
+  // Toast de confirmation quand write direct réussit
+  if(_prevWp && !s.write_pending && !s.write_failed && s.backup_pending===0){
     toast('✅ Déclaration enregistrée dans Excel !','ok',4000);
+  }
+  // Toast de confirmation quand le backup est entièrement vidé
+  if(_prevBk>0 && (s.backup_pending||0)===0){
+    toast('✅ '+_prevBk+' déclaration'+((_prevBk>1)?'s':'')+' enregistrée'+((_prevBk>1)?'s':'')+' dans Excel depuis le backup !','ok',5000);
   }
 
   applyState(s);
@@ -11523,6 +11627,7 @@ def main():
             except: pass
             time.sleep(5 * 60)
     threading.Thread(target=_dashboard_bg, daemon=True).start()
+    threading.Thread(target=_backup_flush_bg, daemon=True).start()
     _start_periodic_excel_sync()
 
     # Recover pending Excel write after crash
@@ -11534,6 +11639,16 @@ def main():
                 write_excel_bg(pending["prod_row"], pending.get("evt_rows", []))
     except:
         pass
+
+    # Recover backup file (déclarations non écrites lors d'une session précédente)
+    global _backup_pending
+    try:
+        if os.path.exists(BACKUP_FILE):
+            with open(BACKUP_FILE, encoding="utf-8") as f:
+                _items = json.load(f)
+            _backup_pending = len(_items) if isinstance(_items, list) else 0
+    except:
+        _backup_pending = 0
 
     try:
         import webview
