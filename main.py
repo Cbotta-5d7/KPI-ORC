@@ -4601,7 +4601,7 @@ select{cursor:default}
           <div class="fzone zq">
             <h4>✅ Qualité</h4>
             <div class="fr" style="display:none"><input id="f-qte_init_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()" onfocus="openCodeInput('ref_taie','Code Taie')"></div>
             <div class="fr"><label>Nb Taie 2nd Choix</label><input id="f-nb_taie2_choix" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Nb Défaut Couture</label><input id="f-nb_def_cout" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Mq Taie</label><input id="f-mq_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
@@ -4866,7 +4866,7 @@ select{cursor:default}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Code Taie</label>
-            <input id="pd-ref-taie" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+            <input id="pd-ref-taie" placeholder="Optionnel" onfocus="openCodeInputFull('pd-ref-taie','Code Taie')" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));cursor:pointer"></div>
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Nb Taie 2nd Choix</label>
             <input id="pd-nb-taie2" type="number" min="0" value="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
         </div>
@@ -4965,7 +4965,7 @@ select{cursor:default}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Code Taie</label>
-            <input id="ofpf-ref-taie" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
+            <input id="ofpf-ref-taie" placeholder="Optionnel" onfocus="openCodeInputFull('ofpf-ref-taie','Code Taie')" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box;cursor:pointer"></div>
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Nb Taie 2nd Choix</label>
             <input id="ofpf-nb-taie2" type="number" min="0" value="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box"></div>
         </div>
@@ -5729,7 +5729,7 @@ select{cursor:default}
           <div class="fr"><label>Fibre</label><select id="er-fibre"><option value="">--</option></select></div>
           <div class="fr"><label>OF Taie</label><input id="er-oftaie"></div>
           <div class="fr"><label>Traca Fibre</label><input type="text" id="er-traca" placeholder="n° de lot(s), séparés par ;"></div>
-          <div class="fr"><label>Réf Taie</label><input id="er-reftaie"></div>
+          <div class="fr"><label>Réf Taie</label><input id="er-reftaie" onfocus="openCodeInputFull('er-reftaie','Code Taie')" style="cursor:pointer"></div>
           <div class="fr"><label>Lots de 2</label><select id="er-kit"><option value="">Non</option><option value="oui">Oui</option></select></div>
           <div class="fr"><label>Qté Init Taie</label><input type="number" id="er-qteinit"></div>
           <div class="fr"><label>Nb Taie 2nd Choix</label><input type="number" id="er-nbtaie2"></div>
