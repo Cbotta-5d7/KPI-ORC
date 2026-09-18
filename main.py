@@ -529,8 +529,12 @@ def _compute_budget_state_now():
         bk = _get_arret_budget_key(lbl)
         return BUDGET_KEYS.get(bk)
 
+    # rns already injected into tl_events (past_decl) — skip to avoid double-count
+    _tl_past_rns = {ev["_row_num"] for ev in _S.get("tl_events",[]) if ev.get("_past_decl") and ev.get("_row_num") is not None}
+
     # 1. Événements des OFs passés (déjà écrits dans Excel)
     for rn, r in _decl_cache:
+        if rn in _tl_past_rns: continue  # already counted in step 2 via tl_events
         rd = _row_date(r[2])
         if rd != shift_date_str and rd != today_str: continue
         if str(r[4] or "") != pilot: continue
@@ -658,7 +662,7 @@ def tl_close_all():
     save_session()
 
 def serialize_event(ev):
-    return {
+    d = {
         "key": ev["key"], "cat": ev["cat"],
         "start": _dt_str(ev["start"]),
         "end": _dt_str(ev.get("end")),
@@ -666,6 +670,9 @@ def serialize_event(ev):
         "nettoyage_type": ev.get("nettoyage_type",""),
         "hors_trs": ev.get("hors_trs",False),
     }
+    if ev.get("_past_decl"): d["_past_decl"] = True
+    if ev.get("_row_num") is not None: d["_row_num"] = ev["_row_num"]
+    return d
 
 # ── Session ───────────────────────────────────────────────────────────────────
 def save_session():
@@ -746,14 +753,17 @@ def load_session():
         raw_tl = d.get("tl_events",[])
         _S["tl_events"] = []
         for ev in raw_tl:
-            _S["tl_events"].append({
+            entry = {
                 "key": ev["key"], "cat": ev["cat"],
                 "start": _str_dt(ev["start"]),
                 "end": _str_dt(ev.get("end")),
                 "comment": ev.get("comment",""),
                 "nettoyage_type": ev.get("nettoyage_type",""),
                 "hors_trs": ev.get("hors_trs",False),
-            })
+            }
+            if ev.get("_past_decl"): entry["_past_decl"] = True
+            if ev.get("_row_num") is not None: entry["_row_num"] = ev["_row_num"]
+            _S["tl_events"].append(entry)
         return True
     except: return False
 
@@ -1119,6 +1129,7 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
             "",                                 # 41 Degrade_min AP
         ]
     for ev in tl_events:
+        if ev.get("_past_decl"): continue  # already written to Excel by api_add_past_decl
         if ev.get("cat") not in ("ratt","pb","nettoyage","reunion","autre","interposte"): continue
         if not ev.get("key") or ev["key"].startswith("_"): continue
         start = ev.get("start")
@@ -2796,6 +2807,10 @@ def api_delete_row():
     # Suppression synchrone du cache pour éviter stale data
     global _decl_cache
     _decl_cache = [(rn, row) for rn, row in _decl_cache if rn != row_num]
+    # Si l'entrée était injectée dans tl_events (past_decl), la retirer aussi
+    if _S.get("prod_active"):
+        _S["tl_events"] = [ev for ev in _S["tl_events"] if ev.get("_row_num") != row_num]
+        save_session()
     def _bg():
         try:
             with _excel_lock:
@@ -2808,6 +2823,25 @@ def api_delete_row():
             threading.Thread(target=load_history,daemon=True).start()
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
+    return jsonify({"ok":True})
+
+@flask_app.route('/api/delete_tl_event', methods=['POST'])
+def api_delete_tl_event():
+    """Supprime un événement live de tl_events (OF en cours) par son start ISO."""
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    start_iso = data.get("start_iso")
+    if not start_iso:
+        return jsonify({"ok":False,"error":"Paramètre manquant"}),400
+    if not _S.get("prod_active"):
+        return jsonify({"ok":False,"error":"Pas de production active"}),400
+    before = len(_S.get("tl_events",[]))
+    _S["tl_events"] = [ev for ev in _S.get("tl_events",[]) if _dt_str(ev.get("start")) != start_iso]
+    if len(_S.get("tl_events",[])) == before:
+        return jsonify({"ok":False,"error":"Événement introuvable"}),404
+    save_session()
     return jsonify({"ok":True})
 
 @flask_app.route('/api/edit_row', methods=['POST'])
@@ -3771,11 +3805,14 @@ def api_add_past_decl():
         # Si production active, injecter l'arrêt dans la timeline live (_S["tl_events"])
         if _S.get("prod_active"):
             _ev_cat = next((e["cat"] for e in get_events_list() if e["key"] == stop_type), "pb")
+            _past_rn = max((rn for rn, _ in _decl_cache), default=1)
             _S["tl_events"].append({
                 "key": stop_type, "cat": _ev_cat,
                 "start": debut_dt, "end": fin_dt,
                 "comment": str(data.get("comment","")),
                 "hors_trs": False,
+                "_past_decl": True,
+                "_row_num": _past_rn,
             })
             save_session()
     elif decl_type == "prod":
@@ -4645,7 +4682,7 @@ select{cursor:default}
           <svg id="tl-svg" viewBox="0 0 800 64" preserveAspectRatio="none" style="width:100%;height:64px;display:block">
             <rect x="0" y="4" width="800" height="35" fill="#e2e8f0" rx="4"/>
           </svg>
-          <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Prod dégradé</span></div>
+          <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Dégradé ↓</span></div>
         </div>
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row" style="justify-content:center">
@@ -4745,7 +4782,7 @@ select{cursor:default}
       <svg id="fp-tl" viewBox="0 0 800 62" preserveAspectRatio="none" style="width:100%;height:62px;display:block">
         <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
       </svg>
-      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
+      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Dégradé ↓</span></div>
     </div>
     <!-- Corps défilant : productions + arrêts côte à côte -->
     <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -5297,8 +5334,8 @@ select{cursor:default}
         <button class="hf-btn" data-hf="production" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #16a34a;color:#16a34a;background:none;cursor:pointer;font-weight:700;transition:all .15s">🏭 Production</button>
         <button class="hf-btn" data-hf="arret" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #dc2626;color:#dc2626;background:none;cursor:pointer;font-weight:700;transition:all .15s">⛔ Arrêts</button>
         <button class="hf-btn" data-hf="degrade" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #ca8a04;color:#ca8a04;background:none;cursor:pointer;font-weight:700;transition:all .15s">🟡 Mode dégradé</button>
-        <button class="hf-btn" data-hf="nettoyage" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #0891b2;color:#0891b2;background:none;cursor:pointer;font-weight:700;transition:all .15s">🧹 Nettoyage</button>
-        <button class="hf-btn" data-hf="pause" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #f59e0b;color:#f59e0b;background:none;cursor:pointer;font-weight:700;transition:all .15s">⏸ Pause</button>
+        <button class="hf-btn" data-hf="nettoyage" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #f97316;color:#f97316;background:none;cursor:pointer;font-weight:700;transition:all .15s">🧹 Nettoyage</button>
+        <button class="hf-btn" data-hf="pause" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #94a3b8;color:#94a3b8;background:none;cursor:pointer;font-weight:700;transition:all .15s">⏸ Pause</button>
         <button class="hf-btn" data-hf="reunion" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #8b5cf6;color:#8b5cf6;background:none;cursor:pointer;font-weight:700;transition:all .15s">👥 Réunion</button>
       </div>
     </div>
@@ -5685,7 +5722,7 @@ select{cursor:default}
         <svg id="ep-tl" viewBox="0 0 800 60" preserveAspectRatio="none" style="width:100%;height:60px;display:block">
           <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
         </svg>
-        <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Prod dégradé</span></div>
+        <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Prod dégradé ↓</span></div>
       </div>
     </div>
     <div class="mftr">
@@ -6641,7 +6678,7 @@ function tlEventsToDisplayFmt(tlEvts){
       if(evDef) type=(ev.cat==='ratt'?'Rattrapage: ':ev.cat==='pb'?'PB: ':'')+evDef[0];
       else type=ev.key;
     }
-    return {type,cat:ev.cat||'autre',debut:toHMS(s),fin:e?toHMS(e):'',duree:dur>0?fmtDur(dur):'',comment:ev.comment||'',hors_trs:ev.hors_trs||false,_live:!ev.end};
+    return {type,cat:ev.cat||'autre',debut:toHMS(s),fin:e?toHMS(e):'',duree:dur>0?fmtDur(dur):'',comment:ev.comment||'',hors_trs:ev.hors_trs||false,_live:!ev.end,_past_decl:ev._past_decl||false,row_num:ev._row_num||null,start_iso:ev.start||null};
   }).filter(Boolean);
 }
 
@@ -7412,7 +7449,7 @@ function psFillStopBtns(){
     else cats.autre.push(lbl);
   });
   if(cats.pb.length||cats.ratt.length) _makeSection('🔴 Pannes / Rattrapages',[...cats.pb,...cats.ratt],'#dc2626');
-  if(cats.nettoyage.length) _makeSection('🧹 Nettoyage',cats.nettoyage,'#f59e0b');
+  if(cats.nettoyage.length) _makeSection('🧹 Nettoyage',cats.nettoyage,'#f97316');
   if(cats.organisation.length) _makeSection('📋 Organisation',cats.organisation,'#3b82f6');
   if(cats.autre.length) _makeSection('⚫ Autre',cats.autre,'#64748b');
 
@@ -7604,7 +7641,7 @@ function rebuildStopGrids(){
     {key:'ratt',label:'🟠 Rattrapage',col:'#dc2626'},
     {key:'organisation',label:'🔵 Organisationnel',col:'#3b82f6'},
     {key:'pb',label:'🔴 Technique',col:'#dc2626'},
-    {key:'nettoyage',label:'🧹 Nettoyage',col:'#f59e0b'},
+    {key:'nettoyage',label:'🧹 Nettoyage',col:'#f97316'},
     {key:'autre',label:'⚫ Autre',col:'#64748b'},
   ];
   const bycat={};
@@ -8557,10 +8594,22 @@ async function deleteStop(){
   if(!ev) return;
   const pw=document.getElementById('es-pw').value||'';
   if(!pw){toast('Mot de passe requis','err');return;}
-  const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num})});
+  let r;
+  if(ev._past_decl&&ev.row_num){
+    // Déclaration antérieure — supprimer via la ligne Excel
+    r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num})});
+  } else if(ev.start_iso){
+    // Événement live de l'OF en cours — supprimer via tl_events
+    r=await fetch('/api/delete_tl_event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,start_iso:ev.start_iso})});
+  } else if(ev.row_num){
+    // Événement historique standard
+    r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num})});
+  } else {
+    toast('Impossible de supprimer cet événement','err');return;
+  }
   const d=r?await r.json():{};
   if(d&&d.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Supprimé','ok');}
-  else toast(d?.error||'Mot de passe incorrect','err');
+  else toast(d?.error||'Erreur suppression','err');
 }
 
 // ── TIMELINE ──
@@ -8591,20 +8640,25 @@ function drawTL(svgId,tlEvts,debutHMS,finHMS){
     html+=`<rect x="${x1}" y="${Y}" width="${Math.max(1,x2-x1)}" height="${H2}" fill="${STOP_COL[cat]||'#94a3b8'}" rx="2" opacity=".9"/>`;
     cur+=(e.dur_s||0)*1000;
   });
-  // Dégradé overlay (periodes closes + active)
+  // Dégradé — bande séparée sous la barre principale
+  const _DY2=Y+H2+2,_DH2=8;
   const _ofStartMs=ST.of_start_iso?new Date(ST.of_start_iso).getTime():tS;
-  (window._degradePeriodsIso||[]).forEach(function(p){
-    if(!p.start||!p.end) return;
-    const _d0=Math.max(new Date(p.start).getTime(),_ofStartMs);
-    const _d1=new Date(p.end).getTime();
-    if(_d1<=_d0) return;
-    const x1=toX(_d0),x2=toX(_d1);
-    if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="url(#${_dpId})" rx="2" opacity=".85"/>`;
-  });
-  if(window._degradeActive&&ST.degrade_start_iso){
-    const _d0=Math.max(new Date(ST.degrade_start_iso).getTime(),_ofStartMs);
-    const _d1=Date.now();
-    if(_d1>_d0){const x1=toX(_d0),x2=toX(_d1);if(x2>x1)html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="url(#${_dpId})" rx="2" opacity=".85"/>`;}
+  const _hasDeg2=(window._degradePeriodsIso||[]).some(p=>p.start&&p.end)||(window._degradeActive&&ST.degrade_start_iso);
+  if(_hasDeg2){
+    html+=`<rect x="0" y="${_DY2}" width="${W}" height="${_DH2}" fill="#e2e8f0" rx="2"/>`;
+    (window._degradePeriodsIso||[]).forEach(function(p){
+      if(!p.start||!p.end) return;
+      const _d0=Math.max(new Date(p.start).getTime(),_ofStartMs);
+      const _d1=new Date(p.end).getTime();
+      if(_d1<=_d0) return;
+      const x1=toX(_d0),x2=toX(_d1);
+      if(x2>x1) html+=`<rect x="${x1}" y="${_DY2}" width="${x2-x1}" height="${_DH2}" fill="url(#${_dpId})" rx="2"/>`;
+    });
+    if(window._degradeActive&&ST.degrade_start_iso){
+      const _d0=Math.max(new Date(ST.degrade_start_iso).getTime(),_ofStartMs);
+      const _d1=Date.now();
+      if(_d1>_d0){const x1=toX(_d0),x2=toX(_d1);if(x2>x1)html+=`<rect x="${x1}" y="${_DY2}" width="${x2-x1}" height="${_DH2}" fill="url(#${_dpId})" rx="2"/>`;}
+    }
   }
   html+=`<text x="2" y="${H-2}" font-size="10" fill="#374151" font-weight="600">${debutHMS.slice(0,5)}</text>`;
   html+=`<text x="${W-36}" y="${H-2}" font-size="10" fill="#374151" font-weight="600">${finHMS.slice(0,5)}</text>`;
@@ -8654,20 +8708,25 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
     const x1=toX(sT),x2=toX(tE);
     if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${STOP_COL.pb||'#b91c1c'}" rx="2" opacity=".9"/>`;
   }
-  // Dégradé overlay (periodes closes + active)
+  // Dégradé — bande séparée sous la barre principale (ne chevauche pas les arrêts)
+  const _DY=Y+H2+2,_DH=8;
   const _ofStartMsTL=ST.of_start_iso?new Date(ST.of_start_iso).getTime():tS;
-  (window._degradePeriodsIso||[]).forEach(function(p){
-    if(!p.start||!p.end) return;
-    const _d0=Math.max(new Date(p.start).getTime(),_ofStartMsTL);
-    const _d1=new Date(p.end).getTime();
-    if(_d1<=_d0) return;
-    const x1=toX(_d0),x2=toX(_d1);
-    if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="url(#${_dpId})" rx="2" opacity=".85"/>`;
-  });
-  if(window._degradeActive&&ST.degrade_start_iso&&ST.prod_active){
-    const _d0=Math.max(new Date(ST.degrade_start_iso).getTime(),_ofStartMsTL);
-    const _d1=Date.now();
-    if(_d1>_d0){const x1=toX(_d0),x2=toX(_d1);if(x2>x1)html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="url(#${_dpId})" rx="2" opacity=".85"/>`;}
+  const _hasDeg=(window._degradePeriodsIso||[]).some(p=>p.start&&p.end)||(window._degradeActive&&ST.degrade_start_iso&&ST.prod_active);
+  if(_hasDeg){
+    html+=`<rect x="0" y="${_DY}" width="${W}" height="${_DH}" fill="#e2e8f0" rx="2"/>`;
+    (window._degradePeriodsIso||[]).forEach(function(p){
+      if(!p.start||!p.end) return;
+      const _d0=Math.max(new Date(p.start).getTime(),_ofStartMsTL);
+      const _d1=new Date(p.end).getTime();
+      if(_d1<=_d0) return;
+      const x1=toX(_d0),x2=toX(_d1);
+      if(x2>x1) html+=`<rect x="${x1}" y="${_DY}" width="${x2-x1}" height="${_DH}" fill="url(#${_dpId})" rx="2"/>`;
+    });
+    if(window._degradeActive&&ST.degrade_start_iso&&ST.prod_active){
+      const _d0=Math.max(new Date(ST.degrade_start_iso).getTime(),_ofStartMsTL);
+      const _d1=Date.now();
+      if(_d1>_d0){const x1=toX(_d0),x2=toX(_d1);if(x2>x1)html+=`<rect x="${x1}" y="${_DY}" width="${x2-x1}" height="${_DH}" fill="url(#${_dpId})" rx="2"/>`;}
+    }
   }
   const fT=t=>{const d=new Date(t);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
   // Hourly tick marks — labels centered on tick, guarded 58px from each edge to avoid overlap with start/end labels
