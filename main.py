@@ -4336,6 +4336,7 @@ select{cursor:default}
 @media(max-width:900px){.form-3col{grid-template-columns:1fr 1fr}.recap-col{width:180px}}
 @media(max-width:650px){.form-3col{grid-template-columns:1fr}.prod-body{flex-direction:column}.recap-col{width:100%}}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
 <body>
 
@@ -5301,6 +5302,7 @@ select{cursor:default}
       <select id="rj-poste" style="font-size:calc(12px*var(--zf,1));padding:5px 10px;border:1.5px solid #c7d2fe;border-radius:8px;background:#fff;color:#1e3a8a;font-weight:600;outline:none"><option value="">Poste</option></select>
       <button onclick="calcPeriodReport()" style="background:linear-gradient(180deg,#2d3480,#1a1f5e);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(26,31,94,.35),inset 0 1px 0 rgba(255,255,255,.18)">🔄 Actualiser</button>
       <button onclick="resetPeriodReport()" style="background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:5px 12px;font-size:calc(12px*var(--zf,1));color:var(--gray);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.08)">✕ Réinitialiser</button>
+      <button onclick="captureRapportJour()" title="Capturer image complète" style="background:linear-gradient(180deg,#475569,#334155);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:calc(14px*var(--zf,1));cursor:pointer;box-shadow:0 3px 8px rgba(51,65,85,.35),inset 0 1px 0 rgba(255,255,255,.15)">📷</button>
       <div style="margin-left:auto;display:flex;gap:6px">
         <button onclick="rjLast3()" style="background:linear-gradient(180deg,#0ea5e9,#0369a1);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(3,105,161,.35),inset 0 1px 0 rgba(255,255,255,.18)">3 derniers postes</button>
         <button onclick="rjLast7Days()" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(5,150,105,.35),inset 0 1px 0 rgba(255,255,255,.18)">7 derniers jours</button>
@@ -8942,7 +8944,7 @@ window._rptEvtRows = [];
 // Shared OF/arrêt detail modal renderer
 function _renderAndOpenOfDetail(r, ofEvts) {
   const isProd = r._rowType !== 'evt';
-  const tc = r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
+  const tc = r.trs>=70?'#16a34a':r.trs>=50?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
   const kitStr = (r.kit||'').toLowerCase();
 
   function _row(lbl,val,col){return val&&String(val).trim()&&String(val).trim()!=='0'?`<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid #f1f5f9"><span style="font-size:calc(9px*var(--zf,1));font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;flex-shrink:0;padding-right:8px">${lbl}</span><span style="font-size:calc(11px*var(--zf,1));font-weight:700;color:${col};text-align:right">${esc(String(val))}</span></div>`:'';}
@@ -9886,7 +9888,7 @@ function _drawKpiTL(svgId,evts,startISO,endISO,isCurrent){
 
 // ── KPI helpers ──
 function _kpiParseFR(fr){if(!fr)return null;const p=fr.split('/');if(p.length!==3)return null;return new Date(parseInt(p[2]),parseInt(p[1])-1,parseInt(p[0])).getTime();}
-function _kpiTrsColor(t){return t>=90?'#16a34a':t>=70?'#f59e0b':t>=0?'#dc2626':'#94a3b8';}
+function _kpiTrsColor(t){return t>=70?'#16a34a':t>=50?'#f59e0b':t>=0?'#dc2626':'#94a3b8';}
 
 function _kpiDrawDonut(svgId,legendId,segments){
   const svg=document.getElementById(svgId);const leg=document.getElementById(legendId);
@@ -10460,7 +10462,7 @@ async function calcPeriodReport(autoLoad){
   const d=await apiFetch(url);
   if(!d||!d.ok){resultEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur ou aucune donnée</div>';return;}
   if(d.nb_sessions===0){resultEl.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">🔍</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Aucun poste trouvé pour cette période</div></div>';return;}
-  const trsCol=d.trs_periode>=90?'#16a34a':d.trs_periode>=70?'#f59e0b':d.trs_periode>=0?'#dc2626':'#94a3b8';
+  const trsCol=d.trs_periode>=70?'#16a34a':d.trs_periode>=50?'#f59e0b':d.trs_periode>=0?'#dc2626':'#94a3b8';
   const pertRaw=d.perte_cadence_min||0;
   const pertHtml=pertRaw<0?`<span style="color:#16a34a;font-weight:900">${Math.abs(Math.round(pertRaw))} min de gain</span>`:pertRaw>0?`<span style="color:#dc2626;font-weight:900">${Math.round(pertRaw)} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
   const _ouv_rj=d.ouverture_min||0;
@@ -10497,7 +10499,7 @@ async function calcPeriodReport(autoLoad){
       const trs=s.trs>=0?s.trs:0;
       const bh=Math.max(2,Math.round(trs/maxTrs*gH));
       const by=padT+gH-bh;
-      const col=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
+      const col=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgB+=`<rect x="${x}" y="${by}" width="${WB}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
       if(s.trs>=0)svgB+=`<text x="${cx}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${s.trs.toFixed(0)}%</text>`;
       const dp=s.date.split('/');
@@ -10512,14 +10514,17 @@ async function calcPeriodReport(autoLoad){
       }
     });
     const yBase=padT+gH;
-    chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex:1;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">📈 TRS par équipe</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgB}${svgL}</svg></div></div>`;
+    const _trs70Y=padT+gH-Math.round(70/maxTrs*gH);
+    const trsTargetLine=`<line x1="0" y1="${_trs70Y}" x2="${svgW}" y2="${_trs70Y}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="${svgW-2}" y="${_trs70Y-3}" text-anchor="end" font-size="10" fill="#16a34a" font-weight="700">Cible 70%</text>`;
+    const trsCibleLeg=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#16a34a;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible 70%</span>`;
+    chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">📈 TRS par équipe${trsCibleLeg}</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgB}${trsTargetLine}${svgL}</svg></div></div>`;
   }
   // ── Chart B : Cadence vs référence — barres verticales SVG ─────────────────
   let chartCadHtml='';
   if(d.sessions_detail&&d.sessions_detail.length>0){
     const sd2=d.sessions_detail;
-    const cadRef=Math.round((d.cadence_ref_pcs_min||0)*60);
-    const maxCad=Math.max(...sd2.map(s=>s.cadence_h||0),cadRef,1);
+    const _CAD_CIBLE=720;
+    const maxCad=Math.max(...sd2.map(s=>s.cadence_h||0),_CAD_CIBLE,1);
     const _vertB=sd2.length>8;
     const gH2=91,padT2=20,padL2=4,padR2=4;
     const CH2=_vertB?padT2+gH2+150:padT2+gH2+60;
@@ -10527,7 +10532,7 @@ async function calcPeriodReport(autoLoad){
     const WB2=Math.max(22,Math.min(60,Math.floor((420-padL2-padR2-n2*4)/n2)));
     const GP2=5;
     const svgW2=Math.max(200,n2*(WB2+GP2)+padL2+padR2);
-    const tY=cadRef>0?padT2+gH2-Math.round(cadRef/maxCad*gH2):null;
+    const tY=padT2+gH2-Math.round(_CAD_CIBLE/maxCad*gH2);
     let svgB2='',svgL2='';
     sd2.forEach((s,i)=>{
       const x=padL2+i*(WB2+GP2);
@@ -10535,7 +10540,7 @@ async function calcPeriodReport(autoLoad){
       const v=s.cadence_h||0;
       const bh=Math.max(2,Math.round(v/maxCad*gH2));
       const by=padT2+gH2-bh;
-      const col=v>=cadRef?'#16a34a':'#f59e0b';
+      const col=v>=_CAD_CIBLE?'#16a34a':v>=_CAD_CIBLE*0.8?'#f59e0b':'#dc2626';
       svgB2+=`<rect x="${x}" y="${by}" width="${WB2}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
       if(v>0)svgB2+=`<text x="${cx2}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${v}</text>`;
       const dp=s.date.split('/');
@@ -10550,9 +10555,9 @@ async function calcPeriodReport(autoLoad){
       }
     });
     const yBase2=padT2+gH2;
-    const tLine=tY!==null?`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#dc2626" stroke-width="2" stroke-dasharray="6,3"/>`:'';
-    const legCad=cadRef>0?`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#dc2626;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#dc2626" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible ${cadRef} éq/h</span>`:'';
-    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex:1;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#f59e0b;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence vs référence${legCad}</div><div style="overflow-x:auto"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgB2}${tLine}${svgL2}</svg></div></div>`;
+    const tLine=`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="6,3"/><text x="${svgW2-2}" y="${tY-3}" text-anchor="end" font-size="10" fill="#1d4ed8" font-weight="700">Cible ${_CAD_CIBLE}</text>`;
+    const legCad=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#1d4ed8;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible ${_CAD_CIBLE} éq/h</span>`;
+    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence vs référence${legCad}</div><div style="overflow-x:auto"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgB2}${tLine}${svgL2}</svg></div></div>`;
   }
   // ── Pareto arrêts — barres horizontales ────────────────────────────────────
   let paretoRjHtml='';
@@ -10600,7 +10605,7 @@ async function calcPeriodReport(autoLoad){
       <td style="padding:4px 6px;text-align:right;font-weight:700">${esc(r.qte_fab)}</td>
       <td style="padding:4px 6px;text-align:right">${esc(r.equiv)}</td>
       <td style="padding:4px 6px;text-align:right;color:#0369a1;font-weight:700">${(r.objectif!=null&&r.objectif>=0)?r.objectif:'—'}</td>
-      <td style="padding:4px 6px;text-align:right;font-weight:700;color:${r.trs&&parseFloat(r.trs)>=90?'#16a34a':r.trs&&parseFloat(r.trs)>=70?'#f59e0b':'#dc2626'}">${r.trs?parseFloat(r.trs).toFixed(1)+'%':'—'}</td>
+      <td style="padding:4px 6px;text-align:right;font-weight:700;color:${r.trs&&parseFloat(r.trs)>=70?'#16a34a':r.trs&&parseFloat(r.trs)>=50?'#f59e0b':'#dc2626'}">${r.trs?parseFloat(r.trs).toFixed(1)+'%':'—'}</td>
       <td style="padding:4px 6px;text-align:right;color:${arretMin>0?'#dc2626':'#94a3b8'}">${arretMin>0?arretMin+' min':'—'}</td>
       <td style="padding:4px 6px;text-align:right;color:${r.degrade_min>0?'#f59e0b':'#94a3b8'}">${r.degrade_min>0?Math.round(r.degrade_min)+' min':'—'}</td>
     </tr>`;}).join('');
@@ -10710,10 +10715,10 @@ async function calcPeriodReport(autoLoad){
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start;flex-wrap:nowrap">
           ${_is3postes&&pieSmall?`<div style="flex-shrink:0">${pieSmall}</div>`:''}
-          <div style="flex:3;min-width:0;display:flex;gap:6px;flex-wrap:wrap">
+          <div style="flex:2;min-width:0;display:flex;flex-direction:column;gap:6px">
             ${chartTrsHtml}${chartCadHtml}
           </div>
-          <div style="flex:1;min-width:120px">${paretoRjHtml}</div>
+          <div style="flex:1;min-width:160px;max-width:280px">${paretoRjHtml}</div>
         </div>
         ${ofListHtml}
         ${eventsListHtml}
@@ -10741,6 +10746,37 @@ function showRjOfDetail(i){
   _renderAndOpenOfDetail({...r, trs:(r.trs!==''&&r.trs!=null)?parseFloat(r.trs):-1}, ofEvts);
 }
 function _rjSetBanner(txt){const b=document.getElementById('rj-period-banner');if(b)b.textContent='📅 '+txt;}
+
+async function captureRapportJour(){
+  const target=document.getElementById('rj-result');
+  if(!target){toast('Aucun rapport à capturer','err');return;}
+  if(!window.html2canvas){toast('html2canvas non disponible (connexion internet requise)','err');return;}
+  toast('Capture en cours…','ok');
+  // Expand all scroll/max-height constraints temporarily
+  const saved=[];
+  target.querySelectorAll('*').forEach(el=>{
+    const cs=el.style;
+    if(cs.overflow||cs.overflowY||cs.overflowX||cs.maxHeight){
+      saved.push({el,ov:cs.overflow,ovy:cs.overflowY,ovx:cs.overflowX,mh:cs.maxHeight});
+      cs.overflow='visible';cs.overflowY='visible';cs.overflowX='visible';cs.maxHeight='none';
+    }
+  });
+  const _ov=target.style.overflowY;
+  target.style.overflowY='visible';
+  await new Promise(r=>setTimeout(r,200));
+  try{
+    const canvas=await window.html2canvas(target,{scale:1.5,useCORS:true,logging:false,backgroundColor:'#ffffff',scrollX:0,scrollY:0});
+    const link=document.createElement('a');
+    const dt=new Date().toISOString().slice(0,16).replace('T','_').replace(':','-');
+    link.download='rapport_jour_'+dt+'.png';
+    link.href=canvas.toDataURL('image/png');
+    link.click();
+    toast('Image téléchargée','ok');
+  }catch(e){toast('Erreur capture : '+(e.message||String(e)),'err');}
+  // Restore
+  saved.forEach(({el,ov,ovy,ovx,mh})=>{el.style.overflow=ov;el.style.overflowY=ovy;el.style.overflowX=ovx;el.style.maxHeight=mh;});
+  target.style.overflowY=_ov;
+}
 function rjLast3(){
   document.getElementById('rj-from').value='';
   document.getElementById('rj-to').value='';
@@ -10810,7 +10846,7 @@ async function loadRapports(defaultMode){
   }
   listEl.innerHTML=filtered.map((s,i)=>{
     const trsStr=s.trs>=0?s.trs.toFixed(1)+'%':'—';
-    const trsCol=s.trs>=90?'#16a34a':s.trs>=70?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
+    const trsCol=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
     return `<div class="rpt-item" id="rpt-item-${i}" onclick="loadSessionReport('${esc(s.date)}','${esc(s.pilot)}','${esc(s.poste)}','rpt-item-${i}')"
       style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s">
       <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:var(--navy)">${esc(s.date)} — ${esc(s.poste)}</div>
@@ -10829,7 +10865,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const d=await apiFetch(`/api/session_report?date=${encodeURIComponent(date)}&pilot=${encodeURIComponent(pilot)}&poste=${encodeURIComponent(poste)}`);
   if(!d){detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur chargement</div>';return;}
   const trsS=d.trs_shift>=0?d.trs_shift:d.trs;
-  const trsCol=trsS>=90?'#16a34a':trsS>=70?'#f59e0b':trsS>=0?'#dc2626':'#94a3b8';
+  const trsCol=trsS>=70?'#16a34a':trsS>=50?'#f59e0b':trsS>=0?'#dc2626':'#94a3b8';
   const stopMin=Math.round((d.stop_s||0)/60);
   const prodMin=Math.round(Math.max(0,(d.tot_s||0)-(d.stop_s||0))/60);
   const totalMin=Math.round((d.tot_s||0)/60)+stopMin;
@@ -10875,7 +10911,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     return {netMin:Math.round(Math.max(0,fMs-dMs-blocked)/60000),stopMin:Math.round(blocked/60000)};
   };
   const prodsHtml=(d.prod_rows||[]).map((r,ri)=>{
-    const tc=r.trs>=90?'#16a34a':r.trs>=70?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
+    const tc=r.trs>=70?'#16a34a':r.trs>=50?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
     const kitStr=(r.kit||'').toLowerCase();
     const kitDisp=kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
     const {netMin,stopMin}=_rptNetProd(r.debut,r.fin);
