@@ -5939,6 +5939,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(pollEvts, 8000);
   setInterval(loadLists, 300000); // sync Excel lists every 5 min
   setInterval(refreshAccFpData, 30000);
+  // Auto-génération dashboard toutes les 5 min — fire & forget, même logique que le bouton manuel
+  setInterval(()=>{fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{});}, 5*60*1000);
+  setTimeout(()=>{fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{});}, 90*1000); // 1ère fois 90s après démarrage
   refreshAccFpData();
   startTicker();
 });
@@ -11634,35 +11637,6 @@ def main():
     threading.Thread(target=load_lists, daemon=True).start()
     threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_session_autosave, daemon=True).start()
-    def _dashboard_bg():
-        import datetime as _bdt
-        _base = (os.path.dirname(sys.executable) if getattr(sys, 'frozen', False)
-                 else os.path.dirname(os.path.abspath(__file__)))
-        _log = os.path.join(_base, '_dashboard_auto.log')
-        # Log de démarrage immédiat pour prouver que le thread tourne
-        def _wlog(msg):
-            try:
-                _ts2 = _bdt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                with open(_log, 'a', encoding='utf-8') as _f:
-                    _f.write(f"[{_ts2}] {msg}\n")
-            except Exception as _we:
-                pass  # si le log échoue on continue quand même
-        _wlog("Thread démarré — attente 60s")
-        time.sleep(60)  # attendre que Flask soit bien démarré
-        _wlog("Première génération en cours...")
-        while True:
-            _msg = "ERREUR: non exécuté"
-            try:
-                _ok, _info = generate_dashboard_html()
-                if _ok:
-                    _msg = f"OK → {_info}"
-                else:
-                    _msg = f"ERREUR génération: {str(_info)[:300]}"
-            except BaseException as _ex:
-                _msg = f"EXCEPTION: {type(_ex).__name__}: {str(_ex)[:300]}"
-            _wlog(_msg)
-            time.sleep(5 * 60)
-    threading.Thread(target=_dashboard_bg, daemon=True).start()
     threading.Thread(target=_backup_flush_bg, daemon=True).start()
     _start_periodic_excel_sync()
 
