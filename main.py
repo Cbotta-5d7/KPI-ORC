@@ -10123,7 +10123,7 @@ async function loadKPI(){
         const col=STOP_COL[stopCat[type]]||'#94a3b8';
         return `<div>
           <div style="display:flex;justify-content:space-between;font-size:calc(10px*var(--zf,1));color:#374151;margin-bottom:2px">
-            <div style="display:flex;align-items:center;gap:3px;min-width:0"><div style="width:7px;height:7px;border-radius:1px;background:${col};flex-shrink:0"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px">${esc(type)}</span></div>
+            <div style="display:flex;align-items:center;gap:3px;min-width:0"><div style="width:7px;height:7px;border-radius:1px;background:${col};flex-shrink:0"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px">${esc(type)}</span></div>
             <span style="white-space:nowrap;color:#6b7280;flex-shrink:0">${min}m <b style="color:#1e293b">${pctTot}%</b></span>
           </div>
           <div style="background:#f1f5f9;border-radius:3px;height:9px;overflow:hidden">
@@ -10766,8 +10766,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const maxStopMin=stopArr.length?stopArr[0][1]:1;
   const paretoHtml=stopArr.length?stopArr.map(([k,v])=>`
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-      <div style="font-size:calc(10px*var(--zf,1));width:100px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${esc(k)}</div>
-      <div style="flex:1;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden">
+      <div style="font-size:calc(10px*var(--zf,1));width:150px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${esc(k)}</div>
+      <div style="flex:1;min-width:40px;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden">
         <div style="height:100%;background:#dc2626;border-radius:4px;width:${Math.round(v/maxStopMin*100)}%;opacity:.8"></div>
       </div>
       <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">${Math.round(v)}mn</div>
