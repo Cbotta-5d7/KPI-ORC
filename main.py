@@ -5302,7 +5302,7 @@ select{cursor:default}
       <select id="rj-poste" style="font-size:calc(12px*var(--zf,1));padding:5px 10px;border:1.5px solid #c7d2fe;border-radius:8px;background:#fff;color:#1e3a8a;font-weight:600;outline:none"><option value="">Poste</option></select>
       <button onclick="calcPeriodReport()" style="background:linear-gradient(180deg,#2d3480,#1a1f5e);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(26,31,94,.35),inset 0 1px 0 rgba(255,255,255,.18)">🔄 Actualiser</button>
       <button onclick="resetPeriodReport()" style="background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:5px 12px;font-size:calc(12px*var(--zf,1));color:var(--gray);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.08)">✕ Réinitialiser</button>
-      <button onclick="captureRapportJour()" title="Capturer image complète" style="background:linear-gradient(180deg,#475569,#334155);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:calc(14px*var(--zf,1));cursor:pointer;box-shadow:0 3px 8px rgba(51,65,85,.35),inset 0 1px 0 rgba(255,255,255,.15)">📷</button>
+      <button id="rj-capture-btn" onclick="captureRapportJour()" title="Copier le rapport en image — à coller dans un mail" style="display:none;align-items:center;gap:8px;background:#fff;border:2px solid #c7d2fe;border-radius:12px;padding:8px 20px;font-size:calc(15px*var(--zf,1));font-weight:700;cursor:pointer;color:#1e3a8a;box-shadow:0 2px 12px rgba(99,102,241,.18);letter-spacing:.2px;white-space:nowrap" onmouseover="this.style.boxShadow='0 4px 18px rgba(99,102,241,.32)';this.style.borderColor='#818cf8'" onmouseout="this.style.boxShadow='0 2px 12px rgba(99,102,241,.18)';this.style.borderColor='#c7d2fe'">📷 <span style="font-size:calc(13px*var(--zf,1));font-weight:600;color:#4338ca">Copier rapport</span></button>
       <div style="margin-left:auto;display:flex;gap:6px">
         <button onclick="rjLast3()" style="background:linear-gradient(180deg,#0ea5e9,#0369a1);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(3,105,161,.35),inset 0 1px 0 rgba(255,255,255,.18)">3 derniers postes</button>
         <button onclick="rjLast7Days()" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(5,150,105,.35),inset 0 1px 0 rgba(255,255,255,.18)">7 derniers jours</button>
@@ -5974,6 +5974,8 @@ window._evMap = {};
 
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', async () => {
+  // Bouton capture rapport : visible uniquement dans le dashboard HTML
+  if(window.DASH){const _cb=document.getElementById('rj-capture-btn');if(_cb)_cb.style.display='inline-flex';}
   const _scEl=document.getElementById('v-settings-content');
   if(_scEl){_scEl.addEventListener('input',_settingsMarkDirty);_scEl.addEventListener('change',_settingsMarkDirty);}
   await loadEvtsList(); // charge la liste dynamique des arrêts avant de construire les grilles
