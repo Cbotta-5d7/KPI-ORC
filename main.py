@@ -10963,7 +10963,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     <div style="padding:5px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0">
       <div style="font-size:calc(9px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:3px">Timeline${plageStr}</div>
       <svg viewBox="0 0 800 62" preserveAspectRatio="none" style="width:100%;height:62px;display:block">${tlContent}</svg>
-      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Rattrapage</span><span><i style="background:#38bdf8"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span></div>
+      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f59e0b"></i>Rattrapage</span><span><i style="background:#38bdf8"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Mode dégradé</span></div>
     </div>
     <!-- Productions (pleine largeur) -->
     <div style="padding:8px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
@@ -11568,7 +11568,8 @@ def generate_dashboard_html():
             '  if(typeof url!=="string"||url.indexOf("/api/")===-1)return _origFetch.apply(this,arguments);\n'
             '  var method=(opts&&opts.method||"GET").toUpperCase();\n'
             '  if(method!=="GET")return Promise.resolve({ok:true,json:function(){return Promise.resolve({ok:true});}});\n'
-            '  return Promise.resolve({ok:true,json:function(){return Promise.resolve(null);}});\n'
+            '  var _dd=window._dashData?window._dashData(url):null;\n'
+            '  return Promise.resolve({ok:true,json:function(){return Promise.resolve(_dd);}});\n'
             '};\n'
             # Override showApp to redirect to history tab
             'var _origShowApp=window.showApp;\n'
