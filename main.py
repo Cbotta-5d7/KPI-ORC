@@ -11660,7 +11660,7 @@ def generate_dashboard_html():
         }, ensure_ascii=False, separators=(',', ':'))
         gen_at_escaped = gen_at.replace("'", "\\'")
         inject = (
-            '<meta http-equiv="refresh" content="300">\n'
+            '<meta http-equiv="refresh" content="900">\n'
             '<script>\nwindow.DASH=' + dash_json + ';\n'
             '(function(){\n'
             # Fake state: makes the app think a user is "logged in" (no prod active)
