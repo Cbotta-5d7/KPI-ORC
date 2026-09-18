@@ -3768,6 +3768,16 @@ def api_add_past_decl():
             "","","","","","","","","","","","","","","","",
             str(data.get("comment","")), "","","", shift_date_str,
         ]
+        # Si production active, injecter l'arrêt dans la timeline live (_S["tl_events"])
+        if _S.get("prod_active"):
+            _ev_cat = next((e["cat"] for e in get_events_list() if e["key"] == stop_type), "pb")
+            _S["tl_events"].append({
+                "key": stop_type, "cat": _ev_cat,
+                "start": debut_dt, "end": fin_dt,
+                "comment": str(data.get("comment","")),
+                "hors_trs": False,
+            })
+            save_session()
     elif decl_type == "prod":
         v = data
         qte_fab = _n(v.get("qte_fab",0))
