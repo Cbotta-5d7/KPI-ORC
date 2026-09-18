@@ -10578,7 +10578,7 @@ async function calcPeriodReport(autoLoad){
         </div>
       </div>`;
     }).join('');
-    paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;flex-shrink:0;display:flex;flex-direction:column;max-height:340px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px;flex-shrink:0">🛑 Pareto des arrêts</div><div style="overflow-y:auto;flex:1">${rows3}</div></div>`;
+    paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">🛑 Pareto des arrêts</div>${rows3}</div>`;
   }
   // OF list table
   let ofListHtml='';
@@ -10686,42 +10686,32 @@ async function calcPeriodReport(autoLoad){
       _rjBanner.style.display='none';
     }
   }
-  const _is3postes=autoLoad||(d.sessions_detail&&d.sessions_detail.length>0&&d.sessions_detail.length<=3);
   resultEl.innerHTML=`
-    <div style="display:flex;gap:10px;height:100%;min-height:0;align-items:stretch">
-      <!-- Colonne gauche : KPI synthèse — 320px -->
-      <div style="flex:0 0 300px;display:flex;flex-direction:column;gap:5px;overflow-y:auto;overflow-x:hidden">
-        <!-- TRS + pie côte à côte (pie masqué en mode 3postes, il va dans les graphiques) -->
-        <div style="display:flex;align-items:center;gap:10px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:10px;flex-shrink:0">
-          ${_is3postes?'':pieSmall}
-          <div style="flex:1;text-align:center">
-            <div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
-            <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);font-weight:600;margin-top:3px">TRS période</div>
-            <div style="font-size:calc(10px*var(--zf,1));color:#94a3b8;margin-top:2px">${d.nb_jours}j · ${d.nb_sessions} postes · ${d.nb_of} OF</div>
-          </div>
-        </div>
-        <!-- Stats fusionnées -->
-        <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-          <div class="fp-card" style="padding:5px 8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
-          <div class="fp-card" style="padding:5px 8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
-          <div class="fp-card" style="padding:5px 8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:calc(10px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
-        </div>
-        <!-- Lignes info -->
-        <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
+    <div style="display:flex;flex-direction:column;gap:8px;height:100%;min-height:0">
+      <!-- Ligne principale : 4 colonnes -->
+      <div style="display:flex;gap:10px;flex-shrink:0;align-items:flex-start">
+        <!-- Col 1 : pièces/equiv/cad + lignes détail -->
+        <div style="flex:0 0 260px;display:flex;flex-direction:column;gap:4px">
+          <div class="fp-card" style="padding:8px 12px"><div style="font-size:calc(16px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(13px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
+          <div class="fp-card" style="padding:8px 12px"><div style="font-size:calc(16px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(13px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
+          <div class="fp-card" style="padding:8px 12px"><div style="font-size:calc(16px*var(--zf,1));font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:calc(13px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
           ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
         </div>
-      </div>
-      <!-- Colonne droite : graphiques -->
-      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
-        <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start;flex-wrap:nowrap">
-          ${_is3postes&&pieSmall?`<div style="flex-shrink:0">${pieSmall}</div>`:''}
-          <div style="flex:2;min-width:0;display:flex;flex-direction:column;gap:6px">
-            ${chartTrsHtml}${chartCadHtml}
+        <!-- Col 2 : TRS % + camembert -->
+        <div style="flex:0 0 190px;display:flex;flex-direction:column;gap:6px">
+          <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center">
+            <div style="font-size:calc(38px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
+            <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);font-weight:600;margin-top:4px">TRS période</div>
+            <div style="font-size:calc(10px*var(--zf,1));color:#94a3b8;margin-top:2px">${d.nb_jours}j · ${d.nb_sessions} postes · ${d.nb_of} OF</div>
           </div>
-          <div style="flex:1;min-width:160px;max-width:280px">${paretoRjHtml}</div>
+          ${pieSmall?`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;justify-content:center">${pieSmall}</div>`:''}
         </div>
-        ${ofListHtml}
-        ${eventsListHtml}
+        <!-- Col 3 : graphiques TRS + Cadence empilés (largeur 6 barres ~420px) -->
+        <div style="flex:0 0 420px;display:flex;flex-direction:column;gap:6px">
+          ${chartTrsHtml}${chartCadHtml}
+        </div>
+        <!-- Col 4 : Pareto (tout le reste) -->
+        <div style="flex:1;min-width:200px">${paretoRjHtml}</div>
       </div>
     </div>
   `;
@@ -10752,6 +10742,16 @@ async function captureRapportJour(){
   if(!target){toast('Aucun rapport à capturer','err');return;}
   if(!window.html2canvas){toast('html2canvas non disponible (connexion internet requise)','err');return;}
   toast('Capture en cours…','ok');
+  // Build title string from date range
+  const _fv=document.getElementById('rj-from')?.value||'';
+  const _tv=document.getElementById('rj-to')?.value||'';
+  const _fmtD=s=>{if(!s)return '?';const p=s.split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s;};
+  const _titleTxt='Rapport ligne Oreillers Cardés 1 — du '+_fmtD(_fv)+' au '+_fmtD(_tv);
+  // Add temporary title banner above target
+  const _titleEl=document.createElement('div');
+  _titleEl.style.cssText='background:#1e3a5f;color:#fff;font-size:15px;font-weight:700;padding:10px 16px;border-radius:6px 6px 0 0;letter-spacing:.3px;font-family:Arial,sans-serif;margin-bottom:4px';
+  _titleEl.textContent=_titleTxt;
+  target.parentNode.insertBefore(_titleEl,target);
   // Expand all scroll/max-height constraints temporarily
   const saved=[];
   target.querySelectorAll('*').forEach(el=>{
@@ -10764,16 +10764,30 @@ async function captureRapportJour(){
   const _ov=target.style.overflowY;
   target.style.overflowY='visible';
   await new Promise(r=>setTimeout(r,200));
+  // Capture title + content together
+  const _wrapper=document.createElement('div');
+  _wrapper.style.cssText='background:#ffffff;display:inline-block;padding:8px';
+  const _titleClone=_titleEl.cloneNode(true);
+  const _targetClone=target.cloneNode(true);
+  _wrapper.appendChild(_titleClone);
+  _wrapper.appendChild(_targetClone);
+  document.body.appendChild(_wrapper);
   try{
-    const canvas=await window.html2canvas(target,{scale:1.5,useCORS:true,logging:false,backgroundColor:'#ffffff',scrollX:0,scrollY:0});
-    const link=document.createElement('a');
-    const dt=new Date().toISOString().slice(0,16).replace('T','_').replace(':','-');
-    link.download='rapport_jour_'+dt+'.png';
-    link.href=canvas.toDataURL('image/png');
-    link.click();
-    toast('Image téléchargée','ok');
-  }catch(e){toast('Erreur capture : '+(e.message||String(e)),'err');}
+    const canvas=await window.html2canvas(_wrapper,{scale:1.5,useCORS:true,logging:false,backgroundColor:'#ffffff',scrollX:0,scrollY:0});
+    document.body.removeChild(_wrapper);
+    await new Promise((res,rej)=>{
+      canvas.toBlob(blob=>{
+        if(!blob){rej(new Error('toBlob failed'));return;}
+        navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(res).catch(rej);
+      },'image/png');
+    });
+    toast('Image copiée dans le presse-papier — collez dans votre mail (Ctrl+V)','ok');
+  }catch(e){
+    try{document.body.removeChild(_wrapper);}catch(_){}
+    toast('Erreur capture : '+(e.message||String(e)),'err');
+  }
   // Restore
+  target.parentNode.removeChild(_titleEl);
   saved.forEach(({el,ov,ovy,ovx,mh})=>{el.style.overflow=ov;el.style.overflowY=ovy;el.style.overflowX=ovx;el.style.maxHeight=mh;});
   target.style.overflowY=_ov;
 }
