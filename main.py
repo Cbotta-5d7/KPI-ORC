@@ -1669,7 +1669,7 @@ def api_lists():
         _pp_keys = []
     return jsonify({
         "pilotes": get_list("Pilotes") or get_list("pilotes") or get_list("Pilote") or get_list("pilote") or _pp_keys,
-        "copilotes": get_list("copilotes") or get_list("Co-Pilote") or get_list("Copilote") or get_list("Pilotes") or get_list("pilotes") or _pp_keys,
+        "copilotes": get_list("copilotes") or get_list("Co-Pilote") or get_list("Co-pilote") or get_list("Copilote") or get_list("Co-Pilotes") or get_list("Co-pilotes") or get_list("Copilotes") or [],
         "tailles": get_list("tailles_col") or get_list("Taille produit") or get_list("Taille") or get_list("Tailles") or get_list("taille"),
         "types_prod": get_list("types_prod_col") or get_list("Type de produit") or get_list("Type produit") or get_list("Type Produit") or get_list("types_prod"),
         "fibres": get_list("fibres_col") or get_list("Fibres") or get_list("fibre"),
