@@ -10492,7 +10492,7 @@ async function calcPeriodReport(autoLoad){
     const WB=Math.max(22,Math.min(60,Math.floor((420-padL-padR-n*4)/n)));
     const GP=5;
     const svgW=Math.max(200,n*(WB+GP)+padL+padR);
-    let svgB='',svgL='';
+    let svgBars='',svgLabels='',svgL='';
     sd.forEach((s,i)=>{
       const x=padL+i*(WB+GP);
       const cx=x+WB/2;
@@ -10500,8 +10500,8 @@ async function calcPeriodReport(autoLoad){
       const bh=Math.max(2,Math.round(trs/maxTrs*gH));
       const by=padT+gH-bh;
       const col=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
-      svgB+=`<rect x="${x}" y="${by}" width="${WB}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(s.trs>=0)svgB+=`<text x="${cx}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${s.trs.toFixed(0)}%</text>`;
+      svgBars+=`<rect x="${x}" y="${by}" width="${WB}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
+      if(s.trs>=0){const _ty=Math.max(by-3,12);const _lb=s.trs.toFixed(0)+'%';const _lw=_lb.length*7+6;svgLabels+=`<rect x="${cx-_lw/2}" y="${_ty-11}" width="${_lw}" height="14" fill="white" rx="2" opacity=".9"/><text x="${cx}" y="${_ty}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${_lb}</text>`;}
       const dp=s.date.split('/');
       if(_vertA){
         const yA=padT+gH+4;
@@ -10517,7 +10517,7 @@ async function calcPeriodReport(autoLoad){
     const _trs70Y=padT+gH-Math.round(70/maxTrs*gH);
     const trsTargetLine=`<line x1="0" y1="${_trs70Y}" x2="${svgW}" y2="${_trs70Y}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="${svgW-2}" y="${_trs70Y-3}" text-anchor="end" font-size="10" fill="#16a34a" font-weight="700">Cible 70%</text>`;
     const trsCibleLeg=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#16a34a;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible 70%</span>`;
-    chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">📈 TRS par équipe${trsCibleLeg}</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgB}${trsTargetLine}${svgL}</svg></div></div>`;
+    chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">📈 TRS par équipe${trsCibleLeg}</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgBars}${trsTargetLine}${svgLabels}${svgL}</svg></div></div>`;
   }
   // ── Chart B : Cadence vs référence — barres verticales SVG ─────────────────
   let chartCadHtml='';
@@ -10533,7 +10533,7 @@ async function calcPeriodReport(autoLoad){
     const GP2=5;
     const svgW2=Math.max(200,n2*(WB2+GP2)+padL2+padR2);
     const tY=padT2+gH2-Math.round(_CAD_CIBLE/maxCad*gH2);
-    let svgB2='',svgL2='';
+    let svgBars2='',svgLabels2='',svgL2='';
     sd2.forEach((s,i)=>{
       const x=padL2+i*(WB2+GP2);
       const cx2=x+WB2/2;
@@ -10541,8 +10541,8 @@ async function calcPeriodReport(autoLoad){
       const bh=Math.max(2,Math.round(v/maxCad*gH2));
       const by=padT2+gH2-bh;
       const col=v>=_CAD_CIBLE?'#16a34a':v>=_CAD_CIBLE*0.8?'#f59e0b':'#dc2626';
-      svgB2+=`<rect x="${x}" y="${by}" width="${WB2}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(v>0)svgB2+=`<text x="${cx2}" y="${Math.max(by-3,12)}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${v}</text>`;
+      svgBars2+=`<rect x="${x}" y="${by}" width="${WB2}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
+      if(v>0){const _ty2=Math.max(by-3,12);const _lb2=String(v);const _lw2=_lb2.length*8+6;svgLabels2+=`<rect x="${cx2-_lw2/2}" y="${_ty2-12}" width="${_lw2}" height="15" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb2}</text>`;}
       const dp=s.date.split('/');
       if(_vertB){
         const yB=padT2+gH2+4;
@@ -10557,7 +10557,7 @@ async function calcPeriodReport(autoLoad){
     const yBase2=padT2+gH2;
     const tLine=`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="6,3"/><text x="${svgW2-2}" y="${tY-3}" text-anchor="end" font-size="10" fill="#1d4ed8" font-weight="700">Cible ${_CAD_CIBLE}</text>`;
     const legCad=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#1d4ed8;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible ${_CAD_CIBLE} éq/h</span>`;
-    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence vs référence${legCad}</div><div style="overflow-x:auto"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgB2}${tLine}${svgL2}</svg></div></div>`;
+    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence vs référence${legCad}</div><div style="overflow-x:auto"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2}${tLine}${svgLabels2}${svgL2}</svg></div></div>`;
   }
   // ── Pareto arrêts — barres horizontales ────────────────────────────────────
   let paretoRjHtml='';
@@ -10686,15 +10686,20 @@ async function calcPeriodReport(autoLoad){
       _rjBanner.style.display='none';
     }
   }
+  // Sauvegarde pour captureRapportJour()
+  window._rjVars={d,trsCol,chartTrsHtml,chartCadHtml,paretoRjHtml,pieSmall,
+    _colPcsRj,_colEquivRj,_colCadRj,pertRaw,
+    _colFonctRj,_colArretRj,_colImpRj,_colDegRj,_colPerteRj,
+    fonctMin,stopMin};
   resultEl.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:8px;height:100%;min-height:0">
       <!-- Ligne principale : 4 colonnes -->
       <div style="display:flex;gap:10px;flex-shrink:0;align-items:flex-start">
         <!-- Col 1 : pièces/equiv/cad + lignes détail -->
         <div style="flex:0 0 260px;display:flex;flex-direction:column;gap:4px">
-          <div class="fp-card" style="padding:8px 12px"><div style="font-size:calc(16px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(13px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
-          <div class="fp-card" style="padding:8px 12px"><div style="font-size:calc(16px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(13px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
-          <div class="fp-card" style="padding:8px 12px"><div style="font-size:calc(16px*var(--zf,1));font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:calc(13px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
+          <div class="fp-card" style="padding:10px 14px"><div style="font-size:calc(19px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(14px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
+          <div class="fp-card" style="padding:10px 14px"><div style="font-size:calc(19px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(14px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
+          <div class="fp-card" style="padding:10px 14px"><div style="font-size:calc(19px*var(--zf,1));font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:calc(14px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
           ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
         </div>
         <!-- Col 2 : TRS % + camembert -->
@@ -10706,12 +10711,16 @@ async function calcPeriodReport(autoLoad){
           </div>
           ${pieSmall?`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;justify-content:center">${pieSmall}</div>`:''}
         </div>
-        <!-- Col 3 : graphiques TRS + Cadence empilés (largeur 6 barres ~420px) -->
-        <div style="flex:0 0 420px;display:flex;flex-direction:column;gap:6px">
+        <!-- Col 3 : graphiques TRS + Cadence empilés (+20% largeur) -->
+        <div style="flex:0 0 504px;display:flex;flex-direction:column;gap:6px">
           ${chartTrsHtml}${chartCadHtml}
         </div>
         <!-- Col 4 : Pareto (tout le reste) -->
         <div style="flex:1;min-width:200px">${paretoRjHtml}</div>
+      </div>
+      <!-- Tableaux OF + événements -->
+      <div style="display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex-shrink:0">
+        ${ofListHtml}${eventsListHtml}
       </div>
     </div>
   `;
@@ -10738,42 +10747,49 @@ function showRjOfDetail(i){
 function _rjSetBanner(txt){const b=document.getElementById('rj-period-banner');if(b)b.textContent='📅 '+txt;}
 
 async function captureRapportJour(){
-  const target=document.getElementById('rj-result');
-  if(!target){toast('Aucun rapport à capturer','err');return;}
+  const v=window._rjVars;
+  if(!v||!v.d){toast('Calculez d\'abord un rapport','err');return;}
   if(!window.html2canvas){toast('html2canvas non disponible (connexion internet requise)','err');return;}
   toast('Capture en cours…','ok');
-  // Build title string from date range
+  const {d,trsCol,chartTrsHtml,chartCadHtml,paretoRjHtml,pieSmall,
+    _colPcsRj,_colEquivRj,_colCadRj,pertRaw,
+    _colFonctRj,_colArretRj,_colImpRj,_colDegRj,_colPerteRj}=v;
   const _fv=document.getElementById('rj-from')?.value||'';
   const _tv=document.getElementById('rj-to')?.value||'';
   const _fmtD=s=>{if(!s)return '?';const p=s.split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s;};
   const _titleTxt='Rapport ligne Oreillers Cardés 1 — du '+_fmtD(_fv)+' au '+_fmtD(_tv);
-  // Add temporary title banner above target
-  const _titleEl=document.createElement('div');
-  _titleEl.style.cssText='background:#1e3a5f;color:#fff;font-size:15px;font-weight:700;padding:10px 16px;border-radius:6px 6px 0 0;letter-spacing:.3px;font-family:Arial,sans-serif;margin-bottom:4px';
-  _titleEl.textContent=_titleTxt;
-  target.parentNode.insertBefore(_titleEl,target);
-  // Expand all scroll/max-height constraints temporarily
-  const saved=[];
-  target.querySelectorAll('*').forEach(el=>{
-    const cs=el.style;
-    if(cs.overflow||cs.overflowY||cs.overflowX||cs.maxHeight){
-      saved.push({el,ov:cs.overflow,ovy:cs.overflowY,ovx:cs.overflowX,mh:cs.maxHeight});
-      cs.overflow='visible';cs.overflowY='visible';cs.overflowX='visible';cs.maxHeight='none';
-    }
-  });
-  const _ov=target.style.overflowY;
-  target.style.overflowY='visible';
-  await new Promise(r=>setTimeout(r,200));
-  // Capture title + content together
+  // Build capture-specific layout (stacked: stats | TRS+pie+charts+pareto)
+  const _statsRows=[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:3px"><span style="font-size:12px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:13px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
+  const _capHtml=`<div style="display:flex;gap:12px;align-items:flex-start;font-family:Arial,sans-serif">
+    <div style="width:270px;flex-shrink:0">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:5px"><div style="font-size:19px;font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:#64748b">Pièces</span> <span style="font-size:14px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:5px"><div style="font-size:19px;font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:#64748b">Equiv</span> <span style="font-size:14px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:8px"><div style="font-size:17px;font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:13px;font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
+      ${_statsRows}
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:8px;align-items:stretch">
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;text-align:center;flex:1">
+          <div style="font-size:40px;font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
+          <div style="font-size:12px;color:#64748b;font-weight:600;margin-top:4px">TRS période</div>
+          <div style="font-size:11px;color:#94a3b8;margin-top:2px">${d.nb_jours}j · ${d.nb_sessions} postes · ${d.nb_of} OF</div>
+        </div>
+        ${pieSmall?`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;display:flex;align-items:center;justify-content:center">${pieSmall}</div>`:''}
+      </div>
+      ${chartTrsHtml}
+      ${chartCadHtml}
+      ${paretoRjHtml}
+    </div>
+  </div>`;
   const _wrapper=document.createElement('div');
-  _wrapper.style.cssText='background:#ffffff;display:inline-block;padding:8px';
-  const _titleClone=_titleEl.cloneNode(true);
-  const _targetClone=target.cloneNode(true);
-  _wrapper.appendChild(_titleClone);
-  _wrapper.appendChild(_targetClone);
+  _wrapper.style.cssText='position:fixed;left:-9999px;top:0;background:#f8fafc;padding:0;font-family:Arial,sans-serif';
+  _wrapper.innerHTML=`
+    <div style="background:#1e3a5f;color:#fff;font-size:20px;font-weight:700;padding:14px 20px;letter-spacing:.3px;font-family:Arial,sans-serif">${esc(_titleTxt)}</div>
+    <div style="padding:12px">${_capHtml}</div>`;
   document.body.appendChild(_wrapper);
+  await new Promise(r=>setTimeout(r,300));
   try{
-    const canvas=await window.html2canvas(_wrapper,{scale:1.5,useCORS:true,logging:false,backgroundColor:'#ffffff',scrollX:0,scrollY:0});
+    const canvas=await window.html2canvas(_wrapper,{scale:2,useCORS:true,logging:false,backgroundColor:'#f8fafc',scrollX:0,scrollY:0,windowWidth:_wrapper.scrollWidth+40,windowHeight:_wrapper.scrollHeight+40});
     document.body.removeChild(_wrapper);
     await new Promise((res,rej)=>{
       canvas.toBlob(blob=>{
@@ -10786,10 +10802,6 @@ async function captureRapportJour(){
     try{document.body.removeChild(_wrapper);}catch(_){}
     toast('Erreur capture : '+(e.message||String(e)),'err');
   }
-  // Restore
-  target.parentNode.removeChild(_titleEl);
-  saved.forEach(({el,ov,ovy,ovx,mh})=>{el.style.overflow=ov;el.style.overflowY=ovy;el.style.overflowX=ovx;el.style.maxHeight=mh;});
-  target.style.overflowY=_ov;
 }
 function rjLast3(){
   document.getElementById('rj-from').value='';
@@ -10894,12 +10906,14 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const stopArr=Object.entries(stopMap).sort((a,b)=>b[1]-a[1]);
   const maxStopMin=stopArr.length?stopArr[0][1]:1;
   const paretoHtml=stopArr.length?stopArr.map(([k,v])=>`
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-      <div style="flex:1;min-width:0;font-size:calc(10px*var(--zf,1));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${esc(k)}</div>
-      <div style="flex-shrink:0;width:65px;background:#f1f5f9;border-radius:4px;height:10px;overflow:hidden">
-        <div style="height:100%;background:#dc2626;border-radius:4px;width:${Math.round(v/maxStopMin*100)}%;opacity:.8"></div>
+    <div style="margin-bottom:7px">
+      <div style="font-size:calc(10px*var(--zf,1));color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;font-weight:600">${esc(k)}</div>
+      <div style="display:flex;align-items:center;gap:5px">
+        <div style="flex:1;background:#f1f5f9;border-radius:4px;height:12px;overflow:hidden">
+          <div style="height:100%;background:#dc2626;border-radius:4px;width:${Math.round(v/maxStopMin*100)}%;opacity:.8"></div>
+        </div>
+        <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">${Math.round(v)}mn</div>
       </div>
-      <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">${Math.round(v)}mn</div>
     </div>`).join(''):'<div style="color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>';
   window._rptProdRows = d.prod_rows || [];
   window._rptEvtRows = d.evt_rows || [];
