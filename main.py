@@ -10692,34 +10692,31 @@ async function calcPeriodReport(autoLoad){
     _colFonctRj,_colArretRj,_colImpRj,_colDegRj,_colPerteRj,
     fonctMin,stopMin};
   resultEl.innerHTML=`
-    <div style="display:flex;flex-direction:column;gap:8px;height:100%;min-height:0">
-      <!-- Ligne principale : 4 colonnes -->
-      <div style="display:flex;gap:10px;flex-shrink:0;align-items:flex-start">
-        <!-- Col 1 : pièces/equiv/cad + lignes détail -->
-        <div style="flex:0 0 260px;display:flex;flex-direction:column;gap:4px">
-          <div class="fp-card" style="padding:10px 14px"><div style="font-size:calc(19px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(14px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
-          <div class="fp-card" style="padding:10px 14px"><div style="font-size:calc(19px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(14px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
-          <div class="fp-card" style="padding:10px 14px"><div style="font-size:calc(19px*var(--zf,1));font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:calc(14px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
-          ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
-        </div>
-        <!-- Col 2 : TRS % + camembert -->
-        <div style="flex:0 0 190px;display:flex;flex-direction:column;gap:6px">
-          <div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center">
+    <div style="display:flex;gap:10px;height:100%;min-height:0">
+      <!-- Col gauche : pièces/equiv/cad + lignes détail -->
+      <div style="flex:0 0 260px;display:flex;flex-direction:column;gap:4px;overflow-y:auto">
+        <div class="fp-card" style="padding:10px 14px"><div style="font-size:calc(19px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(14px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
+        <div class="fp-card" style="padding:10px 14px"><div style="font-size:calc(19px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(14px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
+        <div class="fp-card" style="padding:10px 14px"><div style="font-size:calc(19px*var(--zf,1));font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:calc(14px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
+        ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
+      </div>
+      <!-- Droite : TRS+pie en haut, graphiques+pareto, tables -->
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
+        <!-- TRS % + camembert au-dessus des graphiques -->
+        <div style="display:flex;gap:10px;align-items:center;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:10px 14px;flex-shrink:0">
+          <div style="flex:1;text-align:center">
             <div style="font-size:calc(38px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
             <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);font-weight:600;margin-top:4px">TRS période</div>
             <div style="font-size:calc(10px*var(--zf,1));color:#94a3b8;margin-top:2px">${d.nb_jours}j · ${d.nb_sessions} postes · ${d.nb_of} OF</div>
           </div>
-          ${pieSmall?`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;justify-content:center">${pieSmall}</div>`:''}
+          ${pieSmall?`<div style="flex-shrink:0">${pieSmall}</div>`:''}
         </div>
-        <!-- Col 3 : graphiques TRS + Cadence empilés (+20% largeur) -->
-        <div style="flex:0 0 504px;display:flex;flex-direction:column;gap:6px">
-          ${chartTrsHtml}${chartCadHtml}
+        <!-- Graphiques (504px) + Pareto -->
+        <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">
+          <div style="flex:0 0 504px;display:flex;flex-direction:column;gap:6px">${chartTrsHtml}${chartCadHtml}</div>
+          <div style="flex:1;min-width:200px">${paretoRjHtml}</div>
         </div>
-        <!-- Col 4 : Pareto (tout le reste) -->
-        <div style="flex:1;min-width:200px">${paretoRjHtml}</div>
-      </div>
-      <!-- Tableaux OF + événements -->
-      <div style="display:flex;flex-direction:column;gap:6px;overflow-y:auto;flex-shrink:0">
+        <!-- Tableaux OF + événements -->
         ${ofListHtml}${eventsListHtml}
       </div>
     </div>
@@ -10757,25 +10754,36 @@ async function captureRapportJour(){
   const _fv=document.getElementById('rj-from')?.value||'';
   const _tv=document.getElementById('rj-to')?.value||'';
   const _fmtD=s=>{if(!s)return '?';const p=s.split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s;};
-  const _titleTxt='Rapport ligne Oreillers Cardés 1 — du '+_fmtD(_fv)+' au '+_fmtD(_tv);
-  // Build capture-specific layout (stacked: stats | TRS+pie+charts+pareto)
-  const _statsRows=[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:3px"><span style="font-size:12px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:13px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
-  const _capHtml=`<div style="display:flex;gap:12px;align-items:flex-start;font-family:Arial,sans-serif">
-    <div style="width:270px;flex-shrink:0">
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:5px"><div style="font-size:19px;font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:#64748b">Pièces</span> <span style="font-size:14px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:5px"><div style="font-size:19px;font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:#64748b">Equiv</span> <span style="font-size:14px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:8px"><div style="font-size:17px;font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:13px;font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
+  // Titre ligne 1 : plage de dates
+  const _date1=_fmtD(_fv),_date2=_fmtD(_tv);
+  const _titleL1='Rapport ligne Oreillers Cardés 1'+(_date1!==_date2?' du '+_date1+' au '+_date2:' du '+_date1);
+  // Titre ligne 2 : liste des postes avec dates
+  const _posteNames={matin:'Matin',midi:'Midi',nuit:'Nuit',am:'Matin',pm:'Midi',night:'Nuit'};
+  const _posteLbls=(d.sessions_detail||[]).map(s=>{
+    const _pn=_posteNames[(s.poste||'').toLowerCase()]||esc(s.poste||'Poste');
+    return `${_pn} ${esc(s.date||'')}${s.pilot?' ('+esc(s.pilot)+')':''}`;
+  });
+  const _titleL2=_posteLbls.length?_posteLbls.join(' · '):'';
+  // Lignes stats (fonts +20%)
+  const _statsRows=[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:3px"><span style="font-size:14px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:15px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
+  // Layout capture : col gauche (stats+TRS+pie) | col droite (graphiques+pareto)
+  const _capHtml=`<div style="display:flex;gap:14px;align-items:flex-start;font-family:Arial,sans-serif;zoom:1.25">
+    <!-- Colonne gauche : stats + TRS + pie -->
+    <div style="width:310px;flex-shrink:0;display:flex;flex-direction:column;gap:6px">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px"><div style="font-size:23px;font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:#374151">Pièces</span> <span style="font-size:17px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px"><div style="font-size:23px;font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:#374151">Equiv</span> <span style="font-size:17px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px"><div style="font-size:20px;font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:15px;font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
       ${_statsRows}
-    </div>
-    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
-      <div style="display:flex;gap:8px;align-items:stretch">
-        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;text-align:center;flex:1">
-          <div style="font-size:40px;font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
-          <div style="font-size:12px;color:#64748b;font-weight:600;margin-top:4px">TRS période</div>
-          <div style="font-size:11px;color:#94a3b8;margin-top:2px">${d.nb_jours}j · ${d.nb_sessions} postes · ${d.nb_of} OF</div>
-        </div>
-        ${pieSmall?`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;display:flex;align-items:center;justify-content:center">${pieSmall}</div>`:''}
+      <!-- TRS période + camembert dans la colonne gauche -->
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;text-align:center;margin-top:4px">
+        <div style="font-size:46px;font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
+        <div style="font-size:13px;color:#64748b;font-weight:600;margin-top:5px">TRS période</div>
+        <div style="font-size:12px;color:#94a3b8;margin-top:2px">${d.nb_jours}j · ${d.nb_sessions} postes · ${d.nb_of} OF</div>
       </div>
+      ${pieSmall?`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;display:flex;justify-content:center">${pieSmall}</div>`:''}
+    </div>
+    <!-- Colonne droite : graphiques + pareto -->
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px">
       ${chartTrsHtml}
       ${chartCadHtml}
       ${paretoRjHtml}
@@ -10784,8 +10792,11 @@ async function captureRapportJour(){
   const _wrapper=document.createElement('div');
   _wrapper.style.cssText='position:fixed;left:-9999px;top:0;background:#f8fafc;padding:0;font-family:Arial,sans-serif';
   _wrapper.innerHTML=`
-    <div style="background:#1e3a5f;color:#fff;font-size:20px;font-weight:700;padding:14px 20px;letter-spacing:.3px;font-family:Arial,sans-serif">${esc(_titleTxt)}</div>
-    <div style="padding:12px">${_capHtml}</div>`;
+    <div style="background:#1e3a5f;color:#fff;padding:14px 22px;font-family:Arial,sans-serif">
+      <div style="font-size:22px;font-weight:700;letter-spacing:.3px">${esc(_titleL1)}</div>
+      ${_titleL2?`<div style="font-size:14px;font-weight:400;opacity:.85;margin-top:4px">${esc(_titleL2)}</div>`:''}
+    </div>
+    <div style="padding:14px">${_capHtml}</div>`;
   document.body.appendChild(_wrapper);
   await new Promise(r=>setTimeout(r,300));
   try{
