@@ -10895,8 +10895,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const maxStopMin=stopArr.length?stopArr[0][1]:1;
   const paretoHtml=stopArr.length?stopArr.map(([k,v])=>`
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-      <div style="font-size:calc(10px*var(--zf,1));width:150px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${esc(k)}</div>
-      <div style="flex:1;min-width:40px;background:#f1f5f9;border-radius:4px;height:14px;overflow:hidden">
+      <div style="flex:1;min-width:0;font-size:calc(10px*var(--zf,1));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${esc(k)}</div>
+      <div style="flex-shrink:0;width:65px;background:#f1f5f9;border-radius:4px;height:10px;overflow:hidden">
         <div style="height:100%;background:#dc2626;border-radius:4px;width:${Math.round(v/maxStopMin*100)}%;opacity:.8"></div>
       </div>
       <div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#dc2626;width:36px;text-align:right;flex-shrink:0">${Math.round(v)}mn</div>
