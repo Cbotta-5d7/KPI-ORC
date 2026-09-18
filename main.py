@@ -4334,6 +4334,10 @@ select{cursor:default}
       <select id="ln-pilot"><option value="">-- Choisir --</option></select>
     </div>
     <div class="lf">
+      <label>Co-Pilote</label>
+      <select id="ln-copilote"><option value="">-- Aucun --</option></select>
+    </div>
+    <div class="lf">
       <label>Modèle horaire (Poste)</label>
       <select id="ln-model" onchange="onLoginModelChange()"><option value="">-- Choisir --</option></select>
     </div>
@@ -5953,6 +5957,7 @@ async function loadLists() {
   popSel('f-type_prod', d.types_prod||[]);
   popSel('f-fibre', d.fibres||[]);
   popSel('f-copilote', d.copilotes||[]);
+  popSel('ln-copilote', d.copilotes||[], true);
   popSel('er-taille', d.tailles||[]);
   popSel('er-typeprod', d.types_prod||[]);
   popSel('er-fibre', d.fibres||[]);
@@ -6081,9 +6086,11 @@ async function doLogin() {
         await fetch('/api/update_shift_horaires',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({debut_iso:debDt.toISOString(),fin_iso:finDt2.toISOString()})});
       }
     }
+    window._loginCopilote = (document.getElementById('ln-copilote')?.value)||'';
     const s = await apiFetch('/api/state');
     document.getElementById('v-login').classList.remove('on');
     showApp(s||{pilot,poste});
+    if(window._loginCopilote){const el=document.getElementById('f-copilote');if(el&&!el.value)el.value=window._loginCopilote;}
   } else {
     document.getElementById('ln-err').textContent = d.error||'Erreur connexion';
   }
@@ -7558,6 +7565,7 @@ async function _doConfirmCancelProd(){
   await fetch('/api/force_reset_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   localStorage.removeItem('kpiorc_form');
   FORM_FIELDS.forEach(k=>{const el=document.getElementById('f-'+k);if(el)el.value='';});
+  if(window._loginCopilote){const el=document.getElementById('f-copilote');if(el)el.value=window._loginCopilote;}
   await pollState();
   goTab('main');
   toast('Production annulée','ok');
@@ -7866,6 +7874,7 @@ function restoreFormFromStorage(){
       if(npEl&&(!npEl.value||npEl.value==='0')) npEl.value='10';
     }
   }catch(e){}
+  if(window._loginCopilote){const el=document.getElementById('f-copilote');if(el&&!el.value)el.value=window._loginCopilote;}
   fillTracaUI(document.getElementById('f-traca')?.value||'');
 }
 
@@ -7972,6 +7981,7 @@ async function confirmEndProd(){
       el.value='';
     });
     document.getElementById('f-nb_pers').value='10';
+    if(window._loginCopilote){const el=document.getElementById('f-copilote');if(el)el.value=window._loginCopilote;}
     try{localStorage.removeItem('kpiorc_form');}catch(e){}
     await pollState();
     await pollEvts();
