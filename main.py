@@ -3895,6 +3895,22 @@ def api_add_past_decl():
             })
             save_session()
     elif decl_type == "prod":
+        # Vérification chevauchement avec un OF déjà déclaré sur ce poste
+        _new_ds = _hms_to_sec(debut_dt.strftime("%H:%M:%S"))
+        _new_fs = _norm_fin(_new_ds, _hms_to_sec(fin_dt.strftime("%H:%M:%S")))
+        for _rn_ov, _r_ov in _decl_cache:
+            if str(_r_ov[4] or "") != pilot: continue
+            if str(_r_ov[0] or "").strip().lower() not in ("production","prod",""): continue
+            _date_ov = str(_r_ov[39] if len(_r_ov) > 39 else "").strip() or _row_date(_r_ov[2])
+            if _date_ov != shift_date_str: continue
+            _ds_ov = _hms_to_sec(str(_r_ov[16] or "00:00:00"))
+            _fs_ov = _norm_fin(_ds_ov, _hms_to_sec(str(_r_ov[17] or "00:00:00")))
+            if _fs_ov <= _ds_ov: continue
+            if _new_ds < _fs_ov and _new_fs > _ds_ov:
+                _of_ov = str(_r_ov[1] or "OF inconnu")
+                _h_deb_ov = str(_r_ov[16] or "")[:5]
+                _h_fin_ov = str(_r_ov[17] or "")[:5]
+                return jsonify({"ok": False, "error": f"Impossible : chevauchement avec l'OF {_of_ov} déclaré de {_h_deb_ov} à {_h_fin_ov}"}), 400
         v = data
         qte_fab = _n(v.get("qte_fab",0))
         nb_pers = max(1, _n(v.get("nb_pers",1)) or 1)
@@ -4038,8 +4054,9 @@ def api_update_of_time():
                 if _cur_of_num == of_num and _cur_of_start_hm == old_debut:
                     _S["of_start"] = _S["of_start"].replace(hour=dh, minute=dm, second=0, microsecond=0)
             except: pass
-    # Update Excel in background
+    # Update Excel in background + recalcul cols 22-25 (cadence/TRS changent avec la durée)
     path = cfg.get("db_path","")
+    _upd_row_cached = next((r for rn, r in _decl_cache if rn == target_rn), None)
     if path:
         def _bg():
             try:
@@ -4050,9 +4067,30 @@ def api_update_of_time():
                     ws.cell(target_rn, 17).value = new_debut_hms
                     ws.cell(target_rn, 18).value = new_fin_hms
                     ws.cell(target_rn, 19).value = dur_hms
+                    # Recalcul cadence/TRS puisque la durée a changé
+                    if dur_s2 > 0:
+                        try:
+                            _eq = float(str(ws.cell(target_rn, 22).value or 0).replace(",",".") or 0)
+                            _np = max(1.0, float(str(ws.cell(target_rn, 7).value or 1).replace(",",".") or 1))
+                            _hrs = dur_s2 / 3600
+                            if _eq > 0 and _hrs > 0:
+                                ws.cell(target_rn, 23).value = round(_eq / _hrs, 2)
+                                ws.cell(target_rn, 24).value = round(_eq / (_np * _hrs), 2)
+                            _pr = get_prod_ref()
+                            if _pr > 0 and _eq > 0:
+                                ws.cell(target_rn, 25).value = str(round(_eq / (_pr * dur_s2 / 28800) * 100, 1))
+                        except: pass
                     _safe_excel_save(wb, path)
             except: pass
         threading.Thread(target=_bg, daemon=True).start()
+    # FIX 3 pour update_of_time: recalcul Postes si poste terminé
+    if _upd_row_cached is not None:
+        _upd_date = str(_upd_row_cached[39] if len(_upd_row_cached) > 39 else "").strip() or _row_date(_upd_row_cached[2])
+        _upd_pilot = str(_upd_row_cached[4] or "")
+        _upd_poste = str(_upd_row_cached[3] or "")
+        if not (_upd_pilot == _S.get("pilot","") and _upd_poste == _S.get("poste","") and _S.get("prod_active")):
+            if _upd_date and _upd_pilot and _upd_poste:
+                _maybe_recalc_postes_bg(_upd_date, _upd_pilot, _upd_poste)
     return jsonify({"ok":True})
 
 @flask_app.route('/api/reload', methods=['POST'])
