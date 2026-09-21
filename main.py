@@ -2894,7 +2894,10 @@ def api_edit_row():
                 _ds_ck = _hms_to_sec(str(_r_ck[16] or "00:00:00"))
                 _fs_ck = _norm_fin(_ds_ck, _hms_to_sec(str(_r_ck[17] or "00:00:00")))
                 if _fs_ck <= _ds_ck: continue
-                if _new_deb_s < _fs_ck and _new_fin_s > _ds_ck:
+                # Test dans les deux référentiels pour gérer les postes de nuit (chevauchement minuit)
+                _ov = (_new_deb_s < _fs_ck and _new_fin_s > _ds_ck) or \
+                      (_new_deb_s + 86400 < _fs_ck and _new_fin_s + 86400 > _ds_ck)
+                if _ov:
                     _of_ck = str(_r_ck[1] or "OF inconnu")
                     _h_d_ck = str(_r_ck[16] or "")[:5]
                     _h_f_ck = str(_r_ck[17] or "")[:5]
@@ -3935,7 +3938,10 @@ def api_add_past_decl():
             _ds_ov = _hms_to_sec(str(_r_ov[16] or "00:00:00"))
             _fs_ov = _norm_fin(_ds_ov, _hms_to_sec(str(_r_ov[17] or "00:00:00")))
             if _fs_ov <= _ds_ov: continue
-            if _new_ds < _fs_ov and _new_fs > _ds_ov:
+            # Test dans les deux référentiels pour gérer les postes de nuit
+            _ov2 = (_new_ds < _fs_ov and _new_fs > _ds_ov) or \
+                   (_new_ds + 86400 < _fs_ov and _new_fs + 86400 > _ds_ov)
+            if _ov2:
                 _of_ov = str(_r_ov[1] or "OF inconnu")
                 _h_deb_ov = str(_r_ov[16] or "")[:5]
                 _h_fin_ov = str(_r_ov[17] or "")[:5]
