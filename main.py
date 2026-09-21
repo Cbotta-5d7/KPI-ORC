@@ -3309,7 +3309,8 @@ def api_past_sessions():
         _pk_check = (s["pilot"].lower(), s["date"])
         if _pk_check not in postes_map:
             continue
-        result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs,"_rn":s["max_rn"]})
+        _is_live_ps = bool(_live_key and key == _live_key)
+        result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs,"is_live":_is_live_ps,"_rn":s["max_rn"]})
     def _date_sort_key(x):
         d = x["date"]
         try:
@@ -9628,7 +9629,7 @@ async function ecartSetOfDebut(gapDebut,gapFin){
 async function loadFPData(){
   const d=await apiFetch('/api/fin_poste_data');
   if(!d) return;
-  document.getElementById('fp-trs').textContent=fmtTRS(d.trs_shift!==undefined?d.trs_shift:d.trs);
+  document.getElementById('fp-trs').textContent=d.is_live?'—':fmtTRS(d.trs_shift!==undefined?d.trs_shift:d.trs);
   document.getElementById('fp-trs-of').textContent=fmtTRS(d.trs);
   document.getElementById('fp-eq').textContent=Math.round(d.tot_equiv||0);
   document.getElementById('fp-nof').textContent=d.nb_of||0;
@@ -9653,7 +9654,7 @@ async function loadFPData(){
   const stops=gEvts.filter(e=>e.type);
   const _hmsS=hms=>{if(!hms)return 0;const p=(hms+':0:0').split(':').map(Number);return(p[0]||0)*3600+(p[1]||0)*60+(p[2]||0);};
   const stopTotal=stops.reduce((a,e)=>a+Math.max(0,_hmsS(e.fin)-_hmsS(e.debut)),0);
-  document.getElementById('fp-stop-t').textContent=fmtDurMS(stopTotal);
+  document.getElementById('fp-stop-t').textContent=d.is_live?'—':fmtDurMS(stopTotal);
   // Net prod = sum of each OF's time minus overlapping stops within that period
   const _ofPs=(d.of_list||[]).map(p=>({s:_hmsS(p.debut),e:_hmsS(p.fin)})).filter(p=>p.e>p.s);
   const _stPs=stops.map(e=>({s:_hmsS(e.debut),e:_hmsS(e.fin)})).filter(e=>e.e>e.s);
@@ -9749,7 +9750,9 @@ async function loadFPData(){
     {label:'Arrêts',value:stopS,color:'#dc2626'},
   ],{fLeg:9});
   const trsS=d.trs_shift!==undefined?d.trs_shift:d.trs;
-  drawGauge('fp-gauge-arc','fp-gauge-pct',trsS>=0?trsS:0);
+  drawGauge('fp-gauge-arc','fp-gauge-pct',d.is_live?0:trsS>=0?trsS:0);
+  const fpGaugePct=document.getElementById('fp-gauge-pct');
+  if(fpGaugePct&&d.is_live) fpGaugePct.textContent='—';
 }
 
 async function applyFPHoraires(){
@@ -10955,8 +10958,8 @@ async function loadRapports(defaultMode){
     return;
   }
   listEl.innerHTML=filtered.map((s,i)=>{
-    const trsStr=s.trs>=0?s.trs.toFixed(1)+'%':'—';
-    const trsCol=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
+    const trsStr=s.is_live?'—':(s.trs>=0?s.trs.toFixed(1)+'%':'—');
+    const trsCol=s.is_live?'#94a3b8':(s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8');
     return `<div class="rpt-item" id="rpt-item-${i}" onclick="loadSessionReport('${esc(s.date)}','${esc(s.pilot)}','${esc(s.poste)}','rpt-item-${i}')"
       style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s">
       <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:var(--navy)">${esc(s.date)} — ${esc(s.poste)}</div>
@@ -11158,7 +11161,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
         <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?' — '+(d.actual_debut||d.model_debut)+' → '+(d.actual_fin||d.model_fin):''}</div>
         <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
         <div style="font-size:calc(9px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">TRS :</div>
-        <div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3)">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
+        <div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3)">${d.is_live?'—':trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
       </div>
       ${d.is_live?`<style>@keyframes live-banner{0%,49%{background:#22c55e;color:#000}50%,100%{background:#fff;color:#15803d}}</style><div style="font-size:calc(20px*var(--zf,1));font-weight:900;text-align:center;padding:10px 8px;letter-spacing:.08em;animation:live-banner 1.2s step-start infinite;flex-shrink:0;border-bottom:2px solid #22c55e">▶ POSTE EN COURS</div>`:''}
       <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px">
@@ -11177,7 +11180,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#64748b">${d.is_live?'—':ouvertureMin+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps d\'ouverture</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:#64748b">${d.is_live?'—':tempsUtile+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps utile</div></div>
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:${_colFonctRp}">${d.is_live?'—':tempsFonctionnement+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps de fonctionnement</div></div>
-          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:${_colArretRp}">${netStopMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
+          <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:${_colArretRp}">${d.is_live?'<span style="color:#94a3b8">—</span>':netStopMin+' min'}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en arrêt</div></div>
           ${degMin>0?`<div class="fp-card" style="padding:5px 6px;border-left:3px solid ${_colDegRp}"><div class="fp-big" style="font-size:calc(11px*var(--zf,1));color:${_colDegRp}">${degMin} min</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Temps en mode dégradé</div></div>`:''}
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${d.is_live?'<span style="color:#94a3b8">—</span>':`<span style="color:${_colPerteRp};font-weight:800">${perteCadenceRaw<=0?Math.abs(perteCadenceRaw)+' min de gain':perteCadenceRaw+' min de perte'}</span>`}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
         </div>
