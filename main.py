@@ -11130,9 +11130,16 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const _colArretRp=_cLRp(netStopMin,ouvertureMin);
   const _colDegRp=_cLRp(degMin,ouvertureMin);
   const _colPerteRp=perteCadenceRaw<=0?'#16a34a':_cLRp(perteCadenceRaw,ouvertureMin);
-  const _objPcsRp=(d.prod_rows||[]).reduce((s,r)=>{const o=parseFloat(r.objectif||'-1');return s+(o>=0?o:0);},0);
+  // objectif equiv = somme des objectifs (en equiv) par OF
+  const _objEquivRp=(d.prod_rows||[]).reduce((s,r)=>{const o=parseFloat(r.objectif||'-1');return s+(o>=0?o:0);},0);
+  // objectif pièces = converti via ratio pcs/equiv de chaque OF (évite de mélanger pièces et équivalences)
+  const _objPcsRp=(d.prod_rows||[]).reduce((s,r)=>{
+    const o=parseFloat(r.objectif||'-1');if(o<0)return s;
+    const eq=parseFloat(r.equiv||'0'),qte=parseFloat(r.qte_fab||'0');
+    const ratio=(eq>0&&qte>0)?qte/eq:1;
+    return s+o*ratio;
+  },0);
   const _colPcsRp=!_objPcsRp?'#16a34a':(totQteFab/_objPcsRp>=0.95?'#16a34a':totQteFab/_objPcsRp>=0.75?'#f59e0b':'#dc2626');
-  const _objEquivRp=d.objectif_equiv||0;
   const _colEquivRp=!_objEquivRp?'#64748b':((d.tot_equiv||0)/_objEquivRp>=0.95?'#16a34a':(d.tot_equiv||0)/_objEquivRp>=0.75?'#f59e0b':'#dc2626');
   const _cadRefHRp=Math.round(cadenceRefPcsMin*60);
   const _colCadRp=!_cadRefHRp?'#0369a1':((!d.is_live&&cadenceH/_cadRefHRp>=0.95)?'#16a34a':(!d.is_live&&cadenceH/_cadRefHRp>=0.75)?'#f59e0b':'#dc2626');
