@@ -6533,7 +6533,7 @@ async function pollEvts() {
   const pilot=ST.pilot||'';
   gEvts=e.filter(ev=>{
     const dateOk=!ev.date||ev.date.startsWith(todayPfx);
-    const pilotOk=!pilot||!ev.pilote||ev.pilote===pilot;
+    const pilotOk=!pilot||ev.pilote===pilot;
     return dateOk&&pilotOk;
   });
   // Don't override prod-view recap/timeline — applyState handles that from live tl_events
@@ -8425,7 +8425,15 @@ function updateGauge(s){
     const colAcc=trsAcc>=90?'#16a34a':trsAcc>=75?'#d97706':'#dc2626';
     if(arcPosteAcc){arcPosteAcc.setAttribute('stroke-dasharray',`${dashAcc},${pArc}`);arcPosteAcc.setAttribute('stroke',colAcc);}
     if(pctPosteAcc){pctPosteAcc.textContent=trsAcc>=0?fmtTRS(trsAcc):'—';pctPosteAcc.setAttribute('fill',colAcc);}
-    if(lblPosteAcc) lblPosteAcc.textContent='TRS Poste';
+    if(lblPosteAcc){
+      if(_lastProdDeclTime&&_shiftRefDt){
+        const _dh=String(_shiftRefDt.getHours()).padStart(2,'0'),_dm=String(_shiftRefDt.getMinutes()).padStart(2,'0');
+        const _fh=String(_lastProdDeclTime.getHours()).padStart(2,'0'),_fm=String(_lastProdDeclTime.getMinutes()).padStart(2,'0');
+        lblPosteAcc.textContent='TRS de '+_dh+'h'+_dm+' à '+_fh+'h'+_fm;
+      } else {
+        lblPosteAcc.textContent='TRS Poste';
+      }
+    }
   }
 
   // Pie charts
