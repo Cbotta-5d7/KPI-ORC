@@ -1335,7 +1335,9 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
                 _format_row(ws,ws.max_row)
                 _safe_excel_save(wb,path)
             threading.Thread(target=load_history,daemon=True).start()
-        except: pass
+        except Exception as _e_cof:
+            print(f"[CHANGEMENT-OF] Erreur écriture Excel : {_e_cof} — backup")
+            _append_to_backup(row, [])
     threading.Thread(target=_bg,daemon=True).start()
 
 POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Cadence (equiv/h)","Total Pauses (min)","Nettoyage (min)","Réunion (min)","Dépassement arrêts (min)","Nb chgt fibre","Commentaire","Début Poste","Fin Poste","Temps ouverture (min)","Temps utile (min)","Temps fonctionnement (min)","Temps en arrêt (min)","Réf cadence (pcs/min)","Perte cadence (min)","Temps dégradé (min)","Objectif éq","Budget pause (min)","Budget nett. court (min)","Budget nett. long (min)","Budget nett. très long (min)","Budget réunion (min)"]
@@ -1560,13 +1562,15 @@ def load_postes_shift_map():
                 fin_v  = ws.cell(ri, 17).value   # col Q: Fin Poste (datetime)
                 fin_dt = _parse_dt(fin_v)
                 date_str = deb_dt.strftime("%d/%m/%Y")
+                _poste_v = str(ws.cell(ri, 4).value or '').strip()
                 pk = (str(pilot_v).strip().lower(), date_str)
+                pk3 = (str(pilot_v).strip().lower(), date_str, _poste_v.lower())
                 result[pk] = {
                     'deb_dt':        deb_dt,
                     'fin_dt':        fin_dt,
                     'date_str':      date_str,
                     'pilot':         str(pilot_v).strip(),
-                    'poste':         str(ws.cell(ri, 4).value or '').strip(),  # col D
+                    'poste':         _poste_v,  # col D
                     'trs':           _flt(ws.cell(ri, 8).value),   # col H: TRS Poste %
                     'cadence_h':     _flt(ws.cell(ri, 9).value),   # col I: Cadence/h
                     'ouverture_min': _flt(ws.cell(ri, 18).value),  # col R: Temps ouverture
@@ -1589,9 +1593,17 @@ def load_postes_shift_map():
                         'meeting_tol_min': _flt(ws.cell(ri, 30).value),
                     },
                 }
+                result[pk3] = result[pk]  # clé 3-tuples pour éviter collision pilote/2 postes même jour
             wb.close()
     except: pass
     return result
+
+def _pm_get(pm, pilot_lw, date_str, poste=""):
+    """Lookup dans postes_map : essaie (pilot, date, poste) puis (pilot, date)."""
+    if poste:
+        v = pm.get((pilot_lw, date_str, poste.lower()))
+        if v: return v
+    return pm.get((pilot_lw, date_str), {})
 
 def _start_periodic_excel_sync():
     """Recharge les listes Excel toutes les 5 minutes pour éviter la perte de données."""
@@ -3352,13 +3364,11 @@ def api_past_sessions():
             except: date_obj = None
             _evts_ps = session_evts.get(key, [])
             _prod_raws_ps = s.get("prod_raws", [])
-            _pk = (s["pilot"].lower(), s["date"])
-            _xl_trs_ps = None
-            if _pk in postes_map:
-                _pm_ps = postes_map[_pk]
-                _xl_trs_ps = _pm_ps.get('trs')
+            _pm_ps = _pm_get(postes_map, s["pilot"].lower(), s["date"], s.get("poste",""))
+            _xl_trs_ps = _pm_ps.get('trs') if _pm_ps else None
+            if _pm_ps and _pm_ps.get('deb_dt') and _pm_ps.get('fin_dt'):
                 _pdeb_ps = _pm_ps['deb_dt']; _pfin_ps = _pm_ps['fin_dt']
-                _mdur2 = max(0.0, (_pfin_ps - _pdeb_ps).total_seconds()) if _pfin_ps else get_shift_duration_s(s["poste"], date_obj)
+                _mdur2 = max(0.0, (_pfin_ps - _pdeb_ps).total_seconds())
             else:
                 _mdur2 = get_shift_duration_s(s["poste"], date_obj)
             if _live_key and key == _live_key:
@@ -3391,7 +3401,7 @@ def api_past_sessions():
                 _deg_ivs_ps = _merged_degrade_ivs([re for _, re in _evts_ps])
                 # Recalcul plan_ivs identique à session_report (arrêts planifiés capés au budget)
                 _blab_ps = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
-                _xl_bov_ps = {k: v for k, v in (postes_map.get(_pk, {}).get('budget_overrides') or {}).items() if v is not None}
+                _xl_bov_ps = {k: v for k, v in (_pm_ps.get('budget_overrides') or {}).items() if v is not None}
                 _plan_bdata_ps = {bk: float((_xl_bov_ps.get(bk) if _xl_bov_ps.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab_ps}
                 _plan_used_ps2 = {bk: 0.0 for bk in _blab_ps}
                 _plan_ivs_ps = []
@@ -3410,8 +3420,7 @@ def api_past_sessions():
                 if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
                     _el2 = max(1.0, _mdur2 - planned_ded)
                     trs = round(s["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
-        _pk_check = (s["pilot"].lower(), s["date"])
-        if _pk_check not in postes_map:
+        if not _pm_get(postes_map, s["pilot"].lower(), s["date"], s.get("poste","")):
             continue
         _is_live_ps = bool(_live_key and key == _live_key)
         result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs,"is_live":_is_live_ps,"_rn":s["max_rn"]})
@@ -3450,8 +3459,7 @@ def api_period_report():
         pilot = str(r[4] or ''); poste = str(r[3] or '')
         if filter_pilot and pilot.lower() != filter_pilot: continue
         if filter_poste and poste.lower() != filter_poste: continue
-        _pk = (pilot.lower(), date_str)
-        if _pk not in postes_map: continue
+        if not _pm_get(postes_map, pilot.lower(), date_str, poste): continue
         d_obj = _parse_dmy(date_str)
         if d_obj is None: continue
         if dt_from and d_obj < dt_from: continue
@@ -3491,8 +3499,7 @@ def api_period_report():
     # Limiter aux N sessions les plus récentes si max_sessions > 0
     if max_sessions > 0 and len(sessions) > max_sessions:
         def _key_row(kv):
-            _pk3 = (kv[1]['pilot'].lower(), kv[1]['date'])
-            return postes_map.get(_pk3, {}).get('row_idx', 0)
+            return _pm_get(postes_map, kv[1]['pilot'].lower(), kv[1]['date'], kv[1].get('poste','')).get('row_idx', 0)
         sessions = dict(sorted(sessions.items(), key=_key_row, reverse=True)[:max_sessions])
     # ── Aggregate ──
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
@@ -3504,9 +3511,8 @@ def api_period_report():
     trs_by_day = {}
     cadence_ref = round(prod_ref/480, 4) if prod_ref > 0 else 0.0
     for key, s in sessions.items():
-        _pk = (s['pilot'].lower(), s['date'])
-        if _pk not in postes_map: continue
-        _xl = postes_map[_pk]
+        _xl = _pm_get(postes_map, s['pilot'].lower(), s['date'], s.get('poste',''))
+        if not _xl: continue
         _pdeb = _xl['deb_dt']; _pfin = _xl['fin_dt']
         model_dur_s = max(0.0, (_pfin - _pdeb).total_seconds()) if _pfin else 0.0
         # Lire directement depuis Excel (colonnes R, S, T, U)
@@ -3744,8 +3750,8 @@ def api_session_report():
     _sr_live_date = _sr_ss.date().strftime("%d/%m/%Y") if _sr_ss else datetime.date.today().strftime("%d/%m/%Y")
     _is_live_sr = bool(_S.get("pilot") and _S.get("pilot") == pilot and _S.get("poste") == poste and date_str == _sr_live_date)
     _postes_map2 = load_postes_shift_map()
-    _pk2 = (pilot.lower(), date_str)
-    _xl_bov = {k: v for k, v in (_postes_map2.get(_pk2, {}).get('budget_overrides') or {}).items() if v is not None}
+    _pm2_sr = _pm_get(_postes_map2, pilot.lower(), date_str, poste)
+    _xl_bov = {k: v for k, v in (_pm2_sr.get('budget_overrides') or {}).items() if v is not None}
     _sr_live_ov = (_S.get("budget_overrides") or {}) if _is_live_sr else _xl_bov
     planned_ded = _compute_planned_deduction_s(evt_rows, _sr_live_ov if (_is_live_sr or _xl_bov) else None)
     # Pour session en cours : intervalles planifiés capés au budget (comme api_fin_poste_data)
@@ -3799,11 +3805,10 @@ def api_session_report():
         except: pass
     _xl_trs_sr = None
     _xl_perte_sr = None
-    if _pk2 in _postes_map2:
-        _pm2 = _postes_map2[_pk2]
-        _pdeb2 = _pm2['deb_dt']; _pfin2 = _pm2['fin_dt']
-        _xl_trs_sr = _pm2.get('trs')
-        _xl_perte_sr = _pm2.get('perte_min')
+    if _pm2_sr:
+        _pdeb2 = _pm2_sr['deb_dt']; _pfin2 = _pm2_sr['fin_dt']
+        _xl_trs_sr = _pm2_sr.get('trs')
+        _xl_perte_sr = _pm2_sr.get('perte_min')
         model_dur_s = max(0.0, (_pfin2 - _pdeb2).total_seconds()) if _pfin2 else (get_current_shift_duration_s() if _is_live_sr else 0.0)
         if not debut_str:
             debut_str = _pdeb2.strftime("%H:%M")
@@ -3843,7 +3848,7 @@ def api_session_report():
             try: _bs = int(_pp[0] or 0)*3600+int(_pp[1] or 0)*60+int(_pp[2] or 0)
             except: _bs = 0
             budget_data[_bk]['used_min'] += _bs/60
-    _pm2_xl = _postes_map2.get(_pk2, {})
+    _pm2_xl = _pm2_sr
     return jsonify({"date":date_str,"pilot":pilot,"poste":poste,"prod_rows":prod_rows,"evt_rows":evt_rows,"budget_data":budget_data,
                     "trs_shift":trs_shift,"trs":trs_of,"tot_equiv":round(tot_eq,1),"tot_s":round(tot_s,0),
                     "stop_s":round(stop_s,0),"nb_of":len(prod_rows),
@@ -4195,9 +4200,8 @@ def _recalc_session_internal(date_str, pilot, poste):
         _date_obj_rc = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
     except: _date_obj_rc = None
     postes_map = load_postes_shift_map()
-    _pk_rc = (pilot.lower(), date_str)
-    if _pk_rc in postes_map:
-        _pm_rc = postes_map[_pk_rc]
+    _pm_rc = _pm_get(postes_map, pilot.lower(), date_str, poste)
+    if _pm_rc:
         _pdeb_rc = _pm_rc['deb_dt']; _pfin_rc = _pm_rc['fin_dt']
         model_dur_s = max(0.0, (_pfin_rc - _pdeb_rc).total_seconds()) if _pfin_rc else get_shift_duration_s(poste, _date_obj_rc)
         row_num_rc = _pm_rc.get('row_idx')
@@ -4205,14 +4209,12 @@ def _recalc_session_internal(date_str, pilot, poste):
         model_dur_s = get_shift_duration_s(poste, _date_obj_rc)
         row_num_rc = None
     if not row_num_rc:
-        try:
-            _debut_rc_dt = postes_map[_pk_rc]['deb_dt'] if _pk_rc in postes_map else None
-        except: _debut_rc_dt = None
+        _debut_rc_dt = _pm_rc.get('deb_dt') if _pm_rc else None
         row_num_rc = find_postes_row_num(pilot, _debut_rc_dt) if _debut_rc_dt else None
     if not row_num_rc:
         return False
     _blab_rc = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
-    _xl_bov_rc = {k: v for k, v in (postes_map.get(_pk_rc, {}).get('budget_overrides') or {}).items() if v is not None}
+    _xl_bov_rc = {k: v for k, v in (_pm_rc.get('budget_overrides') or {}).items() if v is not None}
     planned_ded = _compute_planned_deduction_s(evt_rows, _xl_bov_rc or None)
     _plan_bdata_rc = {bk: float((_xl_bov_rc.get(bk) if _xl_bov_rc.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab_rc}
     _plan_used_rc = {bk: 0.0 for bk in _blab_rc}
@@ -12362,8 +12364,7 @@ def _force_fin_poste_server():
         else:
             evt_rows.append((rn, r))
     postes_map = load_postes_shift_map()
-    _pk = (pilot.lower(), date_str)
-    _pm = postes_map.get(_pk, {})
+    _pm = _pm_get(postes_map, pilot.lower(), date_str, poste)
     _pdeb = _pm.get("deb_dt"); _pfin = _pm.get("fin_dt")
     try: _date_obj = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
     except: _date_obj = None
