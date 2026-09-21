@@ -2897,8 +2897,8 @@ def api_edit_row():
                     row_type = str(ws.cell(row_num, 1).value or "").strip().lower()
                     # Recalculer la durée pour TOUS les types (arrêts, pauses, prod…)
                     debut_s = _hms_to_sec(str(ws.cell(row_num, 17).value or "00:00:00"))
-                    fin_s   = _hms_to_sec(str(ws.cell(row_num, 18).value or "00:00:00"))
-                    brut_s  = fin_s - debut_s if fin_s > debut_s else 0
+                    fin_s   = _norm_fin(debut_s, _hms_to_sec(str(ws.cell(row_num, 18).value or "00:00:00")))
+                    brut_s  = max(0, fin_s - debut_s)
                     if brut_s > 0:
                         ws.cell(row_num, 19).value = fmt(brut_s)
                     # Recalcul equiv / cadence / TRS uniquement pour les lignes de production
@@ -3181,7 +3181,7 @@ def api_history_today():
             _rtype_full = str(r[0] or "").strip()
             if any(k in _rtype_full.lower() for k in ["pause","nettoyage","réunion","reunion","meeting"]):
                 _htd_ded_s += _hms_to_sec(str(r[18] or "00:00:00"))
-    _htd_deg_ivs_s = sorted((s, f) for s, f in _htd_deg_ivs if f > s)
+    _htd_deg_ivs_s = sorted((s, _norm_fin(s, f)) for s, f in _htd_deg_ivs if _norm_fin(s, f) > s)
     _htd_deg_mg = []
     for _s, _f in _htd_deg_ivs_s:
         if _htd_deg_mg and _s <= _htd_deg_mg[-1][1]: _htd_deg_mg[-1] = (_htd_deg_mg[-1][0], max(_htd_deg_mg[-1][1], _f))
@@ -3461,8 +3461,9 @@ def api_period_report():
             _stype = str(re_p[0] or '').strip()
             if _stype and not _is_degrade_type(_stype):
                 _ds_p = _hms_to_sec(str(re_p[16] or '00:00:00'))
-                _fs_p = _hms_to_sec(str(re_p[17] or '00:00:00'))
-                stop_by_type[_stype] = stop_by_type.get(_stype, 0.0) + max(0.0, _fs_p - _ds_p)
+                _fs_p = _norm_fin(_ds_p, _hms_to_sec(str(re_p[17] or '00:00:00')))
+                _dur_p = _hms_to_sec(str(re_p[18] or '00:00:00')) if _fs_p <= _ds_p else _fs_p - _ds_p
+                stop_by_type[_stype] = stop_by_type.get(_stype, 0.0) + max(0.0, _dur_p)
         agg_ouv     += ouv_min
         agg_utile   += utile_min
         agg_fonct   += fonct_min
@@ -3624,7 +3625,9 @@ def api_session_report():
         else: _deg_mg_sr.append((_s, _f))
     degrade_s = sum(_f - _s for _s, _f in _deg_mg_sr)
     actual_debut = _sec_to_hm(min(all_debut_s)) if all_debut_s else ""
-    actual_fin = _sec_to_hm(max(all_fin_s)) if all_fin_s else ""
+    # Passage minuit : normaliser les heures de fin avant le max pour éviter 23:45 > 00:45
+    _min_deb = min(all_debut_s) if all_debut_s else 0
+    actual_fin = _sec_to_hm(_norm_fin(_min_deb, max(all_fin_s)) % 86400) if all_fin_s else ""
     try:
         _date_obj_rpt = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
     except Exception:
