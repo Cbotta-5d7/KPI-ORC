@@ -10763,7 +10763,7 @@ async function calcPeriodReport(autoLoad){
       const by=padT+gH-bh;
       const col=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgBars+=`<rect x="${x}" y="${by}" width="${WB}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(s.trs>=0){const _ty=Math.max(by-3,14);const _lb=s.trs.toFixed(0)+'%';const _lw=_lb.length*8+6;svgLabels+=`<rect x="${cx-_lw/2}" y="${_ty-12}" width="${_lw}" height="15" fill="white" rx="2" opacity=".9"/><text x="${cx}" y="${_ty}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb}</text>`;}
+      if(s.trs>=0){const _lb=s.trs.toFixed(0)+'%';if(bh>=18){const _ty=by+Math.min(bh-4,14);svgLabels+=`<text x="${cx}" y="${_ty}" text-anchor="middle" font-size="13" font-weight="800" fill="white" style="text-shadow:0 1px 2px rgba(0,0,0,.3)">${_lb}</text>`;}else{const _ty=Math.max(by-3,14);const _lw=_lb.length*8+6;svgLabels+=`<rect x="${cx-_lw/2}" y="${_ty-12}" width="${_lw}" height="15" fill="white" rx="2" opacity=".9"/><text x="${cx}" y="${_ty}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb}</text>`;}}
       const dp=s.date.split('/');
       if(_vertA){
         const yA=padT+gH+4;
@@ -10804,7 +10804,7 @@ async function calcPeriodReport(autoLoad){
       const by=padT2+gH2-bh;
       const col=v>=_CAD_CIBLE?'#16a34a':v>=_CAD_CIBLE*0.8?'#f59e0b':'#dc2626';
       svgBars2+=`<rect x="${x}" y="${by}" width="${WB2}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(v>0){const _ty2=Math.max(by-3,14);const _lb2=String(v);const _lw2=_lb2.length*9+6;svgLabels2+=`<rect x="${cx2-_lw2/2}" y="${_ty2-13}" width="${_lw2}" height="16" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="14" font-weight="700" fill="${col}">${_lb2}</text>`;}
+      if(v>0){const _lb2=String(v);if(bh>=18){const _ty2=by+Math.min(bh-4,14);svgLabels2+=`<text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="13" font-weight="800" fill="white" style="text-shadow:0 1px 2px rgba(0,0,0,.3)">${_lb2}</text>`;}else{const _ty2=Math.max(by-3,14);const _lw2=_lb2.length*9+6;svgLabels2+=`<rect x="${cx2-_lw2/2}" y="${_ty2-13}" width="${_lw2}" height="16" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb2}</text>`;}}
       const dp=s.date.split('/');
       if(_vertB){
         const yB=padT2+gH2+4;
