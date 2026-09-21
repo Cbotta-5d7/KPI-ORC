@@ -4997,7 +4997,7 @@ select{cursor:default}
 
   <!-- ════ MODAL PRÉ-POSTE (gaps non déclarés avant 1er OF ou entre OFs) ════ -->
   <div id="m-preshift" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:601;align-items:center;justify-content:center">
-    <div style="width:min(860px,95vw);background:#f8fafc;border-radius:18px;box-shadow:0 4px 6px rgba(0,0,0,.07),0 20px 60px rgba(0,0,0,.2);overflow:hidden;border:1px solid #e2e8f0">
+    <div style="width:min(860px,95vw);max-height:95vh;background:#f8fafc;border-radius:18px;box-shadow:0 4px 6px rgba(0,0,0,.07),0 20px 60px rgba(0,0,0,.2);overflow:hidden;border:1px solid #e2e8f0;display:flex;flex-direction:column">
       <!-- Header rouge -->
       <div style="background:linear-gradient(135deg,#7f1d1d 0%,#991b1b 40%,#dc2626 70%,#ef4444 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden">
         <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%,rgba(255,200,200,.18) 0%,transparent 70%);pointer-events:none"></div>
@@ -5015,7 +5015,7 @@ select{cursor:default}
       <input type="hidden" id="ps-start-iso">
       <input type="hidden" id="ps-gap-s">
       <!-- Corps -->
-      <div style="padding:18px 24px">
+      <div style="padding:18px 24px;overflow-y:auto;flex:1">
         <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px">Déclarer comme :</div>
         <!-- Raccourcis rapides -->
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
@@ -5246,7 +5246,7 @@ select{cursor:default}
 
   <!-- ════ MODAL INTERPOSTE ════ -->
   <div id="m-interposte" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:600;align-items:center;justify-content:center">
-    <div class="card" style="width:min(880px,95vw);padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--amber)">
+    <div class="card" style="width:min(880px,95vw);max-height:95vh;overflow-y:auto;padding:20px;background:#fff;border-radius:12px;border-top:4px solid var(--amber)">
       <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:4px">⏱ Temps hors production</div>
       <div id="ip-duration" style="font-size:calc(13px*var(--zf,1));color:var(--amber);font-weight:700;margin-bottom:8px"></div>
       <div style="display:flex;gap:10px;margin-bottom:12px;align-items:flex-end">
