@@ -10071,6 +10071,9 @@ async function kpiLastMonths(n){
 }
 
 async function loadKPI(){
+  // Préserver la position de scroll pour éviter l'effet de zoom lors du rechargement
+  const _kpiView=document.getElementById('v-kpi');
+  const _kpiScroll=_kpiView?_kpiView.scrollTop:0;
   _kpiInitDates();
   const fi=document.getElementById('kpi-from'),ti=document.getElementById('kpi-to');
   const _parseLocalDate=s=>{if(!s)return null;const p=s.split('-');return new Date(+p[0],+p[1]-1,+p[2]).getTime();};
@@ -10216,6 +10219,8 @@ async function loadKPI(){
       }).join('');
     }
   }
+  // Restaurer la position de scroll (évite l'effet de zoom / saut de vue)
+  if(_kpiView) requestAnimationFrame(()=>{_kpiView.scrollTop=_kpiScroll;});
 }
 
 // ── HISTORY ROW DETAIL ──
@@ -10699,7 +10704,7 @@ async function calcPeriodReport(autoLoad){
       <div style="flex:0 0 260px;display:flex;flex-direction:column;gap:4px;overflow-y:auto">
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
-        <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
+        <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colCadRj}">${d.cadence_h||0} <span style="font-weight:600;color:var(--gray)">Pcs/h</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100} pièces/min)</span></div></div>
         ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
       </div>
       <!-- Droite : graphiques+pareto côte à côte, tables -->
@@ -10778,7 +10783,7 @@ async function captureRapportJour(){
       <!-- Cards pièces/equiv/cad -20% police : 26→21px, 20→16px, 23→18px, 17→14px -->
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:#374151">Pièces</span> <span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:#374151">Equiv</span> <span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:18px;font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:14px;font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:18px;font-weight:800;color:${_colCadRj}">${d.cadence_h||0} <span style="font-weight:600;color:#374151">Pcs/h</span> <span style="font-size:14px;font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100} pièces/min)</span></div></div>
       <!-- Graphiques TRS par équipe et Cadence vs Ref -->
       ${chartTrsHtml}
       ${chartCadHtml}
