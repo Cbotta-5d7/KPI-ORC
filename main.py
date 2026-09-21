@@ -2938,7 +2938,7 @@ def api_fin_poste_data():
     pilot_poste = _S["poste"] or ""
     prod_ref = get_prod_ref()
     tot_eq=0.0; tot_s=0.0
-    of_list=[]; _filtered_prod_raw_fp=[]
+    of_list=[]; _filtered_prod_raw_fp=[]; _of_rownums=[]
     prod_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() in ("production","prod","")]
     for rn, r in prod_rows:
         try:
@@ -2962,7 +2962,18 @@ def api_fin_poste_data():
                 "duree":str(r[18] or ""),"trs":trs,"fibre":str(r[11] or ""),
                 "nb_pers":str(r[6] or ""),
             })
+            _of_rownums.append(rn)
         except: pass
+    # Detect overlapping production OFs
+    overlap_ofs = []
+    for _oi in range(len(of_list)):
+        for _oj in range(_oi+1, len(of_list)):
+            try:
+                _si = _hms_to_sec(of_list[_oi]["debut"]); _ei = _norm_fin(_si, _hms_to_sec(of_list[_oi]["fin"]))
+                _sj = _hms_to_sec(of_list[_oj]["debut"]); _ej = _norm_fin(_sj, _hms_to_sec(of_list[_oj]["fin"]))
+                if _si < _ej and _sj < _ei:
+                    overlap_ofs.append({"i":_oi,"j":_oj,"of_i":of_list[_oi]["of"],"of_j":of_list[_oj]["of"],"debut_i":of_list[_oi]["debut"],"fin_i":of_list[_oi]["fin"],"debut_j":of_list[_oj]["debut"],"fin_j":of_list[_oj]["fin"],"rn_i":_of_rownums[_oi] if _oi<len(_of_rownums) else None,"rn_j":_of_rownums[_oj] if _oj<len(_of_rownums) else None})
+            except: pass
     trs_poste=-1.0
     if prod_ref>0 and tot_s>0: trs_poste=round(tot_eq/(prod_ref*tot_s/28800)*100,1)
     # TRS shift : même formule que l'accueil — elapsed = lastProdFin − modelDebut
@@ -3144,6 +3155,7 @@ def api_fin_poste_data():
         "depassement_min": depassement_min_fp,
         "nb_fibre_chg": nb_fibre_chg_fp,
         "decl_list": decl_list,
+        "overlap_ofs": overlap_ofs,
     })
 
 @flask_app.route('/api/history_today')
@@ -4018,6 +4030,127 @@ def api_save_poste():
     row_num = _S.get("postes_row_num") or find_postes_row_num(_S.get("pilot",""), _S.get("shift_debut_dt"))
     write_poste_row(data, row_num=row_num)
     return jsonify({"ok":True})
+
+@flask_app.route('/api/admin_recalc_session', methods=['POST'])
+def api_admin_recalc_session():
+    """Recalcule et réécrit la ligne Postes pour une session historique depuis les Declarations."""
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    date_str = data.get("date","")
+    pilot = data.get("pilot","")
+    poste = data.get("poste","")
+    if not date_str or not pilot or not poste:
+        return jsonify({"ok":False,"error":"Paramètres manquants"}),400
+    prod_ref = get_prod_ref()
+    prod_raws = []; evt_rows = []
+    for rn, r in _decl_cache:
+        row_date_key = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
+        if row_date_key != date_str: continue
+        if str(r[4] or "") != pilot or str(r[3] or "") != poste: continue
+        row_type = str(r[0] or "").strip().lower()
+        if row_type in ("production","prod",""):
+            prod_raws.append(r)
+        else:
+            evt_rows.append((rn, r))
+    try:
+        _date_obj_rc = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
+    except: _date_obj_rc = None
+    postes_map = load_postes_shift_map()
+    _pk_rc = (pilot.lower(), date_str)
+    if _pk_rc in postes_map:
+        _pm_rc = postes_map[_pk_rc]
+        _pdeb_rc = _pm_rc['deb_dt']; _pfin_rc = _pm_rc['fin_dt']
+        model_dur_s = max(0.0, (_pfin_rc - _pdeb_rc).total_seconds()) if _pfin_rc else get_shift_duration_s(poste, _date_obj_rc)
+        row_num_rc = _pm_rc.get('row_idx')
+    else:
+        model_dur_s = get_shift_duration_s(poste, _date_obj_rc)
+        row_num_rc = None
+    if not row_num_rc:
+        try:
+            _debut_rc_dt = postes_map[_pk_rc]['deb_dt'] if _pk_rc in postes_map else None
+        except: _debut_rc_dt = None
+        row_num_rc = find_postes_row_num(pilot, _debut_rc_dt) if _debut_rc_dt else None
+    _blab_rc = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
+    _xl_bov_rc = {k: v for k, v in (postes_map.get(_pk_rc, {}).get('budget_overrides') or {}).items() if v is not None}
+    planned_ded = _compute_planned_deduction_s(evt_rows, _xl_bov_rc or None)
+    _plan_bdata_rc = {bk: float((_xl_bov_rc.get(bk) if _xl_bov_rc.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab_rc}
+    _plan_used_rc = {bk: 0.0 for bk in _blab_rc}
+    _plan_ivs_rc = []
+    for _, r_e in evt_rows:
+        _bk_rc2 = _get_arret_budget_key(str(r_e[0] or ''))
+        if _bk_rc2 and _bk_rc2 in _plan_bdata_rc:
+            _ds_rc = _hms_to_sec(str(r_e[16] or '00:00:00'))
+            _fs_rc = _norm_fin(_ds_rc, _hms_to_sec(str(r_e[17] or '00:00:00')))
+            _dur_rc = _fs_rc - _ds_rc
+            if _dur_rc > 0 and _plan_used_rc[_bk_rc2] < _plan_bdata_rc[_bk_rc2]:
+                _plan_ivs_rc.append((_ds_rc, _ds_rc + min(_dur_rc, _plan_bdata_rc[_bk_rc2] - _plan_used_rc[_bk_rc2])))
+            _plan_used_rc[_bk_rc2] += _dur_rc
+    _deg_ivs_rc = _merged_degrade_ivs([r for _, r in evt_rows])
+    tot_eq = sum(float(str(r[21] or 0).replace(",",".") or 0) for r in prod_raws)
+    tot_pcs = sum(float(str(r[19] or 0).replace(",",".") or 0) for r in prod_raws)
+    _stop_raw_rc = [(_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00"))) for _, r in evt_rows if not _is_degrade_type(str(r[0] or ""))]
+    _stop_ivs_rc = sorted((s, _norm_fin(s, f)) for s, f in _stop_raw_rc if _norm_fin(s, f) > s)
+    _merged_rc = []
+    for _ds, _fs in _stop_ivs_rc:
+        if _merged_rc and _ds <= _merged_rc[-1][1]: _merged_rc[-1] = (_merged_rc[-1][0], max(_merged_rc[-1][1], _fs))
+        else: _merged_rc.append((_ds, _fs))
+    net_stop_min = round(sum(f - s for s, f in _merged_rc) / 60, 1)
+    _bdata_rc = {bk: {"budget_min": float((_xl_bov_rc.get(bk) if _xl_bov_rc.get(bk) is not None else cfg.get(bk, 0)) or 0), "used_min": 0.0} for bk in _blab_rc}
+    for _, r_e in evt_rows:
+        _bk_b = _get_arret_budget_key(str(r_e[0] or ''))
+        if _bk_b and _bk_b in _bdata_rc:
+            try:
+                _dp = str(r_e[18] or ''); _pp = (_dp+':00:00').split(':')
+                _bdata_rc[_bk_b]['used_min'] += (int(_pp[0] or 0)*3600+int(_pp[1] or 0)*60+int(_pp[2] or 0))/60
+            except: pass
+    pause_min = round(_bdata_rc.get("pause_min",{}).get("used_min",0.0),1)
+    nett_min = round(sum(_bdata_rc.get(k,{}).get("used_min",0.0) for k in ("clean_short_min","clean_long_min","clean_grand_min")),1)
+    reunion_min = round(_bdata_rc.get("meeting_tol_min",{}).get("used_min",0.0),1)
+    depassement_min = round(sum(max(0.0, v["used_min"]-v["budget_min"]) for v in _bdata_rc.values()),1)
+    _degrade_s_rc = _merged_degrade_s([r for _, r in evt_rows])
+    ouverture_min = round(model_dur_s/60,1)
+    arrets_prevu_min = planned_ded/60
+    temps_utile_min = round(max(0.0, ouverture_min - arrets_prevu_min),1)
+    temps_fonctionnement_min = round(max(0.0, ouverture_min - net_stop_min),1)
+    cadence_ref = round(prod_ref/480,4) if prod_ref>0 else 0.0
+    _adj_rc = max(1.0, model_dur_s - planned_ded)
+    if _pers_pct_map and prod_raws:
+        trs_shift, _sum_exp_rc = _option_b_trs(prod_raws, _deg_ivs_rc, prod_ref, _plan_ivs_rc)
+        perte_cadence_min = round((_sum_exp_rc - tot_eq)/cadence_ref,1) if cadence_ref>0 and _sum_exp_rc>0 else 0.0
+        pcs_theorique = round(_sum_exp_rc,1)
+    elif model_dur_s>0 and prod_ref>0 and tot_eq>0:
+        trs_shift = round(tot_eq/(prod_ref*_adj_rc/28800)*100,1)
+        perte_cadence_min = round((prod_ref*_adj_rc/28800-tot_eq)/cadence_ref,1) if cadence_ref>0 else 0.0
+        pcs_theorique = round(prod_ref*_adj_rc/28800,1)
+    else:
+        trs_shift = -1.0; perte_cadence_min = 0.0; pcs_theorique = 0.0
+    _sorted_fib_rc = sorted([r for r in prod_raws if r[11]], key=lambda x: str(x[16] or ""))
+    nb_fibre_chg = sum(1 for i in range(1,len(_sorted_fib_rc)) if _sorted_fib_rc[i][11]!=_sorted_fib_rc[i-1][11])
+    cadence_h = round(tot_eq*60/temps_utile_min) if temps_utile_min>0 else 0
+    try:
+        _date_parts = date_str.split('/')
+        _date_fmt = f"{_date_parts[2]}-{_date_parts[1]}-{_date_parts[0]}"
+    except: _date_fmt = date_str
+    recalc_data = {
+        "date": date_str,"pilot": pilot,"poste": poste,
+        "nb_of": len(prod_raws),"prod_total": round(tot_pcs,0),"tot_equiv": round(tot_eq,1),
+        "trs_shift": round(trs_shift,1) if trs_shift>=0 else "","cadence_h": cadence_h,
+        "pause_min": pause_min,"nett_min": nett_min,"reunion_min": reunion_min,
+        "depassement_min": depassement_min,"nb_fibre_chg": nb_fibre_chg,"comment":"",
+        "temps_ouverture_min": ouverture_min,"temps_utile_min": temps_utile_min,
+        "temps_fonctionnement_min": temps_fonctionnement_min,"temps_arret_min": net_stop_min,
+        "cadence_ref_pcs_min": cadence_ref,"perte_cadence_min": perte_cadence_min,
+        "degrade_min": round(_degrade_s_rc/60,1),"pcs_theorique": pcs_theorique,
+        "budget_overrides": _xl_bov_rc or {},
+        "dur_poste_theorique_min": ouverture_min,
+    }
+    if not row_num_rc:
+        return jsonify({"ok":False,"error":"Ligne Postes introuvable pour cette session"})
+    write_poste_row(recalc_data, row_num=row_num_rc)
+    threading.Thread(target=load_postes_shift_map, daemon=True).start()
+    return jsonify({"ok":True,"trs":round(trs_shift,1) if trs_shift>=0 else -1,"tot_equiv":round(tot_eq,1),"nb_of":len(prod_raws)})
 
 @flask_app.route('/api/pilot_passwords_excel', methods=['POST'])
 def api_pilot_passwords_excel():
@@ -9321,7 +9454,8 @@ async function doFinPoste(){
   if(fpd){
     window._ecartFpData=fpd;
     const _sigGaps=(fpd.gap_intervals||[]).filter(g=>(g.duree_min||0)>=2);
-    const hasIssue=_sigGaps.length>0||((fpd.overflow_s||0)>120)||((fpd.ecart_s||0)>120);
+    const _hasOverlaps=(fpd.overlap_ofs||[]).length>0;
+    const hasIssue=_sigGaps.length>0||((fpd.overflow_s||0)>120)||((fpd.ecart_s||0)>120)||_hasOverlaps;
     if(hasIssue){_showEcartModal({...fpd,gap_intervals:_sigGaps});}else{goTab('finposte');}
   } else goTab('finposte');
 }
@@ -9329,7 +9463,7 @@ async function doFinPoste(){
 async function _doGoFinPoste(){
   if(!_ecartChecked){
     const fpd=await apiFetch('/api/fin_poste_data');
-    if(fpd&&((fpd.ecart_s||0)>120||(fpd.overflow_s||0)>120||(fpd.gap_intervals||[]).filter(g=>(g.duree_min||0)>=2).length>0)){
+    if(fpd&&((fpd.ecart_s||0)>120||(fpd.overflow_s||0)>120||(fpd.gap_intervals||[]).filter(g=>(g.duree_min||0)>=2).length>0||(fpd.overlap_ofs||[]).length>0)){
       window._ecartFpData=fpd;
       _showEcartModal(fpd);
       return;
@@ -9346,13 +9480,20 @@ function _showEcartModal(fpd){
   const overflow_min=Math.round(fpd.overflow_min||0);
   const gaps=fpd.gap_intervals||[];
   const hasGaps=gaps.length>0;
+  const overlaps=fpd.overlap_ofs||[];
+  const hasOverlaps=overlaps.length>0;
   // Subtitle
   const subEl=document.getElementById('ecart-subtitle');
   if(subEl) subEl.textContent=(modelDebut&&modelFin)?'Plage du poste : '+modelDebut+' → '+modelFin+' ('+model_min+' min)':'';
   // Guide banner
   const guidEl=document.getElementById('ecart-guide');
   if(guidEl){
-    if(overflow_min>0){
+    if(hasOverlaps){
+      const ovMsg=overlaps.length===1?'1 chevauchement d\'OFs':overlaps.length+' chevauchements d\'OFs';
+      const gapExtra=hasGaps?' + '+gaps.reduce((a,g)=>a+(g.duree_min||0),0)+' min non justifiées':'';
+      guidEl.style.cssText='flex-shrink:0;padding:8px 20px;border-bottom:1px solid var(--border);background:#fef2f2;font-size:calc(12px*var(--zf,1))';
+      guidEl.innerHTML='<span style="color:#dc2626;font-weight:800">⚠ '+ovMsg+' détecté'+(overlaps.length>1?'s':'')+'</span>'+gapExtra+' — corrigez ou supprimez les OFs qui se chevauchent ci-dessous.';
+    } else if(overflow_min>0){
       guidEl.style.cssText='flex-shrink:0;padding:8px 20px;border-bottom:1px solid var(--border);background:#fef2f2;font-size:calc(12px*var(--zf,1))';
       guidEl.innerHTML='<span style="color:#dc2626;font-weight:800">⚠ Dépassement de plage : +'+overflow_min+' min au-delà de '+esc(modelFin)+'</span> — corrigez via <i>Options avancées</i>.';
     } else if(!hasGaps){
@@ -9422,7 +9563,36 @@ function _showEcartModal(fpd){
         }
       });
     }
-    tlEl.innerHTML=html;
+    // Build overlapping OF section (prepended before regular timeline)
+    let overlapHtml='';
+    if(overlaps.length>0){
+      overlapHtml+='<div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:10px 12px;margin-bottom:10px">';
+      overlapHtml+='<div style="font-size:calc(12px*var(--zf,1));font-weight:900;color:#dc2626;margin-bottom:8px">⚠ Chevauchements d\'OFs détectés</div>';
+      overlaps.forEach((ov,ovIdx)=>{
+        const _mkOfRow=(ofNum,oldDeb,debId,finId,rn)=>`
+          <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;flex-wrap:wrap">
+            <span style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#1e3a8a;min-width:90px">OF ${esc(ofNum||'?')}</span>
+            <input type="time" id="${debId}" value="${esc(oldDeb)}" style="padding:3px 5px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(11px*var(--zf,1));width:82px">
+            <span style="color:#9f1239;font-weight:700">→</span>
+            <input type="time" id="${finId}" style="padding:3px 5px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(11px*var(--zf,1));width:82px">
+            <button class="btn btn-prim" style="font-size:calc(10px*var(--zf,1));padding:3px 9px;background:#0369a1;border-color:#0369a1" onclick="ecartSaveOvOf('${esc(ofNum||'')}','${esc(oldDeb)}','${debId}','${finId}')">✓ Sauver</button>
+            ${rn?`<button class="btn btn-prim" style="font-size:calc(10px*var(--zf,1));padding:3px 9px;background:#dc2626;border-color:#dc2626" onclick="ecartDeleteOvOf(${rn},'${esc(ofNum||'')}')">🗑 Supprimer</button>`:''}
+          </div>`;
+        overlapHtml+=`<div style="background:#fff;border:1.5px solid #fca5a5;border-radius:8px;padding:8px 10px;margin-bottom:6px">
+          <div style="font-size:calc(10px*var(--zf,1));color:#9f1239;font-weight:700;margin-bottom:6px">OF ${esc(ov.of_i||'?')} (${esc(ov.debut_i)}→${esc(ov.fin_i)}) ↔ OF ${esc(ov.of_j||'?')} (${esc(ov.debut_j)}→${esc(ov.fin_j)})</div>`;
+        // Set initial values for fin inputs inline (value set via JS after insert would be complex, use data approach)
+        overlapHtml+=_mkOfRow(ov.of_i,ov.debut_i,`ov-deb-${ovIdx}-i`,`ov-fin-${ovIdx}-i`,ov.rn_i);
+        overlapHtml+=_mkOfRow(ov.of_j,ov.debut_j,`ov-deb-${ovIdx}-j`,`ov-fin-${ovIdx}-j`,ov.rn_j);
+        overlapHtml+=`</div>`;
+      });
+      overlapHtml+='</div>';
+    }
+    tlEl.innerHTML=overlapHtml+html;
+    // Set fin values (not settable via value= in string for dynamic ids)
+    overlaps.forEach((ov,ovIdx)=>{
+      const fi=document.getElementById(`ov-fin-${ovIdx}-i`);if(fi)fi.value=ov.fin_i||'';
+      const fj=document.getElementById(`ov-fin-${ovIdx}-j`);if(fj)fj.value=ov.fin_j||'';
+    });
   }
   // OFs list (dans accordéon avancé)
   const list=document.getElementById('ecart-of-list');
@@ -9587,6 +9757,31 @@ async function skipEcartPoste(){
 
 function ecartOpenOfPanel(){
   // OF panel is always visible now - kept for backward compat
+}
+
+async function ecartSaveOvOf(ofNum,oldDebut,debElId,finElId){
+  const newDebut=(document.getElementById(debElId)||{}).value||'';
+  const newFin=(document.getElementById(finElId)||{}).value||'';
+  if(!newDebut||!newFin){toast('Renseigner début et fin','err');return;}
+  const r=await apiFetch('/api/update_of_time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({of_num:ofNum,old_debut:oldDebut,new_debut:newDebut,new_fin:newFin})});
+  if(r&&r.ok){
+    toast('OF '+ofNum+' mis à jour','ok');
+    const fpd=await apiFetch('/api/fin_poste_data');
+    if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
+  } else {toast('Erreur mise à jour OF '+(r&&r.error||''),'err');}
+}
+
+async function ecartDeleteOvOf(rowNum,ofLabel){
+  if(!confirm('Supprimer définitivement l\'OF '+ofLabel+' ?')) return;
+  const pw=prompt('Mot de passe administrateur :');
+  if(!pw) return;
+  const r=await fetch('/api/delete_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rowNum})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){
+    toast('OF '+ofLabel+' supprimé','ok');
+    const fpd=await apiFetch('/api/fin_poste_data');
+    if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
+  } else {toast('Erreur : '+(d&&d.error||'?'),'err');}
 }
 
 async function saveEcartOf(btn){
@@ -11192,6 +11387,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${d.is_live?'<span style="color:#94a3b8">—</span>':`<span style="color:${_colPerteRp};font-weight:800">${perteCadenceRaw<=0?Math.abs(perteCadenceRaw)+' min de gain':perteCadenceRaw+' min de perte'}</span>`}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
         </div>
       </div>
+      ${!d.is_live?`<div style="padding:6px 8px;border-top:1px solid var(--border);margin-top:4px;flex-shrink:0">
+        <button onclick="doRecalcSession('${esc(date)}','${esc(pilot)}','${esc(poste)}')" style="width:100%;padding:6px 8px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:7px;font-size:calc(10px*var(--zf,1));cursor:pointer;font-weight:700;color:#374151;transition:background .15s" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'" title="Recalcule les métriques TRS depuis les déclarations Excel">↺ Recalculer (admin)</button>
+      </div>`:''}
       </div>`;
   }
   // ── Panneau droit : timeline + tables (pleine largeur) ──
@@ -11271,6 +11469,21 @@ async function loadSessionReport(date,pilot,poste,itemId){
     {label:'Dégradé',value:degMin,color:'#f59e0b'},
     {label:'Arrêts',value:netStopMin,color:'#dc2626'}
   ],{fCenter:16,fSub:10,fLeg:10});
+}
+
+async function doRecalcSession(date,pilot,poste){
+  const pw=prompt('Mot de passe administrateur :');
+  if(!pw) return;
+  toast('Recalcul en cours…','ok');
+  const r=await apiFetch('/api/admin_recalc_session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,date,pilot,poste})});
+  if(r&&r.ok){
+    toast('Recalcul terminé — TRS : '+(r.trs>=0?r.trs.toFixed(1)+'%':'—'),'ok');
+    await loadRapports(false);
+    // Reload the session detail
+    const selItem=document.querySelector('.rpt-item[style*="eff6ff"]');
+    const selId=selItem?selItem.id:'';
+    loadSessionReport(date,pilot,poste,selId||'');
+  } else {toast('Erreur : '+(r&&r.error||'?'),'err');}
 }
 
 function rptBackToList(){
