@@ -7933,14 +7933,15 @@ function restoreFormFromStorage(){
 
 function _checkEndProdBtn(){
   const req=['f-of_num','f-code_prod','f-type_prod','f-nb_pers','f-qte_fab','f-qte_emb','f-poids','f-taille','f-fibre'];
-  const ok=req.every(id=>{const el=document.getElementById(id);return el&&(el.value||'').trim()!==''&&el.value!=='0';});
+  const _fFilled=el=>el&&(el.value||'').trim()!=='';
+  const ok=req.every(id=>{const el=document.getElementById(id);return _fFilled(el);});
   const btn=document.getElementById('btn-endprod'); if(!btn) return;
   btn.style.opacity=ok?'1':'0.38';
   btn.style.cursor=ok?'pointer':'default';
   // Auto-clear highlight when field is now filled
   req.forEach(id=>{
     const el=document.getElementById(id);
-    if(el&&(el.value||'').trim()!==''&&el.value!=='0') el.classList.remove('field-missing');
+    if(_fFilled(el)) el.classList.remove('field-missing');
   });
 }
 function _clearFieldHighlights(){
@@ -7961,7 +7962,7 @@ function scheduleAutoSave(){
 // ── END PROD ──
 async function doEndProdPreview(){
   const req=['f-of_num','f-code_prod','f-type_prod','f-nb_pers','f-qte_fab','f-qte_emb','f-poids','f-taille','f-fibre'];
-  const missing=req.filter(id=>{const el=document.getElementById(id);return !el||(el.value||'').trim()===''||el.value==='0';});
+  const missing=req.filter(id=>{const el=document.getElementById(id);return !el||(el.value||'').trim()==='';});
   if(missing.length){
     missing.forEach(id=>{const el=document.getElementById(id);if(el){el.classList.remove('field-missing');void el.offsetWidth;el.classList.add('field-missing');}});
     toast('⚠ Formulaire incomplet','err',1000);
@@ -7991,8 +7992,8 @@ function renderEPModal(d,f){
   document.getElementById('ep-stats').innerHTML=`
     <div class="ep-stat"><span class="lbl">N° OF</span><span class="val">${esc(ofNum||'—')}</span></div>
     <div class="ep-stat"><span class="lbl">Type produit</span><span class="val">${esc(f.type_prod||d.type_prod||'—')}</span></div>
-    <div class="ep-stat"><span class="lbl">Qté fabriquée</span><span class="val">${esc(String(f.qte_fab||d.qte_fab||0))}</span></div>
-    <div class="ep-stat"><span class="lbl">Qté emballée</span><span class="val">${esc(String(f.qte_emb||d.qte_emb||0))}</span></div>
+    <div class="ep-stat"><span class="lbl">Qté fabriquée</span><span class="val">${esc(String(f.qte_fab!=null&&f.qte_fab!==''?f.qte_fab:(d.qte_fab!=null?d.qte_fab:0)))}</span></div>
+    <div class="ep-stat"><span class="lbl">Qté emballée</span><span class="val">${esc(String(f.qte_emb!=null&&f.qte_emb!==''?f.qte_emb:(d.qte_emb!=null?d.qte_emb:0)))}</span></div>
     <div class="ep-stat"><span class="lbl">Date</span><span class="val">${dateStr}</span></div>
     <div class="ep-stat"><span class="lbl">TRS OF</span><span class="val">${fmtTRS(d.trs)}</span></div>
     <div class="ep-stat"><span class="lbl">Équivalence</span><span class="val">${(d.equiv||0).toFixed(1)}</span></div>
@@ -8932,8 +8933,8 @@ function _applyFormAndUpdateGauge(){
   if(!ST.form) ST.form={};
   window._formUserTs=Date.now(); // marque modif utilisateur — empêche fillFormFromState d'écraser
   const _v=id=>{const el=document.getElementById(id);return el?el.value:null;};
-  const qf=_v('f-qte_fab');if(qf!==null&&qf!=='') ST.form.qte_fab=parseFloat(qf)||0;
-  const qe=_v('f-qte_emb');if(qe!==null&&qe!=='') ST.form.qte_emb=parseFloat(qe)||0;
+  const qf=_v('f-qte_fab');if(qf!==null&&qf!==''){const _qfv=parseFloat(qf);ST.form.qte_fab=isNaN(_qfv)?0:_qfv;}
+  const qe=_v('f-qte_emb');if(qe!==null&&qe!==''){const _qev=parseFloat(qe);ST.form.qte_emb=isNaN(_qev)?0:_qev;}
   const np=_v('f-nb_pers');if(np!==null&&np!=='') ST.form.nb_pers=parseInt(np)||1;
   const tp=_v('f-type_prod');if(tp!==null&&tp!=='') ST.form.type_prod=tp;
   updateGauge(ST);
