@@ -11387,9 +11387,6 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(11px*var(--zf,1))">${d.is_live?'<span style="color:#94a3b8">—</span>':`<span style="color:${_colPerteRp};font-weight:800">${perteCadenceRaw<=0?Math.abs(perteCadenceRaw)+' min de gain':perteCadenceRaw+' min de perte'}</span>`}</div><div class="fp-lbl" style="font-size:calc(8px*var(--zf,1))">Perte cadence</div></div>
         </div>
       </div>
-      ${!d.is_live?`<div style="padding:6px 8px;border-top:1px solid var(--border);margin-top:4px;flex-shrink:0">
-        <button onclick="doRecalcSession('${esc(date)}','${esc(pilot)}','${esc(poste)}')" style="width:100%;padding:6px 8px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:7px;font-size:calc(10px*var(--zf,1));cursor:pointer;font-weight:700;color:#374151;transition:background .15s" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'" title="Recalcule les métriques TRS depuis les déclarations Excel">↺ Recalculer (admin)</button>
-      </div>`:''}
       </div>`;
   }
   // ── Panneau droit : timeline + tables (pleine largeur) ──
