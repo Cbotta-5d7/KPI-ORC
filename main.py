@@ -218,6 +218,7 @@ _S = {
 }
 _excel_lock = threading.Lock()
 _S_lock = threading.RLock()   # verrou réentrant pour protéger _S contre les race conditions
+_cache_lock = threading.Lock()  # protège _decl_cache contre les accès concurrents
 _lists = {}
 _decl_cache = []   # liste de (row_num, row_data) - toutes déclarations (prod + events)
 _prod_ref_cached = 0.0
@@ -678,42 +679,43 @@ def serialize_event(ev):
 # ── Session ───────────────────────────────────────────────────────────────────
 def save_session():
     try:
-        timers_s = {}
-        for k,t in _S["timers"].items():
-            timers_s[k] = {
-                "elapsed": t["elapsed"],
-                "running": t["running"],
-                "start": _dt_str(t["start"]),
+        with _S_lock:
+            timers_s = {}
+            for k,t in _S["timers"].items():
+                timers_s[k] = {
+                    "elapsed": t["elapsed"],
+                    "running": t["running"],
+                    "start": _dt_str(t["start"]),
+                }
+            d = {
+                "pilot": _S["pilot"],
+                "poste": _S["poste"],
+                "prod_active": _S["prod_active"],
+                "of_start": _dt_str(_S["of_start"]),
+                "last_of_end": _dt_str(_S["last_of_end"]),
+                "last_of_pilot": _S["last_of_pilot"],
+                "inter_of_s": _S["inter_of_s"],
+                "interposte_s": _S["interposte_s"],
+                "timers": timers_s,
+                "tl_events": [serialize_event(e) for e in _S["tl_events"]],
+                "is_paused": _S["is_paused"],
+                "pause_start": _dt_str(_S["pause_start"]),
+                "pause_total_s": _S["pause_total_s"],
+                "pause_periods": [[_dt_str(a),_dt_str(b)] for a,b in _S["pause_periods"]],
+                "of_count_shift": _S["of_count_shift"],
+                "form": _S["form"],
+                "shift_start": _dt_str(_S.get("shift_start")),
+                "postes_row_num": _S.get("postes_row_num"),
+                "shift_debut_dt": _dt_str(_S.get("shift_debut_dt")),
+                "shift_fin_dt": _dt_str(_S.get("shift_fin_dt")),
+                "tot_prod_s": _S.get("tot_prod_s", 0.0),
+                "budget_overrides": _S.get("budget_overrides", {}),
+                "degrade_active": _S.get("degrade_active", False),
+                "degrade_type": _S.get("degrade_type", ""),
+                "degrade_start_dt": _dt_str(_S.get("degrade_start_dt")),
+                "degrade_periods": [{"start": _dt_str(p["start"]), "end": _dt_str(p["end"]), "type": p["type"]} for p in _S.get("degrade_periods", [])],
+                "of_prepares": _S.get("of_prepares", []),
             }
-        d = {
-            "pilot": _S["pilot"],
-            "poste": _S["poste"],
-            "prod_active": _S["prod_active"],
-            "of_start": _dt_str(_S["of_start"]),
-            "last_of_end": _dt_str(_S["last_of_end"]),
-            "last_of_pilot": _S["last_of_pilot"],
-            "inter_of_s": _S["inter_of_s"],
-            "interposte_s": _S["interposte_s"],
-            "timers": timers_s,
-            "tl_events": [serialize_event(e) for e in _S["tl_events"]],
-            "is_paused": _S["is_paused"],
-            "pause_start": _dt_str(_S["pause_start"]),
-            "pause_total_s": _S["pause_total_s"],
-            "pause_periods": [[_dt_str(a),_dt_str(b)] for a,b in _S["pause_periods"]],
-            "of_count_shift": _S["of_count_shift"],
-            "form": _S["form"],
-            "shift_start": _dt_str(_S.get("shift_start")),
-            "postes_row_num": _S.get("postes_row_num"),
-            "shift_debut_dt": _dt_str(_S.get("shift_debut_dt")),
-            "shift_fin_dt": _dt_str(_S.get("shift_fin_dt")),
-            "tot_prod_s": _S.get("tot_prod_s", 0.0),
-            "budget_overrides": _S.get("budget_overrides", {}),
-            "degrade_active": _S.get("degrade_active", False),
-            "degrade_type": _S.get("degrade_type", ""),
-            "degrade_start_dt": _dt_str(_S.get("degrade_start_dt")),
-            "degrade_periods": [{"start": _dt_str(p["start"]), "end": _dt_str(p["end"]), "type": p["type"]} for p in _S.get("degrade_periods", [])],
-            "of_prepares": _S.get("of_prepares", []),
-        }
         with open(SESSION_FILE,"w",encoding="utf-8") as f: json.dump(d,f,default=str)
     except: pass
 
@@ -987,13 +989,14 @@ def load_history():
     try:
         wb = load_workbook(path, read_only=True, data_only=True)
         _excel_busy = False
-        _decl_cache = []
+        # Construire le nouveau cache dans une variable locale, puis swap atomique
+        _new_cache = []
         # Nouveau schéma unifié
         if "Declarations" in wb.sheetnames:
             ws = wb["Declarations"]
             for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
                 if r and any(r):
-                    _decl_cache.append((i, list(r)+[None]*5))
+                    _new_cache.append((i, list(r)+[None]*5))
         # Rétro-compat: lire Data + Evenements si Declarations absent
         elif "Data" in wb.sheetnames:
             ws = wb["Data"]
@@ -1027,8 +1030,11 @@ def load_history():
                     unified[22] = row[19] # Cadence/h
                     unified[23] = row[20] # Cadence/h/pers
                     unified[35] = row[57] if len(row)>57 else None  # Commentaire
-                    _decl_cache.append((i, unified))
+                    _new_cache.append((i, unified))
         wb.close()
+        # Swap atomique : remplace le cache d'un coup pour éviter la race condition
+        with _cache_lock:
+            _decl_cache = _new_cache
         _hist_loading = max(0, _hist_loading - 1)
     except PermissionError:
         _excel_busy = True
@@ -1177,7 +1183,8 @@ def _append_to_backup(prod_row, evt_rows):
         try:
             with open(BACKUP_FILE, "w", encoding="utf-8") as f:
                 json.dump(items, f, ensure_ascii=False, default=str)
-        except: pass
+        except Exception as _e_bk:
+            print(f"[BACKUP] Erreur écriture backup : {_e_bk}")
         _backup_pending = len(items)
 
 
@@ -1249,9 +1256,19 @@ def write_excel_bg(prod_row, evt_rows):
     if not path: return
     _write_pending += 1
     _write_failed = False
+    # Ajouter à PENDING_FILE (liste) pour survivre à un crash même en cas d'appels concurrents
     try:
-        with open(PENDING_FILE,"w",encoding="utf-8") as f:
-            json.dump({"db_path":path,"prod_row":prod_row,"evt_rows":evt_rows},f,ensure_ascii=False,default=str)
+        with _backup_lock:
+            _pf_items = []
+            if os.path.exists(PENDING_FILE):
+                try:
+                    with open(PENDING_FILE, encoding="utf-8") as _pf:
+                        _loaded = json.load(_pf)
+                    _pf_items = _loaded if isinstance(_loaded, list) else [_loaded]
+                except: _pf_items = []
+            _pf_items.append({"db_path":path,"prod_row":prod_row,"evt_rows":evt_rows})
+            with open(PENDING_FILE,"w",encoding="utf-8") as _pf:
+                json.dump(_pf_items, _pf, ensure_ascii=False, default=str)
     except: pass
     def _bg():
         global _write_pending, _write_failed
@@ -1277,8 +1294,12 @@ def write_excel_bg(prod_row, evt_rows):
                     return  # succès
             except PermissionError:
                 time.sleep(5)
-            except Exception:
+            except Exception as _exc_bg:
+                print(f"[WRITE-BG] Erreur inattendue (tentative {_attempt+1}/3) : {_exc_bg}")
                 _write_pending = max(0, _write_pending - 1)
+                _append_to_backup(prod_row, evt_rows)
+                try: os.remove(PENDING_FILE)
+                except: pass
                 threading.Thread(target=load_history, daemon=True).start()
                 return
         # Toujours bloqué après 3 tentatives → on sauvegarde dans le backup
@@ -1405,7 +1426,19 @@ def find_postes_row_num(pilot, debut_dt):
                     p = row[15].value if len(row) > 15 else None  # col P debut
                     if str(b or "").strip().lower() != pilot.lower(): continue
                     if p is None: continue
-                    p_dt = datetime.datetime.fromisoformat(str(p)) if isinstance(p, str) else p
+                    if isinstance(p, str):
+                        try:
+                            p_dt = datetime.datetime.fromisoformat(p)
+                        except ValueError:
+                            try:
+                                p_dt = datetime.datetime.strptime(p, "%d/%m/%Y %H:%M:%S")
+                            except:
+                                try:
+                                    p_dt = datetime.datetime.strptime(p, "%d/%m/%Y")
+                                except:
+                                    continue
+                    else:
+                        p_dt = p
                     if hasattr(p_dt, 'date') and p_dt.date() == target_date:
                         return row[0].row
                 except: continue
@@ -3006,7 +3039,8 @@ def api_fin_poste_data():
             eq=float(str(r[21] or 0).replace(",","."))
             debut_s=_hms_to_sec(str(r[16] or "00:00:00"))
             fin_s=_hms_to_sec(str(r[17] or "00:00:00"))
-            s = fin_s - debut_s if fin_s > debut_s else _hms_to_sec(str(r[18] or "00:00:00"))
+            _fin_s_norm = _norm_fin(debut_s, fin_s)
+            s = _fin_s_norm - debut_s
             tot_eq+=eq; tot_s+=s
             _filtered_prod_raw_fp.append(r)
             try: _r24fp=float(str(r[24] if len(r)>24 else '').strip() or '-1')
@@ -12289,22 +12323,32 @@ def _force_fin_poste_server():
                 dict(v, pilote=v.get("pilote", pilot), poste=v.get("poste", poste)),
                 tl_snap, of_start, pause_periods_snap
             )
-            # Écriture synchrone dans Excel
+            # Écriture synchrone dans Excel avec fallback backup
             _db_path = cfg.get("db_path","")
+            _auto_written = False
             if _db_path and os.path.exists(_db_path):
-                with _excel_lock:
-                    _wb_auto = _get_wb(_db_path)
-                    if _wb_auto is not None:
-                        _ws_auto = _ensure_decl_sheet(_wb_auto)
-                        _ws_auto.append(prod_row_auto)
-                        _format_row(_ws_auto, _ws_auto.max_row)
-                        for _er in evt_rows_auto:
-                            _ws_auto.append(_er)
+                try:
+                    with _excel_lock:
+                        _wb_auto = _get_wb(_db_path)
+                        if _wb_auto is not None:
+                            _ws_auto = _ensure_decl_sheet(_wb_auto)
+                            _ws_auto.append(prod_row_auto)
                             _format_row(_ws_auto, _ws_auto.max_row)
-                        _safe_excel_save(_wb_auto, _db_path)
-                print(f"[AUTO-FIN-POSTE] OF {v.get('of_num','')} fermé et écrit dans Excel (qte=0, heure fin={end_dt.strftime('%H:%M')})")
+                            for _er in evt_rows_auto:
+                                _ws_auto.append(_er)
+                                _format_row(_ws_auto, _ws_auto.max_row)
+                            _safe_excel_save(_wb_auto, _db_path)
+                            _auto_written = True
+                    print(f"[AUTO-FIN-POSTE] OF {v.get('of_num','')} fermé et écrit dans Excel (qte=0, heure fin={end_dt.strftime('%H:%M')})")
+                except Exception as _e_write:
+                    print(f"[AUTO-FIN-POSTE] Erreur écriture Excel : {_e_write} — sauvegarde dans backup")
+                    _auto_written = False
+            if not _auto_written:
+                # Excel inaccessible ou inexistant → backup (sera rejoué par _flush_backup)
+                _append_to_backup(prod_row_auto, evt_rows_auto)
+                print(f"[AUTO-FIN-POSTE] OF mis en backup — sera écrit dès qu'Excel redevient accessible")
         except Exception as e:
-            print(f"[AUTO-FIN-POSTE] Erreur fermeture OF : {e}")
+            print(f"[AUTO-FIN-POSTE] Erreur construction OF auto : {e}")
     load_history()
     date_str = ((_S.get("shift_start") or shift_fin_dt)).strftime("%d/%m/%Y")
     prod_ref = get_prod_ref()
@@ -12432,13 +12476,15 @@ def main():
     threading.Thread(target=_auto_fin_poste_bg, daemon=True).start()
     _start_periodic_excel_sync()
 
-    # Recover pending Excel write after crash
+    # Recover pending Excel writes after crash (format liste ou objet unique)
     try:
         if os.path.exists(PENDING_FILE):
             with open(PENDING_FILE, encoding="utf-8") as f:
-                pending = json.load(f)
-            if pending.get("db_path") and pending.get("prod_row"):
-                write_excel_bg(pending["prod_row"], pending.get("evt_rows", []))
+                _pf_data = json.load(f)
+            _pf_list = _pf_data if isinstance(_pf_data, list) else [_pf_data]
+            for _pf_item in _pf_list:
+                if _pf_item.get("db_path") and _pf_item.get("prod_row"):
+                    write_excel_bg(_pf_item["prod_row"], _pf_item.get("evt_rows", []))
     except:
         pass
 
