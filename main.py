@@ -10768,26 +10768,17 @@ async function captureRapportJour(){
     return `${_pn} ${esc(s.date||'')}${s.pilot?' ('+esc(s.pilot)+')':''}`;
   });
   const _titleL2=_posteLbls.length?_posteLbls.join(' · '):'';
-  // Lignes stats capture (hauteur -20% → padding 5px, police +15% → 16/17px)
-  const _statsRows=[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:2px"><span style="font-size:16px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:17px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
-  // Layout capture : 3 colonnes | zoom 0.94 (~25% plus petit que l'ancienne version zoom:1.25)
-  // Layout capture : 3 colonnes, largeur +25% vs version précédente (cols élargies, zoom inchangé)
+  // Lignes stats capture — polices -20% (16→13px label, 17→14px valeur)
+  const _statsRows=[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:2px"><span style="font-size:13px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:14px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
+  // Layout capture : 3 colonnes — col1 -20% (340px), col3 pareto +20% (min-width 270px)
+  // TRS% dans le bandeau, camembert en dessous du pareto (col3)
   const _capHtml=`<div style="display:flex;gap:14px;align-items:flex-start;font-family:Arial,sans-serif;zoom:0.94">
-    <!-- Colonne 1 : TRS+pie, cards pièces/equiv/cad, graphiques TRS+Cadence -->
-    <div style="width:425px;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
-      <!-- TRS % + camembert côte à côte -->
-      <div style="display:flex;gap:6px;align-items:stretch;margin-bottom:2px">
-        <div style="flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;text-align:center">
-          <div style="font-size:53px;font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
-          <div style="font-size:15px;color:#64748b;font-weight:600;margin-top:4px">TRS période</div>
-          <div style="font-size:13px;color:#94a3b8;margin-top:2px">${d.nb_jours}j · ${d.nb_sessions} postes · ${d.nb_of} OF</div>
-        </div>
-        ${pieSmall?`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:center">${pieSmall}</div>`:''}
-      </div>
-      <!-- Cards pièces/equiv/cad -->
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:26px;font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:#374151">Pièces</span> <span style="font-size:20px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:26px;font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:#374151">Equiv</span> <span style="font-size:20px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:23px;font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:17px;font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
+    <!-- Colonne 1 : cards pièces/equiv/cad (-20% police), graphiques TRS+Cadence -->
+    <div style="width:340px;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
+      <!-- Cards pièces/equiv/cad -20% police : 26→21px, 20→16px, 23→18px, 17→14px -->
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:#374151">Pièces</span> <span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:#374151">Equiv</span> <span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:18px;font-weight:800;color:${_colCadRj}">Cad/h : ${d.cadence_h||0} <span style="font-size:14px;font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100}/min)</span></div></div>
       <!-- Graphiques TRS par équipe et Cadence vs Ref -->
       ${chartTrsHtml}
       ${chartCadHtml}
@@ -10796,17 +10787,27 @@ async function captureRapportJour(){
     <div style="width:262px;flex-shrink:0;display:flex;flex-direction:column;gap:3px">
       ${_statsRows}
     </div>
-    <!-- Colonne 3 : pareto des arrêts -->
-    <div style="flex:1;min-width:225px">
+    <!-- Colonne 3 : pareto des arrêts + camembert en dessous -->
+    <div style="flex:1;min-width:270px;display:flex;flex-direction:column;gap:8px">
       ${paretoRjHtml}
+      ${pieSmall?`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;display:flex;align-items:center;justify-content:center">${pieSmall}</div>`:''}
     </div>
   </div>`;
   const _wrapper=document.createElement('div');
   _wrapper.style.cssText='position:fixed;left:-9999px;top:0;background:#f8fafc;padding:0;font-family:Arial,sans-serif';
+  // Bandeau bleu : titre + TRS% en haut à droite
+  const _trsBadgeColor=trsCol||'#fff';
   _wrapper.innerHTML=`
-    <div style="background:#1e3a5f;color:#fff;padding:14px 22px;font-family:Arial,sans-serif">
-      <div style="font-size:22px;font-weight:700;letter-spacing:.3px">${esc(_titleL1)}</div>
-      ${_titleL2?`<div style="font-size:14px;font-weight:400;opacity:.85;margin-top:4px">${esc(_titleL2)}</div>`:''}
+    <div style="background:#1e3a5f;color:#fff;padding:14px 22px;font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:space-between;gap:20px">
+      <div>
+        <div style="font-size:22px;font-weight:700;letter-spacing:.3px">${esc(_titleL1)}</div>
+        ${_titleL2?`<div style="font-size:14px;font-weight:400;opacity:.85;margin-top:4px">${esc(_titleL2)}</div>`:''}
+      </div>
+      <div style="text-align:center;flex-shrink:0">
+        <div style="font-size:44px;font-weight:900;color:${_trsBadgeColor};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.75);font-weight:600;margin-top:3px">TRS période</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:1px">${d.nb_jours}j · ${d.nb_sessions} postes</div>
+      </div>
     </div>
     <div style="padding:14px">${_capHtml}</div>`;
   document.body.appendChild(_wrapper);
