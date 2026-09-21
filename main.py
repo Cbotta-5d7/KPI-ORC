@@ -711,6 +711,7 @@ def save_session():
             "degrade_type": _S.get("degrade_type", ""),
             "degrade_start_dt": _dt_str(_S.get("degrade_start_dt")),
             "degrade_periods": [{"start": _dt_str(p["start"]), "end": _dt_str(p["end"]), "type": p["type"]} for p in _S.get("degrade_periods", [])],
+            "of_prepares": _S.get("of_prepares", []),
         }
         with open(SESSION_FILE,"w",encoding="utf-8") as f: json.dump(d,f,default=str)
     except: pass
@@ -742,6 +743,7 @@ def load_session():
         _S["degrade_type"]   = d.get("degrade_type", "")
         _S["degrade_start_dt"] = _str_dt(d.get("degrade_start_dt"))
         _S["degrade_periods"] = [{"start": _str_dt(p.get("start")), "end": _str_dt(p.get("end")), "type": p.get("type","")} for p in d.get("degrade_periods", [])]
+        _S["of_prepares"]    = d.get("of_prepares", [])
         raw_timers = d.get("timers",{})
         _S["timers"] = {}
         for k,t in raw_timers.items():
