@@ -3729,6 +3729,11 @@ def api_session_report():
             _xl_pc_of = raw_r[43] if len(raw_r) > 43 else None
             try: prod_rows[pi]["perte_cad_of"] = str(round(float(str(_xl_pc_of or "").replace(",",".")), 1)) if _xl_pc_of not in (None, "") else ""
             except: prod_rows[pi]["perte_cad_of"] = ""
+            # Fallback: calculer à la volée si col 44 absente/stale
+            if not prod_rows[pi]["perte_cad_of"] and _obj_of > 0 and prod_ref > 0:
+                _cad_ref_m = prod_ref / 480.0
+                try: prod_rows[pi]["perte_cad_of"] = str(round((_obj_of - _eq_of) / _cad_ref_m, 1))
+                except: pass
             prod_rows[pi]["budget_overrides"] = _sr_live_ov
         except: pass
     _xl_trs_sr = None
@@ -3884,7 +3889,7 @@ def api_add_past_decl():
         _of_start = _S.get("of_start")
         if _S.get("prod_active") and _of_start and debut_dt >= _of_start:
             _ev_cat = next((e["cat"] for e in get_events_list() if e["key"] == stop_type), "pb")
-            _past_rn = max((rn for rn, _ in _decl_cache), default=1)
+            _past_rn = max((rn for rn, _ in _decl_cache), default=0) + 1
             _S["tl_events"].append({
                 "key": stop_type, "cat": _ev_cat,
                 "start": debut_dt, "end": fin_dt,
