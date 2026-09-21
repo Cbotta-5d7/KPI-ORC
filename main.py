@@ -217,6 +217,7 @@ _S = {
     "of_prepares": [],
 }
 _excel_lock = threading.Lock()
+_S_lock = threading.RLock()   # verrou réentrant pour protéger _S contre les race conditions
 _lists = {}
 _decl_cache = []   # liste de (row_num, row_data) - toutes déclarations (prod + events)
 _prod_ref_cached = 0.0
@@ -2186,8 +2187,9 @@ def api_end_prod():
             # Avancer le start pour que api_stop_degrade ne couvre que la période restante
             _S["degrade_start_dt"] = _dg_of_end
         # degrade_active / degrade_type restent inchangés — l'utilisateur arrête explicitement
-    t_stop_all()
-    tl_close_all()
+    with _S_lock:
+        t_stop_all()
+        tl_close_all()
     # Arrêter la pause si elle est encore active (non gérée par tl_events)
     if _S.get("is_paused") and _S.get("pause_start"):
         _pnow = datetime.datetime.now()
@@ -2286,10 +2288,11 @@ def api_end_prod():
         _objectif_pcs,
         round((_objectif_pcs - equiv) / (prod_ref / 480.0), 1) if prod_ref > 0 and isinstance(_objectif_pcs, (int, float)) and _objectif_pcs > 0 else "",
     ]
-    evt_rows = build_decl_rows(
-        dict(v, pilote=v.get("pilote",_S["pilot"] or ""), poste=v.get("poste",_S["poste"] or "")),
-        _S["tl_events"], _S["of_start"], _S["pause_periods"]
-    )
+    with _S_lock:
+        evt_rows = build_decl_rows(
+            dict(v, pilote=v.get("pilote",_S["pilot"] or ""), poste=v.get("poste",_S["poste"] or "")),
+            list(_S["tl_events"]), _S["of_start"], _S["pause_periods"]
+        )
     recap = {
         "of_num": v.get("of_num",""),
         "pilote": v.get("pilote",_S["pilot"] or ""),
@@ -2407,8 +2410,9 @@ def api_end_stop():
     data = request.json or {}
     key = data.get("key","")
     comment = data.get("comment","")
-    t_stop(key)
-    tl_close(key,comment)
+    with _S_lock:
+        t_stop(key)
+        tl_close(key,comment)
     # Si pas de prod active : écrire la déclaration directement en Excel
     if not _S.get("prod_active"):
         ev = next((e for e in reversed(_S["tl_events"]) if e.get("key")==key and e.get("end")), None)
@@ -2441,17 +2445,18 @@ def api_end_stop():
     return jsonify({"ok":True})
 
 def _toggle_pause_internal():
-    now = datetime.datetime.now()
-    if not _S["is_paused"]:
-        _S["is_paused"] = True
-        _S["pause_start"] = now
-    else:
-        if _S["pause_start"]:
-            dur = (now-_S["pause_start"]).total_seconds()
-            _S["pause_total_s"] += dur
-            _S["pause_periods"].append((_S["pause_start"],now))
-        _S["is_paused"] = False
-        _S["pause_start"] = None
+    with _S_lock:
+        now = datetime.datetime.now()
+        if not _S["is_paused"]:
+            _S["is_paused"] = True
+            _S["pause_start"] = now
+        else:
+            if _S["pause_start"]:
+                dur = (now-_S["pause_start"]).total_seconds()
+                _S["pause_total_s"] += dur
+                _S["pause_periods"].append((_S["pause_start"],now))
+            _S["is_paused"] = False
+            _S["pause_start"] = None
     save_session()
 
 @flask_app.route('/api/toggle_pause', methods=['POST'])
@@ -2858,6 +2863,26 @@ def api_edit_row():
     path = cfg.get("db_path","")
     if not row_num or not path or not os.path.exists(path):
         return jsonify({"ok":False,"error":"Paramètre manquant"}),400
+    # Sync immédiat de _S["tl_events"] si c'est un événement live (prod active)
+    if _S.get("prod_active"):
+        _orig = next((r for rn, r in _decl_cache if rn == row_num), None)
+        if _orig is not None:
+            _orig_debut_str = str(_orig[16] or "")
+            for ev in _S["tl_events"]:
+                if ev.get("start") and ev["start"].strftime("%H:%M:%S") == _orig_debut_str:
+                    if "17" in updates:  # col 17 = heure début
+                        try:
+                            _hp = [int(x) for x in str(updates["17"]).split(":")]
+                            ev["start"] = ev["start"].replace(hour=_hp[0], minute=_hp[1], second=_hp[2] if len(_hp)>2 else 0)
+                        except: pass
+                    if "18" in updates:  # col 18 = heure fin
+                        try:
+                            _hp = [int(x) for x in str(updates["18"]).split(":")]
+                            _base = ev.get("end") or ev.get("start") or datetime.datetime.now()
+                            ev["end"] = _base.replace(hour=_hp[0], minute=_hp[1], second=_hp[2] if len(_hp)>2 else 0)
+                        except: pass
+                    save_session()
+                    break
     def _bg():
         try:
             with _excel_lock:
@@ -2870,12 +2895,14 @@ def api_edit_row():
                     except: pass
                 try:
                     row_type = str(ws.cell(row_num, 1).value or "").strip().lower()
+                    # Recalculer la durée pour TOUS les types (arrêts, pauses, prod…)
+                    debut_s = _hms_to_sec(str(ws.cell(row_num, 17).value or "00:00:00"))
+                    fin_s   = _hms_to_sec(str(ws.cell(row_num, 18).value or "00:00:00"))
+                    brut_s  = fin_s - debut_s if fin_s > debut_s else 0
+                    if brut_s > 0:
+                        ws.cell(row_num, 19).value = fmt(brut_s)
+                    # Recalcul equiv / cadence / TRS uniquement pour les lignes de production
                     if row_type in ("production","prod",""):
-                        debut_s = _hms_to_sec(str(ws.cell(row_num, 17).value or "00:00:00"))
-                        fin_s = _hms_to_sec(str(ws.cell(row_num, 18).value or "00:00:00"))
-                        brut_s = fin_s - debut_s if fin_s > debut_s else 0
-                        if brut_s > 0:
-                            ws.cell(row_num, 19).value = fmt(brut_s)
                         qte_fab_v = 0.0
                         try: qte_fab_v = float(str(ws.cell(row_num, 20).value or 0).replace(",","."))
                         except: pass
@@ -3804,8 +3831,9 @@ def api_add_past_decl():
             "","","","","","","","","","","","","","","","",
             str(data.get("comment","")), "","","", shift_date_str,
         ]
-        # Si production active, injecter l'arrêt dans la timeline live (_S["tl_events"])
-        if _S.get("prod_active"):
+        # Si production active ET l'arrêt est dans la plage de l'OF en cours : injecter dans la timeline live
+        _of_start = _S.get("of_start")
+        if _S.get("prod_active") and _of_start and debut_dt >= _of_start:
             _ev_cat = next((e["cat"] for e in get_events_list() if e["key"] == stop_type), "pb")
             _past_rn = max((rn for rn, _ in _decl_cache), default=1)
             _S["tl_events"].append({
@@ -7756,10 +7784,14 @@ async function saveEvtList(){
 function openStopModal(){openM('m-stop');}
 
 async function doPause(){
+  // Désactiver tous les boutons pause pendant le traitement (empêche le double-clic)
+  const _pbtns=document.querySelectorAll('#btn-pause,#btn-pause-acc,[onclick*="doPause"]');
+  _pbtns.forEach(b=>{b.disabled=true;});
   try{await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});}
-  catch(e){toast('Erreur connexion serveur','err');return;}
+  catch(e){toast('Erreur connexion serveur','err');_pbtns.forEach(b=>{b.disabled=false;});return;}
   await pollState();
   if(_curTab==='main') loadMainDecl();
+  _pbtns.forEach(b=>{b.disabled=false;});
 }
 
 async function doReunion(){
@@ -7820,8 +7852,17 @@ function doEndStop(key) {
 async function confirmEndStop() {
   const k=document.getElementById('cmt-stop-key').value;
   const cmt=document.getElementById('cmt-stop-text').value.trim();
+  // Ne PAS fermer la modale avant que le serveur ait confirmé — empêche la race condition Fin d'OF
+  const _btn=document.querySelector('#m-stopcmt .btn-ok');
+  if(_btn){_btn.disabled=true;_btn.textContent='⏳ Enregistrement…';}
+  try{
+    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,comment:cmt})});
+  }catch(e){
+    toast('Erreur connexion serveur','err');
+    if(_btn){_btn.disabled=false;_btn.textContent='✓ Confirmer fin d\'arrêt';}
+    return;
+  }
   closeM('m-stopcmt');
-  await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,comment:cmt})});
   await pollState();
   if(_curTab==='main') loadMainDecl();
   await pollEvts();
@@ -10468,7 +10509,8 @@ async function calcPeriodReport(autoLoad){
   if(to)   url+='date_to='+encodeURIComponent(to)+'&';
   if(pilot) url+='pilot='+encodeURIComponent(pilot)+'&';
   if(poste) url+='poste='+encodeURIComponent(poste)+'&';
-  if(autoLoad) url+='max_sessions=3&skip_current=1&';
+  if(autoLoad) url+='max_sessions=3&';
+  url+='skip_current=1&';  // jamais le poste en cours dans rapport jour
   const d=await apiFetch(url);
   if(!d||!d.ok){resultEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur ou aucune donnée</div>';return;}
   if(d.nb_sessions===0){resultEl.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">🔍</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Aucun poste trouvé pour cette période</div></div>';return;}
@@ -10818,7 +10860,7 @@ async function captureRapportJour(){
   document.body.appendChild(_wrapper);
   await new Promise(r=>setTimeout(r,300));
   try{
-    const canvas=await window.html2canvas(_wrapper,{scale:2,useCORS:true,logging:false,backgroundColor:'#f8fafc',scrollX:0,scrollY:0,windowWidth:_wrapper.scrollWidth+40,windowHeight:_wrapper.scrollHeight+40});
+    const canvas=await window.html2canvas(_wrapper,{scale:1.4,useCORS:true,logging:false,backgroundColor:'#f8fafc',scrollX:0,scrollY:0,windowWidth:_wrapper.scrollWidth+40,windowHeight:_wrapper.scrollHeight+40});
     document.body.removeChild(_wrapper);
     await new Promise((res,rej)=>{
       canvas.toBlob(blob=>{
