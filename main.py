@@ -3375,12 +3375,14 @@ def api_period_report():
             )
             if _ev_key:
                 sessions[_ev_key]['evt_rows'].append((rn, r))
-    # Exclure la session en cours si demandé
-    if request.args.get('skip_current') and _S.get('pilot') and _S.get('shift_debut_dt'):
+    # Exclure la session en cours si demandé (shift_debut_dt OU shift_start comme référence de date)
+    if request.args.get('skip_current') and _S.get('pilot'):
         _cur_pilot_l = _S.get('pilot','').lower()
-        _cur_date_str = _S['shift_debut_dt'].strftime('%d/%m/%Y')
-        sessions = {k: v for k, v in sessions.items()
-                    if not (v.get('pilot','').lower() == _cur_pilot_l and v.get('date') == _cur_date_str)}
+        _ref_dt = _S.get('shift_debut_dt') or _S.get('shift_start')
+        if _ref_dt:
+            _cur_date_str = _ref_dt.strftime('%d/%m/%Y')
+            sessions = {k: v for k, v in sessions.items()
+                        if not (v.get('pilot','').lower() == _cur_pilot_l and v.get('date') == _cur_date_str)}
     # Limiter aux N sessions les plus récentes si max_sessions > 0
     if max_sessions > 0 and len(sessions) > max_sessions:
         def _key_row(kv):
@@ -11735,9 +11737,9 @@ def generate_dashboard_html():
             today = _dt.date.today()
             fmt = lambda dd: dd.strftime('%Y-%m-%d')
             period_last3 = c.get('/api/period_report?max_sessions=3&skip_current=1').get_json(force=True) or {}
-            period_last7 = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=7))}&date_to={fmt(today)}').get_json(force=True) or {}
-            period_last31 = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=31))}&date_to={fmt(today)}').get_json(force=True) or {}
-            period_last6m = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=180))}&date_to={fmt(today)}').get_json(force=True) or {}
+            period_last7 = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=7))}&date_to={fmt(today)}&skip_current=1').get_json(force=True) or {}
+            period_last31 = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=31))}&date_to={fmt(today)}&skip_current=1').get_json(force=True) or {}
+            period_last6m = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=180))}&date_to={fmt(today)}&skip_current=1').get_json(force=True) or {}
         gen_at = _dt.datetime.now().strftime('%d/%m/%Y %H:%M')
         dash_json = _json.dumps({
             'history': history, 'events_list': events_list, 'past_sessions': past_sessions,
