@@ -2875,6 +2875,30 @@ def api_edit_row():
     path = cfg.get("db_path","")
     if not row_num or not path or not os.path.exists(path):
         return jsonify({"ok":False,"error":"Paramètre manquant"}),400
+    # Vérification chevauchement si on modifie les heures d'une ligne de production
+    if "17" in updates or "18" in updates:
+        _orig_row = next((r for rn, r in _decl_cache if rn == row_num), None)
+        if _orig_row is not None and str(_orig_row[0] or "").strip().lower() in ("production","prod",""):
+            _pilot_ov = str(_orig_row[4] or "")
+            _date_ov2 = str(_orig_row[39] if len(_orig_row) > 39 else "").strip() or _row_date(_orig_row[2])
+            _new_deb_s_str = str(updates.get("17", _orig_row[16] or "00:00:00"))
+            _new_fin_s_str = str(updates.get("18", _orig_row[17] or "00:00:00"))
+            _new_deb_s = _hms_to_sec(_new_deb_s_str)
+            _new_fin_s = _norm_fin(_new_deb_s, _hms_to_sec(_new_fin_s_str))
+            for _rn_ck, _r_ck in _decl_cache:
+                if _rn_ck == row_num: continue  # ignorer la ligne elle-même
+                if str(_r_ck[4] or "") != _pilot_ov: continue
+                if str(_r_ck[0] or "").strip().lower() not in ("production","prod",""): continue
+                _date_ck = str(_r_ck[39] if len(_r_ck) > 39 else "").strip() or _row_date(_r_ck[2])
+                if _date_ck != _date_ov2: continue
+                _ds_ck = _hms_to_sec(str(_r_ck[16] or "00:00:00"))
+                _fs_ck = _norm_fin(_ds_ck, _hms_to_sec(str(_r_ck[17] or "00:00:00")))
+                if _fs_ck <= _ds_ck: continue
+                if _new_deb_s < _fs_ck and _new_fin_s > _ds_ck:
+                    _of_ck = str(_r_ck[1] or "OF inconnu")
+                    _h_d_ck = str(_r_ck[16] or "")[:5]
+                    _h_f_ck = str(_r_ck[17] or "")[:5]
+                    return jsonify({"ok": False, "error": f"Impossible : chevauchement avec l'OF {_of_ck} déclaré de {_h_d_ck} à {_h_f_ck}"}), 400
     # Sync immédiat de _S["tl_events"] si c'est un événement live (prod active)
     if _S.get("prod_active"):
         _orig = next((r for rn, r in _decl_cache if rn == row_num), None)
