@@ -3474,7 +3474,7 @@ def api_period_report():
         agg_fibre_chg += nb_chg
         for _, re_p in s['evt_rows']:
             _stype = str(re_p[0] or '').strip()
-            if _stype and not _is_degrade_type(_stype):
+            if _stype and not _is_degrade_type(_stype) and _get_arret_budget_key(_stype) is None:
                 _ds_p = _hms_to_sec(str(re_p[16] or '00:00:00'))
                 _fs_p = _norm_fin(_ds_p, _hms_to_sec(str(re_p[17] or '00:00:00')))
                 _dur_p = _hms_to_sec(str(re_p[18] or '00:00:00')) if _fs_p <= _ds_p else _fs_p - _ds_p
@@ -4043,6 +4043,7 @@ def api_admin_recalc_session():
     poste = data.get("poste","")
     if not date_str or not pilot or not poste:
         return jsonify({"ok":False,"error":"Paramètres manquants"}),400
+    load_history()  # force reload depuis Excel avant de recalculer
     prod_ref = get_prod_ref()
     prod_raws = []; evt_rows = []
     for rn, r in _decl_cache:
@@ -5571,7 +5572,7 @@ select{cursor:default}
           </div>
         </div>
         <div style="flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;min-height:0">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.5px;margin-bottom:6px;flex-shrink:0">Pareto arrêts</div>
+          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.5px;margin-bottom:6px;flex-shrink:0">PARETO arrêts non prévus</div>
           <div id="kpi-pareto-new" style="display:flex;flex-direction:column;gap:5px"></div>
         </div>
       </div>
@@ -10440,10 +10441,11 @@ async function loadKPI(){
     {label:'Arrêts',v:totalStopMin*60,col:'#dc2626'},
   ]);
 
-  // ── Pareto ──
+  // ── Pareto des arrêts non prévus ──
+  const _isPlannedKpi=t=>/nettoyage|nett\b|r[ée]union|meeting|pause/i.test(t||'');
   const stopMap={};const stopCat={};
   evts.forEach(e=>{
-    if(!e.type)return;
+    if(!e.type||_isPlannedKpi(e.type))return;
     const dur=Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0'));
     stopMap[e.type]=(stopMap[e.type]||0)+dur;
     if(!stopCat[e.type])stopCat[e.type]=e.cat||'autre';
@@ -10841,7 +10843,7 @@ async function calcPeriodReport(autoLoad){
         </div>
       </div>`;
     }).join('');
-    paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">🛑 Pareto des arrêts</div>${rows3}</div>`;
+    paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">🛑 PARETO des arrêts non prévus</div>${rows3}</div>`;
   }
   // OF list table
   let ofListHtml='';
@@ -11177,9 +11179,10 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const stopMin=Math.round((d.stop_s||0)/60);
   const prodMin=Math.round(Math.max(0,(d.tot_s||0)-(d.stop_s||0))/60);
   const totalMin=Math.round((d.tot_s||0)/60)+stopMin;
-  // Pareto des arrêts
+  // Pareto des arrêts non prévus
+  const _isPlannedSr=t=>/nettoyage|nett\b|r[ée]union|meeting|pause/i.test(t||'');
   const stopMap={};
-  (d.evt_rows||[]).filter(r=>!r.is_degrade).forEach(r=>{
+  (d.evt_rows||[]).filter(r=>!r.is_degrade&&!_isPlannedSr(r.type||'')).forEach(r=>{
     const k=r.type||'Inconnu';
     if(!stopMap[k]) stopMap[k]=0;
     const p=r.duree?r.duree.split(':'):[0,0,0];
@@ -11359,7 +11362,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
       </div>
       <!-- Contenu KPI -->
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
-      <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0">
+      <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0;position:relative">
+        ${!d.is_live?`<button onclick="doRecalcSession('${esc(date)}','${esc(pilot)}','${esc(poste)}')" title="Recalculer depuis les déclarations (admin)" style="position:absolute;top:7px;right:7px;background:#16a34a;border:none;border-radius:5px;cursor:pointer;padding:3px 7px;font-size:calc(13px*var(--zf,1));color:#fff;font-weight:700;opacity:.9;line-height:1" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='.9'">📊</button>`:''}
         <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?' — '+(d.actual_debut||d.model_debut)+' → '+(d.actual_fin||d.model_fin):''}</div>
         <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
         <div style="font-size:calc(9px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">TRS :</div>
@@ -11413,7 +11417,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div style="display:flex;flex-direction:column;gap:8px">
         <div class="card" style="padding:10px">
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">Pareto des arrêts</div>
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">PARETO des arrêts non prévus</div>
           ${paretoHtml||'<div style="color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>'}
         </div>
         <div class="card" style="padding:10px">
