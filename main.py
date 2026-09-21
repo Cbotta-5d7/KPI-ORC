@@ -12085,6 +12085,140 @@ def _session_autosave():
         try: save_session()
         except: pass
 
+def _force_fin_poste_server():
+    """Fin de poste automatique côté serveur — appelé quand shift_fin_dt + 3h est dépassé."""
+    global _S
+    with _S_lock:
+        pilot = _S.get("pilot") or ""
+        poste = _S.get("poste") or ""
+        shift_fin_dt = _S.get("shift_fin_dt")
+        already_done = _S.get("_auto_fin_done", False)
+    if not pilot or not poste or not shift_fin_dt or already_done:
+        return
+    now = datetime.datetime.now()
+    if now < shift_fin_dt + datetime.timedelta(hours=3):
+        return
+    print(f"[AUTO-FIN-POSTE] Déclenchement automatique pour {pilot} / {poste} (shift_fin_dt={shift_fin_dt})")
+    with _S_lock:
+        _S["_auto_fin_done"] = True
+        tl_close_all()
+        _S["prod_active"] = False
+    load_history()
+    date_str = ((_S.get("shift_start") or shift_fin_dt)).strftime("%d/%m/%Y")
+    prod_ref = get_prod_ref()
+    prod_raws = []; evt_rows = []
+    for rn, r in _decl_cache:
+        row_date_key = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
+        if row_date_key != date_str: continue
+        if str(r[4] or "") != pilot or str(r[3] or "") != poste: continue
+        if str(r[0] or "").strip().lower() in ("production","prod",""):
+            prod_raws.append(r)
+        else:
+            evt_rows.append((rn, r))
+    postes_map = load_postes_shift_map()
+    _pk = (pilot.lower(), date_str)
+    _pm = postes_map.get(_pk, {})
+    _pdeb = _pm.get("deb_dt"); _pfin = _pm.get("fin_dt")
+    try: _date_obj = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
+    except: _date_obj = None
+    model_dur_s = max(0.0, (_pfin - _pdeb).total_seconds()) if _pfin and _pdeb else get_shift_duration_s(poste, _date_obj)
+    row_num = _pm.get("row_idx") or _S.get("postes_row_num") or find_postes_row_num(pilot, _pdeb)
+    if not row_num:
+        print(f"[AUTO-FIN-POSTE] Impossible de trouver la ligne Postes pour {pilot} / {date_str}")
+    else:
+        _xl_bov = {k: v for k, v in (_pm.get("budget_overrides") or {}).items() if v is not None}
+        planned_ded = _compute_planned_deduction_s(evt_rows, _xl_bov or None)
+        _blab = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
+        _bdata = {bk: {"budget_min": float((_xl_bov.get(bk) if _xl_bov.get(bk) is not None else cfg.get(bk, 0)) or 0), "used_min": 0.0} for bk in _blab}
+        for _, r_e in evt_rows:
+            _bk = _get_arret_budget_key(str(r_e[0] or ''))
+            if _bk and _bk in _bdata:
+                try:
+                    _dp = str(r_e[18] or ''); _pp = (_dp+':00:00').split(':')
+                    _bdata[_bk]['used_min'] += (int(_pp[0] or 0)*3600+int(_pp[1] or 0)*60+int(_pp[2] or 0))/60
+                except: pass
+        pause_min = round(_bdata.get("pause_min",{}).get("used_min",0.0),1)
+        nett_min = round(sum(_bdata.get(k,{}).get("used_min",0.0) for k in ("clean_short_min","clean_long_min","clean_grand_min")),1)
+        reunion_min = round(_bdata.get("meeting_tol_min",{}).get("used_min",0.0),1)
+        depassement_min = round(sum(max(0.0, v["used_min"]-v["budget_min"]) for v in _bdata.values()),1)
+        ouverture_min = round(model_dur_s/60,1)
+        arrets_prevu_min = planned_ded/60
+        temps_utile_min = round(max(0.0, ouverture_min - arrets_prevu_min),1)
+        _stop_raw = [(_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00"))) for _, r in evt_rows if not _is_degrade_type(str(r[0] or ""))]
+        _stop_ivs = sorted((_norm_fin(s,f) > s and (s, _norm_fin(s,f)) for s,f in _stop_raw), key=lambda x: x[0] if x else 0)
+        _stop_ivs = [(s,f) for s,f in [(_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00"))) for _, r in evt_rows if not _is_degrade_type(str(r[0] or ""))] if _norm_fin(s,f)>s]
+        _merged = []
+        for _ds,_fs in sorted((_s, _norm_fin(_s,_f)) for _s,_f in _stop_ivs):
+            if _merged and _ds <= _merged[-1][1]: _merged[-1] = (_merged[-1][0], max(_merged[-1][1],_fs))
+            else: _merged.append((_ds,_fs))
+        net_stop_min = round(sum(f-s for s,f in _merged)/60,1)
+        temps_fonctionnement_min = round(max(0.0, ouverture_min - net_stop_min),1)
+        cadence_ref = round(prod_ref/480,4) if prod_ref>0 else 0.0
+        _adj = max(1.0, model_dur_s - planned_ded)
+        _deg_ivs = _merged_degrade_ivs([r for _, r in evt_rows])
+        _plan_ivs = []
+        _plan_bdata = {bk: float((_xl_bov.get(bk) if _xl_bov.get(bk) is not None else cfg.get(bk, 0)) or 0)*60 for bk in _blab}
+        _plan_used = {bk: 0.0 for bk in _blab}
+        for _, r_e in evt_rows:
+            _bk2 = _get_arret_budget_key(str(r_e[0] or ''))
+            if _bk2 and _bk2 in _plan_bdata:
+                _ds2 = _hms_to_sec(str(r_e[16] or '00:00:00'))
+                _fs2 = _norm_fin(_ds2, _hms_to_sec(str(r_e[17] or '00:00:00')))
+                _dur2 = _fs2 - _ds2
+                if _dur2 > 0 and _plan_used[_bk2] < _plan_bdata[_bk2]:
+                    _plan_ivs.append((_ds2, _ds2 + min(_dur2, _plan_bdata[_bk2] - _plan_used[_bk2])))
+                _plan_used[_bk2] += _dur2
+        tot_eq = sum(float(str(r[21] or 0).replace(",",".") or 0) for r in prod_raws)
+        tot_pcs = sum(float(str(r[19] or 0).replace(",",".") or 0) for r in prod_raws)
+        _degrade_s = _merged_degrade_s([r for _, r in evt_rows])
+        if _pers_pct_map and prod_raws:
+            trs_shift, _sum_exp = _option_b_trs(prod_raws, _deg_ivs, prod_ref, _plan_ivs)
+            perte_cadence_min = round((_sum_exp - tot_eq)/cadence_ref,1) if cadence_ref>0 and _sum_exp>0 else 0.0
+            pcs_theorique = round(_sum_exp,1)
+        elif model_dur_s>0 and prod_ref>0 and tot_eq>0:
+            trs_shift = round(tot_eq/(prod_ref*_adj/28800)*100,1)
+            perte_cadence_min = round((prod_ref*_adj/28800-tot_eq)/cadence_ref,1) if cadence_ref>0 else 0.0
+            pcs_theorique = round(prod_ref*_adj/28800,1)
+        else:
+            trs_shift = -1.0; perte_cadence_min = 0.0; pcs_theorique = 0.0
+        _sorted_fib = sorted([r for r in prod_raws if r[11]], key=lambda x: str(x[16] or ""))
+        nb_fibre_chg = sum(1 for i in range(1,len(_sorted_fib)) if _sorted_fib[i][11]!=_sorted_fib[i-1][11])
+        cadence_h = round(tot_eq*60/temps_utile_min) if temps_utile_min>0 else 0
+        recalc_data = {
+            "date": date_str,"pilot": pilot,"poste": poste,
+            "nb_of": len(prod_raws),"prod_total": round(tot_pcs,0),"tot_equiv": round(tot_eq,1),
+            "trs_shift": round(trs_shift,1) if trs_shift>=0 else "","cadence_h": cadence_h,
+            "pause_min": pause_min,"nett_min": nett_min,"reunion_min": reunion_min,
+            "depassement_min": depassement_min,"nb_fibre_chg": nb_fibre_chg,"comment":"",
+            "temps_ouverture_min": ouverture_min,"temps_utile_min": temps_utile_min,
+            "temps_fonctionnement_min": temps_fonctionnement_min,"temps_arret_min": net_stop_min,
+            "cadence_ref_pcs_min": cadence_ref,"perte_cadence_min": perte_cadence_min,
+            "degrade_min": round(_degrade_s/60,1),"pcs_theorique": pcs_theorique,
+            "budget_overrides": _xl_bov or {},"dur_poste_theorique_min": ouverture_min,
+        }
+        try:
+            write_poste_row(recalc_data, row_num=row_num)
+            print(f"[AUTO-FIN-POSTE] Ligne Postes écrite — TRS={round(trs_shift,1) if trs_shift>=0 else '—'}")
+        except Exception as e:
+            print(f"[AUTO-FIN-POSTE] Erreur écriture Postes : {e}")
+    with _S_lock:
+        _S["pilot"] = None; _S["poste"] = None
+        _S["shift_start"] = None; _S["shift_fin_dt"] = None; _S["shift_debut_dt"] = None
+        _S["prod_active"] = False; _S["tl_events"] = []; _S["postes_row_num"] = None
+        _S["budget_overrides"] = {}; _S["of_prepares"] = []
+        _S["_auto_fin_done"] = False
+    save_session()
+    print(f"[AUTO-FIN-POSTE] _S réinitialisé — poste {pilot} terminé automatiquement")
+
+def _auto_fin_poste_bg():
+    """Thread de surveillance : fin de poste automatique si shift_fin_dt + 3h dépassé."""
+    while True:
+        time.sleep(300)  # vérifie toutes les 5 minutes
+        try:
+            _force_fin_poste_server()
+        except Exception as e:
+            print(f"[AUTO-FIN-POSTE] Exception dans le thread : {e}")
+
 def main():
     global cfg
     cfg = load_cfg()
@@ -12093,6 +12227,7 @@ def main():
     threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_session_autosave, daemon=True).start()
     threading.Thread(target=_backup_flush_bg, daemon=True).start()
+    threading.Thread(target=_auto_fin_poste_bg, daemon=True).start()
     _start_periodic_excel_sync()
 
     # Recover pending Excel write after crash
