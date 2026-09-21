@@ -10495,11 +10495,10 @@ async function calcPeriodReport(autoLoad){
     const sd=d.sessions_detail;
     const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),100);
     const _vertA=sd.length>8;
-    const gH=91,padT=20,padL=4,padR=4;
+    const gH=91,padT=28,padL=4,padR=4,GP=5;
     const CH=_vertA?padT+gH+150:padT+gH+60;
     const n=sd.length;
-    const WB=Math.max(22,Math.min(60,Math.floor((420-padL-padR-n*4)/n)));
-    const GP=5;
+    const WB=Math.max(22,Math.min(80,Math.floor((250-padL-padR-n*GP)/Math.max(n,3))));
     const svgW=Math.max(200,n*(WB+GP)+padL+padR);
     let svgBars='',svgLabels='',svgL='';
     sd.forEach((s,i)=>{
@@ -10510,21 +10509,22 @@ async function calcPeriodReport(autoLoad){
       const by=padT+gH-bh;
       const col=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgBars+=`<rect x="${x}" y="${by}" width="${WB}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(s.trs>=0){const _ty=Math.max(by-3,12);const _lb=s.trs.toFixed(0)+'%';const _lw=_lb.length*7+6;svgLabels+=`<rect x="${cx-_lw/2}" y="${_ty-11}" width="${_lw}" height="14" fill="white" rx="2" opacity=".9"/><text x="${cx}" y="${_ty}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${_lb}</text>`;}
+      if(s.trs>=0){const _ty=Math.max(by-3,14);const _lb=s.trs.toFixed(0)+'%';const _lw=_lb.length*8+6;svgLabels+=`<rect x="${cx-_lw/2}" y="${_ty-12}" width="${_lw}" height="15" fill="white" rx="2" opacity=".9"/><text x="${cx}" y="${_ty}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb}</text>`;}
       const dp=s.date.split('/');
       if(_vertA){
         const yA=padT+gH+4;
         const _lbl=esc((dp[0]||'')+'/'+(dp[1]||'')+(s.pilot?' '+s.pilot.slice(0,12):''));
-        svgL+=`<text transform="rotate(-90,${cx},${yA})" x="${cx}" y="${yA}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${_lbl}</text>`;
+        svgL+=`<text transform="rotate(-90,${cx},${yA})" x="${cx}" y="${yA}" text-anchor="end" font-size="13" font-weight="600" fill="#374151">${_lbl}</text>`;
       }else{
-        svgL+=`<text x="${cx}" y="${padT+gH+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
-        svgL+=`<text x="${cx}" y="${padT+gH+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
-        svgL+=`<text x="${cx}" y="${padT+gH+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
+        svgL+=`<text x="${cx}" y="${padT+gH+16}" text-anchor="middle" font-size="14" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
+        svgL+=`<text x="${cx}" y="${padT+gH+30}" text-anchor="middle" font-size="13" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
+        svgL+=`<text x="${cx}" y="${padT+gH+44}" text-anchor="middle" font-size="13" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
       }
     });
     const yBase=padT+gH;
     const _trs70Y=padT+gH-Math.round(70/maxTrs*gH);
-    const trsTargetLine=`<line x1="0" y1="${_trs70Y}" x2="${svgW}" y2="${_trs70Y}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="${svgW-2}" y="${_trs70Y-3}" text-anchor="end" font-size="10" fill="#16a34a" font-weight="700">Cible 70%</text>`;
+    const _trsLblY=Math.max(13,_trs70Y-4);
+    const trsTargetLine=`<line x1="0" y1="${_trs70Y}" x2="${svgW}" y2="${_trs70Y}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="${svgW-2}" y="${_trsLblY}" text-anchor="end" font-size="12" fill="#16a34a" font-weight="700">Cible 70%</text>`;
     const trsCibleLeg=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#16a34a;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible 70%</span>`;
     chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">📈 TRS par équipe${trsCibleLeg}</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgBars}${trsTargetLine}${svgLabels}${svgL}</svg></div></div>`;
   }
@@ -10535,11 +10535,10 @@ async function calcPeriodReport(autoLoad){
     const _CAD_CIBLE=720;
     const maxCad=Math.max(...sd2.map(s=>s.cadence_h||0),_CAD_CIBLE,1);
     const _vertB=sd2.length>8;
-    const gH2=91,padT2=20,padL2=4,padR2=4;
+    const gH2=91,padT2=28,padL2=4,padR2=4,GP2=5;
     const CH2=_vertB?padT2+gH2+150:padT2+gH2+60;
     const n2=sd2.length;
-    const WB2=Math.max(22,Math.min(60,Math.floor((420-padL2-padR2-n2*4)/n2)));
-    const GP2=5;
+    const WB2=Math.max(22,Math.min(80,Math.floor((250-padL2-padR2-n2*GP2)/Math.max(n2,3))));
     const svgW2=Math.max(200,n2*(WB2+GP2)+padL2+padR2);
     const tY=padT2+gH2-Math.round(_CAD_CIBLE/maxCad*gH2);
     let svgBars2='',svgLabels2='',svgL2='';
@@ -10551,20 +10550,21 @@ async function calcPeriodReport(autoLoad){
       const by=padT2+gH2-bh;
       const col=v>=_CAD_CIBLE?'#16a34a':v>=_CAD_CIBLE*0.8?'#f59e0b':'#dc2626';
       svgBars2+=`<rect x="${x}" y="${by}" width="${WB2}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(v>0){const _ty2=Math.max(by-3,12);const _lb2=String(v);const _lw2=_lb2.length*8+6;svgLabels2+=`<rect x="${cx2-_lw2/2}" y="${_ty2-12}" width="${_lw2}" height="15" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb2}</text>`;}
+      if(v>0){const _ty2=Math.max(by-3,14);const _lb2=String(v);const _lw2=_lb2.length*9+6;svgLabels2+=`<rect x="${cx2-_lw2/2}" y="${_ty2-13}" width="${_lw2}" height="16" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="14" font-weight="700" fill="${col}">${_lb2}</text>`;}
       const dp=s.date.split('/');
       if(_vertB){
         const yB=padT2+gH2+4;
         const _lbl2=esc((dp[0]||'')+'/'+(dp[1]||'')+(s.pilot?' '+s.pilot.slice(0,12):''));
-        svgL2+=`<text transform="rotate(-90,${cx2},${yB})" x="${cx2}" y="${yB}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${_lbl2}</text>`;
+        svgL2+=`<text transform="rotate(-90,${cx2},${yB})" x="${cx2}" y="${yB}" text-anchor="end" font-size="13" font-weight="600" fill="#374151">${_lbl2}</text>`;
       }else{
-        svgL2+=`<text x="${cx2}" y="${padT2+gH2+14}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
-        svgL2+=`<text x="${cx2}" y="${padT2+gH2+27}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
-        svgL2+=`<text x="${cx2}" y="${padT2+gH2+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
+        svgL2+=`<text x="${cx2}" y="${padT2+gH2+16}" text-anchor="middle" font-size="14" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;
+        svgL2+=`<text x="${cx2}" y="${padT2+gH2+30}" text-anchor="middle" font-size="13" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;
+        svgL2+=`<text x="${cx2}" y="${padT2+gH2+44}" text-anchor="middle" font-size="13" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;
       }
     });
     const yBase2=padT2+gH2;
-    const tLine=`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="6,3"/><text x="${svgW2-2}" y="${tY-3}" text-anchor="end" font-size="10" fill="#1d4ed8" font-weight="700">Cible ${_CAD_CIBLE}</text>`;
+    const _cadLblY=Math.max(13,tY-4);
+    const tLine=`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="6,3"/><text x="${svgW2-2}" y="${_cadLblY}" text-anchor="end" font-size="12" fill="#1d4ed8" font-weight="700">Cible ${_CAD_CIBLE}</text>`;
     const legCad=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#1d4ed8;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible ${_CAD_CIBLE} éq/h</span>`;
     chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence vs référence${legCad}</div><div style="overflow-x:auto"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2}${tLine}${svgLabels2}${svgL2}</svg></div></div>`;
   }
@@ -10777,27 +10777,24 @@ async function captureRapportJour(){
   const _titleL2=_posteLbls.length?_posteLbls.join(' · '):'';
   // Lignes stats capture — polices -20% (16→13px label, 17→14px valeur)
   const _statsRows=[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:2px"><span style="font-size:13px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:14px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
-  // Layout capture : 3 colonnes — col1 -20% (340px), col3 pareto +20% (min-width 270px)
-  // TRS% dans le bandeau, camembert en dessous du pareto (col3)
+  // Layout capture : 3 colonnes — col1 272px (-20%), col2 camembert+stats, col3 pareto 324px (+20%)
   const _capHtml=`<div style="display:flex;gap:14px;align-items:flex-start;font-family:Arial,sans-serif;zoom:0.94">
-    <!-- Colonne 1 : cards pièces/equiv/cad (-20% police), graphiques TRS+Cadence -->
-    <div style="width:340px;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
-      <!-- Cards pièces/equiv/cad -20% police : 26→21px, 20→16px, 23→18px, 17→14px -->
+    <!-- Colonne 1 : cards pièces/equiv/cad, graphiques TRS+Cadence (272px) -->
+    <div style="width:272px;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:#374151">Pièces</span> <span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:#374151">Equiv</span> <span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:18px;font-weight:800;color:${_colCadRj}">${d.cadence_h||0} <span style="font-weight:600;color:#374151">Pcs/h</span> <span style="font-size:14px;font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100} pièces/min)</span></div></div>
-      <!-- Graphiques TRS par équipe et Cadence vs Ref -->
       ${chartTrsHtml}
       ${chartCadHtml}
     </div>
-    <!-- Colonne 2 : stats temps -->
+    <!-- Colonne 2 : camembert prod/arrêt en haut + stats temps -->
     <div style="width:262px;flex-shrink:0;display:flex;flex-direction:column;gap:3px">
+      ${pieSmall?`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px;display:flex;align-items:center;justify-content:center;margin-bottom:4px">${pieSmall}</div>`:''}
       ${_statsRows}
     </div>
-    <!-- Colonne 3 : pareto des arrêts + camembert en dessous -->
-    <div style="flex:1;min-width:270px;display:flex;flex-direction:column;gap:8px">
+    <!-- Colonne 3 : pareto des arrêts (324px, +20%) -->
+    <div style="flex:1;min-width:324px">
       ${paretoRjHtml}
-      ${pieSmall?`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;display:flex;align-items:center;justify-content:center">${pieSmall}</div>`:''}
     </div>
   </div>`;
   const _wrapper=document.createElement('div');
