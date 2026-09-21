@@ -9124,7 +9124,7 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     commentHtml3,
   ].join('');
   // Col 3 : Événements
-  const col3Html=`${_sec('Événements ('+ofEvts.length+')')}${budgetWarnHtml2}${evtsHtml2}`;
+  const col3Html=`${_sec('Événements ('+ofEvts.length+')')}${evtsHtml2}`;
 
   // ── KPI : Perte cadence + Réalisé vs Objectif ──
   const _equivNum=parseFloat(r.equiv||0)||0;
@@ -9165,13 +9165,13 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr minmax(240px,300px);flex:1;min-height:0;overflow:hidden">
       <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col1Html}</div>
       <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col2Html}</div>
-      <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col3Html}</div>
-      <div style="padding:12px 10px;overflow-y:auto;background:linear-gradient(180deg,#f8fafc 0%,#fff 100%);display:flex;flex-direction:column;align-items:center">
+      <div style="padding:12px 10px;border-right:1px solid #e2e8f0;overflow-y:auto;background:linear-gradient(180deg,#f8fafc 0%,#fff 100%);display:flex;flex-direction:column;align-items:center">
         <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;text-align:center">Répartition temps</div>
         ${chartHtml2}
         ${chart3Html}
         ${chart4Html}
       </div>
+      <div style="padding:12px 12px;overflow-y:auto;background:#fff">${col3Html}</div>
     </div>`;
   const box=document.getElementById('of-detail-box');
   if(box){box.style.width='min(1400px,99vw)';box.style.height='92vh';box.style.maxHeight='92vh';}
