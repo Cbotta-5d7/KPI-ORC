@@ -2813,7 +2813,11 @@ def api_delete_row():
         return jsonify({"ok":False,"error":"Paramètre manquant"}),400
     # Suppression synchrone du cache pour éviter stale data
     global _decl_cache
+    # FIX 2: extraire infos avant suppression (pour recalc et ajustement row_num)
+    _del_row_data = next((r for rn, r in _decl_cache if rn == row_num), None)
     _decl_cache = [(rn, row) for rn, row in _decl_cache if rn != row_num]
+    # FIX 2: ajuster row_num dans le cache (Excel décale toutes les lignes suivantes de -1)
+    _decl_cache = [(rn if rn < row_num else rn - 1, row) for rn, row in _decl_cache]
     # Si l'entrée était injectée dans tl_events (past_decl), la retirer aussi
     if _S.get("prod_active"):
         _S["tl_events"] = [ev for ev in _S["tl_events"] if ev.get("_row_num") != row_num]
@@ -2830,6 +2834,14 @@ def api_delete_row():
             threading.Thread(target=load_history,daemon=True).start()
         except: pass
     threading.Thread(target=_bg,daemon=True).start()
+    # FIX 3: recalcul automatique Postes si la ligne appartient à un poste terminé
+    if _del_row_data is not None:
+        _del_date = str(_del_row_data[39] if len(_del_row_data) > 39 else "").strip() or _row_date(_del_row_data[2])
+        _del_pilot = str(_del_row_data[4] or "")
+        _del_poste = str(_del_row_data[3] or "")
+        _is_cur_del = (_del_pilot == _S.get("pilot","") and _del_poste == _S.get("poste","") and bool(_S.get("prod_active")))
+        if not _is_cur_del and _del_date and _del_pilot and _del_poste:
+            _maybe_recalc_postes_bg(_del_date, _del_pilot, _del_poste)
     return jsonify({"ok":True})
 
 @flask_app.route('/api/delete_tl_event', methods=['POST'])
@@ -2883,6 +2895,25 @@ def api_edit_row():
                         except: pass
                     save_session()
                     break
+    # FIX 1: Sync immédiat du cache pour éviter stale data pendant le bg write
+    _row_for_recalc_edit = None
+    for _i_ec, (_rn_ec, _r_ec) in enumerate(_decl_cache):
+        if _rn_ec == row_num:
+            _rl_ec = list(_r_ec)
+            for _col_s, _val in updates.items():
+                try: _rl_ec[int(_col_s)-1] = _val
+                except: pass
+            _decl_cache[_i_ec] = (_rn_ec, tuple(_rl_ec))
+            _row_for_recalc_edit = tuple(_rl_ec)
+            break
+    # FIX 3: recalcul automatique Postes si la ligne appartient à un poste terminé
+    if _row_for_recalc_edit is not None:
+        _e_date = str(_row_for_recalc_edit[39] if len(_row_for_recalc_edit) > 39 else "").strip() or _row_date(_row_for_recalc_edit[2])
+        _e_pilot = str(_row_for_recalc_edit[4] or "")
+        _e_poste = str(_row_for_recalc_edit[3] or "")
+        if not (_e_pilot == _S.get("pilot","") and _e_poste == _S.get("poste","") and _S.get("prod_active")):
+            if _e_date and _e_pilot and _e_poste:
+                _maybe_recalc_postes_bg(_e_date, _e_pilot, _e_poste)
     def _bg():
         try:
             with _excel_lock:
@@ -3998,6 +4029,15 @@ def api_update_of_time():
             r_list[18] = dur_hms
             _decl_cache[i] = (rn, tuple(r_list))
             break
+    # FIX 4: sync _S["of_start"] si l'OF actif est celui qu'on vient de modifier
+    with _S_lock:
+        if _S.get("prod_active") and _S.get("of_start"):
+            try:
+                _cur_of_start_hm = _S["of_start"].strftime("%H:%M")
+                _cur_of_num = str((_S.get("form") or {}).get("num_of","")).strip()
+                if _cur_of_num == of_num and _cur_of_start_hm == old_debut:
+                    _S["of_start"] = _S["of_start"].replace(hour=dh, minute=dm, second=0, microsecond=0)
+            except: pass
     # Update Excel in background
     path = cfg.get("db_path","")
     if path:
@@ -4031,19 +4071,8 @@ def api_save_poste():
     write_poste_row(data, row_num=row_num)
     return jsonify({"ok":True})
 
-@flask_app.route('/api/admin_recalc_session', methods=['POST'])
-def api_admin_recalc_session():
-    """Recalcule et réécrit la ligne Postes pour une session historique depuis les Declarations."""
-    data = request.json or {}
-    pw = data.get("pw","")
-    if not _check_pw(pw):
-        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
-    date_str = data.get("date","")
-    pilot = data.get("pilot","")
-    poste = data.get("poste","")
-    if not date_str or not pilot or not poste:
-        return jsonify({"ok":False,"error":"Paramètres manquants"}),400
-    load_history()  # force reload depuis Excel avant de recalculer
+def _recalc_session_internal(date_str, pilot, poste):
+    """Recalcule et réécrit la ligne Postes pour une session depuis _decl_cache (déjà chargé)."""
     prod_ref = get_prod_ref()
     prod_raws = []; evt_rows = []
     for rn, r in _decl_cache:
@@ -4073,6 +4102,8 @@ def api_admin_recalc_session():
             _debut_rc_dt = postes_map[_pk_rc]['deb_dt'] if _pk_rc in postes_map else None
         except: _debut_rc_dt = None
         row_num_rc = find_postes_row_num(pilot, _debut_rc_dt) if _debut_rc_dt else None
+    if not row_num_rc:
+        return False
     _blab_rc = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
     _xl_bov_rc = {k: v for k, v in (postes_map.get(_pk_rc, {}).get('budget_overrides') or {}).items() if v is not None}
     planned_ded = _compute_planned_deduction_s(evt_rows, _xl_bov_rc or None)
@@ -4130,10 +4161,6 @@ def api_admin_recalc_session():
     _sorted_fib_rc = sorted([r for r in prod_raws if r[11]], key=lambda x: str(x[16] or ""))
     nb_fibre_chg = sum(1 for i in range(1,len(_sorted_fib_rc)) if _sorted_fib_rc[i][11]!=_sorted_fib_rc[i-1][11])
     cadence_h = round(tot_eq*60/temps_utile_min) if temps_utile_min>0 else 0
-    try:
-        _date_parts = date_str.split('/')
-        _date_fmt = f"{_date_parts[2]}-{_date_parts[1]}-{_date_parts[0]}"
-    except: _date_fmt = date_str
     recalc_data = {
         "date": date_str,"pilot": pilot,"poste": poste,
         "nb_of": len(prod_raws),"prod_total": round(tot_pcs,0),"tot_equiv": round(tot_eq,1),
@@ -4147,11 +4174,46 @@ def api_admin_recalc_session():
         "budget_overrides": _xl_bov_rc or {},
         "dur_poste_theorique_min": ouverture_min,
     }
-    if not row_num_rc:
-        return jsonify({"ok":False,"error":"Ligne Postes introuvable pour cette session"})
     write_poste_row(recalc_data, row_num=row_num_rc)
     threading.Thread(target=load_postes_shift_map, daemon=True).start()
-    return jsonify({"ok":True,"trs":round(trs_shift,1) if trs_shift>=0 else -1,"tot_equiv":round(tot_eq,1),"nb_of":len(prod_raws)})
+    return True
+
+def _maybe_recalc_postes_bg(date_str, pilot, poste):
+    """Déclenche un recalcul Postes en arrière-plan pour un poste terminé."""
+    def _bg_recalc():
+        try:
+            load_history()
+            _recalc_session_internal(date_str, pilot, poste)
+        except Exception as _e:
+            print(f"[RECALC-BG] Erreur recalcul {pilot}/{poste}/{date_str}: {_e}")
+    threading.Thread(target=_bg_recalc, daemon=True).start()
+
+@flask_app.route('/api/admin_recalc_session', methods=['POST'])
+def api_admin_recalc_session():
+    """Recalcule et réécrit la ligne Postes pour une session historique depuis les Declarations."""
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    date_str = data.get("date","")
+    pilot = data.get("pilot","")
+    poste = data.get("poste","")
+    if not date_str or not pilot or not poste:
+        return jsonify({"ok":False,"error":"Paramètres manquants"}),400
+    load_history()  # force reload depuis Excel avant de recalculer
+    ok = _recalc_session_internal(date_str, pilot, poste)
+    if not ok:
+        return jsonify({"ok":False,"error":"Ligne Postes introuvable pour cette session"})
+    # Récupérer les stats pour la réponse
+    tot_eq = sum(float(str(r[21] or 0).replace(",",".") or 0) for _, r in _decl_cache
+                 if (str(r[39] if len(r)>39 else "").strip() or _row_date(r[2])) == date_str
+                 and str(r[4] or "") == pilot and str(r[3] or "") == poste
+                 and str(r[0] or "").strip().lower() in ("production","prod",""))
+    nb_of = sum(1 for _, r in _decl_cache
+                if (str(r[39] if len(r)>39 else "").strip() or _row_date(r[2])) == date_str
+                and str(r[4] or "") == pilot and str(r[3] or "") == poste
+                and str(r[0] or "").strip().lower() in ("production","prod",""))
+    return jsonify({"ok":True,"trs":-1,"tot_equiv":round(tot_eq,1),"nb_of":nb_of})
 
 @flask_app.route('/api/pilot_passwords_excel', methods=['POST'])
 def api_pilot_passwords_excel():
