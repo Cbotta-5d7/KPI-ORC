@@ -10771,9 +10771,10 @@ async function captureRapportJour(){
   // Lignes stats capture (hauteur -20% → padding 5px, police +15% → 16/17px)
   const _statsRows=[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:2px"><span style="font-size:16px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:17px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
   // Layout capture : 3 colonnes | zoom 0.94 (~25% plus petit que l'ancienne version zoom:1.25)
-  const _capHtml=`<div style="display:flex;gap:10px;align-items:flex-start;font-family:Arial,sans-serif;zoom:1.13">
+  // Layout capture : 3 colonnes, largeur +25% vs version précédente (cols élargies, zoom inchangé)
+  const _capHtml=`<div style="display:flex;gap:14px;align-items:flex-start;font-family:Arial,sans-serif;zoom:0.94">
     <!-- Colonne 1 : TRS+pie, cards pièces/equiv/cad, graphiques TRS+Cadence -->
-    <div style="width:340px;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
+    <div style="width:425px;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
       <!-- TRS % + camembert côte à côte -->
       <div style="display:flex;gap:6px;align-items:stretch;margin-bottom:2px">
         <div style="flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;text-align:center">
@@ -10792,11 +10793,11 @@ async function captureRapportJour(){
       ${chartCadHtml}
     </div>
     <!-- Colonne 2 : stats temps -->
-    <div style="width:210px;flex-shrink:0;display:flex;flex-direction:column;gap:3px">
+    <div style="width:262px;flex-shrink:0;display:flex;flex-direction:column;gap:3px">
       ${_statsRows}
     </div>
     <!-- Colonne 3 : pareto des arrêts -->
-    <div style="flex:1;min-width:180px">
+    <div style="flex:1;min-width:225px">
       ${paretoRjHtml}
     </div>
   </div>`;
