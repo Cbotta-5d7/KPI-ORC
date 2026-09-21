@@ -12093,16 +12093,83 @@ def _force_fin_poste_server():
         poste = _S.get("poste") or ""
         shift_fin_dt = _S.get("shift_fin_dt")
         already_done = _S.get("_auto_fin_done", False)
+        prod_active = _S.get("prod_active", False)
+        of_start = _S.get("of_start")
+        form_snap = dict(_S.get("form") or {})
+        tl_snap = list(_S.get("tl_events") or [])
+        pause_periods_snap = list(_S.get("pause_periods") or [])
+        shift_start = _S.get("shift_start")
     if not pilot or not poste or not shift_fin_dt or already_done:
         return
     now = datetime.datetime.now()
     if now < shift_fin_dt + datetime.timedelta(hours=3):
         return
+    # Heure de fermeture forcée = heure théorique de fin de poste
+    forced_end = shift_fin_dt
     print(f"[AUTO-FIN-POSTE] Déclenchement automatique pour {pilot} / {poste} (shift_fin_dt={shift_fin_dt})")
     with _S_lock:
         _S["_auto_fin_done"] = True
-        tl_close_all()
+        # Fermer tous les événements ouverts à l'heure de fin théorique
+        for ev in _S["tl_events"]:
+            if not ev.get("end"):
+                ev["end"] = forced_end
         _S["prod_active"] = False
+    # Fermer l'OF en cours proprement et écrire dans Excel
+    if prod_active and of_start:
+        try:
+            end_dt = forced_end
+            of_s_brut = max(1.0, (end_dt - of_start).total_seconds())
+            _shift_dt = shift_start or of_start
+            _shift_date_str = _shift_dt.strftime("%d/%m/%Y")
+            v = form_snap
+            qte_fab = 0; equiv = 0.0; c1 = 0; c2 = 0; trs_str = ""
+            prod_row_auto = [
+                "Production",
+                v.get("of_num",""),
+                of_start.strftime("%d/%m/%Y"),
+                v.get("poste", poste),
+                v.get("pilote", pilot),
+                v.get("copilote",""),
+                v.get("nb_pers",""),
+                v.get("taille",""),
+                v.get("code_prod",""),
+                v.get("type_prod",""),
+                v.get("poids",""),
+                v.get("fibre",""),
+                v.get("of_taie",""),
+                v.get("traca",""),
+                v.get("ref_taie",""),
+                "Oui" if v.get("kit") else "Non",
+                of_start.strftime("%H:%M:%S"),
+                end_dt.strftime("%H:%M:%S"),
+                fmt(of_s_brut),
+                qte_fab, 0, equiv, c1, c2, trs_str,
+                0, 0, 0, 0, 0, 0, "", "", "", "",
+                v.get("comment",""),
+                "", fmt(0), fmt(of_s_brut),
+                _shift_date_str, "", 0, "", "",
+            ]
+            # Événements de l'OF (tl_events déjà fermés ci-dessus)
+            evt_rows_auto = build_decl_rows(
+                dict(v, pilote=v.get("pilote", pilot), poste=v.get("poste", poste)),
+                tl_snap, of_start, pause_periods_snap
+            )
+            # Écriture synchrone dans Excel
+            _db_path = cfg.get("db_path","")
+            if _db_path and os.path.exists(_db_path):
+                with _excel_lock:
+                    _wb_auto = _get_wb(_db_path)
+                    if _wb_auto is not None:
+                        _ws_auto = _ensure_decl_sheet(_wb_auto)
+                        _ws_auto.append(prod_row_auto)
+                        _format_row(_ws_auto, _ws_auto.max_row)
+                        for _er in evt_rows_auto:
+                            _ws_auto.append(_er)
+                            _format_row(_ws_auto, _ws_auto.max_row)
+                        _safe_excel_save(_wb_auto, _db_path)
+                print(f"[AUTO-FIN-POSTE] OF {v.get('of_num','')} fermé et écrit dans Excel (qte=0, heure fin={end_dt.strftime('%H:%M')})")
+        except Exception as e:
+            print(f"[AUTO-FIN-POSTE] Erreur fermeture OF : {e}")
     load_history()
     date_str = ((_S.get("shift_start") or shift_fin_dt)).strftime("%d/%m/%Y")
     prod_ref = get_prod_ref()
