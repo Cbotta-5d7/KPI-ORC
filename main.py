@@ -11548,8 +11548,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const _colEquivRp=!_objEquivRp?'#64748b':((d.tot_equiv||0)/_objEquivRp>=0.95?'#16a34a':(d.tot_equiv||0)/_objEquivRp>=0.75?'#f59e0b':'#dc2626');
   const _cadRefHRp=Math.round(cadenceRefPcsMin*60);
   const _colCadRp=!_cadRefHRp?'#0369a1':((!d.is_live&&cadenceH/_cadRefHRp>=0.95)?'#16a34a':(!d.is_live&&cadenceH/_cadRefHRp>=0.75)?'#f59e0b':'#dc2626');
-  const tlDebut=d.actual_debut||d.model_debut;
-  const tlFin=d.actual_fin||d.model_fin;
+  const tlDebut=d.model_debut||d.actual_debut;
+  const tlFin=d.model_fin||d.actual_fin;
   const tlContent=buildTL(d.prod_rows||[],d.evt_rows||[],date,tlDebut,tlFin);
   const plageStr=(tlDebut&&tlFin)?(' · '+esc(tlDebut)+' → '+esc(tlFin)):'';
   // ── Panneau gauche : passe en mode KPI ──
@@ -11571,7 +11571,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
       <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0;position:relative">
         ${!d.is_live?`<button onclick="doRecalcSession('${esc(date)}','${esc(pilot)}','${esc(poste)}')" title="Recalculer depuis les déclarations (admin)" style="position:absolute;top:7px;right:7px;background:#16a34a;border:none;border-radius:5px;cursor:pointer;padding:3px 7px;font-size:calc(13px*var(--zf,1));color:#fff;font-weight:700;opacity:.9;line-height:1" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='.9'">📊</button>`:''}
-        <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?' — '+(d.actual_debut||d.model_debut)+' → '+(d.actual_fin||d.model_fin):''}</div>
+        <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${((d.model_debut||d.actual_debut)&&(d.model_fin||d.actual_fin))?' — '+(d.model_debut||d.actual_debut)+' → '+(d.model_fin||d.actual_fin):''}</div>
         <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
         <div style="font-size:calc(9px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">TRS :</div>
         <div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3)">${d.is_live?'—':trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
@@ -11580,7 +11580,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px">
         <div style="text-align:center">
           <svg id="rpt-pie" viewBox="0 0 130 130" style="width:150px;height:150px;display:block;margin:0 auto"></svg>
-          ${((d.actual_debut||d.model_debut)&&(d.actual_fin||d.model_fin))?`<div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:3px;font-weight:600">${esc(d.actual_debut||d.model_debut)} → ${esc(d.actual_fin||d.model_fin)}</div>`:''}
+          ${((d.model_debut||d.actual_debut)&&(d.model_fin||d.actual_fin))?`<div style="font-size:calc(9px*var(--zf,1));color:var(--gray);margin-top:3px;font-weight:600">${esc(d.model_debut||d.actual_debut)} → ${esc(d.model_fin||d.actual_fin)}</div>`:''}
         </div>
         <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(10px*var(--zf,1));font-weight:800;color:${_colPcsRp}">${Math.round(totQteFab)} <span style="font-weight:600;color:var(--gray)">Pièces</span>${_objPcsRp>0?` <span style="font-size:calc(9px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${Math.round(_objPcsRp)})</span>`:''}</div></div>
         <div class="fp-card" style="padding:5px 6px"><div class="fp-big" style="font-size:calc(10px*var(--zf,1));font-weight:800;color:${_colEquivRp}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span>${_objEquivRp>0?` <span style="font-size:calc(9px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${Math.round(_objEquivRp)})</span>`:''}</div></div>
