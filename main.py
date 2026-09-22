@@ -1142,7 +1142,8 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
         ]
     for ev in tl_events:
         if ev.get("_past_decl"): continue  # already written to Excel by api_add_past_decl
-        if ev.get("cat") not in ("ratt","pb","nettoyage","reunion","autre","interposte"): continue
+        if ev.get("_excel_written"): continue  # already written individually by api_end_stop
+        if ev.get("cat") not in ("ratt","pb","nettoyage","reunion","autre","interposte","manquants"): continue
         if not ev.get("key") or ev["key"].startswith("_"): continue
         start = ev.get("start")
         if not start: continue  # event sans timestamp = invalide
@@ -1155,6 +1156,9 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
             label = {"court":"Nettoyage court","long":"Nettoyage long","grand":"Grand nettoyage"}.get(ntype,"Nettoyage court")
         elif ev["cat"]=="autre":
             label = ev["key"]  # Custom stop name typed by user
+        elif ev["cat"]=="manquants":
+            _dyn = get_events_list()
+            label = next((e["label"] for e in _dyn if isinstance(e,dict) and e.get("key")==ev["key"]), ev["key"])
         elif ev["cat"]=="interposte":
             _dyn = get_events_list()
             lbl = (next((e["label"] for e in _dyn if isinstance(e,dict) and e.get("key")==ev["key"]), None)
@@ -2421,6 +2425,9 @@ def api_end_prod():
     _S["degrade_periods"] = []
     save_session()
     _extra_evt_rows = [_degrade_end_row] if _degrade_end_row else []
+    # Marquer tous les événements tl comme écrits — évite les doublons si api_end_stop arrive après
+    for _ev_ep in _S.get("tl_events", []):
+        _ev_ep["_excel_written"] = True
     try:
         _next_rn_ep = max((rn for rn, _ in _decl_cache), default=0) + 1
         for _ep_row in ([prod_row] if prod_row else []) + evt_rows + _extra_evt_rows:
@@ -2500,35 +2507,40 @@ def api_end_stop():
     with _S_lock:
         t_stop(key)
         tl_close(key,comment)
-    # Si pas de prod active : écrire la déclaration directement en Excel
-    if not _S.get("prod_active"):
-        ev = next((e for e in reversed(_S["tl_events"]) if e.get("key")==key and e.get("end")), None)
-        if ev and ev.get("start") and ev.get("end"):
-            _start = ev["start"]; _end = ev["end"]
-            _dur = max(0,(_end-_start).total_seconds())
-            _cat = ev.get("cat","pb"); _ntype = ev.get("nettoyage_type","court")
-            if key=="nettoyage":
-                _lbl = {"court":"Nettoyage court","long":"Nettoyage long","grand":"Grand nettoyage"}.get(_ntype,"Nettoyage court")
-            elif _cat=="autre":
-                _lbl = key
-            else:
-                _cat_n = "Rattrapage" if _cat=="ratt" else "PB Technique"
-                _evlbl = next((e[0] for e in EVENTS if e[1]==key), key)
-                _lbl = f"{_cat_n}: {_evlbl}"
-            _sh = _S.get("shift_start") or _start
-            _row = [
-                _lbl, _S.get("form",{}).get("of_num",""),
-                _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
-                "","","","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
-                _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
-                "","","","","","","","","","","","","","","","",comment,"",
-                _sh.strftime("%d/%m/%Y"),
-            ]
-            write_excel_bg([], [_row])
-            try:
-                _nrn = max((rn for rn,_ in _decl_cache), default=1)+1
-                _decl_cache.append((_nrn, tuple(_row)+('',)*max(0,40-len(_row))))
-            except: pass
+    # Écrire l'arrêt immédiatement dans l'Excel (pendant ET hors production)
+    # Marquer l'événement _excel_written pour éviter le double-écrit lors de end_prod
+    ev = next((e for e in reversed(_S["tl_events"]) if e.get("key")==key and e.get("end")), None)
+    if ev and ev.get("start") and ev.get("end") and not ev.get("_excel_written"):
+        with _S_lock:
+            ev["_excel_written"] = True
+        _start = ev["start"]; _end = ev["end"]
+        _dur = max(0,(_end-_start).total_seconds())
+        _cat = ev.get("cat","pb"); _ntype = ev.get("nettoyage_type","court")
+        if key=="nettoyage":
+            _lbl = {"court":"Nettoyage court","long":"Nettoyage long","grand":"Grand nettoyage"}.get(_ntype,"Nettoyage court")
+        elif _cat=="autre":
+            _lbl = key
+        elif _cat=="manquants":
+            _dyn_evts = get_events_list()
+            _lbl = next((e["label"] for e in _dyn_evts if isinstance(e,dict) and e.get("key")==key), key)
+        else:
+            _cat_n = "Rattrapage" if _cat=="ratt" else "PB Technique"
+            _evlbl = next((e[0] for e in EVENTS if e[1]==key), key)
+            _lbl = f"{_cat_n}: {_evlbl}"
+        _sh = _S.get("shift_start") or _start
+        _row = [
+            _lbl, _S.get("form",{}).get("of_num",""),
+            _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
+            "","","","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+            _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
+            "","","","","","","","","","","","","","","","",comment,"",
+            _sh.strftime("%d/%m/%Y"),
+        ]
+        write_excel_bg([], [_row])
+        try:
+            _nrn = max((rn for rn,_ in _decl_cache), default=1)+1
+            _decl_cache.append((_nrn, tuple(_row)+('',)*max(0,40-len(_row))))
+        except: pass
     return jsonify({"ok":True})
 
 def _toggle_pause_internal():
@@ -8282,17 +8294,13 @@ function doEndStop(key) {
 async function confirmEndStop() {
   const k=document.getElementById('cmt-stop-key').value;
   const cmt=document.getElementById('cmt-stop-text').value.trim();
-  // Ne PAS fermer la modale avant que le serveur ait confirmé — empêche la race condition Fin d'OF
-  const _btn=document.querySelector('#m-stopcmt .btn-ok');
-  if(_btn){_btn.disabled=true;_btn.textContent='⏳ Enregistrement…';}
+  closeM('m-stopcmt');
   try{
     await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,comment:cmt})});
   }catch(e){
-    toast('Erreur connexion serveur','err');
-    if(_btn){_btn.disabled=false;_btn.textContent='✓ Confirmer fin d\'arrêt';}
+    toast('Erreur connexion','err');
     return;
   }
-  closeM('m-stopcmt');
   await pollState();
   if(_curTab==='main') loadMainDecl();
   await pollEvts();
