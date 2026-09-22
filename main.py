@@ -4039,7 +4039,8 @@ def api_add_past_decl():
         if sf and fin_dt > sf:
             return jsonify({"ok":False,"error":f"Après la fin du poste ({sf.strftime('%H:%M')})"}),400
     shift_dt = _S.get("shift_start") or now
-    shift_date_str = shift_dt.strftime("%d/%m/%Y")
+    # Si date explicite fournie, la date de poste = date de la déclaration (pas le poste en cours)
+    shift_date_str = debut_dt.strftime("%d/%m/%Y") if _explicit_date else shift_dt.strftime("%d/%m/%Y")
     date_str = debut_dt.strftime("%d/%m/%Y")
     if decl_type == "arret":
         stop_type = str(data.get("type","")).strip()
