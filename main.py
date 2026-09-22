@@ -2540,6 +2540,9 @@ def api_end_stop():
         try:
             _nrn = max((rn for rn,_ in _decl_cache), default=1)+1
             _decl_cache.append((_nrn, tuple(_row)+('',)*max(0,40-len(_row))))
+            # Stocker le numéro de ligne dans tl_events pour permettre l'édition ultérieure
+            with _S_lock:
+                ev["_row_num"] = _nrn
         except: pass
     return jsonify({"ok":True})
 
@@ -9079,11 +9082,17 @@ async function saveEditStop(){
   const finVal=document.getElementById('es-fin').value;
   const cmtVal=document.getElementById('es-cmt').value;
   let r;
-  if(!ev.row_num && ev.start_iso){
-    // Événement live de l'OF en cours — modifier via tl_events
+  if(ev.start_iso && ev.row_num){
+    // Arrêt live déjà écrit dans Excel — mettre à jour les deux
+    const updates={'1':document.getElementById('es-type').value,'17':debVal,'18':finVal,'36':cmtVal};
+    r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num,updates})});
+    // Mettre à jour aussi la mémoire (affichage en temps réel)
+    fetch('/api/edit_tl_event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,start_iso:ev.start_iso,new_debut:debVal,new_fin:finVal,comment:cmtVal})});
+  } else if(!ev.row_num && ev.start_iso){
+    // Arrêt live pas encore écrit dans Excel — modifier la mémoire uniquement
     r=await fetch('/api/edit_tl_event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,start_iso:ev.start_iso,new_debut:debVal,new_fin:finVal,comment:cmtVal})});
   } else {
-    // Déclaration Excel — modifier via edit_row
+    // Déclaration Excel uniquement
     const updates={'1':document.getElementById('es-type').value,'17':debVal,'18':finVal,'36':cmtVal};
     r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num,updates})});
   }
