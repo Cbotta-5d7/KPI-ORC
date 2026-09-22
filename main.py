@@ -11608,12 +11608,14 @@ async function loadSessionReport(date,pilot,poste,itemId){
       </div>
       <!-- Contenu KPI -->
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
-      <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0;position:relative">
-        ${!d.is_live?`<button onclick="doRecalcSession('${esc(date)}','${esc(pilot)}','${esc(poste)}')" title="Recalculer depuis les déclarations (admin)" style="position:absolute;top:7px;right:7px;background:#16a34a;border:none;border-radius:5px;cursor:pointer;padding:3px 7px;font-size:calc(13px*var(--zf,1));color:#fff;font-weight:700;opacity:.9;line-height:1" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='.9'">📊</button>`:''}
-        <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${((d.model_debut||d.actual_debut)&&(d.model_fin||d.actual_fin))?' — '+(d.model_debut||d.actual_debut)+' → '+(d.model_fin||d.actual_fin):''}</div>
-        <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
-        <div style="font-size:calc(9px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">TRS :</div>
-        <div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3)">${d.is_live?'—':trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
+      <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0;display:flex;align-items:flex-start;gap:8px">
+        ${!d.is_live?`<button onclick="doRecalcSession('${esc(date)}','${esc(pilot)}','${esc(poste)}')" title="Recalculer depuis les déclarations (admin)" style="flex-shrink:0;margin-top:3px;background:#16a34a;border:none;border-radius:5px;cursor:pointer;padding:4px 8px;font-size:calc(14px*var(--zf,1));color:#fff;font-weight:700;opacity:.9;line-height:1" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='.9'">📊</button>`:''}
+        <div style="flex:1">
+          <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${((d.model_debut||d.actual_debut)&&(d.model_fin||d.actual_fin))?' — '+(d.model_debut||d.actual_debut)+' → '+(d.model_fin||d.actual_fin):''}</div>
+          <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
+          <div style="font-size:calc(9px*var(--zf,1));opacity:.65;margin-top:6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">TRS :</div>
+          <div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1.1;text-shadow:0 1px 4px rgba(0,0,0,.3)">${d.is_live?'—':trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
+        </div>
       </div>
       ${d.is_live?`<style>@keyframes live-banner{0%,49%{background:#22c55e;color:#000}50%,100%{background:#fff;color:#15803d}}</style><div style="font-size:calc(20px*var(--zf,1));font-weight:900;text-align:center;padding:10px 8px;letter-spacing:.08em;animation:live-banner 1.2s step-start infinite;flex-shrink:0;border-bottom:2px solid #22c55e">▶ POSTE EN COURS</div>`:''}
       <div style="padding:6px 8px;display:flex;flex-direction:column;gap:5px">
