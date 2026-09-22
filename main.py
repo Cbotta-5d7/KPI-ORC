@@ -6810,10 +6810,17 @@ function setToday() {
 // ── NAVIGATION ──
 function goTab(tab) {
   if(window._guestMode && (tab==='prod'||tab==='finposte')){toast('Mode consultation — accès restreint','warn');return;}
-  if(_curTab==='settings' && tab!=='settings' && _settingsDirtySet.size>0){
-    const list=[..._settingsDirtySet].map(s=>'• '+s).join('\n');
-    if(!confirm('Modifications non enregistrées :\n'+list+'\n\nQuitter sans sauvegarder ?'))return;
-    _settingsDirtySet.clear();
+  if(_curTab==='settings' && tab!=='settings'){
+    // Réorganiser la liste des arrêts par catégorie avant de quitter
+    if(typeof _evtsEditing!=='undefined'&&_evtsEditing.length){
+      _evtsEditing=_sortEvtsByCategory(_evtsEditing);
+      _renderEvtListHTML();
+    }
+    if(_settingsDirtySet.size>0){
+      const list=[..._settingsDirtySet].map(s=>'• '+s).join('\n');
+      if(!confirm('Modifications non enregistrées :\n'+list+'\n\nQuitter sans sauvegarder ?'))return;
+      _settingsDirtySet.clear();
+    }
   }
   const _prevTab=_curTab;
   _curTab = tab;
@@ -8191,17 +8198,34 @@ function _pdDS(i){_dIdx=i;}
 function _pdDO(e){e.preventDefault();}
 function _pdDrop(i){if(_dIdx===null||_dIdx===i)return;const keys=Object.keys(_cfgPwds);const[rm]=keys.splice(_dIdx,1);keys.splice(i,0,rm);const nw={};keys.forEach(k=>{nw[k]=_cfgPwds[k];});_cfgPwds=nw;_dIdx=null;renderPwdList();}
 
+const _EVT_CAT_ORDER=['ratt','pb','nettoyage','manquants','organisation','autre'];
+const _EVT_CAT_LBL={pb:'▲ Technique',ratt:'★ Rattrapage',nettoyage:'◇ Nettoyage',organisation:'■ Organisationnel',manquants:'◆ Manquants',autre:'○ Autre'};
+
+function _sortEvtsByCategory(list){
+  return [...list].sort((a,b)=>{
+    const ia=_EVT_CAT_ORDER.indexOf(a.cat),ib=_EVT_CAT_ORDER.indexOf(b.cat);
+    return (ia<0?99:ia)-(ib<0?99:ib);
+  });
+}
+
 function _renderEvtListHTML(){
   const c=document.getElementById('events-list-ui');if(!c) return;
-  const catLbl={pb:'▲ Technique',ratt:'★ Rattrapage',nettoyage:'◇ Nettoyage',organisation:'■ Organisationnel',manquants:'◆ Manquants',autre:'○ Autre'};
-  c.innerHTML=_evtsEditing.map((e,i)=>`
-    <div draggable="true" ondragstart="_edDS(${i})" ondragover="_edDO(event)" ondrop="_edDrop(${i})" style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1));cursor:default">
+  if(!_evtsEditing.length){c.innerHTML='<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:4px">Aucun arrêt configuré</div>';return;}
+  let html='';let lastCat=null;
+  _evtsEditing.forEach((e,i)=>{
+    if(e.cat!==lastCat){
+      if(lastCat!==null) html+=`<div style="border-top:1px solid #e2e8f0;margin:2px 0"></div>`;
+      lastCat=e.cat;
+    }
+    html+=`<div draggable="true" ondragstart="_edDS(${i})" ondragover="_edDO(event)" ondrop="_edDrop(${i})" style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:calc(12px*var(--zf,1));cursor:default">
       <span style="cursor:grab;color:#94a3b8;font-size:16px;padding:0 2px;user-select:none" title="Déplacer">⠿</span>
       <span style="flex:1;font-weight:600">${esc(e.label)}</span>
-      <span style="font-size:calc(10px*var(--zf,1));color:var(--gray)">${catLbl[e.cat]||e.cat}</span>
+      <span style="font-size:calc(10px*var(--zf,1));color:var(--gray)">${_EVT_CAT_LBL[e.cat]||e.cat}</span>
       <button class="btn-edit" style="font-size:calc(11px*var(--zf,1));padding:3px 7px" onclick="editEvtItem(${i})">✏</button>
       <button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="rmEvtItem(${i})">✕</button>
-    </div>`).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:4px">Aucun arrêt configuré</div>';
+    </div>`;
+  });
+  c.innerHTML=html;
 }
 
 function addEvtItem(){
