@@ -2671,7 +2671,7 @@ def api_history():
                     pr = get_prod_ref()
                     debut_s = _hms_to_sec(str(r[16] or "00:00:00"))
                     fin_s = _hms_to_sec(str(r[17] or "00:00:00"))
-                    brut_s = fin_s - debut_s if fin_s > debut_s else _hms_to_sec(str(r[18] or "00:00:00"))
+                    brut_s = _norm_fin(debut_s, fin_s) - debut_s
                     if pr>0 and brut_s>0 and equiv_v>0:
                         trs = round(equiv_v/(pr*brut_s/28800)*100,1)
             except: pass
@@ -3747,7 +3747,7 @@ def api_session_report():
                 eq = float(str(r[21] or 0).replace(",","."))
                 deb_s = _hms_to_sec(str(r[16] or "00:00:00"))
                 fin_s = _hms_to_sec(str(r[17] or "00:00:00"))
-                dur_s = fin_s - deb_s if fin_s > deb_s else _hms_to_sec(str(r[18] or "00:00:00"))
+                dur_s = _norm_fin(deb_s, fin_s) - deb_s
                 try: _r24=float(str(r[24] if len(r)>24 else '').strip() or '-1')
                 except: _r24=-1.0
                 trs = _r24 if _r24>=0 else (round(eq/(prod_ref*dur_s/28800)*100,1) if prod_ref>0 and dur_s>0 and eq>0 else -1)
@@ -3813,7 +3813,7 @@ def api_session_report():
         try:
             _deb_of = _hms_to_sec(str(raw_r[16] or "00:00:00"))
             _fin_of = _hms_to_sec(str(raw_r[17] or "00:00:00"))
-            _dur_of = _fin_of - _deb_of if _fin_of > _deb_of else _hms_to_sec(str(raw_r[18] or "00:00:00"))
+            _dur_of = _norm_fin(_deb_of, _fin_of) - _deb_of
             _plan_of_s = _deg_overlap_s(_deb_of, _fin_of, _plan_ivs_sr)
             _deg_of_s = _deg_overlap_s(_deb_of, _fin_of, _deg_mg_sr)
             _nb_p = max(1, int(float(str(raw_r[6] or 1) or 1)))
