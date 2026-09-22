@@ -3703,15 +3703,13 @@ def api_period_report():
                 _deg_rp  = _deg_overlap_s(_deb_rp, _fin_rp, _deg_ivs_pr)
                 _nb_p_rp = max(1, int(float(str(_rp[6] or 1) or 1)))
                 _pct_rp  = get_pct_cadence(_nb_p_rp)
-                _adj_rp  = max(1.0, _dur_rp - _plan_rp - _deg_rp)
+                _adj_rp  = max(1.0, _dur_rp - _plan_rp)  # dégradé non déduit de l'objectif
                 _eq_rp   = float(str(_rp[21] or 0).replace(",", "."))
                 _qte_rp  = float(str(_rp[19] or 0).replace(",", "."))
                 _pcoef_rp = _eq_rp / _qte_rp if _qte_rp > 0 and _eq_rp > 0 else 1.0
                 _exp_rp  = prod_ref * _pct_rp * _adj_rp / 28800 if prod_ref > 0 else 0.0
-                _xl_obj_rp = _rp[42] if len(_rp) > 42 else None
-                try: _obj_rp = round(float(str(_xl_obj_rp or "").replace(",",".")), 1) if _xl_obj_rp not in (None, "") else -1
-                except: _obj_rp = -1
-                if _obj_rp < 0 and _exp_rp > 0: _obj_rp = round(_exp_rp, 1)
+                # Toujours recalculer (ignore colonne 43 Excel qui peut être obsolète)
+                _obj_rp = round(_exp_rp, 1) if _exp_rp > 0 else -1
             except:
                 _plan_rp = 0; _deg_rp = 0; _obj_rp = -1
             _of_rows_sd.append({
@@ -3733,7 +3731,7 @@ def api_period_report():
                 "nb_pp":str(_rp[30] if len(_rp)>30 else ""),
                 "duree_mq_mp":str(_rp[32] if len(_rp)>32 else ""),
                 "manquant_pers":str(_rp[33] if len(_rp)>33 else ""),
-                "perte_cad_of":str(_rp[43] if len(_rp)>43 else ""),
+                "perte_cad_of":str(round((_obj_rp-_eq_rp)/(prod_ref/480.0),1)) if _obj_rp>0 and prod_ref>0 and _eq_rp>=0 else "",
                 "degrade_min":round(_deg_rp/60,1),"plan_stop_s":round(_plan_rp),"objectif":_obj_rp,
                 "budget_overrides":_xl.get('budget_overrides') or {},
             })
@@ -3877,25 +3875,22 @@ def api_session_report():
             _deg_of_s = _deg_overlap_s(_deb_of, _fin_of, _deg_mg_sr)
             _nb_p = max(1, int(float(str(raw_r[6] or 1) or 1)))
             _pct_of = get_pct_cadence(_nb_p)
-            _adj_of_s = max(1.0, _dur_of - _plan_of_s - _deg_of_s)
+            _adj_of_s = max(1.0, _dur_of - _plan_of_s)  # dégradé non déduit de l'objectif
             _eq_of = float(str(raw_r[21] or 0).replace(",", "."))
             _qte_of = float(str(raw_r[19] or 0).replace(",", "."))
             _pcoef_of = _eq_of / _qte_of if _qte_of > 0 and _eq_of > 0 else 1.0
             _exp_of = prod_ref * _pct_of * _adj_of_s / 28800 if prod_ref > 0 else 0.0
-            _xl_obj_of = raw_r[42] if len(raw_r) > 42 else None
-            try: _obj_of = round(float(str(_xl_obj_of or "").replace(",",".")), 1) if _xl_obj_of not in (None, "") else -1
-            except: _obj_of = -1
-            if _obj_of < 0 and _exp_of > 0: _obj_of = round(_exp_of, 1)
+            # Toujours recalculer l'objectif (ignore colonne 43 Excel qui peut être obsolète)
+            _obj_of = round(_exp_of, 1) if _exp_of > 0 else -1
             prod_rows[pi]["plan_stop_s"] = round(_plan_of_s)
             prod_rows[pi]["objectif"] = _obj_of
-            _xl_pc_of = raw_r[43] if len(raw_r) > 43 else None
-            try: prod_rows[pi]["perte_cad_of"] = str(round(float(str(_xl_pc_of or "").replace(",",".")), 1)) if _xl_pc_of not in (None, "") else ""
-            except: prod_rows[pi]["perte_cad_of"] = ""
-            # Fallback: calculer à la volée si col 44 absente/stale
-            if not prod_rows[pi]["perte_cad_of"] and _obj_of > 0 and prod_ref > 0:
+            # Perte de cadence toujours recalculée
+            if _obj_of > 0 and prod_ref > 0:
                 _cad_ref_m = prod_ref / 480.0
                 try: prod_rows[pi]["perte_cad_of"] = str(round((_obj_of - _eq_of) / _cad_ref_m, 1))
-                except: pass
+                except: prod_rows[pi]["perte_cad_of"] = ""
+            else:
+                prod_rows[pi]["perte_cad_of"] = ""
             prod_rows[pi]["budget_overrides"] = _sr_live_ov
         except: pass
     _xl_trs_sr = None
