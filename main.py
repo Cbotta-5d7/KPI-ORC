@@ -3252,7 +3252,7 @@ def api_fin_poste_data():
     if _pers_pct_map and _filtered_prod_raw_fp:
         _deg_ivs_fp = _merged_degrade_ivs([r_s for _, r_s in shift_evt_rows])
         _, _sum_exp_fp = _option_b_trs(_filtered_prod_raw_fp, _deg_ivs_fp, prod_ref, _plan_ivs_fp)
-        perte_cadence_fp = round((_sum_exp_fp - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 and _sum_exp_fp > 0 else 0.0
+        perte_cadence_fp = round((prod_ref * _adj_fp / 28800 - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 else 0.0
     else:
         perte_cadence_fp = round((prod_ref * _adj_fp / 28800 - tot_eq) / cadence_ref_fp, 1) if cadence_ref_fp > 0 else 0.0
     # TRS poste = équivalences / (prod_ref × (durée_ouverture − arrêts_budgétés) / 28800)
@@ -3599,7 +3599,7 @@ def api_period_report():
             perte = _xl_perte if _xl_perte is not None else 0.0
         elif _pers_pct_map and s.get('prod_raws'):
             _trs_s, _sum_exp_pr = _option_b_trs(s['prod_raws'], _deg_ivs_pr, prod_ref, _plan_ivs_pr)
-            perte = round((_sum_exp_pr - s['tot_equiv']) / cadence_ref, 1) if cadence_ref > 0 and _sum_exp_pr > 0 else 0.0
+            perte = round((prod_ref * adj_s / 28800 - s['tot_equiv']) / cadence_ref, 1) if cadence_ref > 0 else 0.0
         else:
             _sum_exp_pr = prod_ref * adj_s / 28800
             _trs_s = round(s['tot_equiv']/(prod_ref*adj_s/28800)*100,1) if prod_ref>0 and adj_s>0 and s['tot_equiv']>0 else -1.0
@@ -3873,8 +3873,9 @@ def api_session_report():
     elif _pers_pct_map and _prod_raws_sr and tot_eq > 0:
         trs_shift, _sum_exp_sr = _option_b_trs(_prod_raws_sr, _deg_mg_sr, prod_ref, _plan_ivs_sr)
         _cadence_ref_s = prod_ref / 28800
-        if _cadence_ref_s > 0 and _sum_exp_sr > 0:
-            perte_cadence_s = (_sum_exp_sr - tot_eq) / _cadence_ref_s
+        if _cadence_ref_s > 0:
+            _adj_sr = max(1.0, model_dur_s - planned_ded)
+            perte_cadence_s = (prod_ref * _adj_sr / 28800 - tot_eq) / _cadence_ref_s
     elif model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
         elapsed_s = max(1.0, model_dur_s - planned_ded)
         adj_s = max(1.0, elapsed_s)
@@ -4303,7 +4304,7 @@ def _recalc_session_internal(date_str, pilot, poste):
     _adj_rc = max(1.0, model_dur_s - planned_ded)
     if _pers_pct_map and prod_raws:
         trs_shift, _sum_exp_rc = _option_b_trs(prod_raws, _deg_ivs_rc, prod_ref, _plan_ivs_rc)
-        perte_cadence_min = round((_sum_exp_rc - tot_eq)/cadence_ref,1) if cadence_ref>0 and _sum_exp_rc>0 else 0.0
+        perte_cadence_min = round((prod_ref*_adj_rc/28800-tot_eq)/cadence_ref,1) if cadence_ref>0 else 0.0
         pcs_theorique = round(_sum_exp_rc,1)
     elif model_dur_s>0 and prod_ref>0 and tot_eq>0:
         trs_shift = round(tot_eq/(prod_ref*_adj_rc/28800)*100,1)
@@ -12530,7 +12531,7 @@ def _force_fin_poste_server(force=False):
         _degrade_s = _merged_degrade_s([r for _, r in evt_rows])
         if _pers_pct_map and prod_raws:
             trs_shift, _sum_exp = _option_b_trs(prod_raws, _deg_ivs, prod_ref, _plan_ivs)
-            perte_cadence_min = round((_sum_exp - tot_eq)/cadence_ref,1) if cadence_ref>0 and _sum_exp>0 else 0.0
+            perte_cadence_min = round((prod_ref*_adj/28800-tot_eq)/cadence_ref,1) if cadence_ref>0 else 0.0
             pcs_theorique = round(_sum_exp,1)
         elif model_dur_s>0 and prod_ref>0 and tot_eq>0:
             trs_shift = round(tot_eq/(prod_ref*_adj/28800)*100,1)
