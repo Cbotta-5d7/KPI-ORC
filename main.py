@@ -10,10 +10,13 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+_WIN_MUTEX = None  # maintenu en vie pour toute la durée du processus
+
 CONFIG_FILE  = os.path.join(BASE_DIR, "kpi_orc_config.json")
 SESSION_FILE = os.path.join(BASE_DIR, "kpi_orc_session.json")
 PENDING_FILE = os.path.join(BASE_DIR, "kpi_orc_pending.json")
 BACKUP_FILE  = os.path.join(BASE_DIR, "kpi_orc_backup.json")
+BACKUPS_DIR  = os.path.join(BASE_DIR, "backups")
 
 # Migration automatique depuis HOME (première fois après mise à jour)
 def _migrate_from_home():
@@ -1605,6 +1608,28 @@ def _pm_get(pm, pilot_lw, date_str, poste=""):
         if v: return v
     return pm.get((pilot_lw, date_str), {})
 
+def _backup_excel_daily():
+    """Copie le fichier Excel dans backups/ une fois par jour. Ne supprime jamais les anciens backups."""
+    path = cfg.get("db_path", "")
+    if not path or not os.path.exists(path): return
+    try:
+        os.makedirs(BACKUPS_DIR, exist_ok=True)
+        today_str = datetime.date.today().strftime("%Y%m%d")
+        backup_path = os.path.join(BACKUPS_DIR, f"kpi_orc_{today_str}.xlsx")
+        if os.path.exists(backup_path): return  # déjà fait aujourd'hui
+        shutil.copy2(path, backup_path)
+        print(f"[BACKUP-EXCEL] Copie quotidienne : {backup_path}")
+    except Exception as _e_bxl:
+        print(f"[BACKUP-EXCEL] Erreur : {_e_bxl}")
+
+def _backup_excel_bg():
+    """Thread qui effectue le backup quotidien du fichier Excel toutes les 24h."""
+    time.sleep(10)  # laisser l'app démarrer
+    _backup_excel_daily()
+    while True:
+        time.sleep(86400)
+        _backup_excel_daily()
+
 def _start_periodic_excel_sync():
     """Recharge les listes Excel toutes les 5 minutes pour éviter la perte de données."""
     def _loop():
@@ -1749,6 +1774,17 @@ def api_login():
     if pilot in pilot_pws and pilot_pws[pilot]:
         if pw != str(pilot_pws[pilot]):
             return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    # Vérification intégrité Excel avant d'autoriser la connexion
+    _db_path_ck = cfg.get("db_path","")
+    if _db_path_ck:
+        _excel_ok = False
+        try:
+            _wb_ck = load_workbook(_db_path_ck, read_only=True, data_only=True)
+            _excel_ok = "Declarations" in _wb_ck.sheetnames
+            _wb_ck.close()
+        except: _excel_ok = False
+        if not _excel_ok:
+            return jsonify({"ok":False,"error":"Enregistrement impossible, appeler le Bureau Méthode et écrire les déclarations sur un papier"}),503
     _S["pilot"] = pilot
     _S["poste"] = poste
     _S["of_count_shift"] = 0
@@ -12467,7 +12503,19 @@ def _auto_fin_poste_bg():
             print(f"[AUTO-FIN-POSTE] Exception dans le thread : {e}")
 
 def main():
-    global cfg
+    global cfg, _WIN_MUTEX
+    # Empêcher l'ouverture de 2 instances simultanées sur le même PC (Windows)
+    if sys.platform == "win32":
+        import ctypes
+        _WIN_MUTEX = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\KPI_ORC_APP_MUTEX")
+        if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "KPI-ORC est déjà ouvert sur ce PC.\nFermez la première instance avant d'en ouvrir une autre.",
+                "KPI-ORC — Déjà ouvert",
+                0x10  # MB_ICONERROR
+            )
+            sys.exit(1)
     cfg = load_cfg()
     load_session()
     threading.Thread(target=load_lists, daemon=True).start()
@@ -12475,6 +12523,7 @@ def main():
     threading.Thread(target=_session_autosave, daemon=True).start()
     threading.Thread(target=_backup_flush_bg, daemon=True).start()
     threading.Thread(target=_auto_fin_poste_bg, daemon=True).start()
+    threading.Thread(target=_backup_excel_bg, daemon=True).start()
     _start_periodic_excel_sync()
 
     # Recover pending Excel writes after crash (format liste ou objet unique)
