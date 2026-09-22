@@ -8226,6 +8226,9 @@ async function doStartStop(key,cat){
 
 function doEndStop(key) {
   const k=key||_curStopKey;
+  // Reset button if left disabled by a previous (still-pending) call
+  const _prevBtn=document.querySelector('#m-stopcmt .btn-ok');
+  if(_prevBtn){_prevBtn.disabled=false;_prevBtn.textContent='✓ Confirmer fin d\'arrêt';}
   if(!k||k==='_pause'){doPause();return;}
   if(k==='nettoyage'){
     fetch('/api/end_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(()=>{pollState();pollEvts();if(_curTab==='main')loadMainDecl();});
@@ -9927,12 +9930,14 @@ function _buildEcartStopSelect(gi){
   const nettoyage=new Set(['Nettoyage court','Nettoyage long','Nettoyage très long']);
   const pannes=new Set();
   const organisation=new Set();
+  const manquants=new Set();
   (_evtsList||[]).forEach(e=>{
     const lbl=e.label||'';if(!lbl)return;
     if(e.cat==='pb'||e.cat==='ratt')pannes.add(lbl);
     else if(e.cat==='nettoyage')nettoyage.add(lbl);
     else if(e.cat==='organisation')organisation.add(lbl);
     else if(e.cat==='autre')organisation.add(lbl);
+    else if(e.cat==='manquants')manquants.add(lbl);
   });
   const mkGrp=(name,items)=>{
     const arr=[...items];if(!arr.length)return'';
@@ -9942,6 +9947,7 @@ function _buildEcartStopSelect(gi){
     mkGrp('⏸ Pauses',pauses)+
     mkGrp('🧹 Nettoyage',nettoyage)+
     mkGrp('🔴 Pannes / Rattrapages',pannes)+
+    mkGrp('🟣 Manquants',manquants)+
     mkGrp('🔵 Organisation',organisation)+
     '<optgroup label="⚫ Autre"><option value="Autre (à justifier)">Autre (à justifier)</option></optgroup>';
   return`<select id="ecart-gap-type-${gi}" onchange="ecartCheckAutreType(this,${gi})" style="width:100%;padding:4px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));background:#fff">${html}</select>`;
@@ -12105,7 +12111,8 @@ function openPastDecl(){
     stopSel.innerHTML='<option value="">— Choisir —</option>';
     const cats=[
       {label:'⚙ Rattrapage',keys:['ratt']},{label:'🔴 Technique',keys:['pb']},
-      {label:'♻ Nettoyage',keys:['nettoyage']},{label:'🔵 Organisationnel',keys:['organisation','autre']},
+      {label:'♻ Nettoyage',keys:['nettoyage']},{label:'🟣 Manquants',keys:['manquants']},
+      {label:'🔵 Organisationnel',keys:['organisation','autre']},
       {label:'⏸ Pause / Réunion',keys:['pause','reunion']},
     ];
     const allEvts=(_evtsList&&_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}))).concat([
