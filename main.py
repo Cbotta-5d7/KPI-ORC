@@ -6893,7 +6893,7 @@ async function pollState() {
   applyState(s);
   _checkEndProdBtn();
   if(_curTab==='main') loadMainDecl();
-  if(_curTab==='kpi') loadKPI();
+  // KPI data is historical — do NOT reload on every state poll (causes continuous chart re-render / zoom effect)
 }
 
 async function pollEvts() {
@@ -10426,8 +10426,10 @@ function _kpiDrawDonut(svgId,legendId,segments){
 function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
   const el=document.getElementById(containerId);if(!el)return;
   const rect=el.getBoundingClientRect();
-  const W=Math.max(rect.width||400,200);
-  const H=Math.max(rect.height||100,60);
+  const W=Math.max(rect.width||el.offsetWidth||el.clientWidth||400,200);
+  const H=Math.max(rect.height||el.offsetHeight||el.clientHeight||200,60);
+  // If container not yet laid out (W still 0), defer one frame to avoid wrong viewBox scale
+  if(!rect.width&&!el.offsetWidth){requestAnimationFrame(()=>_kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax));return;}
   if(!items.length){el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%"><text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="10" fill="#94a3b8">Aucune donnée</text></svg>`;return;}
   const vals=items.map(it=>it[valueKey]||0);
   const minV=yMin!==undefined?yMin:Math.max(0,Math.min(...vals)-5);
@@ -10507,8 +10509,9 @@ function _kpiBarChart(containerId,items,valueKey,colorFn,unit){
 function _kpiDualLineChart(containerId,items,series,opts){
   const el=document.getElementById(containerId);if(!el)return;
   const rect=el.getBoundingClientRect();
-  const W=Math.max(rect.width||400,200);
-  const H=Math.max(rect.height||100,60);
+  const W=Math.max(rect.width||el.offsetWidth||el.clientWidth||400,200);
+  const H=Math.max(rect.height||el.offsetHeight||el.clientHeight||200,60);
+  if(!rect.width&&!el.offsetWidth){requestAnimationFrame(()=>_kpiDualLineChart(containerId,items,series,opts));return;}
   if(!items.length){el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%"><text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="10" fill="#94a3b8">Aucune donnée</text></svg>`;return;}
   const refLine=opts&&opts.refLine!=null?opts.refLine:null;
   const allVals=series.flatMap(s=>items.map(it=>parseFloat(it[s.key]||0)));
@@ -10726,8 +10729,8 @@ async function loadKPI(){
       }).join('');
     }
   }
-  // Restaurer la position de scroll (évite l'effet de zoom / saut de vue)
-  if(_kpiView) requestAnimationFrame(()=>{_kpiView.scrollTop=_kpiScroll;});
+  // Restaurer la position de scroll (double-rAF pour laisser le DOM se stabiliser)
+  if(_kpiView) requestAnimationFrame(()=>requestAnimationFrame(()=>{_kpiView.scrollTop=_kpiScroll;}));
 }
 
 // ── HISTORY ROW DETAIL ──
