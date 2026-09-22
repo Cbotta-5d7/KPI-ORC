@@ -11033,7 +11033,7 @@ async function calcPeriodReport(autoLoad){
     const yBase=padT+gH;
     const _trs70Y=padT+gH-Math.round(70/maxTrs*gH);
     const _trsLblY=Math.max(13,_trs70Y-4);
-    const trsTargetLine=`<line x1="0" y1="${_trs70Y}" x2="${svgW}" y2="${_trs70Y}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="${svgW-2}" y="${_trsLblY}" text-anchor="end" font-size="12" fill="#16a34a" font-weight="700">Cible 70%</text>`;
+    const trsTargetLine=`<line x1="0" y1="${_trs70Y}" x2="${svgW}" y2="${_trs70Y}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${_trsLblY}" text-anchor="start" font-size="12" fill="#16a34a" font-weight="700">Cible 70%</text>`;
     const trsCibleLeg=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#16a34a;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible 70%</span>`;
     chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">📈 TRS par équipe${trsCibleLeg}</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgBars}${trsTargetLine}${svgLabels}${svgL}</svg></div></div>`;
   }
@@ -11073,7 +11073,7 @@ async function calcPeriodReport(autoLoad){
     });
     const yBase2=padT2+gH2;
     const _cadLblY=Math.max(13,tY-4);
-    const tLine=`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="6,3"/><text x="${svgW2-2}" y="${_cadLblY}" text-anchor="end" font-size="12" fill="#1d4ed8" font-weight="700">Cible ${_CAD_CIBLE}</text>`;
+    const tLine=`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${_cadLblY}" text-anchor="start" font-size="12" fill="#1d4ed8" font-weight="700">Cible ${_CAD_CIBLE}</text>`;
     const legCad=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#1d4ed8;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible ${_CAD_CIBLE} éq/h</span>`;
     chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence vs référence${legCad}</div><div style="overflow-x:auto"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2}${tLine}${svgLabels2}${svgL2}</svg></div></div>`;
   }
