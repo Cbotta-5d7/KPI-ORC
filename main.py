@@ -2950,6 +2950,43 @@ def api_delete_tl_event():
     save_session()
     return jsonify({"ok":True})
 
+@flask_app.route('/api/edit_tl_event', methods=['POST'])
+def api_edit_tl_event():
+    """Modifie un événement live de tl_events (OF en cours) par son start ISO."""
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    start_iso = data.get("start_iso")
+    new_debut = data.get("new_debut","")
+    new_fin   = data.get("new_fin","")
+    comment   = data.get("comment","")
+    if not start_iso:
+        return jsonify({"ok":False,"error":"Paramètre manquant"}),400
+    if not _S.get("prod_active"):
+        return jsonify({"ok":False,"error":"Pas de production active"}),400
+    found = False
+    for ev in _S.get("tl_events",[]):
+        if _dt_str(ev.get("start")) == start_iso:
+            if new_debut:
+                try:
+                    h,m = (int(x) for x in new_debut.split(":")[:2])
+                    ev["start"] = ev["start"].replace(hour=h, minute=m, second=0, microsecond=0)
+                except Exception: pass
+            if new_fin:
+                base = ev.get("end") or ev["start"]
+                try:
+                    h,m = (int(x) for x in new_fin.split(":")[:2])
+                    ev["end"] = base.replace(hour=h, minute=m, second=0, microsecond=0)
+                except Exception: pass
+            ev["comment"] = comment
+            found = True
+            break
+    if not found:
+        return jsonify({"ok":False,"error":"Événement introuvable"}),404
+    save_session()
+    return jsonify({"ok":True})
+
 @flask_app.route('/api/edit_row', methods=['POST'])
 def api_edit_row():
     """Modifie une ligne dans Declarations."""
@@ -9030,10 +9067,20 @@ async function saveEditStop(){
   const ev=window._evMap[key];
   if(!ev) return;
   const pw=document.getElementById('es-pw').value||'';
-  const updates={'1':document.getElementById('es-type').value,'17':document.getElementById('es-deb').value,'18':document.getElementById('es-fin').value,'36':document.getElementById('es-cmt').value};
-  const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num,updates})});
+  const debVal=document.getElementById('es-deb').value;
+  const finVal=document.getElementById('es-fin').value;
+  const cmtVal=document.getElementById('es-cmt').value;
+  let r;
+  if(!ev.row_num && ev.start_iso){
+    // Événement live de l'OF en cours — modifier via tl_events
+    r=await fetch('/api/edit_tl_event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,start_iso:ev.start_iso,new_debut:debVal,new_fin:finVal,comment:cmtVal})});
+  } else {
+    // Déclaration Excel — modifier via edit_row
+    const updates={'1':document.getElementById('es-type').value,'17':debVal,'18':finVal,'36':cmtVal};
+    r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num,updates})});
+  }
   const d=r?await r.json():{};
-  if(d&&d.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Modifié','ok');}
+  if(d&&d.ok){closeM('m-editstop');await pollState();await pollEvts();if(_curTab==='main')loadMainDecl();toast('Modifié','ok');}
   else toast(d?.error||'Mot de passe incorrect','err');
 }
 
