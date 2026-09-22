@@ -3546,7 +3546,7 @@ def api_period_report():
     # ── Aggregate ──
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
-    agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_elapsed_s=0.0; agg_sum_expected=0.0
+    agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_of_set=set(); agg_elapsed_s=0.0; agg_sum_expected=0.0
     agg_sum_theorique=0.0; agg_arret_prevu=0.0; agg_obj_pcs=0.0
     agg_fibre_chg=0; agg_depassement=0.0; agg_degrade_min=0.0; stop_by_type={}; sessions_detail=[]
     jours=set(); pilotes=set(); postes_set=set()
@@ -3632,7 +3632,7 @@ def api_period_report():
                 except: pass
         agg_equiv   += s['tot_equiv']
         agg_pcs     += s['tot_pcs']
-        agg_of      += s['nb_of']
+        agg_of_set.update(str(r[1] or '').strip() for r in s.get('prod_raws',[]) if str(r[1] or '').strip())
         agg_elapsed_s += adj_s
         jours.add(s['date']); pilotes.add(s['pilot']); postes_set.add(s['poste'])
         day = s['date']
@@ -3705,7 +3705,7 @@ def api_period_report():
         'ok':True,
         'trs_periode':trs_periode,
         'nb_sessions':len(sessions),
-        'nb_of':agg_of,
+        'nb_of':len(agg_of_set),
         'nb_jours':len(jours),
         'nb_pilotes':len(pilotes),
         'nb_postes':len(postes_set),
