@@ -10393,6 +10393,7 @@ async function confirmFinPoste(){
     budget_overrides:window._budgetOverrides||{},
   };
   await fetch('/api/save_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posteRow)});
+  try{ await fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); }catch(e){}
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   resetToLogin();
   toast('Bonne fin de poste !','ok');
