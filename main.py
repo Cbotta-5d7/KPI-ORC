@@ -3846,9 +3846,11 @@ def api_session_report():
         _xl_trs_sr = _pm2_sr.get('trs')
         _xl_perte_sr = _pm2_sr.get('perte_min')
         model_dur_s = max(0.0, (_pfin2 - _pdeb2).total_seconds()) if _pfin2 else (get_current_shift_duration_s() if _is_live_sr else 0.0)
-        if not debut_str:
+        # Priorité aux timestamps réels Postes P/Q sur le modèle config (fallback si P/Q vide)
+        if _pdeb2:
             debut_str = _pdeb2.strftime("%H:%M")
-            fin_str = _pfin2.strftime("%H:%M") if _pfin2 else ''
+        if _pfin2:
+            fin_str = _pfin2.strftime("%H:%M")
     else:
         model_dur_s = get_shift_duration_s(poste)
     ecart_s = max(0.0, model_dur_s - (tot_s + stop_s))
