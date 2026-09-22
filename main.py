@@ -1318,6 +1318,7 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
     if not path or not os.path.exists(path): return
     pilot = _S.get("last_of_pilot") or _S.get("pilot") or ""
     dur_s = (end_dt-start_dt).total_seconds()
+    if dur_s < 60: return  # ignore interpostes de durée nulle ou quasi-nulle
     row_type = label or "Changement d'OF"
     shift_dt = _S.get("shift_start") or start_dt
     shift_date_str = shift_dt.strftime("%d/%m/%Y")
@@ -5075,7 +5076,7 @@ select{cursor:default}
       </div>
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
       <div class="recap-col" style="width:310px">
-        <div class="recap-hdr">Arrêts</div>
+        <div class="recap-hdr" id="recap-hdr">Arrêts de l'OF en cours</div>
         <div class="recap-body" id="recap-list"></div>
         <!-- Budget arrêts prévus -->
         <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;background:#fffbeb">
@@ -6755,6 +6756,19 @@ function goTab(tab) {
   const ntEl=document.getElementById(nt[tab]);
   if(ntEl) ntEl.classList.add('on');
   if(tab!=='prod') _clearFieldHighlights();
+  if(tab==='prod' && ST && ST.prod_active){
+    const _le=tlEventsToDisplayFmt(ST.tl_events||[]);
+    (ST.pause_periods||[]).forEach(([pS,pE])=>{
+      const s0=pS?new Date(pS):null;const e0=pE?new Date(pE):null;
+      if(!s0)return;
+      const _p=n=>String(n).padStart(2,'0');
+      const _hms=d=>_p(d.getHours())+':'+_p(d.getMinutes())+':'+_p(d.getSeconds());
+      const dur=e0?(e0.getTime()-s0.getTime())/1000:0;
+      _le.push({type:'Pause',cat:'_pause',debut:_hms(s0),fin:e0?_hms(e0):'',duree:dur>0?fmtDur(dur):'',comment:'',hors_trs:false,_live:!pE});
+    });
+    _le.sort((a,b)=>a.debut.localeCompare(b.debut));
+    renderRecap(_le);
+  }
   if(tab==='finposte') loadFPData();
   // Vues données : recharge le cache Excel d'abord, puis affiche
   const _dataViews=['history','rapports','rpt-jour','kpi','main'];
@@ -11685,7 +11699,11 @@ async function doRecalcSession(date,pilot,poste){
   const pw=prompt('Mot de passe administrateur :');
   if(!pw) return;
   toast('Recalcul en cours…','ok');
-  const r=await apiFetch('/api/admin_recalc_session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,date,pilot,poste})});
+  let r=null;
+  try{
+    const resp=await fetch('/api/admin_recalc_session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,date,pilot,poste})});
+    if(resp.ok) r=await resp.json();
+  }catch(e){}
   if(r&&r.ok){
     toast('Recalcul terminé — TRS : '+(r.trs>=0?r.trs.toFixed(1)+'%':'—'),'ok');
     await loadRapports(false);
@@ -12195,7 +12213,7 @@ def generate_dashboard_html():
             '<script>\nwindow.DASH=' + dash_json + ';\n'
             '(function(){\n'
             # Fake state: makes the app think a user is "logged in" (no prod active)
-            'var _DASH_STATE={pilot:"Dashboard",poste:"Dashboard",prod_active:false,of_elapsed_s:0,stop_wall_s:0,pause_total_s:0,is_paused:false};\n'
+            'var _DASH_STATE={pilot:"Dashboard",poste:' + _json.dumps(cfg.get("app_name","ORC1")) + ',prod_active:false,of_elapsed_s:0,stop_wall_s:0,pause_total_s:0,is_paused:false};\n'
             # Override apiFetch to serve embedded data
             'window.apiFetch=async function(url,opts){\n'
             '  var d=window.DASH||{};\n'
@@ -12312,6 +12330,21 @@ def _force_fin_poste_server():
         return
     now = datetime.datetime.now()
     if now < shift_fin_dt + datetime.timedelta(hours=3):
+        return
+    # Sécurité : session obsolète (de la veille ou plus ancienne) — ne pas déclencher
+    if (now - shift_fin_dt).total_seconds() > 15 * 3600:
+        print(f"[AUTO-FIN-POSTE] Session obsolète ignorée (shift_fin_dt={shift_fin_dt}) — nettoyage silencieux")
+        with _S_lock:
+            _S["pilot"] = None
+            _S["poste"] = ""
+            _S["prod_active"] = False
+            _S["of_start"] = None
+            _S["tl_events"] = []
+            _S["shift_start"] = None
+            _S["shift_debut_dt"] = None
+            _S["shift_fin_dt"] = None
+            _S["_auto_fin_done"] = True
+        save_session()
         return
     # Heure de fermeture forcée = heure théorique de fin de poste
     forced_end = shift_fin_dt
