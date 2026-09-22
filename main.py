@@ -3700,7 +3700,7 @@ def api_period_report():
     cadence_h = round(agg_equiv*60/agg_utile) if agg_utile>0 else 0
     sessions_detail_sorted = sorted(sessions_detail, key=lambda x: x['_deb_dt'] or datetime.datetime.min)
     for _sd_item in sessions_detail_sorted: _sd_item.pop('_deb_dt', None)
-    _agg_perte_xl = round((agg_sum_theorique - agg_equiv) / cadence_ref, 1) if cadence_ref > 0 and agg_sum_theorique > 0 else round(agg_perte, 1)
+    _agg_perte_xl = round(agg_perte, 1)
     return jsonify({
         'ok':True,
         'trs_periode':trs_periode,
