@@ -4017,21 +4017,27 @@ def api_add_past_decl():
     pilot = _S.get("pilot",""); poste = _S.get("poste","")
     if not pilot: return jsonify({"ok":False,"error":"Non connecté"}),400
     now = datetime.datetime.now()
+    date_debut_str = str(data.get("date_debut","")).strip()  # format YYYY-MM-DD
+    date_fin_str   = str(data.get("date_fin","")).strip()
     try:
         dh,dm = [int(x) for x in debut_hms.split(":")[:2]]
         fh,fm = [int(x) for x in fin_hms.split(":")[:2]]
-        debut_dt = now.replace(hour=dh, minute=dm, second=0, microsecond=0)
-        fin_dt   = now.replace(hour=fh, minute=fm, second=0, microsecond=0)
+        base_debut = datetime.datetime.strptime(date_debut_str, "%Y-%m-%d") if date_debut_str else now
+        base_fin   = datetime.datetime.strptime(date_fin_str,   "%Y-%m-%d") if date_fin_str   else now
+        debut_dt = base_debut.replace(hour=dh, minute=dm, second=0, microsecond=0)
+        fin_dt   = base_fin.replace(hour=fh,   minute=fm, second=0, microsecond=0)
         if fin_dt <= debut_dt: fin_dt += datetime.timedelta(days=1)
         dur_s = max(0, (fin_dt - debut_dt).total_seconds())
     except Exception as e:
         return jsonify({"ok":False,"error":str(e)}),400
-    # Vérification dans la plage du poste
-    sd = _S.get("shift_debut_dt"); sf = _S.get("shift_fin_dt")
-    if sd and debut_dt < sd:
-        return jsonify({"ok":False,"error":f"Avant le début du poste ({sd.strftime('%H:%M')})"}),400
-    if sf and fin_dt > sf:
-        return jsonify({"ok":False,"error":f"Après la fin du poste ({sf.strftime('%H:%M')})"}),400
+    # Vérification dans la plage du poste uniquement si pas de date explicite (déclaration d'aujourd'hui)
+    _explicit_date = bool(date_debut_str)
+    if not _explicit_date:
+        sd = _S.get("shift_debut_dt"); sf = _S.get("shift_fin_dt")
+        if sd and debut_dt < sd:
+            return jsonify({"ok":False,"error":f"Avant le début du poste ({sd.strftime('%H:%M')})"}),400
+        if sf and fin_dt > sf:
+            return jsonify({"ok":False,"error":f"Après la fin du poste ({sf.strftime('%H:%M')})"}),400
     shift_dt = _S.get("shift_start") or now
     shift_date_str = shift_dt.strftime("%d/%m/%Y")
     date_str = debut_dt.strftime("%d/%m/%Y")
@@ -5314,6 +5320,13 @@ select{cursor:default}
   <div id="m-past-decl" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;align-items:center;justify-content:center">
     <div class="card" style="width:min(480px,98vw);max-height:92vh;overflow-y:auto;padding:18px 20px;background:#fff;border-radius:12px;border-top:4px solid #7c3aed">
       <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:12px">📝 Déclaration antérieure</div>
+      <!-- Plage date -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Date début</label>
+          <input type="date" id="pd-date-debut" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"></div>
+        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Date fin</label>
+          <input type="date" id="pd-date-fin" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"></div>
+      </div>
       <!-- Plage horaire -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
         <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Heure début</label>
@@ -12162,6 +12175,10 @@ function openPastDecl(){
   const pad=n=>String(n).padStart(2,'0');
   if(shiftDebut){document.getElementById('pd-debut').value=pad(shiftDebut.getHours())+':'+pad(shiftDebut.getMinutes());}
   if(shiftFin){document.getElementById('pd-fin').value=pad(shiftFin.getHours())+':'+pad(shiftFin.getMinutes());}
+  // Pré-remplir les dates avec aujourd'hui
+  const _todayIso=new Date().toISOString().slice(0,10);
+  document.getElementById('pd-date-debut').value=_todayIso;
+  document.getElementById('pd-date-fin').value=_todayIso;
   // Copier les options depuis les selects du formulaire principal (toujours à jour)
   function _copyOpts(srcId,dstId){const src=document.getElementById(srcId);const dst=document.getElementById(dstId);if(!src||!dst)return;while(dst.options.length>1)dst.remove(1);Array.from(src.options).slice(1).forEach(o=>{const n=document.createElement('option');n.value=o.value;n.textContent=o.text;dst.appendChild(n);});}
   _copyOpts('f-type_prod','pd-type-prod');_copyOpts('f-taille','pd-taille');_copyOpts('f-fibre','pd-fibre');_copyOpts('f-copilote','pd-copilote');
@@ -12202,9 +12219,13 @@ function pdSwitchType(t){
 async function submitPastDecl(){
   const debut=(document.getElementById('pd-debut')||{}).value||'';
   const fin=(document.getElementById('pd-fin')||{}).value||'';
+  const dateDebut=(document.getElementById('pd-date-debut')||{}).value||'';
+  const dateFin=(document.getElementById('pd-date-fin')||{}).value||'';
   if(!debut||!fin){toast('Renseigner heure début et fin','err');return;}
-  if(debut>=fin){toast('Heure fin doit être après début','err');return;}
-  let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin};
+  // Vérifier ordre si même date
+  if(dateDebut&&dateFin&&dateDebut===dateFin&&debut>=fin){toast('Heure fin doit être après début','err');return;}
+  if(dateDebut&&dateFin&&dateDebut>dateFin){toast('Date fin doit être après date début','err');return;}
+  let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin,date_debut:dateDebut,date_fin:dateFin};
   if(_pdType==='prod'){
     const of_num=(document.getElementById('pd-of')||{}).value||'';
     const code=(document.getElementById('pd-code')||{}).value||'';
