@@ -1786,6 +1786,11 @@ def api_login():
         except: _excel_ok = False
         if not _excel_ok:
             return jsonify({"ok":False,"error":"Enregistrement impossible, appeler le Bureau Méthode et écrire les déclarations sur un papier"}),503
+    # Si un autre pilote est encore connecté → fermer son poste proprement avant de lancer le nouveau
+    _prev_pilot = _S.get("pilot") or ""
+    if _prev_pilot and _prev_pilot != pilot:
+        print(f"[LOGIN-HANDOVER] {pilot} se connecte — clôture automatique du poste de {_prev_pilot}")
+        _force_fin_poste_server(force=True)
     _S["pilot"] = pilot
     _S["poste"] = poste
     _S["of_count_shift"] = 0
@@ -6766,6 +6771,12 @@ function goTab(tab) {
       const dur=e0?(e0.getTime()-s0.getTime())/1000:0;
       _le.push({type:'Pause',cat:'_pause',debut:_hms(s0),fin:e0?_hms(e0):'',duree:dur>0?fmtDur(dur):'',comment:'',hors_trs:false,_live:!pE});
     });
+    if(ST.of_start_iso && gEvts && gEvts.length>0){
+      const _oS=new Date(ST.of_start_iso);
+      const _pp=n=>String(n).padStart(2,'0');
+      const _oHMS=_pp(_oS.getHours())+':'+_pp(_oS.getMinutes())+':'+_pp(_oS.getSeconds());
+      gEvts.forEach(ev=>{if(!ev.debut||ev.debut<_oHMS)return;if(_le.find(e=>e.debut===ev.debut&&e.type===ev.type))return;_le.push(Object.assign({},ev,{_from_history:true}));});
+    }
     _le.sort((a,b)=>a.debut.localeCompare(b.debut));
     renderRecap(_le);
   }
@@ -6990,7 +7001,19 @@ function applyState(s) {
       const dur=e0?(e0.getTime()-s0.getTime())/1000:0;
       le.push({type:'Pause',cat:'_pause',debut:toHMS(s0),fin:e0?toHMS(e0):'',duree:dur>0?fmtDur(dur):'',comment:'',hors_trs:false,_live:!pEnd});
     });
-    le.sort((a,b)=>a.debut.localeCompare(b.debut));
+    // Compléter avec les arrêts historiques (Excel) dans la plage de l'OF en cours
+    // Utile après rétrodatage : les arrêts déjà déclarés avant ce démarrage d'OF s'affichent
+    if(s.of_start_iso && gEvts && gEvts.length>0){
+      const _ofS=new Date(s.of_start_iso);
+      const _pad2=n=>String(n).padStart(2,'0');
+      const _ofHMS=_pad2(_ofS.getHours())+':'+_pad2(_ofS.getMinutes())+':'+_pad2(_ofS.getSeconds());
+      gEvts.forEach(ev=>{
+        if(!ev.debut||ev.debut<_ofHMS) return;
+        if(le.find(e=>e.debut===ev.debut&&e.type===ev.type)) return;
+        le.push(Object.assign({},ev,{_from_history:true}));
+      });
+      le.sort((a,b)=>a.debut.localeCompare(b.debut));
+    }
     renderTL('tl-svg',le);
     renderRecap(le);
   }
@@ -12312,8 +12335,11 @@ def _session_autosave():
         try: save_session()
         except: pass
 
-def _force_fin_poste_server():
-    """Fin de poste automatique côté serveur — appelé quand shift_fin_dt + 3h est dépassé."""
+def _force_fin_poste_server(force=False):
+    """Fin de poste automatique côté serveur.
+    force=False (timer) : ne ferme JAMAIS une prod active, seulement après 4h de dépassement.
+    force=True (handover login) : ferme immédiatement pour permettre la connexion d'un nouveau pilote.
+    """
     global _S
     with _S_lock:
         pilot = _S.get("pilot") or ""
@@ -12326,29 +12352,40 @@ def _force_fin_poste_server():
         tl_snap = list(_S.get("tl_events") or [])
         pause_periods_snap = list(_S.get("pause_periods") or [])
         shift_start = _S.get("shift_start")
-    if not pilot or not poste or not shift_fin_dt or already_done:
+    if not pilot or not poste or already_done:
         return
     now = datetime.datetime.now()
-    if now < shift_fin_dt + datetime.timedelta(hours=3):
-        return
-    # Sécurité : session obsolète (de la veille ou plus ancienne) — ne pas déclencher
-    if (now - shift_fin_dt).total_seconds() > 15 * 3600:
-        print(f"[AUTO-FIN-POSTE] Session obsolète ignorée (shift_fin_dt={shift_fin_dt}) — nettoyage silencieux")
-        with _S_lock:
-            _S["pilot"] = None
-            _S["poste"] = ""
-            _S["prod_active"] = False
-            _S["of_start"] = None
-            _S["tl_events"] = []
-            _S["shift_start"] = None
-            _S["shift_debut_dt"] = None
-            _S["shift_fin_dt"] = None
-            _S["_auto_fin_done"] = True
-        save_session()
-        return
-    # Heure de fermeture forcée = heure théorique de fin de poste
-    forced_end = shift_fin_dt
-    print(f"[AUTO-FIN-POSTE] Déclenchement automatique pour {pilot} / {poste} (shift_fin_dt={shift_fin_dt})")
+    if not force:
+        # Timer background : JAMAIS fermer une prod active
+        if prod_active:
+            return
+        if not shift_fin_dt:
+            return
+        # Trop tôt : 4h de dépassement pas encore atteints
+        if now < shift_fin_dt + datetime.timedelta(hours=4):
+            return
+        # Session vraiment obsolète (> 24h) : nettoyage silencieux sans écriture Excel
+        if (now - shift_fin_dt).total_seconds() > 24 * 3600:
+            print(f"[AUTO-FIN-POSTE] Session obsolète ignorée (shift_fin_dt={shift_fin_dt}) — nettoyage silencieux")
+            with _S_lock:
+                _S["pilot"] = None
+                _S["poste"] = ""
+                _S["prod_active"] = False
+                _S["of_start"] = None
+                _S["tl_events"] = []
+                _S["shift_start"] = None
+                _S["shift_debut_dt"] = None
+                _S["shift_fin_dt"] = None
+                _S["_auto_fin_done"] = True
+            save_session()
+            return
+        # 4h de dépassement, pas de prod active → fermeture automatique
+        forced_end = shift_fin_dt
+        print(f"[AUTO-FIN-POSTE] Déclenchement automatique pour {pilot} / {poste} (shift_fin_dt={shift_fin_dt})")
+    else:
+        # Handover : fermeture forcée maintenant pour permettre la connexion d'un nouveau pilote
+        forced_end = now
+        print(f"[AUTO-FIN-POSTE-HANDOVER] Clôture forcée de la session de {pilot} / {poste} (prod_active={prod_active})")
     with _S_lock:
         _S["_auto_fin_done"] = True
         # Fermer tous les événements ouverts à l'heure de fin théorique
