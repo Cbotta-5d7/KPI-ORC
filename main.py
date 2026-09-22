@@ -5964,10 +5964,10 @@ select{cursor:default}
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:#f8fafc;padding:8px;border-radius:7px;border:1px solid var(--border)">
           <input id="ev-new-label" placeholder="Nom de l'arrêt" style="flex:1;min-width:120px;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
           <select id="ev-new-cat" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
-            <option value="manquants">🟣 Manquants</option>
-            <option value="ratt">🟠 Rattrapage</option>
-            <option value="organisation">🔵 Organisationnel</option>
-            <option value="pb">🔴 Technique</option>
+            <option value="manquants">◆ Manquants</option>
+            <option value="ratt">★ Rattrapage</option>
+            <option value="organisation">■ Organisationnel</option>
+            <option value="pb">▲ Technique</option>
             <option value="autre">⚫ Autre</option>
           </select>
           <button class="btn btn-green" style="font-size:calc(11px*var(--zf,1));padding:5px 12px" onclick="addEvtItem()">+ Ajouter</button>
@@ -7933,7 +7933,7 @@ function psFillStopBtns(){
     if(cats[c]!==undefined) cats[c].push(lbl);
     else cats.autre.push(lbl);
   });
-  if(cats.pb.length||cats.ratt.length) _makeSection('🔴 Pannes / Rattrapages',[...cats.pb,...cats.ratt],'#dc2626');
+  if(cats.pb.length||cats.ratt.length) _makeSection('▲ Pannes / Rattrapages',[...cats.pb,...cats.ratt],'#dc2626');
   if(cats.nettoyage.length) _makeSection('🧹 Nettoyage',cats.nettoyage,'#f97316');
   if(cats.organisation.length) _makeSection('📋 Organisation',cats.organisation,'#3b82f6');
   if(cats.autre.length) _makeSection('⚫ Autre',cats.autre,'#64748b');
@@ -8122,10 +8122,10 @@ function rebuildStopGrids(){
   g.style.cssText='display:block;margin-bottom:6px';
   g.innerHTML='';
   const CAT_ORDER=[
-    {key:'manquants',label:'🟣 Manquants',col:'#9333ea'},
-    {key:'ratt',label:'🟠 Rattrapage',col:'#dc2626'},
-    {key:'organisation',label:'🔵 Organisationnel',col:'#3b82f6'},
-    {key:'pb',label:'🔴 Technique',col:'#dc2626'},
+    {key:'manquants',label:'◆ Manquants',col:'#9333ea'},
+    {key:'ratt',label:'★ Rattrapage',col:'#dc2626'},
+    {key:'organisation',label:'■ Organisationnel',col:'#3b82f6'},
+    {key:'pb',label:'▲ Technique',col:'#dc2626'},
     {key:'nettoyage',label:'🧹 Nettoyage',col:'#f97316'},
     {key:'autre',label:'⚫ Autre',col:'#64748b'},
   ];
@@ -8193,7 +8193,7 @@ function _pdDrop(i){if(_dIdx===null||_dIdx===i)return;const keys=Object.keys(_cf
 
 function _renderEvtListHTML(){
   const c=document.getElementById('events-list-ui');if(!c) return;
-  const catLbl={pb:'🔴 Technique',ratt:'🟠 Rattrapage',nettoyage:'🟡 Nettoyage',organisation:'🔵 Organisationnel',manquants:'🟣 Manquants',autre:'⚫ Autre'};
+  const catLbl={pb:'▲ Technique',ratt:'★ Rattrapage',nettoyage:'◇ Nettoyage',organisation:'■ Organisationnel',manquants:'◆ Manquants',autre:'○ Autre'};
   c.innerHTML=_evtsEditing.map((e,i)=>`
     <div draggable="true" ondragstart="_edDS(${i})" ondragover="_edDO(event)" ondrop="_edDrop(${i})" style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:calc(12px*var(--zf,1));cursor:default">
       <span style="cursor:grab;color:#94a3b8;font-size:16px;padding:0 2px;user-select:none" title="Déplacer">⠿</span>
@@ -9039,7 +9039,7 @@ function _buildUnifiedTypeOpts(sel,currentVal){
   if(!sel) return;
   sel.innerHTML='<option value="">-- Sélectionner --</option>';
   const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
-  const catLabel={ratt:'⚙ Rattrapage',nettoyage:'🧹 Nettoyage',pb:'⚠ Panne / Problème',autre:'Autre'};
+  const catLabel={ratt:'★ Rattrapage',nettoyage:'◇ Nettoyage',pb:'▲ Panne / Problème',autre:'Autre'};
   const cats={};
   evts.forEach(e=>{const c=e.cat||'autre';(cats[c]=cats[c]||[]).push(e);});
   Object.entries(cats).forEach(([cat,items])=>{
@@ -9054,7 +9054,7 @@ function _buildUnifiedTypeOpts(sel,currentVal){
   sel.appendChild(grpPlan);
   const motifs=window._degradeMotifs||[];
   if(motifs.length){
-    const grpDeg=document.createElement('optgroup');grpDeg.label='🟡 Mode dégradé';
+    const grpDeg=document.createElement('optgroup');grpDeg.label='◇ Mode dégradé';
     motifs.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;grpDeg.appendChild(o);});
     sel.appendChild(grpDeg);
   }
@@ -10018,9 +10018,9 @@ function _buildEcartStopSelect(gi){
   };
   const html='<option value="">-- Choisir un type d\'arrêt --</option>'+
     mkGrp('⏸ Pauses',pauses)+
-    mkGrp('🧹 Nettoyage',nettoyage)+
-    mkGrp('🔴 Pannes / Rattrapages',pannes)+
-    mkGrp('🟣 Manquants',manquants)+
+    mkGrp('◇ Nettoyage',nettoyage)+
+    mkGrp('▲ Pannes / Rattrapages',pannes)+
+    mkGrp('◆ Manquants',manquants)+
     mkGrp('🔵 Organisation',organisation)+
     '<optgroup label="⚫ Autre"><option value="Autre (à justifier)">Autre (à justifier)</option></optgroup>';
   return`<select id="ecart-gap-type-${gi}" onchange="ecartCheckAutreType(this,${gi})" style="width:100%;padding:4px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));background:#fff">${html}</select>`;
@@ -12188,8 +12188,8 @@ function openPastDecl(){
   if(stopSel){
     stopSel.innerHTML='<option value="">— Choisir —</option>';
     const cats=[
-      {label:'⚙ Rattrapage',keys:['ratt']},{label:'🔴 Technique',keys:['pb']},
-      {label:'♻ Nettoyage',keys:['nettoyage']},{label:'🟣 Manquants',keys:['manquants']},
+      {label:'★ Rattrapage',keys:['ratt']},{label:'▲ Technique',keys:['pb']},
+      {label:'♻ Nettoyage',keys:['nettoyage']},{label:'◆ Manquants',keys:['manquants']},
       {label:'🔵 Organisationnel',keys:['organisation','autre']},
       {label:'⏸ Pause / Réunion',keys:['pause','reunion']},
     ];
