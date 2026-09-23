@@ -2242,9 +2242,10 @@ def api_stop_degrade():
         return jsonify({"ok":True})
     pilot = _S.get("pilot",""); poste = _S.get("poste","")
     shift_dt = _S.get("shift_start") or start_dt_deg
+    of_num = _S.get("form", {}).get("of_num", "")
     _row = [
-        motif, "Mode dégradé",
-        start_dt_deg.strftime("%d/%m/%Y"), poste, pilot,
+        motif, of_num,
+        shift_dt.strftime("%d/%m/%Y"), poste, pilot,
         "","","","","","","","","","","",
         start_dt_deg.strftime("%H:%M:%S"), end_dt_deg.strftime("%H:%M:%S"), fmt(dur_s),
         "","","","","","","","","","","","","","","","","","","","",
@@ -2307,10 +2308,11 @@ def api_end_prod():
         _dg_dur_of = max(0.0, (_dg_of_end - _dg_of_start).total_seconds())
         _dg_dur_for_trs = _dg_dur_of  # sauvegarde AVANT d'avancer le pointeur
         _sh_dt = _S.get("shift_start") or _dg_of_start
+        _dg_of_num = _S.get("form", {}).get("of_num", "")
         if _dg_dur_of >= 1:
             _degrade_end_row = [
-                _dg_motif, "Mode dégradé",
-                _dg_of_start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
+                _dg_motif, _dg_of_num,
+                _sh_dt.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 "","","","","","","","","","","",
                 _dg_of_start.strftime("%H:%M:%S"), _dg_of_end.strftime("%H:%M:%S"), fmt(_dg_dur_of),
                 "","","","","","","","","","","","","","","","","","","","",
