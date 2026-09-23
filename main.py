@@ -12309,8 +12309,13 @@ async function submitPastDecl(){
   const dateDebut=(document.getElementById('pd-date-debut')||{}).value||'';
   const dateFin=(document.getElementById('pd-date-fin')||{}).value||'';
   if(!debut||!fin){toast('Renseigner heure début et fin','err');return;}
-  // Vérifier ordre si même date
-  if(dateDebut&&dateFin&&dateDebut===dateFin&&debut>=fin){toast('Heure fin doit être après début','err');return;}
+  // Minuit : si même date et fin < debut → avancer dateFin au jour suivant (poste de nuit)
+  if(dateDebut&&dateFin&&dateDebut===dateFin&&debut>fin){
+    const _df=new Date(dateFin+'T00:00:00');_df.setDate(_df.getDate()+1);
+    dateFin=_df.toISOString().slice(0,10);
+    const _elDf=document.getElementById('pd-date-fin');if(_elDf)_elDf.value=dateFin;
+  }
+  if(debut===fin){toast('Heure fin identique à heure début','err');return;}
   if(dateDebut&&dateFin&&dateDebut>dateFin){toast('Date fin doit être après date début','err');return;}
   let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin,date_debut:dateDebut,date_fin:dateFin};
   if(_pdType==='prod'){
