@@ -3819,7 +3819,7 @@ def api_period_report():
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
     agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_of_set=set(); agg_elapsed_s=0.0; agg_sum_expected=0.0
     agg_sum_theorique=0.0; agg_arret_prevu=0.0; agg_obj_pcs=0.0; agg_obj_equiv=0.0
-    agg_fibre_chg=0; agg_depassement=0.0; agg_degrade_min=0.0; stop_by_type={}; sessions_detail=[]
+    agg_fibre_chg=0; agg_depassement=0.0; agg_degrade_min=0.0; stop_by_type={}; stop_count={}; sessions_detail=[]
     jours=set(); pilotes=set(); postes_set=set()
     trs_by_day = {}
     cadence_ref = round(prod_ref/480, 4) if prod_ref > 0 else 0.0
@@ -3891,6 +3891,7 @@ def api_period_report():
                 _fs_p = _norm_fin(_ds_p, _hms_to_sec(str(re_p[17] or '00:00:00')))
                 _dur_p = _hms_to_sec(str(re_p[18] or '00:00:00')) if _fs_p <= _ds_p else _fs_p - _ds_p
                 stop_by_type[_stype] = stop_by_type.get(_stype, 0.0) + max(0.0, _dur_p)
+                stop_count[_stype] = stop_count.get(_stype, 0) + 1
         agg_ouv     += ouv_min
         agg_utile   += utile_min
         agg_fonct   += fonct_min
@@ -3995,7 +3996,7 @@ def api_period_report():
         'objectif_equiv':round(agg_obj_equiv,1),
         'sessions_detail':sessions_detail_sorted,
         'degrade_min_total': round(sum(_merged_degrade_s([re2 for _, re2 in s['evt_rows']]) for s in sessions.values()) / 60, 1),
-        'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])],
+        'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1),'count':stop_count.get(k,0)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])],
     })
 
 @flask_app.route('/api/session_report')
@@ -11564,7 +11565,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
           <div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden">
             <div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div>
           </div>
-          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m</span>
+          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m${e.count>1?' · '+e.count+'×':''}</span>
         </div>
       </div>`;
     }).join('');
