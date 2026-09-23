@@ -396,11 +396,7 @@ def _get_arret_budget_key(label):
 def _is_degrade_type(t):
     """Retourne True si le type est un motif de mode dégradé configuré."""
     motifs = cfg.get("degrade_motifs", [])
-    if not motifs: return False
-    s = str(t or "").strip()
-    # Supporte à la fois l'ancien format (motif seul) et le nouveau ("Mode dégradé <motif>")
-    bare = s[len("Mode dégradé "):].strip() if s.lower().startswith("mode dégradé ") else s
-    return bare in motifs or s in motifs
+    return bool(motifs) and str(t or "").strip() in motifs
 
 def _norm_fin(deb_s, fin_s):
     """Normalise fin_s pour les événements chevauchant minuit (fin < deb → +86400)."""
@@ -2248,7 +2244,7 @@ def api_stop_degrade():
     shift_dt = _S.get("shift_start") or start_dt_deg
     # Col B vide : api_stop_degrade couvre la période hors OF (après le dernier OF)
     _row = [
-        f"Mode dégradé {motif}", "",
+        motif, "",
         shift_dt.strftime("%d/%m/%Y"), poste, pilot,
         "","","","","","","","","","","",
         start_dt_deg.strftime("%H:%M:%S"), end_dt_deg.strftime("%H:%M:%S"), fmt(dur_s),
@@ -2315,7 +2311,7 @@ def api_end_prod():
         _dg_of_num = _S.get("form", {}).get("of_num", "")
         if _dg_dur_of >= 1:
             _degrade_end_row = [
-                f"Mode dégradé {_dg_motif}", _dg_of_num,
+                _dg_motif, _dg_of_num,
                 _sh_dt.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 "","","","","","","","","","","",
                 _dg_of_start.strftime("%H:%M:%S"), _dg_of_end.strftime("%H:%M:%S"), fmt(_dg_dur_of),
