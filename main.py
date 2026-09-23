@@ -5400,6 +5400,30 @@ select{cursor:default}
     </div>
   </div>
 
+  <!-- ════ MODAL ALERTE NUIT ════ -->
+  <div id="m-nuit-warn" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:950;align-items:center;justify-content:center">
+    <div style="width:min(440px,96vw);background:#fff;border-radius:16px;border-top:5px solid #f59e0b;padding:28px 24px;box-shadow:0 24px 72px rgba(0,0,0,.5);text-align:center">
+      <div style="font-size:48px;margin-bottom:10px">⚠️</div>
+      <div style="font-size:calc(17px*var(--zf,1));font-weight:900;color:#92400e;margin-bottom:10px">Problème de dates — passage à minuit</div>
+      <div style="font-size:calc(13px*var(--zf,1));color:#374151;line-height:1.6;margin-bottom:22px">La date de début et de fin sont <b>identiques</b>, mais les heures indiquent un passage à minuit.<br><br>Pour un poste de nuit (ex : <b>23h00 → 01h30</b>), la <b>date de fin doit être le jour suivant</b>.</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button onclick="_nuitWarnFix()" style="padding:13px;background:linear-gradient(135deg,#fef3c7,#fde68a);border:2px solid #f59e0b;border-radius:10px;font-size:calc(13px*var(--zf,1));font-weight:800;color:#92400e;cursor:pointer">✅ Corriger automatiquement (avancer la date de fin au lendemain)</button>
+        <button onclick="_nuitWarnCont()" style="padding:11px;background:#fff;border:1.5px solid #94a3b8;border-radius:10px;font-size:calc(12px*var(--zf,1));font-weight:700;color:#64748b;cursor:pointer">Continuer sans corriger</button>
+        <button onclick="_nuitWarnCancel()" style="padding:11px;background:#fff;border:1.5px solid #e2e8f0;border-radius:10px;font-size:calc(12px*var(--zf,1));font-weight:600;color:#94a3b8;cursor:pointer">✕ Annuler — revenir au formulaire</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ MODAL ERREUR CENTRÉ ════ -->
+  <div id="m-big-err" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:950;align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-big-err')">
+    <div style="width:min(440px,96vw);background:#fff;border-radius:16px;border-top:5px solid #dc2626;padding:28px 24px;box-shadow:0 24px 72px rgba(0,0,0,.5);text-align:center">
+      <div style="font-size:48px;margin-bottom:10px">❌</div>
+      <div id="m-big-err-title" style="font-size:calc(17px*var(--zf,1));font-weight:900;color:#dc2626;margin-bottom:10px">Erreur</div>
+      <div id="m-big-err-msg" style="font-size:calc(13px*var(--zf,1));color:#374151;line-height:1.6;margin-bottom:22px"></div>
+      <button onclick="closeM('m-big-err')" style="padding:12px 40px;background:#dc2626;border:none;border-radius:10px;font-size:calc(14px*var(--zf,1));font-weight:800;color:#fff;cursor:pointer">OK</button>
+    </div>
+  </div>
+
   <!-- ════ MODAL DÉCLARATION ANTÉRIEURE ════ -->
   <div id="m-past-decl" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;align-items:center;justify-content:center">
     <div class="card" style="width:min(720px,98vw);max-height:92vh;overflow-y:auto;padding:18px 20px;background:#fff;border-radius:12px;border-top:4px solid #7c3aed">
@@ -9132,8 +9156,25 @@ function saveEditRow() {
   const v=id=>document.getElementById(id)?.value||'';
   const n=id=>parseFloat(document.getElementById(id)?.value)||0;
   // Vérification poste de nuit
-  if(rowType==='prod'){const _erP=v('er-poste'),_erDd=v('er-date-deb'),_erDf=v('er-date-fin'),_erHd=v('er-deb'),_erHf=v('er-fin');if(_isNuitPoste(_erP)&&_hasNuitDateError(_erDd,_erDf,_erHd,_erHf)){if(!_confirmNuitDateError())return;}}
-  else{const _erP=v('er-evtposte'),_erDd=v('er-evtdate-deb'),_erDf=v('er-evtdate-fin'),_erHd=v('er-evtdeb'),_erHf=v('er-evtfin');if(_isNuitPoste(_erP)&&_hasNuitDateError(_erDd,_erDf,_erHd,_erHf)){if(!_confirmNuitDateError())return;}}
+  if(rowType==='prod'){
+    const _erP=v('er-poste');let _erDd=v('er-date-deb');let _erDf=v('er-date-fin');const _erHd=v('er-deb');const _erHf=v('er-fin');
+    if(_isNuitPoste(_erP)&&_erDd&&_erDf&&_erDd===_erDf&&_erHd&&_erHf&&_erHd>_erHf){
+      const _act=await _showNuitWarn();
+      if(_act==='cancel')return;
+      if(_act==='fix'){const _df=new Date(_erDf+'T00:00:00');_df.setDate(_df.getDate()+1);_erDf=_df.toISOString().slice(0,10);const _el=document.getElementById('er-date-fin');if(_el)_el.value=_erDf;}
+    } else if(_erDd&&_erDf&&_erDd===_erDf&&_erHd&&_erHf&&_erHd>_erHf){
+      const _df=new Date(_erDf+'T00:00:00');_df.setDate(_df.getDate()+1);_erDf=_df.toISOString().slice(0,10);const _el=document.getElementById('er-date-fin');if(_el)_el.value=_erDf;
+    }
+  } else {
+    const _erP=v('er-evtposte');let _erDd=v('er-evtdate-deb');let _erDf=v('er-evtdate-fin');const _erHd=v('er-evtdeb');const _erHf=v('er-evtfin');
+    if(_isNuitPoste(_erP)&&_erDd&&_erDf&&_erDd===_erDf&&_erHd&&_erHf&&_erHd>_erHf){
+      const _act=await _showNuitWarn();
+      if(_act==='cancel')return;
+      if(_act==='fix'){const _df=new Date(_erDf+'T00:00:00');_df.setDate(_df.getDate()+1);_erDf=_df.toISOString().slice(0,10);const _el=document.getElementById('er-evtdate-fin');if(_el)_el.value=_erDf;}
+    } else if(_erDd&&_erDf&&_erDd===_erDf&&_erHd&&_erHf&&_erHd>_erHf){
+      const _df=new Date(_erDf+'T00:00:00');_df.setDate(_df.getDate()+1);_erDf=_df.toISOString().slice(0,10);const _el=document.getElementById('er-evtdate-fin');if(_el)_el.value=_erDf;
+    }
+  }
   let updates={};
   if(rowType==='prod'){
     // Col indices per DECL_HEADERS (1-based):
@@ -9243,9 +9284,15 @@ async function saveEditStop(){
   const finVal=document.getElementById('es-fin').value;
   const cmtVal=document.getElementById('es-cmt').value;
   const dateDeb=(document.getElementById('es-date-deb')||{}).value||'';
-  const dateFin=(document.getElementById('es-date-fin')||{}).value||'';
+  let dateFin=(document.getElementById('es-date-fin')||{}).value||'';
   const _esPoste=(document.getElementById('es-poste')||{}).value||'';
-  if(_isNuitPoste(_esPoste)&&_hasNuitDateError(dateDeb,dateFin,debVal,finVal)){if(!_confirmNuitDateError())return;}
+  if(_isNuitPoste(_esPoste)&&dateDeb&&dateFin&&dateDeb===dateFin&&debVal&&finVal&&debVal>finVal){
+    const _act=await _showNuitWarn();
+    if(_act==='cancel')return;
+    if(_act==='fix'){const _df=new Date(dateFin+'T00:00:00');_df.setDate(_df.getDate()+1);dateFin=_df.toISOString().slice(0,10);const _el=document.getElementById('es-date-fin');if(_el)_el.value=dateFin;}
+  } else if(dateDeb&&dateFin&&dateDeb===dateFin&&debVal&&finVal&&debVal>finVal){
+    const _df=new Date(dateFin+'T00:00:00');_df.setDate(_df.getDate()+1);dateFin=_df.toISOString().slice(0,10);const _el=document.getElementById('es-date-fin');if(_el)_el.value=dateFin;
+  }
   let r;
   if(ev.start_iso && ev.row_num){
     // Arrêt live déjà écrit dans Excel — mettre à jour les deux
@@ -12348,13 +12395,20 @@ async function reloadAllData(){
 }
 // ── UTILITAIRE POSTE DE NUIT — vérification cohérence dates ──
 function _isNuitPoste(poste){return /nuit/i.test(poste||'');}
-function _hasNuitDateError(dateDebut,dateFin,heureDebut,heureFin){
-  if(!dateDebut||!dateFin||!heureDebut||!heureFin) return false;
-  if(dateDebut===dateFin&&heureDebut>='20:00'&&heureFin<='12:00') return true;
-  return false;
+let _nuitWarnResolve=null;
+function _showNuitWarn(){
+  return new Promise(res=>{
+    _nuitWarnResolve=function(v){closeM('m-nuit-warn');res(v);_nuitWarnResolve=null;};
+    openM('m-nuit-warn');
+  });
 }
-function _confirmNuitDateError(){
-  return confirm('⚠️ Attention — les dates semblent incorrectes.\n\nPour un poste de nuit (ex: 23h00 → 01h30), la date de fin doit être le jour suivant.\n\nVoulez-vous continuer quand même ?');
+function _nuitWarnFix(){if(_nuitWarnResolve)_nuitWarnResolve('fix');}
+function _nuitWarnCont(){if(_nuitWarnResolve)_nuitWarnResolve('continue');}
+function _nuitWarnCancel(){if(_nuitWarnResolve)_nuitWarnResolve('cancel');}
+function bigErr(msg,title){
+  const t=document.getElementById('m-big-err-title');const m=document.getElementById('m-big-err-msg');
+  if(t)t.textContent=title||'Erreur';if(m)m.innerHTML=msg||'';
+  openM('m-big-err');
 }
 // ── DÉCLARATION ANTÉRIEURE ──
 let _pdType='prod';
@@ -12443,19 +12497,27 @@ async function submitPastDecl(){
   const debut=(document.getElementById('pd-debut')||{}).value||'';
   const fin=(document.getElementById('pd-fin')||{}).value||'';
   const dateDebut=(document.getElementById('pd-date-debut')||{}).value||'';
-  const dateFin=(document.getElementById('pd-date-fin')||{}).value||'';
-  if(!debut||!fin){toast('Renseigner heure début et fin','err');return;}
-  // Minuit : si même date et fin < debut → avancer dateFin au jour suivant (poste de nuit)
-  if(dateDebut&&dateFin&&dateDebut===dateFin&&debut>fin){
+  let dateFin=(document.getElementById('pd-date-fin')||{}).value||'';
+  const _pdPilot=(document.getElementById('pd-pilot')||{}).value||'';
+  const _pdPoste=(document.getElementById('pd-poste')||{}).value||'';
+  if(!debut||!fin){bigErr('Renseigner l\'heure de début et l\'heure de fin.','Champs manquants');return;}
+  // Vérification nuit EN PREMIER — avant toute auto-correction
+  if(_isNuitPoste(_pdPoste)&&dateDebut&&dateFin&&dateDebut===dateFin&&debut>fin){
+    const _action=await _showNuitWarn();
+    if(_action==='cancel') return;
+    if(_action==='fix'){
+      const _df=new Date(dateFin+'T00:00:00');_df.setDate(_df.getDate()+1);
+      dateFin=_df.toISOString().slice(0,10);
+      const _elDf=document.getElementById('pd-date-fin');if(_elDf)_elDf.value=dateFin;
+    }
+  } else if(dateDebut&&dateFin&&dateDebut===dateFin&&debut>fin){
+    // Auto-correction silencieuse pour les postes non-nuit
     const _df=new Date(dateFin+'T00:00:00');_df.setDate(_df.getDate()+1);
     dateFin=_df.toISOString().slice(0,10);
     const _elDf=document.getElementById('pd-date-fin');if(_elDf)_elDf.value=dateFin;
   }
-  if(debut===fin){toast('Heure fin identique à heure début','err');return;}
-  if(dateDebut&&dateFin&&dateDebut>dateFin){toast('Date fin doit être après date début','err');return;}
-  const _pdPilot=(document.getElementById('pd-pilot')||{}).value||'';
-  const _pdPoste=(document.getElementById('pd-poste')||{}).value||'';
-  if(_isNuitPoste(_pdPoste)&&_hasNuitDateError(dateDebut,dateFin,debut,fin)){if(!_confirmNuitDateError())return;}
+  if(debut===fin){bigErr('L\'heure de fin est identique à l\'heure de début.','Erreur de saisie');return;}
+  if(dateDebut&&dateFin&&dateDebut>dateFin){bigErr('La date de fin doit être après la date de début.','Erreur de saisie');return;}
   let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin,date_debut:dateDebut,date_fin:dateFin,pilot:_pdPilot,poste:_pdPoste};
   if(_pdType==='prod'){
     const of_num=(document.getElementById('pd-of')||{}).value||'';
@@ -12486,7 +12548,7 @@ async function submitPastDecl(){
     toast('Déclaration ajoutée','ok');
     await pollState();
   } else {
-    toast('Erreur : '+(d.error||'?'),'err');
+    bigErr(d.error||'Erreur inconnue','Erreur déclaration');
   }
 }
 
