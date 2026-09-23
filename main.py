@@ -394,9 +394,11 @@ def _get_arret_budget_key(label):
     return None
 
 def _is_degrade_type(t):
-    """Retourne True si le type est un motif de mode dégradé configuré."""
+    """Retourne True si le type est un motif de mode dégradé configuré (insensible à la casse)."""
     motifs = cfg.get("degrade_motifs", [])
-    return bool(motifs) and str(t or "").strip() in motifs
+    if not motifs: return False
+    t_low = str(t or "").strip().lower()
+    return any(t_low == m.lower() for m in motifs)
 
 def _norm_fin(deb_s, fin_s):
     """Normalise fin_s pour les événements chevauchant minuit (fin < deb → +86400)."""
