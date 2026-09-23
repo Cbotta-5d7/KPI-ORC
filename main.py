@@ -11516,6 +11516,23 @@ async function calcPeriodReport(autoLoad,maxSessions){
     const trsTargetLine=`<line x1="0" y1="${_trs70Y}" x2="${svgW}" y2="${_trs70Y}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${_trsLblY}" text-anchor="start" font-size="12" fill="#16a34a" font-weight="700">Cible 70%</text>`;
     const trsCibleLeg=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#16a34a;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible 70%</span>`;
     chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">📈 TRS par équipe${trsCibleLeg}</div><div style="overflow-x:auto"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgBars}${trsTargetLine}${svgLabels}${svgL}</svg></div></div>`;
+    // Version réduite pour screenshot (barres 80%)
+    const WBs=Math.round(WB*0.8);
+    const svgWs=Math.max(200,n*(WBs+GP)+padL+padR);
+    let svgBarsS='',svgLabelsS='',svgLS='';
+    sd.forEach((s,i)=>{
+      const x=padL+i*(WBs+GP);const cx=x+WBs/2;
+      const trs=s.trs>=0?s.trs:0;const bh=Math.max(2,Math.round(trs/maxTrs*gH));const by=padT+gH-bh;
+      const col=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
+      svgBarsS+=`<rect x="${x}" y="${by}" width="${WBs}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
+      if(s.trs>=0){const _lb=s.trs.toFixed(0)+'%';if(bh>=18){const _ty=by+Math.min(bh-4,14);svgLabelsS+=`<text x="${cx}" y="${_ty}" text-anchor="middle" font-size="11" font-weight="800" fill="white">${_lb}</text>`;}else{const _ty=Math.max(by-3,14);const _lw=_lb.length*7+6;svgLabelsS+=`<rect x="${cx-_lw/2}" y="${_ty-12}" width="${_lw}" height="15" fill="white" rx="2" opacity=".9"/><text x="${cx}" y="${_ty}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${_lb}</text>`;}}
+      const dp=s.date.split('/');
+      if(_vertA){const yA=padT+gH+4;const _lbl=esc((dp[0]||'')+'/'+(dp[1]||'')+(s.pilot?' '+s.pilot.slice(0,12):''));svgLS+=`<text transform="rotate(-90,${cx},${yA})" x="${cx}" y="${yA}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${_lbl}</text>`;}
+      else{svgLS+=`<text x="${cx}" y="${padT+gH+16}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;svgLS+=`<text x="${cx}" y="${padT+gH+28}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;svgLS+=`<text x="${cx}" y="${padT+gH+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;}
+    });
+    const _trs70Ys=padT+gH-Math.round(70/maxTrs*gH);
+    const trsTargetLineS=`<line x1="0" y1="${_trs70Ys}" x2="${svgWs}" y2="${_trs70Ys}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${Math.max(13,_trs70Ys-4)}" text-anchor="start" font-size="11" fill="#16a34a" font-weight="700">Cible 70%</text>`;
+    window._chartTrsHtmlSnap=`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">📈 TRS par équipe</div><div style="overflow-x:auto"><svg width="${svgWs}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgWs}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgBarsS}${trsTargetLineS}${svgLabelsS}${svgLS}</svg></div></div>`;
   }
   // ── Chart B : Cadence vs référence — barres verticales SVG ─────────────────
   let chartCadHtml='';
@@ -11556,6 +11573,23 @@ async function calcPeriodReport(autoLoad,maxSessions){
     const tLine=`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${_cadLblY}" text-anchor="start" font-size="12" fill="#1d4ed8" font-weight="700">Cible ${_CAD_CIBLE}</text>`;
     const legCad=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#1d4ed8;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible ${_CAD_CIBLE} éq/h</span>`;
     chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence vs référence${legCad}</div><div style="overflow-x:auto"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2}${tLine}${svgLabels2}${svgL2}</svg></div></div>`;
+    // Version réduite pour screenshot (barres 80%)
+    const WB2s=Math.round(WB2*0.8);
+    const svgW2s=Math.max(200,n2*(WB2s+GP2)+padL2+padR2);
+    const tY2s=padT2+gH2-Math.round(_CAD_CIBLE/maxCad*gH2);
+    let svgBars2S='',svgLabels2S='',svgL2S='';
+    sd2.forEach((s,i)=>{
+      const x=padL2+i*(WB2s+GP2);const cx2=x+WB2s/2;
+      const v=s.cadence_h||0;const bh=Math.max(2,Math.round(v/maxCad*gH2));const by=padT2+gH2-bh;
+      const col=v>=_CAD_CIBLE?'#16a34a':v>=_CAD_CIBLE*0.8?'#f59e0b':'#dc2626';
+      svgBars2S+=`<rect x="${x}" y="${by}" width="${WB2s}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
+      if(v>0){const _lb2=String(v);if(bh>=18){const _ty2=by+Math.min(bh-4,14);svgLabels2S+=`<text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="11" font-weight="800" fill="white">${_lb2}</text>`;}else{const _ty2=Math.max(by-3,14);const _lw2=_lb2.length*8+6;svgLabels2S+=`<rect x="${cx2-_lw2/2}" y="${_ty2-13}" width="${_lw2}" height="16" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${_lb2}</text>`;}}
+      const dp=s.date.split('/');
+      if(_vertB){const yB=padT2+gH2+4;const _lbl2=esc((dp[0]||'')+'/'+(dp[1]||'')+(s.pilot?' '+s.pilot.slice(0,12):''));svgL2S+=`<text transform="rotate(-90,${cx2},${yB})" x="${cx2}" y="${yB}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${_lbl2}</text>`;}
+      else{svgL2S+=`<text x="${cx2}" y="${padT2+gH2+16}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;svgL2S+=`<text x="${cx2}" y="${padT2+gH2+28}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;svgL2S+=`<text x="${cx2}" y="${padT2+gH2+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;}
+    });
+    const tLineS=`<line x1="0" y1="${tY2s}" x2="${svgW2s}" y2="${tY2s}" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${Math.max(13,tY2s-4)}" text-anchor="start" font-size="11" fill="#1d4ed8" font-weight="700">Cible ${_CAD_CIBLE}</text>`;
+    window._chartCadHtmlSnap=`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">⚡ Cadence vs référence</div><div style="overflow-x:auto"><svg width="${svgW2s}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2s}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2S}${tLineS}${svgLabels2S}${svgL2S}</svg></div></div>`;
   }
   // ── Pareto arrêts — barres horizontales ────────────────────────────────────
   let paretoRjHtml='';
@@ -11793,8 +11827,8 @@ async function captureRapportJour(){
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:#374151">Pièces</span> <span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:#374151">Equiv</span> <span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:18px;font-weight:800;color:${_colCadRj}">${d.cadence_h||0} <span style="font-weight:600;color:#374151">Pcs/h</span> <span style="font-size:14px;font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100} pièces/min)</span></div></div>
-      ${chartTrsHtml}
-      ${chartCadHtml}
+      ${window._chartTrsHtmlSnap||chartTrsHtml}
+      ${window._chartCadHtmlSnap||chartCadHtml}
     </div>
     <!-- Colonne 2 : camembert prod/arrêt en haut + stats temps -->
     <div style="width:262px;flex-shrink:0;display:flex;flex-direction:column;gap:3px">
