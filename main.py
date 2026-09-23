@@ -11721,11 +11721,16 @@ async function loadSessionReport(date,pilot,poste,itemId){
     const parts=dateStr.split('/');
     const baseMs=parts.length===3?new Date(parseInt(parts[2]),parseInt(parts[1])-1,parseInt(parts[0])).getTime():Date.now();
     const hm2ms=hm=>{if(!hm)return null;const[h,m]=(hm+':00').split(':').map(Number);return baseMs+h*3600000+m*60000;};
-    const mdMs=hm2ms(modelDebut),mfMs=hm2ms(modelFin);
+    const mdMs=hm2ms(modelDebut);
+    let mfMs=hm2ms(modelFin);
+    // Poste de nuit : fin < debut → fin appartient au lendemain
+    if(mdMs&&mfMs&&mfMs<mdMs) mfMs+=86400000;
+    // Normalise une heure qui appartient au lendemain du poste (ex: 00:20 pendant un poste 22h→06h)
+    const hm2msN=hm=>{const t=hm2ms(hm);if(!t||!mdMs) return t;return (mdMs>baseMs+43200000&&t<baseMs+43200000)?t+86400000:t;};
     // Compute range
     let allMs=[];
-    prodRows.forEach(r=>{if(r.debut)allMs.push(hm2ms(r.debut));if(r.fin)allMs.push(hm2ms(r.fin));});
-    evtRows.forEach(r=>{if(r.debut)allMs.push(hm2ms(r.debut));if(r.fin)allMs.push(hm2ms(r.fin));});
+    prodRows.forEach(r=>{if(r.debut)allMs.push(hm2msN(r.debut));if(r.fin)allMs.push(hm2msN(r.fin));});
+    evtRows.forEach(r=>{if(r.debut)allMs.push(hm2msN(r.debut));if(r.fin)allMs.push(hm2msN(r.fin));});
     const tS=mdMs||Math.min(...allMs.filter(Boolean));
     const tE=mfMs||Math.max(...allMs.filter(Boolean));
     if(!tS||!tE||tE<=tS) return `<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
@@ -11734,13 +11739,13 @@ async function loadSessionReport(date,pilot,poste,itemId){
     let html=`<defs><pattern id="dpat_rpt" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4" height="8" fill="#16a34a"/><rect x="4" y="0" width="4" height="8" fill="#fef08a"/></pattern></defs>`;
     html+=`<rect x="0" y="${Y}" width="${W}" height="${H2}" fill="#e2e8f0" rx="4"/>`;
     prodRows.forEach(r=>{
-      const t1=hm2ms(r.debut),t2=hm2ms(r.fin);
+      const t1=hm2msN(r.debut),t2=hm2msN(r.fin);
       if(!t1) return;
       const x1=toX(t1),x2=toX(t2||tE);
       if(x2>x1) html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="#bbf7d0" rx="3"/>`;
     });
     evtRows.forEach(r=>{
-      const t1=hm2ms(r.debut),t2=hm2ms(r.fin);
+      const t1=hm2msN(r.debut),t2=hm2msN(r.fin);
       if(!t1) return;
       const x1=toX(t1),x2=toX(t2||t1+1800000);
       if(x2<=x1) return;
@@ -11917,14 +11922,16 @@ async function loadSessionReport(date,pilot,poste,itemId){
             <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Durée</th>
             <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Commentaire</th>
           </tr></thead>
-          <tbody>${(d.evt_rows||[]).filter(r=>!r.is_degrade).map((r,ri)=>`<tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s" onclick="showRptEvtDetail(${ri})" title="Voir détail">
-            <td style="padding:4px 5px;font-weight:700;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;color:#dc2626;text-decoration:underline">${esc(r.type||'')}</td>
+          <tbody>${(d.evt_rows||[]).map((r,ri)=>{
+            const deg=r.is_degrade;
+            return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s${deg?';background:#fff7ed':''}" onclick="showRptEvtDetail(${ri})" title="Voir détail">
+            <td style="padding:4px 5px;font-weight:700;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;color:${deg?'#b45309':'#dc2626'};${deg?'':'text-decoration:underline'}">${deg?'🟡 ':esc(r.type||'')}</td>
             <td style="padding:4px 5px;color:#0369a1;font-weight:700">${esc(r.of||'—')}</td>
             <td style="padding:4px 5px;color:var(--text)">${esc(r.type_prod||'—')}</td>
             <td style="padding:4px 5px;white-space:nowrap;color:var(--gray)">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
             <td style="padding:4px 5px;font-weight:700;white-space:nowrap">${esc(r.duree||'')}</td>
             <td style="padding:4px 5px;color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.comment||'')}">${esc(r.comment||'—')}</td>
-          </tr>`).join('')}</tbody>
+          </tr>`;}).join('')}</tbody>
         </table></div>`:'<div style="color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>'}
       </div>
     </div>`;
