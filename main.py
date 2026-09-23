@@ -10696,7 +10696,7 @@ async function confirmFinPoste(){
     budget_overrides:window._budgetOverrides||{},
   };
   await fetch('/api/save_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posteRow)});
-  try{ await fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); }catch(e){}
+  fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{});
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   resetToLogin();
   toast('Bonne fin de poste !','ok');
@@ -12822,12 +12822,20 @@ def generate_dashboard_html():
         import traceback
         return False, traceback.format_exc()
 
+def _generate_dashboard_bg():
+    """Génère le dashboard dans un thread séparé (évite les conflits de contexte Flask)."""
+    try:
+        ok, info = generate_dashboard_html()
+        if not ok:
+            print(f"[DASHBOARD] Erreur génération : {info[:300]}")
+    except Exception as _e:
+        print(f"[DASHBOARD] Exception : {_e}")
+
 @flask_app.route('/api/generate_dashboard', methods=['POST'])
 def api_generate_dashboard():
-    ok, info = generate_dashboard_html()
-    if ok:
-        return jsonify({'ok': True, 'path': info})
-    return jsonify({'ok': False, 'error': str(info)}), 500
+    import threading as _t
+    _t.Thread(target=_generate_dashboard_bg, daemon=True).start()
+    return jsonify({'ok': True})
 
 def _session_autosave():
     while True:
@@ -13065,6 +13073,7 @@ def _force_fin_poste_server(force=False):
         _S["_auto_fin_done"] = False
     save_session()
     print(f"[AUTO-FIN-POSTE] _S réinitialisé — poste {pilot} terminé automatiquement")
+    threading.Thread(target=_generate_dashboard_bg, daemon=True).start()
 
 def _auto_fin_poste_bg():
     """Thread de surveillance : fin de poste automatique si shift_fin_dt + 3h dépassé."""
