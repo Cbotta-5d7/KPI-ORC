@@ -402,6 +402,72 @@ def _norm_fin(deb_s, fin_s):
     """Normalise fin_s pour les événements chevauchant minuit (fin < deb → +86400)."""
     return fin_s + 86400 if fin_s < deb_s else fin_s
 
+def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_date_str):
+    """À la clôture d'un OF, rempli/corrige la colonne B (OF) des lignes d'arrêt dont
+    le début est compris dans [of_start_dt, of_end_dt] pour ce pilot/poste/shift."""
+    if not of_num:
+        return
+    of_s = _hms_to_sec(of_start_dt.strftime("%H:%M:%S"))
+    of_e_raw = _hms_to_sec(of_end_dt.strftime("%H:%M:%S"))
+    of_e_norm = _norm_fin(of_s, of_e_raw)
+    rows_to_update = []
+    for i, (rn, r) in enumerate(_decl_cache):
+        if str(r[4] or "").strip() != pilot:
+            continue
+        if str(r[3] or "").strip() != poste:
+            continue
+        row_type = str(r[0] or "").strip().lower()
+        if row_type in ("production", "prod", ""):
+            continue
+        if _is_degrade_type(str(r[0] or "")):
+            continue
+        row_date = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
+        if row_date != shift_date_str:
+            continue
+        debut_s = _hms_to_sec(str(r[16] or "00:00:00"))
+        # Normalise pour les arrêts après minuit (poste de nuit)
+        debut_norm = debut_s if debut_s >= of_s else debut_s + 86400
+        if not (of_s <= debut_norm <= of_e_norm):
+            continue
+        if str(r[1] or "").strip() == of_num:
+            continue  # déjà correct
+        rows_to_update.append((i, rn))
+    if not rows_to_update:
+        return
+    path = cfg.get("db_path", "")
+    if not path or not os.path.exists(path):
+        return
+    def _bg():
+        try:
+            rn_set = {rn for _, rn in rows_to_update}
+            with _excel_lock:
+                wb = _get_wb(path)
+                if wb is None:
+                    return
+                ws = _ensure_decl_sheet(wb)
+                for rn in rn_set:
+                    if 1 <= rn <= ws.max_row:
+                        ws.cell(rn, 2).value = of_num
+                _safe_excel_save(wb, path)
+            for idx, rn in rows_to_update:
+                if idx < len(_decl_cache) and _decl_cache[idx][0] == rn:
+                    r_list = list(_decl_cache[idx][1])
+                    r_list[1] = of_num
+                    _decl_cache[idx] = (rn, tuple(r_list))
+                else:
+                    # fallback: scan par rn
+                    for j, (crn, cr) in enumerate(_decl_cache):
+                        if crn == rn:
+                            r_list = list(cr)
+                            r_list[1] = of_num
+                            _decl_cache[j] = (rn, tuple(r_list))
+                            break
+            print(f"[BACKFILL-OF] {len(rn_set)} ligne(s) mises à jour → OF={of_num}")
+        except Exception as _e:
+            print(f"[BACKFILL-OF] Erreur : {_e}")
+    import threading as _bt
+    _bt.Thread(target=_bg, daemon=True).start()
+
 def _merged_degrade_s(rows):
     """Retourne les secondes de dégradé dédupliquées en fusionnant les intervalles qui se chevauchent.
     Évite le double-comptage quand api_stop_degrade ET build_decl_rows écrivent des lignes Formation pour la même période.
@@ -2451,6 +2517,9 @@ def api_end_prod():
         "nett_s": round(_nett_s,0),
         "interposte_s": round(_S["interposte_s"],0),
     }
+    _of_start_snap = _S.get("of_start")  # capturé avant reset pour backfill
+    _backfill_pilot = v.get("pilote", _S["pilot"] or "")
+    _backfill_poste = v.get("poste", _S["poste"] or "")
     _S["last_of_end"] = end_dt
     _S["last_of_pilot"] = _S["pilot"] or ""
     _S["prod_active"] = False
@@ -2481,6 +2550,11 @@ def api_end_prod():
             _next_rn_ep += 1
     except: pass
     write_excel_bg(prod_row, evt_rows + _extra_evt_rows)
+    if _of_start_snap:
+        _backfill_of_for_events(
+            v.get("of_num", ""), _of_start_snap, end_dt,
+            _backfill_pilot, _backfill_poste, _shift_date_str
+        )
     return jsonify({"ok":True,"recap":recap})
 
 @flask_app.route('/api/preview_end_prod', methods=['POST'])
