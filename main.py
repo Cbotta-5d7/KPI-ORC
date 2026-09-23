@@ -206,6 +206,7 @@ _S = {
     "form": {},
     "is_paused": False, "pause_start": None,
     "pause_total_s": 0.0, "pause_periods": [],
+    "_written_pause_starts": [],
     "of_count_shift": 0,
     "shift_start": None,
     "postes_row_num": None,
@@ -708,6 +709,7 @@ def save_session():
                 "interposte_s": _S["interposte_s"],
                 "timers": timers_s,
                 "tl_events": [serialize_event(e) for e in _S["tl_events"]],
+                "_written_pause_starts": [_dt_str(p) for p in _S.get("_written_pause_starts", [])],
                 "is_paused": _S["is_paused"],
                 "pause_start": _dt_str(_S["pause_start"]),
                 "pause_total_s": _S["pause_total_s"],
@@ -757,6 +759,7 @@ def load_session():
         _S["degrade_start_dt"] = _str_dt(d.get("degrade_start_dt"))
         _S["degrade_periods"] = [{"start": _str_dt(p.get("start")), "end": _str_dt(p.get("end")), "type": p.get("type","")} for p in d.get("degrade_periods", [])]
         _S["of_prepares"]    = d.get("of_prepares", [])
+        _S["_written_pause_starts"] = [_str_dt(s) for s in d.get("_written_pause_starts", [])]
         raw_timers = d.get("timers",{})
         _S["timers"] = {}
         for k,t in raw_timers.items():
@@ -1191,8 +1194,11 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
             lbl = next((e[0] for e in EVENTS if e[1]==ev["key"]),ev["key"])
             label = f"{cat_name}: {lbl}"
         rows.append(_base_row(label, start, end, ev.get("comment",""), "OUI" if ev.get("hors_trs") else ""))
+    _written_pp = set(id(p) for p in _S.get("_written_pause_starts", []))
+    _written_pp_starts = list(_S.get("_written_pause_starts", []))
     for ps, pe in pause_periods:
         if of_start and ps < of_start: continue
+        if any(abs((ps - wps).total_seconds()) < 2 for wps in _written_pp_starts if wps): continue
         rows.append(_base_row("Pause", ps, pe))
     return rows
 
@@ -1328,14 +1334,12 @@ def write_excel_bg(prod_row, evt_rows):
                 _append_to_backup(prod_row, evt_rows)
                 try: os.remove(PENDING_FILE)
                 except: pass
-                threading.Thread(target=load_history, daemon=True).start()
                 return
         # Toujours bloqué après 3 tentatives → on sauvegarde dans le backup
         _append_to_backup(prod_row, evt_rows)
         try: os.remove(PENDING_FILE)
         except: pass
         _write_pending = max(0, _write_pending - 1)
-        threading.Thread(target=load_history, daemon=True).start()
     threading.Thread(target=_bg, daemon=True).start()
 
 def write_changement_of(start_dt, end_dt, label=None, comment=""):
@@ -2584,6 +2588,7 @@ def api_end_stop():
     return jsonify({"ok":True})
 
 def _toggle_pause_internal():
+    _pause_to_write = None
     with _S_lock:
         now = _now()
         if not _S["is_paused"]:
@@ -2591,12 +2596,32 @@ def _toggle_pause_internal():
             _S["pause_start"] = now
         else:
             if _S["pause_start"]:
-                dur = (now-_S["pause_start"]).total_seconds()
+                _ps = _S["pause_start"]
+                dur = (now - _ps).total_seconds()
                 _S["pause_total_s"] += dur
-                _S["pause_periods"].append((_S["pause_start"],now))
+                _S["pause_periods"].append((_ps, now))
+                _S.setdefault("_written_pause_starts", []).append(_ps)
+                _pause_to_write = (_ps, now)
             _S["is_paused"] = False
             _S["pause_start"] = None
     save_session()
+    if _pause_to_write:
+        _ps, _pe = _pause_to_write
+        _sh = _S.get("shift_start") or _ps
+        _pause_dur = max(0, (_pe - _ps).total_seconds())
+        _row_p = [
+            "Pause", _S.get("form", {}).get("of_num", ""),
+            _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
+            "","","","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+            _ps.strftime("%H:%M:%S"), _pe.strftime("%H:%M:%S"), fmt(_pause_dur),
+            "","","","","","","","","","","","","","","","","","","","",
+            _sh.strftime("%d/%m/%Y"),
+        ]
+        write_excel_bg([], [_row_p])
+        try:
+            _nrn_p = max((rn for rn, _ in _decl_cache), default=1) + 1
+            _decl_cache.append((_nrn_p, tuple(_row_p) + ("",) * max(0, 40 - len(_row_p))))
+        except: pass
 
 @flask_app.route('/api/toggle_pause', methods=['POST'])
 @require_pilot
@@ -2618,24 +2643,28 @@ def api_toggle_reunion():
                 ev["comment"] = ""
         save_session()
         reunion_active = False
-        # Écrire en Excel si hors production (en prod : écrit à la fin de l'OF via build_decl_rows)
-        if not _S.get("prod_active"):
-            ev = next((e for e in reversed(_S["tl_events"]) if e.get("key")=="reunion" and e.get("end")), None)
-            if ev and ev.get("start") and ev.get("end"):
-                _start = ev["start"]; _end = ev["end"]
-                _dur = max(0, (_end - _start).total_seconds())
-                _sh = _S.get("shift_start") or _start
-                _row = [
-                    "Réunion", _S.get("form",{}).get("of_num",""),
-                    _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
-                    "","","","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
-                    _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
-                    "","","","","","","","","","","","","","","","","","",
-                    _sh.strftime("%d/%m/%Y"),
-                ]
-                write_excel_bg([], [_row])
-                # Pas de _decl_cache.append ici : l'événement est encore dans tl_events
-                # → évite le double comptage dans _compute_budget_state_now
+        ev = next((e for e in reversed(_S["tl_events"]) if e.get("key") == "reunion" and e.get("end")), None)
+        if ev and ev.get("start") and ev.get("end") and not ev.get("_excel_written"):
+            with _S_lock:
+                ev["_excel_written"] = True
+            _start = ev["start"]; _end = ev["end"]
+            _dur = max(0, (_end - _start).total_seconds())
+            _sh = _S.get("shift_start") or _start
+            _row = [
+                "Réunion", _S.get("form",{}).get("of_num",""),
+                _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
+                "","","","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+                _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
+                "","","","","","","","","","","","","","","","","","",
+                _sh.strftime("%d/%m/%Y"),
+            ]
+            write_excel_bg([], [_row])
+            try:
+                _nrn_r = max((rn for rn, _ in _decl_cache), default=1) + 1
+                _decl_cache.append((_nrn_r, tuple(_row) + ("",) * max(0, 40 - len(_row))))
+                with _S_lock:
+                    ev["_row_num"] = _nrn_r
+            except: pass
     else:
         t_start("reunion")
         tl_open("reunion", "reunion")
@@ -2661,8 +2690,32 @@ def api_start_nettoyage():
 def api_end_nettoyage():
     data = request.json or {}
     t_stop("nettoyage")
-    tl_close("nettoyage",data.get("comment",""))
-    return jsonify({"ok":True})
+    tl_close("nettoyage", data.get("comment", ""))
+    ev = next((e for e in reversed(_S["tl_events"]) if e.get("key") == "nettoyage" and e.get("end")), None)
+    if ev and ev.get("start") and ev.get("end") and not ev.get("_excel_written"):
+        with _S_lock:
+            ev["_excel_written"] = True
+        _start = ev["start"]; _end = ev["end"]
+        _dur = max(0, (_end - _start).total_seconds())
+        _ntype = ev.get("nettoyage_type", "court")
+        _lbl = {"court": "Nettoyage court", "long": "Nettoyage long", "grand": "Grand nettoyage"}.get(_ntype, "Nettoyage court")
+        _sh = _S.get("shift_start") or _start
+        _row = [
+            _lbl, _S.get("form", {}).get("of_num", ""),
+            _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
+            "","","","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+            _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
+            "","","","","","","","","","","","","","","","",data.get("comment",""),"",
+            _sh.strftime("%d/%m/%Y"),
+        ]
+        write_excel_bg([], [_row])
+        try:
+            _nrn = max((rn for rn, _ in _decl_cache), default=1) + 1
+            _decl_cache.append((_nrn, tuple(_row) + ("",) * max(0, 40 - len(_row))))
+            with _S_lock:
+                ev["_row_num"] = _nrn
+        except: pass
+    return jsonify({"ok": True})
 
 @flask_app.route('/api/save_form', methods=['POST'])
 @require_pilot
@@ -2958,8 +3011,23 @@ def api_delete_row():
     # FIX 2: ajuster row_num dans le cache (Excel décale toutes les lignes suivantes de -1)
     _decl_cache = [(rn if rn < row_num else rn - 1, row) for rn, row in _decl_cache]
     # Si l'entrée était injectée dans tl_events (past_decl), la retirer aussi
+    _del_type_str = str(_del_row_data[0] or "").strip().lower() if _del_row_data is not None else ""
     if _S.get("prod_active"):
         _S["tl_events"] = [ev for ev in _S["tl_events"] if ev.get("_row_num") != row_num]
+        save_session()
+    # Si c'est une Pause : nettoyer pause_periods, pause_total_s et _written_pause_starts
+    if _del_type_str == "pause" and _del_row_data is not None:
+        _del_start_hms = str(_del_row_data[16] or "")[:8]
+        _new_pp = []
+        for _pp_s, _pp_e in list(_S.get("pause_periods", [])):
+            if _pp_s and _pp_s.strftime("%H:%M:%S") == _del_start_hms:
+                _dur_pp = max(0, (_pp_e - _pp_s).total_seconds()) if _pp_e else 0
+                _S["pause_total_s"] = max(0, _S.get("pause_total_s", 0) - _dur_pp)
+                _wps = _S.get("_written_pause_starts", [])
+                _S["_written_pause_starts"] = [w for w in _wps if not (w and abs((w - _pp_s).total_seconds()) < 2)]
+            else:
+                _new_pp.append((_pp_s, _pp_e))
+        _S["pause_periods"] = _new_pp
         save_session()
     def _bg():
         try:
@@ -6990,7 +7058,7 @@ function goTab(tab) {
       const _oS=new Date(ST.of_start_iso);
       const _pp=n=>String(n).padStart(2,'0');
       const _oHMS=_pp(_oS.getHours())+':'+_pp(_oS.getMinutes())+':'+_pp(_oS.getSeconds());
-      gEvts.forEach(ev=>{if(!ev.debut||ev.debut<_oHMS)return;if(_le.find(e=>e.debut===ev.debut&&e.type===ev.type))return;_le.push(Object.assign({},ev,{_from_history:true}));});
+      gEvts.forEach(ev=>{if(!ev.debut||ev.debut<_oHMS)return;const _ex=_le.find(e=>e.debut===ev.debut);if(_ex){if(ev.row_num&&!_ex.row_num)_ex.row_num=ev.row_num;return;}_le.push(Object.assign({},ev,{_from_history:true}));});
     }
     _le.sort((a,b)=>a.debut.localeCompare(b.debut));
     renderRecap(_le);
@@ -7224,7 +7292,8 @@ function applyState(s) {
       const _ofHMS=_pad2(_ofS.getHours())+':'+_pad2(_ofS.getMinutes())+':'+_pad2(_ofS.getSeconds());
       gEvts.forEach(ev=>{
         if(!ev.debut||ev.debut<_ofHMS) return;
-        if(le.find(e=>e.debut===ev.debut&&e.type===ev.type)) return;
+        const _exEv=le.find(e=>e.debut===ev.debut);
+        if(_exEv){if(ev.row_num&&!_exEv.row_num)_exEv.row_num=ev.row_num;return;}
         le.push(Object.assign({},ev,{_from_history:true}));
       });
       le.sort((a,b)=>a.debut.localeCompare(b.debut));
@@ -9966,7 +10035,7 @@ async function addMissingDecl(rowId, label){
   const debut=document.getElementById(rowId+'-debut')?.value;
   const fin=document.getElementById(rowId+'-fin')?.value;
   if(!debut||!fin){toast('Remplissez les heures','warn');return;}
-  const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:label,debut_hms:debut,fin_hms:fin,comment:'Déclaré rétroactivement'})});
+  const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:label,debut_hms:debut,fin_hms:fin,comment:''})});
   const d=r?await r.json():{};
   if(d.ok){
     const ok=document.getElementById(rowId+'-ok');if(ok) ok.style.display='';
@@ -10203,7 +10272,7 @@ async function saveEcartGapStop(gi){
   if(!debut||!fin||!type){toast('Renseigner début, fin et type d\'arrêt','err');return;}
   const _egDateIso=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso).toISOString().slice(0,10):'';
   const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,date_debut:_egDateIso,comment:'Déclaré depuis réconciliation fin de poste'})});
+    body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,date_debut:_egDateIso,comment:''})});
   const d=r?await r.json():{};
   if(d.ok){
     toast(type+' ajouté','ok');
