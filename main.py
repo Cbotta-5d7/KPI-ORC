@@ -11056,7 +11056,8 @@ async function loadKPI(){
   const prParams=new URLSearchParams();
   if(fi&&fi.value)prParams.set('date_from',fi.value);
   if(ti&&ti.value)prParams.set('date_to',ti.value);
-  const [histData,evtData,prData]=await Promise.all([apiFetch('/api/history'),apiFetch('/api/events_list'),apiFetch('/api/period_report?'+prParams.toString())]);
+  const evtParams=new URLSearchParams();if(fi&&fi.value)evtParams.set('from',fi.value);if(ti&&ti.value)evtParams.set('to',ti.value);
+  const [histData,evtData,prData]=await Promise.all([apiFetch('/api/history'),apiFetch('/api/events_list?'+evtParams.toString()),apiFetch('/api/period_report?'+prParams.toString())]);
   const allRows=Array.isArray(histData)?histData:[];
   const allEvts=Array.isArray(evtData)?evtData:[];
 
@@ -11174,7 +11175,7 @@ async function loadKPI(){
     else{
       const maxP=paretoArr[0][1];
       let cumul=0;
-      parEl.innerHTML=paretoArr.map(([type,s])=>{
+      parEl.innerHTML=paretoArr.slice(0,12).map(([type,s])=>{
         const pct=Math.round(s/maxP*100);
         const min=Math.round(s/60);
         const pctTot=paretoTotal>0?Math.round(s/paretoTotal*100):0;
