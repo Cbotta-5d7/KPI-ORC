@@ -5524,48 +5524,42 @@ select{cursor:default}
   </div>
 
   <!-- ════ MODAL PRÉ-POSTE (gaps non déclarés avant 1er OF ou entre OFs) ════ -->
-  <div id="m-preshift" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:601;align-items:center;justify-content:center">
-    <div style="width:min(860px,95vw);max-height:95vh;background:#f8fafc;border-radius:18px;box-shadow:0 4px 6px rgba(0,0,0,.07),0 20px 60px rgba(0,0,0,.2);overflow:hidden;border:1px solid #e2e8f0;display:flex;flex-direction:column">
+  <div id="m-preshift" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:601;align-items:center;justify-content:center">
+    <!-- PAS de onclick sur l'overlay : fermeture impossible par clic extérieur -->
+    <div style="width:min(96vw,960px);max-height:92vh;background:#fff;border-radius:16px;box-shadow:0 4px 6px rgba(0,0,0,.07),0 24px 70px rgba(0,0,0,.28);overflow:hidden;border:1px solid #e2e8f0;display:flex;flex-direction:column">
       <!-- Header rouge -->
-      <div style="background:linear-gradient(135deg,#7f1d1d 0%,#991b1b 40%,#dc2626 70%,#ef4444 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden">
-        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%,rgba(255,200,200,.18) 0%,transparent 70%);pointer-events:none"></div>
+      <div style="background:linear-gradient(135deg,#7f1d1d 0%,#991b1b 40%,#dc2626 80%,#ef4444 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
         <div>
-          <div style="font-size:calc(10px*var(--zf,1));text-transform:uppercase;letter-spacing:.18em;color:rgba(255,255,255,.75);font-weight:700;margin-bottom:3px">Action requise</div>
-          <div id="ps-title" style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.3);letter-spacing:.01em">⚠ Période non déclarée</div>
+          <div style="font-size:calc(10px*var(--zf,1));text-transform:uppercase;letter-spacing:.16em;color:rgba(255,255,255,.7);font-weight:700;margin-bottom:3px">Action requise</div>
+          <div id="ps-title" style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#fff">⚠ Période non déclarée</div>
         </div>
-        <div id="ps-counter" style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#fff;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:4px 14px;letter-spacing:.05em"></div>
+        <div id="ps-counter" style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#fff;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:4px 14px"></div>
       </div>
-      <!-- Bandeau durée -->
-      <div style="background:#fff1f0;border-bottom:1px solid #fecaca;padding:10px 24px;display:flex;align-items:center;gap:10px">
-        <div style="width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0;animation:blink .85s step-start infinite"></div>
-        <div id="ps-text" style="font-size:calc(14px*var(--zf,1));color:#dc2626;font-weight:700"></div>
+      <!-- Bandeau question -->
+      <div style="background:#fff1f0;border-bottom:2px solid #fecaca;padding:12px 24px;flex-shrink:0">
+        <div id="ps-text" style="font-size:calc(15px*var(--zf,1));color:#dc2626;font-weight:800;line-height:1.5"></div>
       </div>
       <input type="hidden" id="ps-start-iso">
       <input type="hidden" id="ps-gap-s">
-      <!-- Corps -->
-      <div style="padding:18px 24px;overflow-y:auto;flex:1">
-        <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px">Déclarer comme :</div>
-        <!-- Raccourcis rapides -->
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-          <button style="background:linear-gradient(145deg,#fff7ed,#ffedd5);border:1px solid #f97316;color:#c2410c;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 14px;border-radius:10px;cursor:pointer;box-shadow:0 2px 6px rgba(249,115,22,.2);transition:all .15s" onclick="psPick('Nettoyage court')">🧹 Nettoyage court</button>
-          <button style="background:linear-gradient(145deg,#fff7ed,#ffedd5);border:1px solid #ea580c;color:#9a3412;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 14px;border-radius:10px;cursor:pointer;box-shadow:0 2px 6px rgba(234,88,12,.2);transition:all .15s" onclick="psPick('Nettoyage long')">🧹 Nettoyage long</button>
-          <button style="background:linear-gradient(145deg,#fff7ed,#ffedd5);border:1px solid #c2410c;color:#7c2d12;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 14px;border-radius:10px;cursor:pointer;box-shadow:0 2px 6px rgba(194,65,12,.2);transition:all .15s" onclick="psPick('Nettoyage très long')">🧹 Nettoyage très long</button>
-          <button style="background:linear-gradient(145deg,#f8fafc,#e2e8f0);border:1px solid #94a3b8;color:#334155;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 14px;border-radius:10px;cursor:pointer;box-shadow:0 2px 6px rgba(100,116,139,.15);transition:all .15s" onclick="psPick('Pause')">☕ Pause</button>
-          <button style="background:linear-gradient(145deg,#faf5ff,#ede9fe);border:1px solid #8b5cf6;color:#5b21b6;font-weight:800;font-size:calc(12px*var(--zf,1));padding:8px 14px;border-radius:10px;cursor:pointer;box-shadow:0 2px 6px rgba(139,92,246,.2);transition:all .15s" onclick="psPick('Réunion')">🗣️ Réunion</button>
+      <!-- Corps : 2 options -->
+      <div style="padding:18px 24px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:16px">
+        <!-- Option 1 : Déclarer comme arrêt -->
+        <div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:12px;padding:14px 18px">
+          <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">🛑 Option 1 — Déclarer comme un arrêt</div>
+          <div id="ps-stop-btns" style="margin-bottom:10px"></div>
+          <div style="display:flex;gap:8px;align-items:stretch">
+            <input id="ps-custom" placeholder="Type d'arrêt (saisie libre)…" style="flex:1;padding:9px 12px;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;font-size:calc(13px*var(--zf,1));color:#1e293b;outline:none" onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#fca5a5'" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
+            <button onclick="confirmPsAsStop()" style="flex-shrink:0;padding:9px 22px;background:linear-gradient(135deg,#dc2626,#b91c1c);border:none;border-radius:8px;color:#fff;font-size:calc(13px*var(--zf,1));font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 3px 10px rgba(220,38,38,.3)">✓ Valider l'arrêt</button>
+          </div>
         </div>
-        <div id="ps-stop-btns" style="margin-bottom:12px"></div>
-        <!-- Saisie libre -->
-        <div style="display:flex;gap:8px;margin-bottom:16px">
-          <input id="ps-custom" placeholder="Ou saisir librement…" style="flex:1;padding:9px 14px;background:#fff;border:1.5px solid #cbd5e1;border-radius:10px;font-size:calc(13px*var(--zf,1));color:#1e293b;outline:none;transition:border .15s" onfocus="this.style.borderColor='#6366f1';this.style.boxShadow='0 0 0 3px rgba(99,102,241,.12)'" onblur="this.style.borderColor='#cbd5e1';this.style.boxShadow='none'" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
-          <button onclick="confirmPsAsStop()" style="flex-shrink:0;padding:9px 18px;background:linear-gradient(135deg,#1d4ed8,#2563eb);border:none;border-radius:10px;color:#fff;font-size:calc(13px*var(--zf,1));font-weight:800;cursor:pointer;box-shadow:0 3px 10px rgba(29,78,216,.35);transition:all .15s">✓ Valider</button>
-        </div>
-        <!-- Séparateur -->
-        <div style="height:1px;background:#e2e8f0;margin-bottom:14px"></div>
-        <!-- Backdate button seul -->
-        <div id="ps-backdate-row">
-          <button onclick="psChooseBackdate()" style="width:100%;padding:12px 16px;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1.5px solid #16a34a;border-radius:12px;color:#15803d;font-size:calc(13px*var(--zf,1));font-weight:800;cursor:pointer;text-align:center;box-shadow:0 2px 8px rgba(22,163,74,.15);transition:all .15s">
-            ▶ Signaler le début de l'OF à <span id="ps-backdate-time" style="font-weight:900;color:#15803d">--h--</span>
-          </button>
+        <!-- Option 2 : Lancer l'OF depuis une heure réglable -->
+        <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:14px 18px">
+          <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">▶ Option 2 — Lancer l'OF à partir de cette heure</div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <input type="time" id="ps-custom-time" style="padding:8px 12px;border:1.5px solid #86efac;border-radius:8px;font-size:calc(15px*var(--zf,1));font-weight:700;color:#15803d;background:#fff;min-width:110px">
+            <button onclick="psChooseBackdate()" style="padding:9px 22px;background:linear-gradient(135deg,#16a34a,#15803d);border:none;border-radius:8px;color:#fff;font-size:calc(13px*var(--zf,1));font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 3px 10px rgba(22,163,74,.3)">▶ Lancer depuis cette heure</button>
+            <span style="font-size:calc(11px*var(--zf,1));color:#6b7280;font-style:italic">Rétrodate le début de l'OF</span>
+          </div>
         </div>
       </div>
     </div>
@@ -6368,17 +6362,6 @@ select{cursor:default}
           <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🚨 Arrêts non prévus</b><span style="color:#374151">Cumul des arrêts non planifiés (panne, problème, manquant, arrêts prévu hors budgets..).</span></div></div>
           <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🟡 Dégradé</b><span style="color:#374151">Durée totale en mode dégradé (production ralentie). Comptabilisée séparément, n'influe pas le TRS.</span></div></div>
           <div style="padding:10px 14px;background:#f8fafc"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🎯 Objectif</b><span style="color:#374151">Production maximale attendue sur la durée nette de l'OF, selon l'effectif et le type de produit.</span></div><div style="margin-top:5px;font-family:monospace;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:4px 10px;color:#1e40af;display:inline-block;font-size:calc(10px*var(--zf,1))">Objectif = Prod_réf × %cadence × Durée_nette / 28800 ÷ Coeff</div></div>
-        </div>
-      </div>
-      <!-- DEBUG : Simulation heure poste de nuit -->
-      <div class="ss" style="border:2px dashed #f97316;background:#fff7ed;border-radius:10px;padding:14px;margin-top:16px">
-        <h3 style="color:#c2410c;font-size:calc(13px*var(--zf,1));margin:0 0 10px">🕐 [DEBUG] Simulation heure</h3>
-        <div style="font-size:calc(11px*var(--zf,1));color:#92400e;margin-bottom:10px">Simule une heure différente pour tester le poste de nuit. Remet à zéro au prochain redémarrage.</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input type="time" id="sim-time-input" style="padding:6px 10px;border:1.5px solid #fed7aa;border-radius:6px;font-size:calc(14px*var(--zf,1))">
-          <button onclick="applySimTime()" class="btn" style="background:#f97316;border-color:#ea580c;color:#fff;font-weight:700">Appliquer</button>
-          <button onclick="resetSimTime()" class="btn btn-sec">Reset</button>
-          <span id="sim-time-status" style="font-size:calc(12px*var(--zf,1));color:#9a3412;font-weight:600"></span>
         </div>
       </div>
     </div>
@@ -7956,29 +7939,26 @@ function _showNextGap(){
   const total=_pendingGaps.length;
   const idx=_pendingGapIdx+1;
   const dur=_fmtMin(g.duree_s||0);
-  // Titre + compteur
-  const titleEl=document.getElementById('ps-title');
-  if(titleEl) titleEl.textContent='⚠ Période non déclarée';
   const cntEl=document.getElementById('ps-counter');
   if(cntEl) cntEl.textContent=total>1?`Trou ${idx} / ${total}`:'';
-  // Plage et durée
   const debut=g.debut||'';const fin=g.fin||'';
-  document.getElementById('ps-text').textContent=`${dur} non déclarées : ${debut.replace(':','h')} → ${fin.replace(':','h')}`;
+  const now=new Date();const nowStr=String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('ps-text').innerHTML=`⚠ Que s'est-il passé entre <b>${debut.replace(':','h')}</b> et maintenant <b>(${nowStr})</b> ?<br><span style="font-size:calc(12px*var(--zf,1));font-weight:600;color:#9f1239">Durée non déclarée : ${dur}</span>`;
   document.getElementById('ps-gap-s').value=g.duree_s||0;
-  // Compute ISO for the backdate button from g.debut HH:MM
-  const _bdhm=(g.debut||'').split(':');
+  // ISO + time input pour Option 2
+  const _bdhm=(debut||'').split(':');
+  const _pad=n=>String(n).padStart(2,'0');
   if(_bdhm.length>=2){
     const _bdn=new Date();
     const _bddt=new Date(_bdn.getFullYear(),_bdn.getMonth(),_bdn.getDate(),parseInt(_bdhm[0])||0,parseInt(_bdhm[1])||0,0,0);
-    const _pad=n=>String(n).padStart(2,'0');
-    const _localIso=`${_bddt.getFullYear()}-${_pad(_bddt.getMonth()+1)}-${_pad(_bddt.getDate())}T${_pad(_bddt.getHours())}:${_pad(_bddt.getMinutes())}:00`;
-    document.getElementById('ps-start-iso').value=_localIso;
-  }else{document.getElementById('ps-start-iso').value='';}
+    document.getElementById('ps-start-iso').value=`${_bddt.getFullYear()}-${_pad(_bddt.getMonth()+1)}-${_pad(_bddt.getDate())}T${_pad(_bddt.getHours())}:${_pad(_bddt.getMinutes())}:00`;
+    const tEl=document.getElementById('ps-custom-time');
+    if(tEl) tEl.value=`${_pad(parseInt(_bdhm[0])||0)}:${_pad(parseInt(_bdhm[1])||0)}`;
+  }else{
+    document.getElementById('ps-start-iso').value='';
+    const tEl=document.getElementById('ps-custom-time');if(tEl)tEl.value='';
+  }
   document.getElementById('ps-custom').value='';
-  const bdRow=document.getElementById('ps-backdate-row');
-  const bt=document.getElementById('ps-backdate-time');
-  if(bdRow) bdRow.style.display='';
-  if(bt) bt.textContent=debut.replace(':','h');
   psFillStopBtns();
   openM('m-preshift');
 }
@@ -8279,16 +8259,21 @@ async function confirmPsAsStop(){
 }
 
 async function psChooseBackdate(){
-  const startIso=document.getElementById('ps-start-iso').value;
+  const tm=(document.getElementById('ps-custom-time')?.value||'').trim();
+  let startIso=document.getElementById('ps-start-iso').value;
+  if(tm){
+    const[hh,mm]=(tm+':0').split(':').map(Number);
+    const _n=new Date();
+    const _dt=new Date(_n.getFullYear(),_n.getMonth(),_n.getDate(),hh||0,mm||0,0,0);
+    const _pad=n=>String(n).padStart(2,'0');
+    startIso=`${_dt.getFullYear()}-${_pad(_dt.getMonth()+1)}-${_pad(_dt.getDate())}T${_pad(_dt.getHours())}:${_pad(_dt.getMinutes())}:00`;
+  }
   closeM('m-preshift');
   if(startIso){
     await fetch('/api/set_of_start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({iso:startIso})});
     await pollState();
-    const bt=document.getElementById('ps-backdate-time');
-    const tStr=bt?bt.textContent:'';
-    toast('OF rétro-daté à '+(tStr||'l\'heure indiquée'),'ok');
+    toast('OF rétro-daté à '+(tm||'l\'heure indiquée'),'ok');
   }
-  // Rétrodatage = couvre toute la période → skip tous les gaps restants
   _pendingGapIdx=_pendingGaps.length;
   _showNextGap();
 }
