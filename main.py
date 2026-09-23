@@ -3724,10 +3724,6 @@ def api_period_report():
         agg_stop    += net_stop_min
         agg_perte   += perte
         agg_arret_prevu += (_xl.get('pause_min') or 0) + (_xl.get('nett_min') or 0) + (_xl.get('reunion_min') or 0)
-        for _rp_obj in s.get('prod_raws', []):
-            if len(_rp_obj) > 42 and _rp_obj[42] not in (None, ''):
-                try: agg_obj_pcs += float(str(_rp_obj[42]).replace(',', '.'))
-                except: pass
         agg_equiv   += s['tot_equiv']
         agg_pcs     += s['tot_pcs']
         agg_of_set.update(str(r[1] or '').strip() for r in s.get('prod_raws',[]) if str(r[1] or '').strip())
@@ -3758,6 +3754,7 @@ def api_period_report():
                 _obj_rp = round(_exp_rp, 1) if _exp_rp > 0 else -1
             except:
                 _plan_rp = 0; _deg_rp = 0; _obj_rp = -1
+            if _obj_rp > 0: agg_obj_pcs += _obj_rp
             _of_rows_sd.append({
                 "of":str(_rp[1] or ""),"debut":str(_rp[16] or "")[:5],"fin":str(_rp[17] or "")[:5],
                 "duree":str(_rp[18] or ""),"qte_fab":str(_rp[19] or ""),"qte_emb":str(_rp[20] or ""),
@@ -6288,6 +6285,7 @@ select{cursor:default}
     <div class="mhdr"><h2>✏ Modifier l'arrêt</h2></div>
     <div class="mbody">
       <input type="hidden" id="es-key">
+      <input type="hidden" id="es-poste">
       <div class="fr" style="margin-bottom:10px"><label style="font-weight:800;color:#dc2626">🔑 Mot de passe admin</label><input type="password" id="es-pw" placeholder="Mot de passe requis"></div>
       <div class="fr" style="margin-bottom:8px"><label>Type</label><select id="es-type"></select></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
@@ -6334,6 +6332,8 @@ select{cursor:default}
       <div id="er-prod-fields">
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
           <div class="fr"><label>N° OF</label><input id="er-of"></div>
+          <div class="fr"><label>Date Début</label><input type="date" id="er-date-deb" style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+          <div class="fr"><label>Date Fin</label><input type="date" id="er-date-fin" style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
           <div class="fr"><label>Heure Début</label><input type="time" id="er-deb" step="60"></div>
           <div class="fr"><label>Heure Fin</label><input type="time" id="er-fin" step="60"></div>
           <div class="fr"><label>Poste</label><input id="er-poste"></div>
@@ -6366,6 +6366,10 @@ select{cursor:default}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
           <div class="fr"><label>Type d'arrêt</label><select id="er-evttype"><option value="">--</option></select></div>
           <div class="fr"><label>N° OF</label><input id="er-evtof"></div>
+          <div class="fr"><label>Poste</label><input id="er-evtposte"></div>
+          <div class="fr"><label> </label><div></div></div>
+          <div class="fr"><label>Date Début</label><input type="date" id="er-evtdate-deb" style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+          <div class="fr"><label>Date Fin</label><input type="date" id="er-evtdate-fin" style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
           <div class="fr"><label>Heure Début</label><input type="time" id="er-evtdeb" step="60"></div>
           <div class="fr"><label>Heure Fin</label><input type="time" id="er-evtfin" step="60"></div>
         </div>
@@ -9060,8 +9064,11 @@ function openEditRow(key) {
   document.getElementById('er-title').textContent=isProd?'✏ Modifier déclaration':'✏ Modifier événement';
   document.getElementById('er-prod-fields').style.display=isProd?'':'none';
   document.getElementById('er-evt-fields').style.display=isProd?'none':'';
+  const _erDateIso=row.date?row.date.split('/').reverse().join('-'):(ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso).toISOString().slice(0,10):'');
   if(isProd){
     document.getElementById('er-of').value=row.of||'';
+    document.getElementById('er-date-deb').value=_erDateIso;
+    document.getElementById('er-date-fin').value=_erDateIso;
     document.getElementById('er-deb').value=(row.debut||'').slice(0,5);
     document.getElementById('er-fin').value=(row.fin||'').slice(0,5);
     document.getElementById('er-poste').value=row.poste||'';
@@ -9091,6 +9098,9 @@ function openEditRow(key) {
   } else {
     _buildUnifiedTypeOpts(document.getElementById('er-evttype'),row.type||'');
     document.getElementById('er-evtof').value=row.of||'';
+    document.getElementById('er-evtposte').value=row.poste||'';
+    document.getElementById('er-evtdate-deb').value=_erDateIso;
+    document.getElementById('er-evtdate-fin').value=_erDateIso;
     document.getElementById('er-evtdeb').value=(row.debut||'').slice(0,5);
     document.getElementById('er-evtfin').value=(row.fin||'').slice(0,5);
     document.getElementById('er-evtcomment').value=row.comment||'';
@@ -9121,6 +9131,9 @@ function saveEditRow() {
   if(!pw){toast('Mot de passe requis','err');return;}
   const v=id=>document.getElementById(id)?.value||'';
   const n=id=>parseFloat(document.getElementById(id)?.value)||0;
+  // Vérification poste de nuit
+  if(rowType==='prod'){const _erP=v('er-poste'),_erDd=v('er-date-deb'),_erDf=v('er-date-fin'),_erHd=v('er-deb'),_erHf=v('er-fin');if(_isNuitPoste(_erP)&&_hasNuitDateError(_erDd,_erDf,_erHd,_erHf)){if(!_confirmNuitDateError())return;}}
+  else{const _erP=v('er-evtposte'),_erDd=v('er-evtdate-deb'),_erDf=v('er-evtdate-fin'),_erHd=v('er-evtdeb'),_erHf=v('er-evtfin');if(_isNuitPoste(_erP)&&_hasNuitDateError(_erDd,_erDf,_erHd,_erHf)){if(!_confirmNuitDateError())return;}}
   let updates={};
   if(rowType==='prod'){
     // Col indices per DECL_HEADERS (1-based):
@@ -9141,7 +9154,9 @@ function saveEditRow() {
     updates={'1':v('er-evttype'),'2':v('er-evtof'),'17':v('er-evtdeb'),'18':v('er-evtfin'),
       '36':v('er-evtcomment'),'37':document.getElementById('er-horstrs').checked?'OUI':''};
   }
-  const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rowNum,updates})});
+  const _erDateDeb=rowType==='prod'?v('er-date-deb'):v('er-evtdate-deb');
+  const _erDateFin=rowType==='prod'?v('er-date-fin'):v('er-evtdate-fin');
+  const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rowNum,updates,date_debut:_erDateDeb,date_fin:_erDateFin})});
   const d=r?await r.json():{};
   if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();loadKPI();toast('Ligne modifiée','ok');}
   else toast(d?.error||'Erreur modification','err');
@@ -9199,6 +9214,7 @@ function openEditStop(key){
   if(!ev) return;
   _buildUnifiedTypeOpts(document.getElementById('es-type'),ev.type||'');
   document.getElementById('es-key').value=key;
+  document.getElementById('es-poste').value=ev.poste||(ST&&ST.poste)||'';
   document.getElementById('es-pw').value='';
   const d=ev.debut||'',f2=ev.fin||'';
   document.getElementById('es-deb').value=d.length>=5?d.slice(0,5):d;
@@ -9228,6 +9244,8 @@ async function saveEditStop(){
   const cmtVal=document.getElementById('es-cmt').value;
   const dateDeb=(document.getElementById('es-date-deb')||{}).value||'';
   const dateFin=(document.getElementById('es-date-fin')||{}).value||'';
+  const _esPoste=(document.getElementById('es-poste')||{}).value||'';
+  if(_isNuitPoste(_esPoste)&&_hasNuitDateError(dateDeb,dateFin,debVal,finVal)){if(!_confirmNuitDateError())return;}
   let r;
   if(ev.start_iso && ev.row_num){
     // Arrêt live déjà écrit dans Excel — mettre à jour les deux
@@ -12328,6 +12346,16 @@ async function reloadAllData(){
   if(typeof loadMainDecl==='function')loadMainDecl();
   toast('Données rechargées','ok');
 }
+// ── UTILITAIRE POSTE DE NUIT — vérification cohérence dates ──
+function _isNuitPoste(poste){return /nuit/i.test(poste||'');}
+function _hasNuitDateError(dateDebut,dateFin,heureDebut,heureFin){
+  if(!dateDebut||!dateFin||!heureDebut||!heureFin) return false;
+  if(dateDebut===dateFin&&heureDebut>='20:00'&&heureFin<='12:00') return true;
+  return false;
+}
+function _confirmNuitDateError(){
+  return confirm('⚠️ Attention — les dates semblent incorrectes.\n\nPour un poste de nuit (ex: 23h00 → 01h30), la date de fin doit être le jour suivant.\n\nVoulez-vous continuer quand même ?');
+}
 // ── DÉCLARATION ANTÉRIEURE ──
 let _pdType='prod';
 function pdChooseType(){openM('m-pd-choose');}
@@ -12427,6 +12455,7 @@ async function submitPastDecl(){
   if(dateDebut&&dateFin&&dateDebut>dateFin){toast('Date fin doit être après date début','err');return;}
   const _pdPilot=(document.getElementById('pd-pilot')||{}).value||'';
   const _pdPoste=(document.getElementById('pd-poste')||{}).value||'';
+  if(_isNuitPoste(_pdPoste)&&_hasNuitDateError(dateDebut,dateFin,debut,fin)){if(!_confirmNuitDateError())return;}
   let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin,date_debut:dateDebut,date_fin:dateFin,pilot:_pdPilot,poste:_pdPoste};
   if(_pdType==='prod'){
     const of_num=(document.getElementById('pd-of')||{}).value||'';
