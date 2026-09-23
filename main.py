@@ -11661,20 +11661,25 @@ async function loadSessionReport(date,pilot,poste,itemId){
   window._rptEvtRows = d.evt_rows || [];
   // Helper: compute net prod and stop overlap for each OF against evt_rows
   const _rptHmsMs=hm=>{if(!hm)return 0;const[h,m,s]=(hm+':0:0').split(':').map(Number);return(h||0)*3600000+(m||0)*60000+(s||0)*1000;};
-  const _rptStEvts=(d.evt_rows||[]).filter(e=>!e.is_degrade).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(e=>e.e>e.s);
-  const _rptDgEvts=(d.evt_rows||[]).filter(e=>e.is_degrade).map(e=>({s:_rptHmsMs(e.debut),e:_rptHmsMs(e.fin)})).filter(e=>e.e>e.s);
+  // Normalise fin quand l'OF/arrêt croise minuit (fin < debut → +24h)
+  const _rptNormMs=(dMs,fMs)=>fMs<dMs?fMs+86400000:fMs;
+  // Normalise un timestamp d'événement quand le poste croise minuit
+  // (heure après minuit = petite valeur ms, mais appartient au "lendemain" du poste)
+  const _rptNormEvtMs=(t,debMs)=>(debMs>43200000&&t<43200000&&t<debMs)?t+86400000:t;
+  const _rptStEvts=(d.evt_rows||[]).filter(e=>!e.is_degrade).map(e=>{const s=_rptHmsMs(e.debut),en=_rptNormMs(s,_rptHmsMs(e.fin));return{s,e:en};}).filter(e=>e.e>e.s);
+  const _rptDgEvts=(d.evt_rows||[]).filter(e=>e.is_degrade).map(e=>{const s=_rptHmsMs(e.debut),en=_rptNormMs(s,_rptHmsMs(e.fin));return{s,e:en};}).filter(e=>e.e>e.s);
   window._rptDegMin=function(debHm,finHm){
-    const dMs=_rptHmsMs(debHm),fMs=_rptHmsMs(finHm);
+    const dMs=_rptHmsMs(debHm),fMs=_rptNormMs(dMs,_rptHmsMs(finHm));
     if(fMs<=dMs) return 0;
-    const ov=_rptDgEvts.map(sv=>({s:Math.max(sv.s,dMs),e:Math.min(sv.e,fMs)})).filter(o=>o.e>o.s);
+    const ov=_rptDgEvts.map(sv=>{const ns=_rptNormEvtMs(sv.s,dMs),ne=_rptNormEvtMs(sv.e,dMs);return{s:Math.max(ns,dMs),e:Math.min(ne,fMs)};}).filter(o=>o.e>o.s);
     ov.sort((a,b)=>a.s-b.s);
     const mg=[];ov.forEach(o=>{if(mg.length&&o.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,o.e);else mg.push({...o});});
     return Math.round(mg.reduce((a,o)=>a+(o.e-o.s),0)/60000);
   };
   window._rptNetProd=function(debHm,finHm){
-    const dMs=_rptHmsMs(debHm),fMs=_rptHmsMs(finHm);
+    const dMs=_rptHmsMs(debHm),fMs=_rptNormMs(dMs,_rptHmsMs(finHm));
     if(fMs<=dMs) return {netMin:0,stopMin:0};
-    const ov=_rptStEvts.map(sv=>({s:Math.max(sv.s,dMs),e:Math.min(sv.e,fMs)})).filter(o=>o.e>o.s);
+    const ov=_rptStEvts.map(sv=>{const ns=_rptNormEvtMs(sv.s,dMs),ne=_rptNormEvtMs(sv.e,dMs);return{s:Math.max(ns,dMs),e:Math.min(ne,fMs)};}).filter(o=>o.e>o.s);
     ov.sort((a,b)=>a.s-b.s);
     const mg=[];ov.forEach(o=>{if(mg.length&&o.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,o.e);else mg.push({...o});});
     const blocked=mg.reduce((a,o)=>a+(o.e-o.s),0);
@@ -11686,7 +11691,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     const kitDisp=kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
     const {netMin,stopMin}=_rptNetProd(r.debut,r.fin);
     const degMinOf=_rptDegMin(r.debut,r.fin);
-    const ofDurMin=r.debut&&r.fin?Math.round((_rptHmsMs(r.fin)-_rptHmsMs(r.debut))/60000):0;
+    const ofDurMin=r.debut&&r.fin?(()=>{const dMs=_rptHmsMs(r.debut),fMs=_rptNormMs(dMs,_rptHmsMs(r.fin));return fMs>dMs?Math.round((fMs-dMs)/60000):0;})():0;
     const nbPers=r.nb_pers||'';
     const planMin=Math.round((r.plan_stop_s||0)/60);
     const unplanMin=Math.max(0,stopMin-planMin);
