@@ -1942,6 +1942,8 @@ def _get_uncovered_gaps(from_dt, to_dt, pilot):
     if not from_dt or not to_dt: return []
     from_s = _hms_to_sec(from_dt) if not hasattr(from_dt,'hour') else from_dt.hour*3600+from_dt.minute*60
     to_s = _hms_to_sec(to_dt) if not hasattr(to_dt,'hour') else to_dt.hour*3600+to_dt.minute*60
+    if hasattr(from_dt,'date') and hasattr(to_dt,'date') and to_dt.date() > from_dt.date():
+        to_s += 86400
     if to_s <= from_s + 59: return []
     date_strs = set()
     if hasattr(from_dt,'strftime'): date_strs.add(from_dt.strftime("%d/%m/%Y"))
@@ -1952,7 +1954,7 @@ def _get_uncovered_gaps(from_dt, to_dt, pilot):
         if rd not in date_strs: continue
         if pilot and str(r[4] or "") != pilot: continue
         ds = _hms_to_sec(str(r[16] or "00:00:00"))
-        fs = _hms_to_sec(str(r[17] or "00:00:00"))
+        fs = _norm_fin(ds, _hms_to_sec(str(r[17] or "00:00:00")))
         if fs > ds and ds >= 0:
             all_slots.append([ds, fs])
     all_slots.sort()
@@ -3975,11 +3977,16 @@ def api_add_stop_decl():
     if not pilot:
         return jsonify({"ok":False,"error":"Pas de pilote connecté"}),400
     now = datetime.datetime.now()
+    date_debut_str = str(data.get("date_debut","")).strip()  # format YYYY-MM-DD
     try:
         dh,dm = [int(x) for x in debut_hms.split(":")[:2]]
         fh,fm = [int(x) for x in fin_hms.split(":")[:2]]
-        start_dt = now.replace(hour=dh, minute=dm, second=0, microsecond=0)
-        end_dt   = now.replace(hour=fh, minute=fm, second=0, microsecond=0)
+        if date_debut_str:
+            base_date = datetime.datetime.strptime(date_debut_str, "%Y-%m-%d")
+        else:
+            base_date = _S.get("shift_start") or datetime.datetime.now()
+        start_dt = base_date.replace(hour=dh, minute=dm, second=0, microsecond=0)
+        end_dt   = base_date.replace(hour=fh, minute=fm, second=0, microsecond=0)
         if end_dt <= start_dt: end_dt += datetime.timedelta(days=1)  # poste de nuit
         dur_s = max(0, (end_dt - start_dt).total_seconds())
         shift_dt2 = _S.get("shift_start") or now
@@ -6192,6 +6199,10 @@ select{cursor:default}
       <input type="hidden" id="es-key">
       <div class="fr" style="margin-bottom:10px"><label style="font-weight:800;color:#dc2626">🔑 Mot de passe admin</label><input type="password" id="es-pw" placeholder="Mot de passe requis"></div>
       <div class="fr" style="margin-bottom:8px"><label>Type</label><select id="es-type"></select></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div class="fr"><label>Date début</label><input type="date" id="es-date-deb" style="width:100%;padding:4px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))"></div>
+        <div class="fr"><label>Date fin</label><input type="date" id="es-date-fin" style="width:100%;padding:4px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))"></div>
+      </div>
       <div class="fr" style="margin-bottom:8px"><label>Heure début</label><input type="time" id="es-deb" step="60"></div>
       <div class="fr" style="margin-bottom:8px"><label>Heure fin</label><input type="time" id="es-fin" step="60"></div>
       <div class="fr"><label>Commentaire</label><input type="text" id="es-cmt"></div>
@@ -9102,6 +9113,16 @@ function openEditStop(key){
   document.getElementById('es-deb').value=d.length>=5?d.slice(0,5):d;
   document.getElementById('es-fin').value=f2.length>=5?f2.slice(0,5):f2;
   document.getElementById('es-cmt').value=ev.comment||'';
+  // Pré-remplir les dates depuis ev.date, une ISO date dans debut, ou shift_debut_iso
+  const _esFallbackIso=ST&&ST.shift_debut_iso?ST.shift_debut_iso:new Date().toISOString();
+  let _esDateDeb='',_esDateFin='';
+  if(ev.date){const _p=ev.date.split('/');if(_p.length===3){_esDateDeb=_p[2]+'-'+_p[1]+'-'+_p[0];_esDateFin=_esDateDeb;}}
+  if(!_esDateDeb&&ev.debut&&ev.debut.length>10){try{_esDateDeb=new Date(ev.debut).toISOString().slice(0,10);}catch(e){}}
+  if(!_esDateFin&&ev.fin&&ev.fin.length>10){try{_esDateFin=new Date(ev.fin).toISOString().slice(0,10);}catch(e){}}
+  if(!_esDateDeb){_esDateDeb=new Date(_esFallbackIso).toISOString().slice(0,10);}
+  if(!_esDateFin){_esDateFin=_esDateDeb;}
+  document.getElementById('es-date-deb').value=_esDateDeb;
+  document.getElementById('es-date-fin').value=_esDateFin;
   openM('m-editstop');
   setTimeout(()=>{const pw=document.getElementById('es-pw');if(pw)pw.focus();},80);
 }
@@ -9114,11 +9135,13 @@ async function saveEditStop(){
   const debVal=document.getElementById('es-deb').value;
   const finVal=document.getElementById('es-fin').value;
   const cmtVal=document.getElementById('es-cmt').value;
+  const dateDeb=(document.getElementById('es-date-deb')||{}).value||'';
+  const dateFin=(document.getElementById('es-date-fin')||{}).value||'';
   let r;
   if(ev.start_iso && ev.row_num){
     // Arrêt live déjà écrit dans Excel — mettre à jour les deux
     const updates={'1':document.getElementById('es-type').value,'17':debVal,'18':finVal,'36':cmtVal};
-    r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num,updates})});
+    r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num,updates,date_debut:dateDeb,date_fin:dateFin})});
     // Mettre à jour aussi la mémoire (affichage en temps réel)
     fetch('/api/edit_tl_event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,start_iso:ev.start_iso,new_debut:debVal,new_fin:finVal,comment:cmtVal})});
   } else if(!ev.row_num && ev.start_iso){
@@ -9127,7 +9150,7 @@ async function saveEditStop(){
   } else {
     // Déclaration Excel uniquement
     const updates={'1':document.getElementById('es-type').value,'17':debVal,'18':finVal,'36':cmtVal};
-    r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num,updates})});
+    r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num,updates,date_debut:dateDeb,date_fin:dateFin})});
   }
   const d=r?await r.json():{};
   if(d&&d.ok){closeM('m-editstop');await pollState();await pollEvts();if(_curTab==='main')loadMainDecl();toast('Modifié','ok');}
@@ -10009,8 +10032,9 @@ async function saveEcartGapStop(gi){
   const fin=(document.getElementById('ecart-gap-fin-'+gi)||{}).value||'';
   const type=((document.getElementById('ecart-gap-type-'+gi)||{}).value||'').trim();
   if(!debut||!fin||!type){toast('Renseigner début, fin et type d\'arrêt','err');return;}
+  const _egDateIso=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso).toISOString().slice(0,10):'';
   const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,comment:'Déclaré depuis réconciliation fin de poste'})});
+    body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,date_debut:_egDateIso,comment:'Déclaré depuis réconciliation fin de poste'})});
   const d=r?await r.json():{};
   if(d.ok){
     toast(type+' ajouté','ok');
@@ -10389,8 +10413,8 @@ async function confirmFinPoste(){
   const prod_total=ofList.reduce((s,o)=>s+parseInt(o.qte_fab||0),0);
   const dur_prod_total_s=ofList.reduce((s,o)=>s+pSec(o.duree||''),0);
   // Net prod = each OF's (fin-debut) minus overlapping stops within that period
-  const _fpOfPs=ofList.map(o=>({s:pSec(o.debut||'0:0:0'),e:pSec(o.fin||'0:0:0')})).filter(p=>p.e>p.s);
-  const _fpStPs=stops.map(e=>({s:pSec(e.debut||'0:0:0'),e:pSec(e.fin||'0:0:0')})).filter(e=>e.e>e.s);
+  const _fpOfPs=ofList.map(o=>{const s=pSec(o.debut||'0:0:0'),e0=pSec(o.fin||'0:0:0');return{s,e:e0<s?e0+86400:e0};}).filter(p=>p.e>p.s);
+  const _fpStPs=stops.map(e=>{const s=pSec(e.debut||'0:0:0'),e0=pSec(e.fin||'0:0:0');return{s,e:e0<s?e0+86400:e0};}).filter(e=>e.e>e.s);
   let _fpNet=0;
   _fpOfPs.forEach(pp=>{
     const ov=_fpStPs.map(sv=>({s:Math.max(sv.s,pp.s),e:Math.min(sv.e,pp.e)})).filter(o=>o.e>o.s);
@@ -10400,7 +10424,7 @@ async function confirmFinPoste(){
   });
   const dur_prod_sans_arret_s=_fpNet;
   const posteRow={
-    date:new Date().toLocaleDateString('fr-FR'),
+    date:new Date(ST&&ST.shift_debut_iso?ST.shift_debut_iso:Date.now()).toLocaleDateString('fr-FR'),
     pilot:ST.pilot||'',
     copilote:ST.form&&ST.form.copilote||'',
     poste:ST.poste||'',
@@ -12200,10 +12224,11 @@ function openPastDecl(){
   const pad=n=>String(n).padStart(2,'0');
   if(shiftDebut){document.getElementById('pd-debut').value=pad(shiftDebut.getHours())+':'+pad(shiftDebut.getMinutes());}
   if(shiftFin){document.getElementById('pd-fin').value=pad(shiftFin.getHours())+':'+pad(shiftFin.getMinutes());}
-  // Pré-remplir les dates avec aujourd'hui
-  const _todayIso=new Date().toISOString().slice(0,10);
-  document.getElementById('pd-date-debut').value=_todayIso;
-  document.getElementById('pd-date-fin').value=_todayIso;
+  // Pré-remplir les dates depuis le début de poste
+  const _shiftBase=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso):new Date();
+  const _shiftDateIso=_shiftBase.toISOString().slice(0,10);
+  document.getElementById('pd-date-debut').value=_shiftDateIso;
+  document.getElementById('pd-date-fin').value=_shiftDateIso;
   // Copier les options depuis les selects du formulaire principal (toujours à jour)
   function _copyOpts(srcId,dstId){const src=document.getElementById(srcId);const dst=document.getElementById(dstId);if(!src||!dst)return;while(dst.options.length>1)dst.remove(1);Array.from(src.options).slice(1).forEach(o=>{const n=document.createElement('option');n.value=o.value;n.textContent=o.text;dst.appendChild(n);});}
   _copyOpts('f-type_prod','pd-type-prod');_copyOpts('f-taille','pd-taille');_copyOpts('f-fibre','pd-fibre');_copyOpts('f-copilote','pd-copilote');
