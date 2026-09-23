@@ -1589,46 +1589,46 @@ def load_postes_shift_map():
                 if "Postes" not in wb.sheetnames: return {}
                 ws = wb["Postes"]
                 for ri in range(2, ws.max_row + 1):
-                pilot_v = ws.cell(ri, 2).value   # col B: Pilote
-                deb_v   = ws.cell(ri, 16).value  # col P: Debut Poste (datetime)
-                if not pilot_v or not deb_v: continue
-                deb_dt = _parse_dt(deb_v)
-                if deb_dt is None: continue
-                fin_v  = ws.cell(ri, 17).value   # col Q: Fin Poste (datetime)
-                fin_dt = _parse_dt(fin_v)
-                date_str = deb_dt.strftime("%d/%m/%Y")
-                _poste_v = str(ws.cell(ri, 4).value or '').strip()
-                pk = (str(pilot_v).strip().lower(), date_str)
-                pk3 = (str(pilot_v).strip().lower(), date_str, _poste_v.lower())
-                result[pk] = {
-                    'deb_dt':        deb_dt,
-                    'fin_dt':        fin_dt,
-                    'date_str':      date_str,
-                    'pilot':         str(pilot_v).strip(),
-                    'poste':         _poste_v,  # col D
-                    'trs':           _flt(ws.cell(ri, 8).value),   # col H: TRS Poste %
-                    'cadence_h':     _flt(ws.cell(ri, 9).value),   # col I: Cadence/h
-                    'ouverture_min': _flt(ws.cell(ri, 18).value),  # col R: Temps ouverture
-                    'utile_min':     _flt(ws.cell(ri, 19).value),  # col S: Temps utile
-                    'fonct_min':     _flt(ws.cell(ri, 20).value),  # col T: Temps fonctionnement
-                    'arret_min':     _flt(ws.cell(ri, 21).value),  # col U: Temps arret
-                    'pause_min':     _flt(ws.cell(ri, 10).value),  # col J: Total Pauses
-                    'nett_min':      _flt(ws.cell(ri, 11).value),  # col K: Nettoyage
-                    'reunion_min':   _flt(ws.cell(ri, 12).value),  # col L: Réunion
-                    'perte_min':     _flt(ws.cell(ri, 23).value),  # col W: Perte cadence (min)
-                    'degrade_min':   _flt(ws.cell(ri, 24).value),  # col X: Temps degrade
-                    'pcs_theorique': _flt(ws.cell(ri, 25).value),  # col Y: Pièces théoriques
-                    'depassement_min': _flt(ws.cell(ri, 13).value), # col M: Dépassement arrêts
-                    'row_idx':       ri,
-                    'budget_overrides': {
-                        'pause_min':       _flt(ws.cell(ri, 26).value),
-                        'clean_short_min': _flt(ws.cell(ri, 27).value),
-                        'clean_long_min':  _flt(ws.cell(ri, 28).value),
-                        'clean_grand_min': _flt(ws.cell(ri, 29).value),
-                        'meeting_tol_min': _flt(ws.cell(ri, 30).value),
-                    },
-                }
-                result[pk3] = result[pk]  # clé 3-tuples pour éviter collision pilote/2 postes même jour
+                    pilot_v = ws.cell(ri, 2).value   # col B: Pilote
+                    deb_v   = ws.cell(ri, 16).value  # col P: Debut Poste (datetime)
+                    if not pilot_v or not deb_v: continue
+                    deb_dt = _parse_dt(deb_v)
+                    if deb_dt is None: continue
+                    fin_v  = ws.cell(ri, 17).value   # col Q: Fin Poste (datetime)
+                    fin_dt = _parse_dt(fin_v)
+                    date_str = deb_dt.strftime("%d/%m/%Y")
+                    _poste_v = str(ws.cell(ri, 4).value or '').strip()
+                    pk = (str(pilot_v).strip().lower(), date_str)
+                    pk3 = (str(pilot_v).strip().lower(), date_str, _poste_v.lower())
+                    result[pk] = {
+                        'deb_dt':        deb_dt,
+                        'fin_dt':        fin_dt,
+                        'date_str':      date_str,
+                        'pilot':         str(pilot_v).strip(),
+                        'poste':         _poste_v,  # col D
+                        'trs':           _flt(ws.cell(ri, 8).value),   # col H: TRS Poste %
+                        'cadence_h':     _flt(ws.cell(ri, 9).value),   # col I: Cadence/h
+                        'ouverture_min': _flt(ws.cell(ri, 18).value),  # col R: Temps ouverture
+                        'utile_min':     _flt(ws.cell(ri, 19).value),  # col S: Temps utile
+                        'fonct_min':     _flt(ws.cell(ri, 20).value),  # col T: Temps fonctionnement
+                        'arret_min':     _flt(ws.cell(ri, 21).value),  # col U: Temps arret
+                        'pause_min':     _flt(ws.cell(ri, 10).value),  # col J: Total Pauses
+                        'nett_min':      _flt(ws.cell(ri, 11).value),  # col K: Nettoyage
+                        'reunion_min':   _flt(ws.cell(ri, 12).value),  # col L: Réunion
+                        'perte_min':     _flt(ws.cell(ri, 23).value),  # col W: Perte cadence (min)
+                        'degrade_min':   _flt(ws.cell(ri, 24).value),  # col X: Temps degrade
+                        'pcs_theorique': _flt(ws.cell(ri, 25).value),  # col Y: Pièces théoriques
+                        'depassement_min': _flt(ws.cell(ri, 13).value), # col M: Dépassement arrêts
+                        'row_idx':       ri,
+                        'budget_overrides': {
+                            'pause_min':       _flt(ws.cell(ri, 26).value),
+                            'clean_short_min': _flt(ws.cell(ri, 27).value),
+                            'clean_long_min':  _flt(ws.cell(ri, 28).value),
+                            'clean_grand_min': _flt(ws.cell(ri, 29).value),
+                            'meeting_tol_min': _flt(ws.cell(ri, 30).value),
+                        },
+                    }
+                    result[pk3] = result[pk]  # clé 3-tuples pour éviter collision pilote/2 postes même jour
             finally:
                 try: wb.close()
                 except: pass
