@@ -1120,10 +1120,12 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
         dur = max(0,(end-start).total_seconds())
         shift_dt = _S.get("shift_start") or start
         shift_date_str = shift_dt.strftime("%d/%m/%Y")
+        # col 3 = date du début de poste (shift_date_str) : un arrêt après minuit
+        # appartient toujours au poste commencé la veille
         return [
             type_decl,                          # 0 Type
             v.get("of_num",""),                 # 1 OF
-            start.strftime("%d/%m/%Y"),          # 2 Date
+            shift_date_str,                     # 2 Date (= date du poste, jamais "aujourd'hui")
             v.get("poste",""),                  # 3 Poste
             v.get("pilote",""),                 # 4 Pilote
             v.get("copilote",""),               # 5 Co-Pilote
@@ -2359,10 +2361,12 @@ def api_end_prod():
     # Ligne Production (40 cols, format unifié)
     _shift_dt = _S.get("shift_start") or datetime.datetime.now()
     _shift_date_str = _shift_dt.strftime("%d/%m/%Y")
+    # col 3 = date de début de l'OF (pas aujourd'hui : après minuit on serait sur la mauvaise date)
+    _of_row_date = (_S.get("of_start") or _shift_dt).strftime("%d/%m/%Y")
     prod_row = [
         "Production",
         v.get("of_num",""),
-        datetime.date.today().strftime("%d/%m/%Y"),
+        _of_row_date,
         v.get("poste",_S["poste"] or ""),
         v.get("pilote",_S["pilot"] or ""),
         v.get("copilote",""),
@@ -2556,7 +2560,7 @@ def api_end_stop():
         _sh = _S.get("shift_start") or _start
         _row = [
             _lbl, _S.get("form",{}).get("of_num",""),
-            _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
+            _sh.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
             "","","","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",comment,"",
@@ -3174,8 +3178,8 @@ def api_fin_poste_data():
     prod_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() in ("production","prod","")]
     for rn, r in prod_rows:
         try:
-            rd = _row_date(r[2])
-            if rd != shift_date_str and rd != today: continue
+            rd = (str(r[39] if len(r)>39 else "").strip() or _row_date(r[2]))
+            if rd != shift_date_str: continue
             if str(r[4] or "")!=pilot: continue
             eq=float(str(r[21] or 0).replace(",","."))
             debut_s=_hms_to_sec(str(r[16] or "00:00:00"))
@@ -3215,8 +3219,8 @@ def api_fin_poste_data():
     max_fin_s = 0.0
     for rn, r in prod_rows:
         try:
-            rd = _row_date(r[2])
-            if rd != shift_date_str and rd != today: continue
+            rd = (str(r[39] if len(r)>39 else "").strip() or _row_date(r[2]))
+            if rd != shift_date_str: continue
             if str(r[4] or "") != pilot: continue
             fs = _hms_to_sec(str(r[17] or "00:00:00"))
             if fs > max_fin_s: max_fin_s = fs
@@ -3225,8 +3229,8 @@ def api_fin_poste_data():
     shift_evt_rows = []
     declared_stop_s = 0.0
     for rn, r in _decl_cache:
-        rd = _row_date(r[2])
-        if rd != shift_date_str and rd != today: continue
+        rd = (str(r[39] if len(r)>39 else "").strip() or _row_date(r[2]))
+        if rd != shift_date_str: continue
         if str(r[4] or "") != pilot: continue
         row_type = str(r[0] or "").strip().lower()
         if row_type not in ("production","prod",""):
@@ -3261,8 +3265,8 @@ def api_fin_poste_data():
         if mf_s <= md_s: mf_s += 86400
         all_slots = []
         for rn2, r2 in _decl_cache:
-            rd2 = _row_date(r2[2])
-            if rd2 != shift_date_str and rd2 != today: continue
+            rd2 = (str(r2[39] if len(r2)>39 else "").strip() or _row_date(r2[2]))
+            if rd2 != shift_date_str: continue
             if str(r2[4] or "") != pilot: continue
             ds2 = _hms_to_sec(str(r2[16] or "00:00:00"))
             fs2 = _norm_fin(ds2, _hms_to_sec(str(r2[17] or "00:00:00")))
@@ -3351,8 +3355,8 @@ def api_fin_poste_data():
     nb_fibre_chg_fp = sum(1 for i in range(1, len(_sorted_of_fib)) if _sorted_of_fib[i]["fibre"] != _sorted_of_fib[i-1]["fibre"])
     decl_list = []
     for _rn_dl, _r_dl in _decl_cache:
-        _rd_dl = _row_date(_r_dl[2])
-        if _rd_dl != shift_date_str and _rd_dl != today: continue
+        _rd_dl = (str(_r_dl[39] if len(_r_dl)>39 else "").strip() or _row_date(_r_dl[2]))
+        if _rd_dl != shift_date_str: continue
         if str(_r_dl[4] or "") != pilot: continue
         _deb_dl = str(_r_dl[16] or "")[:5]
         _fin_dl = str(_r_dl[17] or "")[:5]
