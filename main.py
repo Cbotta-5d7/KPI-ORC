@@ -3013,6 +3013,15 @@ def api_edit_row():
         return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
     row_num = data.get("row_num")
     updates = data.get("updates",{})  # {col_idx: value} (1-indexed)
+    # Convertir date_debut / date_fin (YYYY-MM-DD) en DD/MM/YYYY et injecter dans updates
+    _dd_iso = str(data.get("date_debut","")).strip()
+    _df_iso = str(data.get("date_fin","")).strip()
+    if _dd_iso:
+        try:
+            _dd_fmt = datetime.datetime.strptime(_dd_iso, "%Y-%m-%d").strftime("%d/%m/%Y")
+            updates["3"] = _dd_fmt   # col 3 = date de la ligne
+            updates["40"] = _dd_fmt  # col 40 = shift_date_str
+        except: pass
     path = cfg.get("db_path","")
     if not row_num or not path or not os.path.exists(path):
         return jsonify({"ok":False,"error":"Paramètre manquant"}),400
