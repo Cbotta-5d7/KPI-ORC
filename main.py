@@ -3804,9 +3804,13 @@ def api_period_report():
             sessions = {k: v for k, v in sessions.items()
                         if not (v.get('pilot','').lower() == _cur_pilot_l and v.get('date') == _cur_date_str)}
     # Limiter aux N sessions les plus récentes si max_sessions > 0
+    # On prend N+1 d'abord pour compenser un éventuel skip_current qui supprime la session active
+    def _key_row(kv):
+        return _pm_get(postes_map, kv[1]['pilot'].lower(), kv[1]['date'], kv[1].get('poste','')).get('row_idx', 0)
+    if max_sessions > 0 and len(sessions) > max_sessions + 1:
+        sessions = dict(sorted(sessions.items(), key=_key_row, reverse=True)[:max_sessions + 1])
+    # Deuxième passe : re-limiter à exactement N après le skip_current
     if max_sessions > 0 and len(sessions) > max_sessions:
-        def _key_row(kv):
-            return _pm_get(postes_map, kv[1]['pilot'].lower(), kv[1]['date'], kv[1].get('poste','')).get('row_idx', 0)
         sessions = dict(sorted(sessions.items(), key=_key_row, reverse=True)[:max_sessions])
     # ── Aggregate ──
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
@@ -3989,7 +3993,7 @@ def api_period_report():
         'objectif_equiv':round(agg_obj_equiv,1),
         'sessions_detail':sessions_detail_sorted,
         'degrade_min_total': round(sum(_merged_degrade_s([re2 for _, re2 in s['evt_rows']]) for s in sessions.values()) / 60, 1),
-        'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])[:15]],
+        'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])],
     })
 
 @flask_app.route('/api/session_report')
@@ -10881,6 +10885,7 @@ function _kpiDrawDonut(svgId,legendId,segments){
 
 function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
   const el=document.getElementById(containerId);if(!el)return;
+  el.innerHTML='';
   const rect=el.getBoundingClientRect();
   const W=Math.max(rect.width||el.offsetWidth||el.clientWidth||400,200);
   const H=Math.max(rect.height||el.offsetHeight||el.clientHeight||200,60);
@@ -10931,6 +10936,7 @@ function _kpiLineChart(containerId,items,valueKey,colorFn,unit,yMin,yMax){
 
 function _kpiBarChart(containerId,items,valueKey,colorFn,unit){
   const el=document.getElementById(containerId);if(!el)return;
+  el.innerHTML='';
   const rect=el.getBoundingClientRect();
   const W=Math.max(rect.width||400,200);
   const H=Math.max(rect.height||100,60);
@@ -10964,6 +10970,7 @@ function _kpiBarChart(containerId,items,valueKey,colorFn,unit){
 
 function _kpiDualLineChart(containerId,items,series,opts){
   const el=document.getElementById(containerId);if(!el)return;
+  el.innerHTML='';
   const rect=el.getBoundingClientRect();
   const W=Math.max(rect.width||el.offsetWidth||el.clientWidth||400,200);
   const H=Math.max(rect.height||el.offsetHeight||el.clientHeight||200,60);
@@ -11154,7 +11161,7 @@ async function loadKPI(){
   const _isPlannedKpi=t=>/nettoyage|nett\b|r[ée]union|meeting|pause/i.test(t||'');
   const stopMap={};const stopCat={};
   evts.forEach(e=>{
-    if(!e.type||_isPlannedKpi(e.type))return;
+    if(!e.type||_isPlannedKpi(e.type)||e.is_degrade)return;
     const dur=Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0'));
     stopMap[e.type]=(stopMap[e.type]||0)+dur;
     if(!stopCat[e.type])stopCat[e.type]=e.cat||'autre';
@@ -11167,7 +11174,7 @@ async function loadKPI(){
     else{
       const maxP=paretoArr[0][1];
       let cumul=0;
-      parEl.innerHTML=paretoArr.slice(0,12).map(([type,s])=>{
+      parEl.innerHTML=paretoArr.map(([type,s])=>{
         const pct=Math.round(s/maxP*100);
         const min=Math.round(s/60);
         const pctTot=paretoTotal>0?Math.round(s/paretoTotal*100):0;
