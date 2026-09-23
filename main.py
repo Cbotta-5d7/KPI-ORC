@@ -3754,10 +3754,9 @@ def api_period_report():
                 _obj_rp = round(_exp_rp, 1) if _exp_rp > 0 else -1
             except:
                 _plan_rp = 0; _deg_rp = 0; _obj_rp = -1; _pcoef_rp = 1.0
-            # Même logique que rapport postes (_objEquivRp / _objPcsRp en JS)
             if _obj_rp > 0:
                 agg_obj_equiv += _obj_rp
-                agg_obj_pcs += _obj_rp / _pcoef_rp if _pcoef_rp > 0 else _obj_rp
+                agg_obj_pcs += _obj_rp
             _of_rows_sd.append({
                 "of":str(_rp[1] or ""),"debut":str(_rp[16] or "")[:5],"fin":str(_rp[17] or "")[:5],
                 "duree":str(_rp[18] or ""),"qte_fab":str(_rp[19] or ""),"qte_emb":str(_rp[20] or ""),
@@ -11890,15 +11889,9 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const _colArretRp=_cLRp(netStopMin,ouvertureMin);
   const _colDegRp=_cLRp(degMin,ouvertureMin);
   const _colPerteRp=perteCadenceRaw<=0?'#16a34a':_cLRp(perteCadenceRaw,ouvertureMin);
-  // objectif equiv = somme des objectifs (en equiv) par OF
+  // objectif pièces = objectif equiv (lot de 2 = info uniquement, pas de conversion)
   const _objEquivRp=(d.prod_rows||[]).reduce((s,r)=>{const o=parseFloat(r.objectif||'-1');return s+(o>=0?o:0);},0);
-  // objectif pièces = converti via ratio pcs/equiv de chaque OF (évite de mélanger pièces et équivalences)
-  const _objPcsRp=(d.prod_rows||[]).reduce((s,r)=>{
-    const o=parseFloat(r.objectif||'-1');if(o<0)return s;
-    const eq=parseFloat(r.equiv||'0'),qte=parseFloat(r.qte_fab||'0');
-    const ratio=(eq>0&&qte>0)?qte/eq:1;
-    return s+o*ratio;
-  },0);
+  const _objPcsRp=_objEquivRp;
   const _colPcsRp=!_objPcsRp?'#16a34a':(totQteFab/_objPcsRp>=0.95?'#16a34a':totQteFab/_objPcsRp>=0.75?'#f59e0b':'#dc2626');
   const _colEquivRp=!_objEquivRp?'#64748b':((d.tot_equiv||0)/_objEquivRp>=0.95?'#16a34a':(d.tot_equiv||0)/_objEquivRp>=0.75?'#f59e0b':'#dc2626');
   const _cadRefHRp=Math.round(cadenceRefPcsMin*60);
