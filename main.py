@@ -4962,7 +4962,7 @@ select{cursor:default}
 </div>
 
 <!-- ════ OVERLAY CHARGEMENT ════ -->
-<div id="hist-loading-overlay" style="display:none;position:fixed;inset:0;z-index:99990;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);background:rgba(0,0,0,0.45);align-items:center;justify-content:center;flex-direction:column;gap:18px;pointer-events:all">
+<div id="hist-loading-overlay" style="display:none;position:fixed;inset:0;z-index:99990;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);background:rgba(0,0,0,0.45);align-items:center;justify-content:center;flex-direction:column;gap:18px;pointer-events:none">
   <div style="background:#fff;border-radius:16px;padding:32px 44px;display:flex;flex-direction:column;align-items:center;gap:16px;box-shadow:0 8px 40px rgba(0,0,0,.35);min-width:260px">
     <div style="width:48px;height:48px;border:5px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:spin 0.8s linear infinite"></div>
     <div style="font-size:calc(15px*var(--zf,1));font-weight:700;color:#1e293b;letter-spacing:.01em">Chargement en cours...</div>
@@ -7219,7 +7219,7 @@ function applyState(s) {
     const lbl=_curStopKey==='_pause'?'PAUSE':getEvtLabel(_curStopKey);
     al.textContent=`⚠ ${lbl} EN COURS — cliquer pour terminer`;
     al.classList.add('on');
-    al.onclick=()=>doEndStop();
+    al.onclick=()=>doEndStop(_curStopKey);
     document.body.classList.add('stop-on');
   } else {
     al.classList.remove('on');
@@ -7382,10 +7382,11 @@ function tlEventsToDisplayFmt(tlEvts){
     const dur=e?(e.getTime()-s.getTime())/1000:0;
     let type;
     if(ev.cat==='nettoyage') type='Nettoyage'+(ev.nettoyage_type?' '+ev.nettoyage_type:'');
+    else if(ev.cat==='reunion'||ev.key==='reunion') type='Réunion';
     else {
       const evDef=EVENTS.find(x=>x[1]===ev.key);
       if(evDef) type=(ev.cat==='ratt'?'Rattrapage: ':ev.cat==='pb'?'PB: ':'')+evDef[0];
-      else type=ev.key;
+      else type=getEvtLabel(ev.key)||ev.key;
     }
     return {type,cat:ev.cat||'autre',debut:toHMS(s),fin:e?toHMS(e):'',duree:dur>0?fmtDur(dur):'',comment:ev.comment||'',hors_trs:ev.hors_trs||false,_live:!ev.end,_past_decl:ev._past_decl||false,row_num:ev._row_num||null,start_iso:ev.start||null};
   }).filter(Boolean);
