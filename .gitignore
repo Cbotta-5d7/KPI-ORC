@@ -5,4 +5,5 @@ dist/
 build/
 *.spec
 kpi_orc_session.json
+.claude/
  
