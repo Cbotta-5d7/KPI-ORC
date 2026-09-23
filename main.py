@@ -3819,7 +3819,7 @@ def api_period_report():
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
     agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_of_set=set(); agg_elapsed_s=0.0; agg_sum_expected=0.0
     agg_sum_theorique=0.0; agg_arret_prevu=0.0; agg_obj_pcs=0.0; agg_obj_equiv=0.0
-    agg_fibre_chg=0; agg_depassement=0.0; agg_degrade_min=0.0; stop_by_type={}; stop_count={}; sessions_detail=[]
+    agg_fibre_chg=0; agg_depassement=0.0; agg_degrade_min=0.0; stop_by_type={}; stop_count={}; deg_by_type={}; deg_count={}; sessions_detail=[]
     jours=set(); pilotes=set(); postes_set=set()
     trs_by_day = {}
     cadence_ref = round(prod_ref/480, 4) if prod_ref > 0 else 0.0
@@ -3892,6 +3892,12 @@ def api_period_report():
                 _dur_p = _hms_to_sec(str(re_p[18] or '00:00:00')) if _fs_p <= _ds_p else _fs_p - _ds_p
                 stop_by_type[_stype] = stop_by_type.get(_stype, 0.0) + max(0.0, _dur_p)
                 stop_count[_stype] = stop_count.get(_stype, 0) + 1
+            elif _stype and _is_degrade_type(_stype):
+                _ds_p = _hms_to_sec(str(re_p[16] or '00:00:00'))
+                _fs_p = _norm_fin(_ds_p, _hms_to_sec(str(re_p[17] or '00:00:00')))
+                _dur_p = _hms_to_sec(str(re_p[18] or '00:00:00')) if _fs_p <= _ds_p else _fs_p - _ds_p
+                deg_by_type[_stype] = deg_by_type.get(_stype, 0.0) + max(0.0, _dur_p)
+                deg_count[_stype] = deg_count.get(_stype, 0) + 1
         agg_ouv     += ouv_min
         agg_utile   += utile_min
         agg_fonct   += fonct_min
@@ -3997,6 +4003,7 @@ def api_period_report():
         'sessions_detail':sessions_detail_sorted,
         'degrade_min_total': round(sum(_merged_degrade_s([re2 for _, re2 in s['evt_rows']]) for s in sessions.values()) / 60, 1),
         'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1),'count':stop_count.get(k,0)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])],
+        'degrade_pareto':[{'type':k,'min':round(v/60,1),'count':deg_count.get(k,0)} for k,v in sorted(deg_by_type.items(),key=lambda x:-x[1])],
     })
 
 @flask_app.route('/api/session_report')
@@ -11571,6 +11578,26 @@ async function calcPeriodReport(autoLoad,maxSessions){
     }).join('');
     paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">🛑 PARETO des arrêts non prévus</div>${rows3}</div>`;
   }
+  let paretoDeghHtml='';
+  if(d.degrade_pareto&&d.degrade_pareto.length){
+    const maxDp=d.degrade_pareto[0].min,totDp=d.degrade_pareto.reduce((a,e)=>a+e.min,0);
+    const rowsDeg=d.degrade_pareto.map(e=>{
+      const pct=Math.round(e.min/maxDp*100),pctTot=totDp>0?Math.round(e.min/totDp*100):0;
+      return `<div style="margin-bottom:5px">
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+          <div style="width:7px;height:7px;border-radius:2px;background:#f59e0b;flex-shrink:0"></div>
+          <span style="font-size:calc(10px*var(--zf,1));color:#374151;word-break:break-word;line-height:1.2">${esc(e.type)}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden">
+            <div style="width:${pct}%;background:#f59e0b;height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div>
+          </div>
+          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m${e.count>1?' · '+e.count+'×':''}</span>
+        </div>
+      </div>`;
+    }).join('');
+    paretoDeghHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#d97706;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">⚠️ PARETO des modes dégradés</div>${rowsDeg}</div>`;
+  }
   // OF list table
   let ofListHtml='';
   const allOfs=[];
@@ -11678,7 +11705,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
     }
   }
   // Sauvegarde pour captureRapportJour()
-  window._rjVars={d,trsCol,chartTrsHtml,chartCadHtml,paretoRjHtml,pieSmall,
+  window._rjVars={d,trsCol,chartTrsHtml,chartCadHtml,paretoRjHtml,paretoDeghHtml,pieSmall,
     _colPcsRj,_colEquivRj,_colCadRj,pertRaw,
     _colFonctRj,_colArretRj,_colImpRj,_colDegRj,_colPerteRj,
     fonctMin,stopMin};
@@ -11707,7 +11734,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
             ${chartTrsHtml}${chartCadHtml}
           </div>
           <!-- Pareto à droite, hauteur libre -->
-          <div style="flex:1;min-width:200px">${paretoRjHtml}</div>
+          <div style="flex:1;min-width:200px">${paretoRjHtml}${paretoDeghHtml}</div>
         </div>
         <!-- Tableaux OF + événements -->
         ${ofListHtml}${eventsListHtml}
@@ -11741,7 +11768,7 @@ async function captureRapportJour(){
   if(!v||!v.d){toast('Calculez d\'abord un rapport','err');return;}
   if(!window.html2canvas){toast('html2canvas non disponible (connexion internet requise)','err');return;}
   toast('Capture en cours…','ok');
-  const {d,trsCol,chartTrsHtml,chartCadHtml,paretoRjHtml,pieSmall,
+  const {d,trsCol,chartTrsHtml,chartCadHtml,paretoRjHtml,paretoDeghHtml,pieSmall,
     _colPcsRj,_colEquivRj,_colCadRj,pertRaw,
     _colFonctRj,_colArretRj,_colImpRj,_colDegRj,_colPerteRj}=v;
   const _fv=document.getElementById('rj-from')?.value||'';
@@ -11776,7 +11803,7 @@ async function captureRapportJour(){
     </div>
     <!-- Colonne 3 : pareto des arrêts (324px, +20%) -->
     <div style="flex:1;min-width:324px">
-      ${paretoRjHtml}
+      ${paretoRjHtml}${paretoDeghHtml}
     </div>
   </div>`;
   const _wrapper=document.createElement('div');
