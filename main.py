@@ -278,6 +278,13 @@ def _sec_to_hm(s):
     s = int(max(0, s)) % 86400
     return f"{s//3600:02d}:{(s%3600)//60:02d}"
 
+# ── Simulation horaire (DEBUG) ────────────────────────────────────────────────
+_sim_offset_s = 0  # décalage en secondes, 0 = heure réelle
+
+def _now():
+    """datetime.now() avec décalage de simulation si activé."""
+    return datetime.datetime.now() + datetime.timedelta(seconds=_sim_offset_s)
+
 def _row_date(v):
     if not v: return ""
     s = str(v)
@@ -1830,8 +1837,8 @@ def api_login():
     _S["postes_row_num"] = None
     _S["tot_prod_s"] = 0.0
     if not _S.get("shift_start"):
-        _S["shift_start"] = datetime.datetime.now()
-    now = datetime.datetime.now()
+        _S["shift_start"] = _now()
+    now = _now()
     debut_str, fin_str = _get_model_day_cfg(poste)
     shift_debut_dt = None
     shift_fin_dt = None
@@ -2011,7 +2018,7 @@ def api_start_prod():
         return jsonify({"ok":False,"error":"Connectez-vous d'abord"}),400
     if _S["prod_active"]:
         return jsonify({"ok":False,"error":"Production déjà en cours"}),400
-    now = datetime.datetime.now()
+    now = _now()
     gap_s = 0.0
     if _S["last_of_end"]:
         gap_s = (now - _S["last_of_end"]).total_seconds()
@@ -2311,7 +2318,7 @@ def api_end_prod():
         tl_close_all()
     # Arrêter la pause si elle est encore active (non gérée par tl_events)
     if _S.get("is_paused") and _S.get("pause_start"):
-        _pnow = datetime.datetime.now()
+        _pnow = _now()
         _S["pause_total_s"] += (_pnow - _S["pause_start"]).total_seconds()
         _S["pause_periods"].append((_S["pause_start"], _pnow))
         _S["is_paused"] = False
@@ -2475,7 +2482,7 @@ def api_preview_end_prod():
         return jsonify({"ok":False}),400
     data = request.json or {}
     v = data.get("form",{})
-    now = datetime.datetime.now()
+    now = _now()
     of_s_brut = (now-_S["of_start"]).total_seconds()
     pause_max_s = int(cfg.get("pause_max_min",20))*60
     of_s = max(1, of_s_brut+_S["inter_of_s"]-min(_S["pause_total_s"],pause_max_s))
@@ -2578,7 +2585,7 @@ def api_end_stop():
 
 def _toggle_pause_internal():
     with _S_lock:
-        now = datetime.datetime.now()
+        now = _now()
         if not _S["is_paused"]:
             _S["is_paused"] = True
             _S["pause_start"] = now
@@ -2603,7 +2610,7 @@ def api_toggle_reunion():
     if t_running("reunion"):
         t_stop("reunion")
         # Fermer tous les événements réunion ouverts (gère les clés legacy)
-        now = datetime.datetime.now()
+        now = _now()
         for ev in _S["tl_events"]:
             k = ev.get("key","")
             if ("reunion" in k.lower() or "meeting" in k.lower()) and not ev.get("end"):
@@ -4013,7 +4020,7 @@ def api_add_stop_decl():
     poste = _S.get("poste","")
     if not pilot:
         return jsonify({"ok":False,"error":"Pas de pilote connecté"}),400
-    now = datetime.datetime.now()
+    now = _now()
     date_debut_str = str(data.get("date_debut","")).strip()  # format YYYY-MM-DD
     try:
         dh,dm = [int(x) for x in debut_hms.split(":")[:2]]
@@ -4060,7 +4067,7 @@ def api_add_past_decl():
         return jsonify({"ok":False,"error":"decl_type/debut/fin requis"}),400
     pilot = _S.get("pilot",""); poste = _S.get("poste","")
     if not pilot: return jsonify({"ok":False,"error":"Non connecté"}),400
-    now = datetime.datetime.now()
+    now = _now()
     date_debut_str = str(data.get("date_debut","")).strip()  # format YYYY-MM-DD
     date_fin_str   = str(data.get("date_fin","")).strip()
     try:
@@ -4201,7 +4208,7 @@ def api_update_of_time():
     if not of_num or not new_debut or not new_fin:
         return jsonify({"ok":False,"error":"of_num/new_debut/new_fin requis"}),400
     pilot = _S.get("pilot","")
-    now = datetime.datetime.now()
+    now = _now()
     today = now.strftime("%d/%m/%Y")
     shift_start_dt = _S.get("shift_start")
     shift_date_str = shift_start_dt.strftime("%d/%m/%Y") if shift_start_dt else today
@@ -4499,6 +4506,23 @@ def api_change_admin_pw():
     save_cfg_data()
     ok = write_admin_pw_to_excel(new_pw)
     return jsonify({"ok":ok})
+
+@flask_app.route('/api/set_sim_time', methods=['POST'])
+def api_set_sim_time():
+    """DEBUG : définit un décalage horaire pour simuler un poste de nuit."""
+    global _sim_offset_s
+    data = request.json or {}
+    target = str(data.get("target_time","")).strip()  # "HH:MM" ou "" pour reset
+    if not target:
+        _sim_offset_s = 0
+        return jsonify({"ok":True,"offset_s":0,"msg":"Simulation désactivée"})
+    try:
+        h, m = map(int, target.split(":"))
+        sim_now = datetime.datetime.now().replace(hour=h, minute=m, second=0, microsecond=0)
+        _sim_offset_s = int((sim_now - datetime.datetime.now()).total_seconds())
+        return jsonify({"ok":True,"offset_s":_sim_offset_s,"msg":f"Heure simulée : {target}"})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)}),400
 
 @flask_app.route('/api/save_list', methods=['POST'])
 def api_save_list():
@@ -6124,6 +6148,17 @@ select{cursor:default}
           <div style="padding:10px 14px;background:#f8fafc;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🚨 Arrêts non prévus</b><span style="color:#374151">Cumul des arrêts non planifiés (panne, problème, manquant, arrêts prévu hors budgets..).</span></div></div>
           <div style="padding:10px 14px;background:#fff;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🟡 Dégradé</b><span style="color:#374151">Durée totale en mode dégradé (production ralentie). Comptabilisée séparément, n'influe pas le TRS.</span></div></div>
           <div style="padding:10px 14px;background:#f8fafc"><div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><b style="color:#1e3a8a;min-width:190px;flex-shrink:0">🎯 Objectif</b><span style="color:#374151">Production maximale attendue sur la durée nette de l'OF, selon l'effectif et le type de produit.</span></div><div style="margin-top:5px;font-family:monospace;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:4px 10px;color:#1e40af;display:inline-block;font-size:calc(10px*var(--zf,1))">Objectif = Prod_réf × %cadence × Durée_nette / 28800 ÷ Coeff</div></div>
+        </div>
+      </div>
+      <!-- DEBUG : Simulation heure poste de nuit -->
+      <div class="ss" style="border:2px dashed #f97316;background:#fff7ed;border-radius:10px;padding:14px;margin-top:16px">
+        <h3 style="color:#c2410c;font-size:calc(13px*var(--zf,1));margin:0 0 10px">🕐 [DEBUG] Simulation heure</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:#92400e;margin-bottom:10px">Simule une heure différente pour tester le poste de nuit. Remet à zéro au prochain redémarrage.</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="time" id="sim-time-input" style="padding:6px 10px;border:1.5px solid #fed7aa;border-radius:6px;font-size:calc(14px*var(--zf,1))">
+          <button onclick="applySimTime()" class="btn" style="background:#f97316;border-color:#ea580c;color:#fff;font-weight:700">Appliquer</button>
+          <button onclick="resetSimTime()" class="btn btn-sec">Reset</button>
+          <span id="sim-time-status" style="font-size:calc(12px*var(--zf,1));color:#9a3412;font-weight:600"></span>
         </div>
       </div>
     </div>
@@ -12389,6 +12424,26 @@ async function generateDashboard(){
     if(st)st.textContent='✗ Erreur : '+(d.error||'?');
     toast('Erreur génération dashboard','err');
   }
+}
+
+// ── Simulation heure (DEBUG) ──────────────────────────────────────────────
+async function applySimTime(){
+  const t=document.getElementById('sim-time-input').value;
+  if(!t){toast('Entrer une heure','err');return;}
+  try{
+    const r=await fetch('/api/set_sim_time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_time:t})});
+    const d=await r.json();
+    if(d.ok){document.getElementById('sim-time-status').textContent=d.msg;toast(d.msg,'ok');}
+    else toast(d.error||'Erreur','err');
+  }catch(e){toast('Erreur réseau','err');}
+}
+async function resetSimTime(){
+  try{
+    await fetch('/api/set_sim_time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_time:''})});
+    document.getElementById('sim-time-status').textContent='';
+    document.getElementById('sim-time-input').value='';
+    toast('Simulation désactivée','ok');
+  }catch(e){toast('Erreur réseau','err');}
 }
 </script>
 </body>
