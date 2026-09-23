@@ -5524,8 +5524,8 @@ select{cursor:default}
   </div>
 
   <!-- ════ MODAL PRÉ-POSTE (gaps non déclarés avant 1er OF ou entre OFs) ════ -->
-  <div id="m-preshift" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:601;align-items:center;justify-content:center">
-    <!-- PAS de onclick sur l'overlay : fermeture impossible par clic extérieur -->
+  <div id="m-preshift" class="overlay" data-no-dismiss="1" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:601;align-items:center;justify-content:center">
+    <!-- data-no-dismiss : fermeture impossible par clic extérieur -->
     <div style="width:min(96vw,960px);max-height:92vh;background:#fff;border-radius:16px;box-shadow:0 4px 6px rgba(0,0,0,.07),0 24px 70px rgba(0,0,0,.28);overflow:hidden;border:1px solid #e2e8f0;display:flex;flex-direction:column">
       <!-- Header rouge -->
       <div style="background:linear-gradient(135deg,#7f1d1d 0%,#991b1b 40%,#dc2626 80%,#ef4444 100%);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
@@ -5560,6 +5560,10 @@ select{cursor:default}
             <button onclick="psChooseBackdate()" style="padding:9px 22px;background:linear-gradient(135deg,#16a34a,#15803d);border:none;border-radius:8px;color:#fff;font-size:calc(13px*var(--zf,1));font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 3px 10px rgba(22,163,74,.3)">▶ Lancer depuis cette heure</button>
             <span style="font-size:calc(11px*var(--zf,1));color:#6b7280;font-style:italic">Rétrodate le début de l'OF</span>
           </div>
+        </div>
+        <!-- Bouton Annuler -->
+        <div style="display:flex;justify-content:center;padding-bottom:4px">
+          <button onclick="psCancelAll()" style="padding:9px 30px;background:#fff;border:1.5px solid #cbd5e1;border-radius:8px;font-size:calc(12px*var(--zf,1));font-weight:700;color:#64748b;cursor:pointer;transition:all .15s" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#fff'">✕ Annuler</button>
         </div>
       </div>
     </div>
@@ -7233,8 +7237,18 @@ async function pollState() {
   window._writePendingWas=!!s.write_pending;
   window._backupPendingWas=s.backup_pending||0;
   if(_wpBanner){
-    _wpBanner.style.display=s.write_pending?'flex':'none';
-    document.body.style.paddingTop=(s.write_pending||(s.backup_pending>0))?'52px':'';
+    if(s.write_pending){
+      if(!window._wpBannerTimer&&_wpBanner.style.display!=='flex'){
+        window._wpBannerTimer=setTimeout(()=>{
+          window._wpBannerTimer=null;
+          if(window._writePendingWas){_wpBanner.style.display='flex';document.body.style.paddingTop='52px';}
+        },10000);
+      }
+    }else{
+      if(window._wpBannerTimer){clearTimeout(window._wpBannerTimer);window._wpBannerTimer=null;}
+      _wpBanner.style.display='none';
+      if(!(_bkBanner&&(s.backup_pending||0)>0))document.body.style.paddingTop='';
+    }
   }
   if(_bkBanner){
     _bkBanner.style.display=(s.backup_pending>0&&!s.write_pending)?'flex':'none';
@@ -8168,6 +8182,13 @@ async function doStartProd() {
 async function psIgnorer(){
   closeM('m-preshift');
   _pendingGapIdx++;
+  _showNextGap();
+}
+
+// ── Annuler : ferme la modale sans rien déclarer, passe à prod ──
+function psCancelAll(){
+  closeM('m-preshift');
+  _pendingGapIdx=_pendingGaps.length;
   _showNextGap();
 }
 
@@ -12593,7 +12614,7 @@ async function saveProdRef(){
 // ── MODALS ──
 function openM(id){const m=document.getElementById(id);if(m){m.classList.add('on');m.style.display='flex';}}
 function closeM(id){const m=document.getElementById(id);if(m){m.classList.remove('on');m.style.display='';}}
-document.addEventListener('click',e=>{if(e.target.classList.contains('overlay'))closeM(e.target.id);});
+document.addEventListener('click',e=>{if(e.target.classList.contains('overlay')&&!e.target.dataset.noDismiss)closeM(e.target.id);});
 
 // ── UTILS ──
 async function apiFetch(url,retries=2){
