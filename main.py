@@ -685,6 +685,7 @@ def serialize_event(ev):
     }
     if ev.get("_past_decl"): d["_past_decl"] = True
     if ev.get("_row_num") is not None: d["_row_num"] = ev["_row_num"]
+    if ev.get("_excel_written"): d["_excel_written"] = True
     return d
 
 # ── Session ───────────────────────────────────────────────────────────────────
@@ -781,6 +782,7 @@ def load_session():
             }
             if ev.get("_past_decl"): entry["_past_decl"] = True
             if ev.get("_row_num") is not None: entry["_row_num"] = ev["_row_num"]
+            if ev.get("_excel_written"): entry["_excel_written"] = True
             _S["tl_events"].append(entry)
         return True
     except: return False
@@ -1167,7 +1169,7 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
     for ev in tl_events:
         if ev.get("_past_decl"): continue  # already written to Excel by api_add_past_decl
         if ev.get("_excel_written"): continue  # already written individually by api_end_stop
-        if ev.get("cat") not in ("ratt","pb","nettoyage","reunion","autre","interposte","manquants"): continue
+        if ev.get("cat") not in ("ratt","pb","nettoyage","reunion","autre","interposte","manquants","organisation"): continue
         if not ev.get("key") or ev["key"].startswith("_"): continue
         start = ev.get("start")
         if not start: continue  # event sans timestamp = invalide
@@ -1183,7 +1185,7 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
         elif ev["cat"]=="manquants":
             _dyn = get_events_list()
             label = next((e["label"] for e in _dyn if isinstance(e,dict) and e.get("key")==ev["key"]), ev["key"])
-        elif ev["cat"]=="interposte":
+        elif ev["cat"] in ("interposte", "organisation"):
             _dyn = get_events_list()
             lbl = (next((e["label"] for e in _dyn if isinstance(e,dict) and e.get("key")==ev["key"]), None)
                    or next((e[0] for e in INTERPOSTE_CATS if e[1]==ev["key"]), None)
@@ -2561,13 +2563,16 @@ def api_end_stop():
             _lbl = {"court":"Nettoyage court","long":"Nettoyage long","grand":"Grand nettoyage"}.get(_ntype,"Nettoyage court")
         elif _cat=="autre":
             _lbl = key
-        elif _cat=="manquants":
-            _dyn_evts = get_events_list()
-            _lbl = next((e["label"] for e in _dyn_evts if isinstance(e,dict) and e.get("key")==key), key)
-        else:
+        elif _cat in ("pb","ratt"):
             _cat_n = "Rattrapage" if _cat=="ratt" else "PB Technique"
             _evlbl = next((e[0] for e in EVENTS if e[1]==key), key)
             _lbl = f"{_cat_n}: {_evlbl}"
+        else:
+            # organisation, manquants, interposte ou toute autre catégorie dynamique
+            _dyn_evts = get_events_list()
+            _lbl = (next((e["label"] for e in _dyn_evts if isinstance(e,dict) and e.get("key")==key), None)
+                    or next((e[0] for e in INTERPOSTE_CATS if e[1]==key), None)
+                    or key)
         _sh = _S.get("shift_start") or _start
         _row = [
             _lbl, _S.get("form",{}).get("of_num",""),
