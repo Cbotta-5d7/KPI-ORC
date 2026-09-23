@@ -3668,28 +3668,33 @@ def api_period_report():
     postes_map  = load_postes_shift_map()
     # ── Build sessions ──
     sessions = {}
-    for rn, r in _decl_cache:
+    _all_evt_rows = []  # (date_str, pilot, poste, rn, r) — collected in one pass, attached after
+    def _resolve_row_date(r, pilot, poste):
         date_str = str(r[39] if len(r) > 39 else '').strip() or _row_date(r[2])
-        if not date_str: continue
-        pilot = str(r[4] or ''); poste = str(r[3] or '')
-        if filter_pilot and pilot.lower() != filter_pilot: continue
-        if filter_poste and poste.lower() != filter_poste: continue
+        if not date_str: return None
+        if filter_pilot and pilot.lower() != filter_pilot: return None
+        if filter_poste and poste.lower() != filter_poste: return None
         _pm_entry = _pm_get(postes_map, pilot.lower(), date_str, poste)
         if not _pm_entry:
-            # Poste nuit : OFs déclarés après minuit ont date J+1 mais le poste est sur J
             try:
                 _prev = (datetime.datetime.strptime(date_str, "%d/%m/%Y") - datetime.timedelta(days=1)).strftime("%d/%m/%Y")
                 if _pm_get(postes_map, pilot.lower(), _prev, poste):
                     date_str = _prev
                 else:
-                    continue
+                    return None
             except:
-                continue
+                return None
         d_obj = _parse_dmy(date_str)
-        if d_obj is None: continue
-        if dt_from and d_obj < dt_from: continue
-        if dt_to   and d_obj > dt_to:   continue
+        if d_obj is None: return None
+        if dt_from and d_obj < dt_from: return None
+        if dt_to   and d_obj > dt_to:   return None
+        return date_str
+    # Passe 1 : créer les sessions à partir des lignes production
+    for rn, r in _decl_cache:
+        pilot = str(r[4] or ''); poste = str(r[3] or '')
         row_type = str(r[0] or '').strip().lower()
+        date_str = _resolve_row_date(r, pilot, poste)
+        if date_str is None: continue
         key = f"{date_str}||{pilot}||{poste}"
         if row_type in ('production','prod',''):
             if key not in sessions:
@@ -3707,12 +3712,15 @@ def api_period_report():
                 sessions[key]['prod_raws'].append(r)
             except: pass
         else:
-            # Event rows may have empty/different poste → attach to matching prod session by date+pilot
-            _ev_key = key if key in sessions else next(
-                (k for k in sessions if k.startswith(f"{date_str}||{pilot}||")), None
-            )
-            if _ev_key:
-                sessions[_ev_key]['evt_rows'].append((rn, r))
+            _all_evt_rows.append((date_str, pilot, poste, rn, r))
+    # Passe 2 : attacher les événements aux sessions (même si écrits avant la prod dans Excel)
+    for date_str, pilot, poste, rn, r in _all_evt_rows:
+        key = f"{date_str}||{pilot}||{poste}"
+        _ev_key = key if key in sessions else next(
+            (k for k in sessions if k.startswith(f"{date_str}||{pilot}||")), None
+        )
+        if _ev_key:
+            sessions[_ev_key]['evt_rows'].append((rn, r))
     # Exclure la session en cours si demandé (shift_debut_dt OU shift_start comme référence de date)
     if request.args.get('skip_current') and _S.get('pilot'):
         _cur_pilot_l = _S.get('pilot','').lower()
