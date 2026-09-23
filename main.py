@@ -3599,7 +3599,17 @@ def api_period_report():
         pilot = str(r[4] or ''); poste = str(r[3] or '')
         if filter_pilot and pilot.lower() != filter_pilot: continue
         if filter_poste and poste.lower() != filter_poste: continue
-        if not _pm_get(postes_map, pilot.lower(), date_str, poste): continue
+        _pm_entry = _pm_get(postes_map, pilot.lower(), date_str, poste)
+        if not _pm_entry:
+            # Poste nuit : OFs déclarés après minuit ont date J+1 mais le poste est sur J
+            try:
+                _prev = (datetime.datetime.strptime(date_str, "%d/%m/%Y") - datetime.timedelta(days=1)).strftime("%d/%m/%Y")
+                if _pm_get(postes_map, pilot.lower(), _prev, poste):
+                    date_str = _prev
+                else:
+                    continue
+            except:
+                continue
         d_obj = _parse_dmy(date_str)
         if d_obj is None: continue
         if dt_from and d_obj < dt_from: continue
@@ -11244,12 +11254,15 @@ async function loadRptJour(){
   calcPeriodReport(true);
 }
 async function calcPeriodReport(autoLoad,maxSessions){
-  // En mode autoLoad, on n'utilise PAS les filtres date/pilote/poste
-  const _ms=autoLoad?(maxSessions||3):0;
   const from=autoLoad?'':document.getElementById('rj-from').value;
   const to=autoLoad?'':document.getElementById('rj-to').value;
   const _rjPilotRaw=autoLoad?'':document.getElementById('rj-pilot').value;
   const _rjPosteRaw=autoLoad?'':document.getElementById('rj-poste').value;
+  // Si Actualiser sans dates → recharge le dernier mode (N derniers postes)
+  if(!autoLoad&&!from&&!to&&!_rjPilotRaw&&!_rjPosteRaw){
+    calcPeriodReport(true,_rjLastMs||3);return;
+  }
+  const _ms=autoLoad?(maxSessions||3):0;
   const pilot=(_rjPilotRaw==='tous')?'':_rjPilotRaw;
   const poste=(_rjPosteRaw==='tous')?'':_rjPosteRaw;
   const resultEl=document.getElementById('rj-result');
@@ -11630,7 +11643,9 @@ async function captureRapportJour(){
     toast('Erreur capture : '+(e.message||String(e)),'err');
   }
 }
+let _rjLastMs=3;
 function rjLast3(){
+  _rjLastMs=3;
   document.getElementById('rj-from').value='';
   document.getElementById('rj-to').value='';
   document.getElementById('rj-pilot').value='';
@@ -11639,6 +11654,7 @@ function rjLast3(){
   loadRptJour();
 }
 function rjLast4(){
+  _rjLastMs=4;
   document.getElementById('rj-from').value='';
   document.getElementById('rj-to').value='';
   document.getElementById('rj-pilot').value='';
