@@ -4116,21 +4116,22 @@ def api_add_past_decl():
             })
             save_session()
     elif decl_type == "prod":
-        # Vérification chevauchement avec un OF déjà déclaré sur ce poste
-        _new_ds = _hms_to_sec(debut_dt.strftime("%H:%M:%S"))
-        _new_fs = _norm_fin(_new_ds, _hms_to_sec(fin_dt.strftime("%H:%M:%S")))
+        # Vérification chevauchement avec TOUT OF déjà déclaré (peu importe pilote/poste)
         for _rn_ov, _r_ov in _decl_cache:
-            if str(_r_ov[4] or "") != pilot: continue
             if str(_r_ov[0] or "").strip().lower() not in ("production","prod",""): continue
-            _date_ov = str(_r_ov[39] if len(_r_ov) > 39 else "").strip() or _row_date(_r_ov[2])
-            if _date_ov != shift_date_str: continue
-            _ds_ov = _hms_to_sec(str(_r_ov[16] or "00:00:00"))
-            _fs_ov = _norm_fin(_ds_ov, _hms_to_sec(str(_r_ov[17] or "00:00:00")))
-            if _fs_ov <= _ds_ov: continue
-            # Test dans les deux référentiels pour gérer les postes de nuit
-            _ov2 = (_new_ds < _fs_ov and _new_fs > _ds_ov) or \
-                   (_new_ds + 86400 < _fs_ov and _new_fs + 86400 > _ds_ov)
-            if _ov2:
+            # Reconstruire datetime de l'OF existant pour comparer directement
+            try:
+                _date_ov_raw = str(_r_ov[2] or "").strip()  # col 3 = date DD/MM/YYYY
+                _dh_ov, _dm_ov = [int(x) for x in str(_r_ov[16] or "00:00").split(":")[:2]]
+                _fh_ov, _fm_ov = [int(x) for x in str(_r_ov[17] or "00:00").split(":")[:2]]
+                _base_ov = datetime.datetime.strptime(_date_ov_raw, "%d/%m/%Y")
+                _debut_ov_dt = _base_ov.replace(hour=_dh_ov, minute=_dm_ov, second=0, microsecond=0)
+                _fin_ov_dt   = _base_ov.replace(hour=_fh_ov, minute=_fm_ov, second=0, microsecond=0)
+                if _fin_ov_dt <= _debut_ov_dt: _fin_ov_dt += datetime.timedelta(days=1)
+            except Exception: continue
+            if _fin_ov_dt <= _debut_ov_dt: continue
+            # Chevauchement si les intervalles se recoupent
+            if debut_dt < _fin_ov_dt and fin_dt > _debut_ov_dt:
                 _of_ov = str(_r_ov[1] or "OF inconnu")
                 _h_deb_ov = str(_r_ov[16] or "")[:5]
                 _h_fin_ov = str(_r_ov[17] or "")[:5]
