@@ -4065,7 +4065,8 @@ def api_add_past_decl():
     fin_hms   = str(data.get("fin_hms","")).strip()
     if not decl_type or not debut_hms or not fin_hms:
         return jsonify({"ok":False,"error":"decl_type/debut/fin requis"}),400
-    pilot = _S.get("pilot",""); poste = _S.get("poste","")
+    pilot = str(data.get("pilot","")).strip() or _S.get("pilot","")
+    poste = str(data.get("poste","")).strip() or _S.get("poste","")
     if not pilot: return jsonify({"ok":False,"error":"Non connecté"}),400
     now = _now()
     date_debut_str = str(data.get("date_debut","")).strip()  # format YYYY-MM-DD
@@ -5393,6 +5394,13 @@ select{cursor:default}
   <div id="m-past-decl" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;align-items:center;justify-content:center">
     <div class="card" style="width:min(480px,98vw);max-height:92vh;overflow-y:auto;padding:18px 20px;background:#fff;border-radius:12px;border-top:4px solid #7c3aed">
       <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:12px">📝 Déclaration antérieure</div>
+      <!-- Pilote / Poste -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Pilote</label>
+          <select id="pd-pilot" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"><option value="">— Choisir —</option></select></div>
+        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Poste</label>
+          <input type="text" id="pd-poste" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"></div>
+      </div>
       <!-- Plage date -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
         <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Date début</label>
@@ -12320,6 +12328,20 @@ function openPastDecl(){
   // Copier les options depuis les selects du formulaire principal (toujours à jour)
   function _copyOpts(srcId,dstId){const src=document.getElementById(srcId);const dst=document.getElementById(dstId);if(!src||!dst)return;while(dst.options.length>1)dst.remove(1);Array.from(src.options).slice(1).forEach(o=>{const n=document.createElement('option');n.value=o.value;n.textContent=o.text;dst.appendChild(n);});}
   _copyOpts('f-type_prod','pd-type-prod');_copyOpts('f-taille','pd-taille');_copyOpts('f-fibre','pd-fibre');_copyOpts('f-copilote','pd-copilote');
+  // Pré-remplir pilote depuis la liste + session en cours
+  const pdPilotSel=document.getElementById('pd-pilot');
+  if(pdPilotSel){
+    const srcCp=document.getElementById('f-copilote');
+    pdPilotSel.innerHTML='<option value="">— Choisir —</option>';
+    if(srcCp)Array.from(srcCp.options).slice(1).forEach(o=>{const n=document.createElement('option');n.value=o.value;n.textContent=o.text;pdPilotSel.appendChild(n);});
+    const curP=ST&&ST.pilot?ST.pilot:'';
+    if(curP){
+      if(!Array.from(pdPilotSel.options).some(o=>o.value===curP)){const o=document.createElement('option');o.value=curP;o.textContent=curP;pdPilotSel.insertBefore(o,pdPilotSel.options[1]);}
+      pdPilotSel.value=curP;
+    }
+  }
+  const pdPosteEl=document.getElementById('pd-poste');
+  if(pdPosteEl)pdPosteEl.value=(ST&&ST.poste)?ST.poste:'';
   // Peupler le select arrêt
   const stopSel=document.getElementById('pd-stop-type');
   if(stopSel){
@@ -12368,7 +12390,9 @@ async function submitPastDecl(){
   }
   if(debut===fin){toast('Heure fin identique à heure début','err');return;}
   if(dateDebut&&dateFin&&dateDebut>dateFin){toast('Date fin doit être après date début','err');return;}
-  let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin,date_debut:dateDebut,date_fin:dateFin};
+  const _pdPilot=(document.getElementById('pd-pilot')||{}).value||'';
+  const _pdPoste=(document.getElementById('pd-poste')||{}).value||'';
+  let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin,date_debut:dateDebut,date_fin:dateFin,pilot:_pdPilot,poste:_pdPoste};
   if(_pdType==='prod'){
     const of_num=(document.getElementById('pd-of')||{}).value||'';
     const code=(document.getElementById('pd-code')||{}).value||'';
