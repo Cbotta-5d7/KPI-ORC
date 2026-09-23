@@ -11566,13 +11566,13 @@ async function calcPeriodReport(autoLoad,maxSessions){
       return `<div style="margin-bottom:5px">
         <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
           <div style="width:7px;height:7px;border-radius:2px;background:${col};flex-shrink:0"></div>
-          <span style="font-size:calc(10px*var(--zf,1));color:#374151;word-break:break-word;line-height:1.2">${esc(e.type)}</span>
+          <span style="font-size:calc(10px*var(--zf,1));color:#374151;word-break:break-word;line-height:1.2"><b>${e.count}×</b> : ${esc(e.type)}</span>
         </div>
         <div style="display:flex;align-items:center;gap:4px">
           <div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden">
             <div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div>
           </div>
-          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m${e.count>1?' · '+e.count+'×':''}</span>
+          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m</span>
         </div>
       </div>`;
     }).join('');
@@ -11586,13 +11586,13 @@ async function calcPeriodReport(autoLoad,maxSessions){
       return `<div style="margin-bottom:5px">
         <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
           <div style="width:7px;height:7px;border-radius:2px;background:#f59e0b;flex-shrink:0"></div>
-          <span style="font-size:calc(10px*var(--zf,1));color:#374151;word-break:break-word;line-height:1.2">${esc(e.type)}</span>
+          <span style="font-size:calc(10px*var(--zf,1));color:#374151;word-break:break-word;line-height:1.2"><b>${e.count}×</b> : ${esc(e.type)}</span>
         </div>
         <div style="display:flex;align-items:center;gap:4px">
           <div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden">
             <div style="width:${pct}%;background:#f59e0b;height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div>
           </div>
-          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m${e.count>1?' · '+e.count+'×':''}</span>
+          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m</span>
         </div>
       </div>`;
     }).join('');
@@ -11804,7 +11804,7 @@ async function captureRapportJour(){
     <!-- Colonne 3 : pareto des arrêts (324px, +20%) -->
     <div style="flex:1;min-width:324px">
       ${(()=>{
-        const _mkParSnap=(items,col,title,titleCol)=>{if(!items||!items.length)return '';const mx=items[0].min;const tot=items.reduce((a,e)=>a+e.min,0);const rows=items.map(e=>{const pct=Math.round(e.min/mx*80);const pctTot=tot>0?Math.round(e.min/tot*100):0;return `<div style="margin-bottom:5px"><div style="display:flex;align-items:center;gap:4px;margin-bottom:2px"><div style="width:7px;height:7px;border-radius:2px;background:${col};flex-shrink:0"></div><span style="font-size:10px;color:#374151;word-break:break-word;line-height:1.2">${esc(e.type)}</span></div><div style="display:flex;align-items:center;gap:4px"><div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden"><div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div></div><span style="flex-shrink:0;font-size:9px;color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m${e.count>1?' · '+e.count+'×':''}</span></div></div>`;}).join('');return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:${titleCol};text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">${title}</div>${rows}</div>`;};
+        const _mkParSnap=(items,col,title,titleCol)=>{if(!items||!items.length)return '';const mx=items[0].min;const tot=items.reduce((a,e)=>a+e.min,0);const rows=items.map(e=>{const pct=Math.round(e.min/mx*80);const pctTot=tot>0?Math.round(e.min/tot*100):0;return `<div style="margin-bottom:5px"><div style="display:flex;align-items:center;gap:4px;margin-bottom:2px"><div style="width:7px;height:7px;border-radius:2px;background:${col};flex-shrink:0"></div><span style="font-size:10px;color:#374151;word-break:break-word;line-height:1.2"><b>${e.count}×</b> : ${esc(e.type)}</span></div><div style="display:flex;align-items:center;gap:4px"><div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden"><div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div></div><span style="flex-shrink:0;font-size:9px;color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m</span></div></div>`;}).join('');return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:${titleCol};text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">${title}</div>${rows}</div>`;};
         return _mkParSnap(d.stop_pareto,'#dc2626','🛑 PARETO des arrêts non prévus','#dc2626')+_mkParSnap(d.degrade_pareto,'#f59e0b','⚠️ PARETO des modes dégradés','#d97706');
       })()}
     </div>
@@ -11957,9 +11957,11 @@ async function loadSessionReport(date,pilot,poste,itemId){
   });
   const stopArr=Object.entries(stopMap).sort((a,b)=>b[1]-a[1]);
   const maxStopMin=stopArr.length?stopArr[0][1]:1;
+  const _stopCounts={};
+  (d.evt_rows||[]).filter(r=>!r.is_degrade&&!_isPlannedSr(r.type||'')).forEach(r=>{const k=r.type||'Inconnu';_stopCounts[k]=(_stopCounts[k]||0)+1;});
   const paretoHtml=stopArr.length?stopArr.map(([k,v])=>`
     <div style="margin-bottom:7px">
-      <div style="font-size:calc(10px*var(--zf,1));color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;font-weight:600">${esc(k)}</div>
+      <div style="font-size:calc(10px*var(--zf,1));color:var(--text);overflow:hidden;text-overflow:ellipsis;margin-bottom:2px"><b>${_stopCounts[k]||1}×</b> : ${esc(k)}</div>
       <div style="display:flex;align-items:center;gap:5px">
         <div style="flex:1;background:#f1f5f9;border-radius:4px;height:12px;overflow:hidden">
           <div style="height:100%;background:#dc2626;border-radius:4px;width:${Math.round(v/maxStopMin*100)}%;opacity:.8"></div>
@@ -11976,9 +11978,11 @@ async function loadSessionReport(date,pilot,poste,itemId){
   });
   const degArrSr=Object.entries(degMapSr).sort((a,b)=>b[1]-a[1]);
   const maxDegMinSr=degArrSr.length?degArrSr[0][1]:1;
+  const _degCounts={};
+  (d.evt_rows||[]).filter(r=>r.is_degrade).forEach(r=>{const k=r.type||'Mode dégradé';_degCounts[k]=(_degCounts[k]||0)+1;});
   const paretoDegHtml=degArrSr.length?degArrSr.map(([k,v])=>`
     <div style="margin-bottom:7px">
-      <div style="font-size:calc(10px*var(--zf,1));color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;font-weight:600">${esc(k)}</div>
+      <div style="font-size:calc(10px*var(--zf,1));color:var(--text);overflow:hidden;text-overflow:ellipsis;margin-bottom:2px"><b>${_degCounts[k]||1}×</b> : ${esc(k)}</div>
       <div style="display:flex;align-items:center;gap:5px">
         <div style="flex:1;background:#f1f5f9;border-radius:4px;height:12px;overflow:hidden">
           <div style="height:100%;background:#f59e0b;border-radius:4px;width:${Math.round(v/maxDegMinSr*100)}%;opacity:.8"></div>
