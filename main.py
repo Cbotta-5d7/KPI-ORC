@@ -5014,7 +5014,7 @@ select{cursor:default}
         <button id="btn-reunion-acc" class="acc-btn" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
         <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
         <div style="width:1px;background:rgba(255,255,255,.25);align-self:stretch;margin:0 4px;flex-shrink:0"></div>
-        <button class="acc-btn" onclick="openPastDecl()" style="margin-left:auto;background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">📝</span><span>Faire une régul</span></button>
+        <button class="acc-btn" onclick="pdChooseType()" style="margin-left:auto;background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">📝</span><span>Faire une régul</span></button>
         <button class="acc-btn" id="btn-of-prepares" onclick="openOfPrepares()" style="background:radial-gradient(ellipse at 50% 25%,#a5b4fc 0%,#6366f1 55%,#3730a3 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none;position:relative"><span class="act-icon">📋</span><span>Prépa OF en avance</span><span id="ofp-badge" style="display:none;position:absolute;top:4px;right:4px;background:#f59e0b;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:900;align-items:center;justify-content:center;line-height:1"></span></button>
       </div>
     </div>
@@ -5390,16 +5390,31 @@ select{cursor:default}
     </div>
   </div>
 
+  <!-- ════ MODAL CHOIX TYPE RÉGUL ════ -->
+  <div id="m-pd-choose" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:710;align-items:center;justify-content:center">
+    <div class="card" style="width:min(360px,96vw);padding:24px 20px;background:#fff;border-radius:12px;border-top:4px solid #7c3aed;text-align:center">
+      <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:6px">📝 Faire une régul</div>
+      <div style="font-size:calc(12px*var(--zf,1));color:var(--gray);margin-bottom:18px">Quel type de régul ?</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button onclick="pdSubmitChoice('prod')" style="padding:14px 20px;background:linear-gradient(135deg,#f5f3ff,#ede9fe);border:2px solid #7c3aed;border-radius:10px;font-size:calc(13px*var(--zf,1));font-weight:800;color:#7c3aed;cursor:pointer">▶ Production (OF)</button>
+        <button onclick="pdSubmitChoice('arret')" style="padding:14px 20px;background:linear-gradient(135deg,#fef2f2,#fee2e2);border:2px solid #dc2626;border-radius:10px;font-size:calc(13px*var(--zf,1));font-weight:800;color:#dc2626;cursor:pointer">🛑 Arrêt</button>
+      </div>
+      <button class="btn btn-ghost" onclick="closeM('m-pd-choose')" style="margin-top:14px;width:100%">Annuler</button>
+    </div>
+  </div>
+
   <!-- ════ MODAL DÉCLARATION ANTÉRIEURE ════ -->
   <div id="m-past-decl" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;align-items:center;justify-content:center">
-    <div class="card" style="width:min(480px,98vw);max-height:92vh;overflow-y:auto;padding:18px 20px;background:#fff;border-radius:12px;border-top:4px solid #7c3aed">
+    <div class="card" style="width:min(720px,98vw);max-height:92vh;overflow-y:auto;padding:18px 20px;background:#fff;border-radius:12px;border-top:4px solid #7c3aed">
       <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:12px">📝 Déclaration antérieure</div>
-      <!-- Pilote / Poste -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+      <!-- Pilote / Poste / Co-Pilote -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:8px">
         <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Pilote</label>
           <select id="pd-pilot" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"><option value="">— Choisir —</option></select></div>
         <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Poste</label>
-          <input type="text" id="pd-poste" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"></div>
+          <select id="pd-poste" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"><option value="">— Choisir —</option></select></div>
+        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Co-Pilote</label>
+          <select id="pd-copilote" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"><option value="">--</option></select></div>
       </div>
       <!-- Plage date -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
@@ -5415,11 +5430,6 @@ select{cursor:default}
         <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Heure fin</label>
           <input type="time" id="pd-fin" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"></div>
       </div>
-      <!-- Type -->
-      <div style="display:flex;gap:8px;margin-bottom:14px">
-        <button id="pd-btn-prod" onclick="pdSwitchType('prod')" style="flex:1;padding:8px;border:2px solid #7c3aed;border-radius:8px;background:#fff;font-size:calc(12px*var(--zf,1));font-weight:800;cursor:pointer;color:#7c3aed">▶ Production</button>
-        <button id="pd-btn-arret" onclick="pdSwitchType('arret')" style="flex:1;padding:8px;border:2px solid #94a3b8;border-radius:8px;background:#fff;font-size:calc(12px*var(--zf,1));font-weight:800;cursor:pointer;color:#64748b">🛑 Arrêt</button>
-      </div>
       <!-- Formulaire prod -->
       <div id="pd-form-prod" style="display:none;display:flex;flex-direction:column;gap:7px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -5428,21 +5438,17 @@ select{cursor:default}
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Code produit *</label>
             <input id="pd-code" placeholder="Ex: 123456_012" onfocus="openCodeInputFull('pd-code','Code Produit')" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));cursor:pointer"></div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Type produit *</label>
             <select id="pd-type-prod" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Taille *</label>
             <select id="pd-taille" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Co-Pilote</label>
-            <select id="pd-copilote" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">--</option></select></div>
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Lot de 2</label>
             <select id="pd-kit" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">Non</option><option value="oui">Oui</option></select></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Nb personnes *</label>
-            <input id="pd-nbpers" type="number" min="1" placeholder="10" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+            <input id="pd-nbpers" type="number" min="1" value="10" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Qté fab. *</label>
             <input id="pd-qtefab" type="number" min="0" placeholder="0" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Qté emb.</label>
@@ -12312,8 +12318,13 @@ async function reloadAllData(){
 }
 // ── DÉCLARATION ANTÉRIEURE ──
 let _pdType='prod';
-function openPastDecl(){
-  _pdType='prod';
+function pdChooseType(){openM('m-pd-choose');}
+async function pdSubmitChoice(type){
+  closeM('m-pd-choose');
+  await openPastDecl(type);
+}
+async function openPastDecl(type){
+  _pdType=type||'prod';
   // Pré-remplir l'heure de début avec la fin de la dernière décl si connue
   const shiftDebut=(ST&&ST.shift_debut_iso)?new Date(ST.shift_debut_iso):null;
   const shiftFin=(ST&&ST.shift_fin_iso)?new Date(ST.shift_fin_iso):null;
@@ -12327,8 +12338,10 @@ function openPastDecl(){
   document.getElementById('pd-date-fin').value=_shiftDateIso;
   // Copier les options depuis les selects du formulaire principal (toujours à jour)
   function _copyOpts(srcId,dstId){const src=document.getElementById(srcId);const dst=document.getElementById(dstId);if(!src||!dst)return;while(dst.options.length>1)dst.remove(1);Array.from(src.options).slice(1).forEach(o=>{const n=document.createElement('option');n.value=o.value;n.textContent=o.text;dst.appendChild(n);});}
-  _copyOpts('f-type_prod','pd-type-prod');_copyOpts('f-taille','pd-taille');_copyOpts('f-fibre','pd-fibre');_copyOpts('f-copilote','pd-copilote');
-  // Pré-remplir pilote depuis la liste + session en cours
+  _copyOpts('f-type_prod','pd-type-prod');_copyOpts('f-taille','pd-taille');_copyOpts('f-fibre','pd-fibre');
+  // Co-Pilote (top section)
+  _copyOpts('f-copilote','pd-copilote');
+  // Pilote : depuis la liste copilote + session en cours
   const pdPilotSel=document.getElementById('pd-pilot');
   if(pdPilotSel){
     const srcCp=document.getElementById('f-copilote');
@@ -12340,8 +12353,21 @@ function openPastDecl(){
       pdPilotSel.value=curP;
     }
   }
-  const pdPosteEl=document.getElementById('pd-poste');
-  if(pdPosteEl)pdPosteEl.value=(ST&&ST.poste)?ST.poste:'';
+  // Poste : depuis les sessions passées
+  const pdPosteSel=document.getElementById('pd-poste');
+  if(pdPosteSel){
+    try{
+      const sessions=await apiFetch('/api/past_sessions');
+      const postes=[...new Set((sessions||[]).map(s=>s.poste).filter(Boolean))].sort();
+      pdPosteSel.innerHTML='<option value="">— Choisir —</option>';
+      postes.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;pdPosteSel.appendChild(o);});
+      const curPoste=ST&&ST.poste?ST.poste:'';
+      if(curPoste){
+        if(!Array.from(pdPosteSel.options).some(o=>o.value===curPoste)){const o=document.createElement('option');o.value=curPoste;o.textContent=curPoste;pdPosteSel.insertBefore(o,pdPosteSel.options[1]);}
+        pdPosteSel.value=curPoste;
+      }
+    }catch(e){pdPosteSel.innerHTML='<option value="">— Choisir —</option>';const curPoste=ST&&ST.poste?ST.poste:'';if(curPoste){const o=document.createElement('option');o.value=curPoste;o.textContent=curPoste;pdPosteSel.appendChild(o);pdPosteSel.value=curPoste;}}
+  }
   // Peupler le select arrêt
   const stopSel=document.getElementById('pd-stop-type');
   if(stopSel){
@@ -12364,15 +12390,12 @@ function openPastDecl(){
       stopSel.appendChild(grp);
     });
   }
-  pdSwitchType('prod');
+  pdSwitchType(_pdType);
   openM('m-past-decl');
 }
 function pdSwitchType(t){
   _pdType=t;
-  const bProd=document.getElementById('pd-btn-prod');const bArret=document.getElementById('pd-btn-arret');
   const fProd=document.getElementById('pd-form-prod');const fArret=document.getElementById('pd-form-arret');
-  if(bProd){bProd.style.borderColor=t==='prod'?'#7c3aed':'#94a3b8';bProd.style.color=t==='prod'?'#7c3aed':'#64748b';bProd.style.background=t==='prod'?'#f5f3ff':'#fff';}
-  if(bArret){bArret.style.borderColor=t==='arret'?'#dc2626':'#94a3b8';bArret.style.color=t==='arret'?'#dc2626':'#64748b';bArret.style.background=t==='arret'?'#fef2f2':'#fff';}
   if(fProd){fProd.style.display=t==='prod'?'flex':'none';}
   if(fArret){fArret.style.display=t==='arret'?'flex':'none';}
 }
