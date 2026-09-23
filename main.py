@@ -791,6 +791,7 @@ def load_lists():
     global _lists, _prod_ref_cached
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return
+    wb = None
     try:
         wb = load_workbook(path, read_only=True, data_only=True)
         if "Listes" in wb.sheetnames:
@@ -893,8 +894,11 @@ def load_lists():
             if _adm_pw_v is not None and str(_adm_pw_v).strip():
                 cfg["supervisor_pw"] = str(_adm_pw_v).strip()
                 save_cfg_data()
-        wb.close()
     except: pass
+    finally:
+        if wb is not None:
+            try: wb.close()
+            except: pass
 
 def write_pers_pct_to_excel():
     """Persiste _pers_pct_map dans l'onglet Listes, colonnes P (16) et Q (17)."""
@@ -989,6 +993,7 @@ def load_history():
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return
     _hist_loading += 1
+    wb = None
     try:
         wb = load_workbook(path, read_only=True, data_only=True)
         _excel_busy = False
@@ -1034,7 +1039,6 @@ def load_history():
                     unified[23] = row[20] # Cadence/h/pers
                     unified[35] = row[57] if len(row)>57 else None  # Commentaire
                     _new_cache.append((i, unified))
-        wb.close()
         # Swap atomique : remplace le cache d'un coup pour éviter la race condition
         with _cache_lock:
             _decl_cache = _new_cache
@@ -1048,6 +1052,10 @@ def load_history():
         threading.Thread(target=_retry, daemon=True).start()
     except:
         _hist_loading = max(0, _hist_loading - 1)
+    finally:
+        if wb is not None:
+            try: wb.close()
+            except: pass
 
 # ── Calcul équivalence ────────────────────────────────────────────────────────
 def calc_equiv(qte, taille, type_prod):
@@ -1072,7 +1080,11 @@ def _safe_excel_save(wb, path):
     bak = path+".bak"
     try: shutil.copy2(path,bak)
     except: pass
-    wb.save(path)
+    try:
+        wb.save(path)
+    finally:
+        try: wb.close()
+        except: pass
     try: os.remove(bak)
     except: pass
 
@@ -1423,37 +1435,43 @@ def find_postes_row_num(pilot, debut_dt):
     """Cherche dans POSTES la ligne correspondant à ce pilote + date debut. Retourne row_num ou None."""
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path) or not debut_dt: return None
+    _found_row = None
     try:
         with _excel_lock:
             wb = _get_wb(path)
             if wb is None: return None
-            if "Postes" not in wb.sheetnames: return None
-            ws = wb["Postes"]
-            target_date = debut_dt.date()
-            for row in ws.iter_rows(min_row=2, values_only=False):
-                try:
-                    b = row[1].value if len(row) > 1 else None  # col B pilot
-                    p = row[15].value if len(row) > 15 else None  # col P debut
-                    if str(b or "").strip().lower() != pilot.lower(): continue
-                    if p is None: continue
-                    if isinstance(p, str):
-                        try:
-                            p_dt = datetime.datetime.fromisoformat(p)
-                        except ValueError:
+            try:
+                if "Postes" not in wb.sheetnames: return None
+                ws = wb["Postes"]
+                target_date = debut_dt.date()
+                for row in ws.iter_rows(min_row=2, values_only=False):
+                    try:
+                        b = row[1].value if len(row) > 1 else None  # col B pilot
+                        p = row[15].value if len(row) > 15 else None  # col P debut
+                        if str(b or "").strip().lower() != pilot.lower(): continue
+                        if p is None: continue
+                        if isinstance(p, str):
                             try:
-                                p_dt = datetime.datetime.strptime(p, "%d/%m/%Y %H:%M:%S")
-                            except:
+                                p_dt = datetime.datetime.fromisoformat(p)
+                            except ValueError:
                                 try:
-                                    p_dt = datetime.datetime.strptime(p, "%d/%m/%Y")
+                                    p_dt = datetime.datetime.strptime(p, "%d/%m/%Y %H:%M:%S")
                                 except:
-                                    continue
-                    else:
-                        p_dt = p
-                    if hasattr(p_dt, 'date') and p_dt.date() == target_date:
-                        return row[0].row
-                except: continue
+                                    try:
+                                        p_dt = datetime.datetime.strptime(p, "%d/%m/%Y")
+                                    except:
+                                        continue
+                        else:
+                            p_dt = p
+                        if hasattr(p_dt, 'date') and p_dt.date() == target_date:
+                            _found_row = row[0].row
+                            break
+                    except: continue
+            finally:
+                try: wb.close()
+                except: pass
     except: pass
-    return None
+    return _found_row
 
 def update_poste_horaires(row_num, debut_dt, fin_dt):
     """Écrit P et Q directement (pas de thread interne — à appeler depuis un thread background)."""
@@ -1558,10 +1576,10 @@ def load_postes_shift_map():
         with _excel_lock:
             wb = _get_wb(path)
             if wb is None: return {}
-            if "Postes" not in wb.sheetnames:
-                wb.close(); return {}
-            ws = wb["Postes"]
-            for ri in range(2, ws.max_row + 1):
+            try:
+                if "Postes" not in wb.sheetnames: return {}
+                ws = wb["Postes"]
+                for ri in range(2, ws.max_row + 1):
                 pilot_v = ws.cell(ri, 2).value   # col B: Pilote
                 deb_v   = ws.cell(ri, 16).value  # col P: Debut Poste (datetime)
                 if not pilot_v or not deb_v: continue
@@ -1602,7 +1620,9 @@ def load_postes_shift_map():
                     },
                 }
                 result[pk3] = result[pk]  # clé 3-tuples pour éviter collision pilote/2 postes même jour
-            wb.close()
+            finally:
+                try: wb.close()
+                except: pass
     except: pass
     return result
 
@@ -1783,11 +1803,15 @@ def api_login():
     _db_path_ck = cfg.get("db_path","")
     if _db_path_ck:
         _excel_ok = False
+        _wb_ck = None
         try:
             _wb_ck = load_workbook(_db_path_ck, read_only=True, data_only=True)
             _excel_ok = "Declarations" in _wb_ck.sheetnames
-            _wb_ck.close()
         except: _excel_ok = False
+        finally:
+            if _wb_ck is not None:
+                try: _wb_ck.close()
+                except: pass
         if not _excel_ok:
             return jsonify({"ok":False,"error":"Enregistrement impossible, appeler le Bureau Méthode et écrire les déclarations sur un papier"}),503
     # Si un autre pilote est encore connecté → fermer son poste proprement avant de lancer le nouveau
@@ -4197,20 +4221,24 @@ def api_update_of_time():
                 with _excel_lock:
                     wb = _get_wb(path)
                     if wb is not None:
-                        ws = wb["Declarations"] if "Declarations" in wb.sheetnames else wb.active
-                        for row in ws.iter_rows(min_row=2, values_only=False):
-                            rn_fb = row[0].row
-                            r_fb = tuple(c.value for c in row)
-                            if len(r_fb) < 18: continue
-                            rd = _row_date(r_fb[2])
-                            if rd not in (today, shift_date_str): continue
-                            if str(r_fb[4] or "") != pilot: continue
-                            if str(r_fb[0] or "").strip().lower() not in ("production","prod",""): continue
-                            row_of = str(r_fb[1] or "")
-                            row_debut = str(r_fb[16] or "")[:5]
-                            if row_of == of_num and (not old_debut or row_debut == old_debut):
-                                target_rn = rn_fb
-                                break
+                        try:
+                            ws = wb["Declarations"] if "Declarations" in wb.sheetnames else wb.active
+                            for row in ws.iter_rows(min_row=2, values_only=False):
+                                rn_fb = row[0].row
+                                r_fb = tuple(c.value for c in row)
+                                if len(r_fb) < 18: continue
+                                rd = _row_date(r_fb[2])
+                                if rd not in (today, shift_date_str): continue
+                                if str(r_fb[4] or "") != pilot: continue
+                                if str(r_fb[0] or "").strip().lower() not in ("production","prod",""): continue
+                                row_of = str(r_fb[1] or "")
+                                row_debut = str(r_fb[16] or "")[:5]
+                                if row_of == of_num and (not old_debut or row_debut == old_debut):
+                                    target_rn = rn_fb
+                                    break
+                        finally:
+                            try: wb.close()
+                            except: pass
             except Exception as _e:
                 pass
     if target_rn is None:
