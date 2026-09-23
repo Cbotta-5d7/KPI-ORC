@@ -3645,7 +3645,7 @@ def api_period_report():
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
     agg_equiv=0.0; agg_pcs=0; agg_of=0; agg_of_set=set(); agg_elapsed_s=0.0; agg_sum_expected=0.0
-    agg_sum_theorique=0.0; agg_arret_prevu=0.0
+    agg_sum_theorique=0.0; agg_arret_prevu=0.0; agg_obj_pcs=0.0; agg_obj_equiv=0.0
     agg_fibre_chg=0; agg_depassement=0.0; agg_degrade_min=0.0; stop_by_type={}; sessions_detail=[]
     jours=set(); pilotes=set(); postes_set=set()
     trs_by_day = {}
@@ -3753,8 +3753,11 @@ def api_period_report():
                 # Toujours recalculer (ignore colonne 43 Excel qui peut être obsolète)
                 _obj_rp = round(_exp_rp, 1) if _exp_rp > 0 else -1
             except:
-                _plan_rp = 0; _deg_rp = 0; _obj_rp = -1
-            pass  # _obj_rp used only for per-OF display in sessions_detail
+                _plan_rp = 0; _deg_rp = 0; _obj_rp = -1; _pcoef_rp = 1.0
+            # Même logique que rapport postes (_objEquivRp / _objPcsRp en JS)
+            if _obj_rp > 0:
+                agg_obj_equiv += _obj_rp
+                agg_obj_pcs += _obj_rp / _pcoef_rp if _pcoef_rp > 0 else _obj_rp
             _of_rows_sd.append({
                 "of":str(_rp[1] or ""),"debut":str(_rp[16] or "")[:5],"fin":str(_rp[17] or "")[:5],
                 "duree":str(_rp[18] or ""),"qte_fab":str(_rp[19] or ""),"qte_emb":str(_rp[20] or ""),
@@ -3816,8 +3819,8 @@ def api_period_report():
         'nb_fibre_chg':agg_fibre_chg,
         'depassement_min':round(agg_depassement,1),  # sum col M
         'arret_prevu_min':round(agg_arret_prevu,1),  # sum cols J+K+L postes
-        'objectif_pcs':round(agg_sum_theorique),
-        'objectif_equiv':round(agg_sum_theorique,1),
+        'objectif_pcs':round(agg_obj_pcs),
+        'objectif_equiv':round(agg_obj_equiv,1),
         'sessions_detail':sessions_detail_sorted,
         'degrade_min_total': round(sum(_merged_degrade_s([re2 for _, re2 in s['evt_rows']]) for s in sessions.values()) / 60, 1),
         'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])[:15]],
