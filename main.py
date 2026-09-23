@@ -5841,6 +5841,7 @@ select{cursor:default}
       <button id="rj-capture-btn" onclick="captureRapportJour()" title="Copier le rapport en image — à coller dans un mail" style="display:none;align-items:center;justify-content:center;background:#fff;border:2px solid #c7d2fe;border-radius:12px;padding:8px 10px;font-size:calc(18px*var(--zf,1));cursor:pointer;color:#1e3a8a;box-shadow:0 2px 12px rgba(99,102,241,.18);white-space:nowrap" onmouseover="this.style.boxShadow='0 4px 18px rgba(99,102,241,.32)';this.style.borderColor='#818cf8'" onmouseout="this.style.boxShadow='0 2px 12px rgba(99,102,241,.18)';this.style.borderColor='#c7d2fe'">📷</button>
       <div style="margin-left:auto;display:flex;gap:6px">
         <button onclick="rjLast3()" style="background:linear-gradient(180deg,#0ea5e9,#0369a1);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(3,105,161,.35),inset 0 1px 0 rgba(255,255,255,.18)">3 derniers postes</button>
+        <button onclick="rjLast4()" style="background:linear-gradient(180deg,#38bdf8,#0284c7);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(2,132,199,.35),inset 0 1px 0 rgba(255,255,255,.18)">4 derniers postes</button>
         <button onclick="rjLast7Days()" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(5,150,105,.35),inset 0 1px 0 rgba(255,255,255,.18)">7 derniers jours</button>
         <button onclick="rjLast31Days()" style="background:linear-gradient(180deg,#a78bfa,#7c3aed);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(124,58,237,.35),inset 0 1px 0 rgba(255,255,255,.18)">31 derniers jours</button>
       </div>
@@ -11174,9 +11175,9 @@ async function loadRptJour(){
   }
   calcPeriodReport(true);
 }
-async function calcPeriodReport(autoLoad){
+async function calcPeriodReport(autoLoad,maxSessions){
   // En mode autoLoad, on n'utilise PAS les filtres date/pilote/poste
-  // On laisse l'API renvoyer les max_sessions=3 derniers postes sans restriction de date
+  const _ms=autoLoad?(maxSessions||3):0;
   const from=autoLoad?'':document.getElementById('rj-from').value;
   const to=autoLoad?'':document.getElementById('rj-to').value;
   const _rjPilotRaw=autoLoad?'':document.getElementById('rj-pilot').value;
@@ -11185,7 +11186,7 @@ async function calcPeriodReport(autoLoad){
   const poste=(_rjPosteRaw==='tous')?'':_rjPosteRaw;
   const resultEl=document.getElementById('rj-result');
   if(!resultEl) return;
-  if(autoLoad){_rjSetBanner('Rapport des 3 derniers postes');}
+  if(autoLoad){_rjSetBanner('Rapport des '+_ms+' derniers postes');}
   else if(from||to){const _fp=from?from.split('-').reverse().join('/'):'…';const _tp=to?to.split('-').reverse().join('/'):'…';_rjSetBanner('Rapport du '+_fp+' au '+_tp);}
   resultEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--gray)">Calcul en cours…</div>';
   let url='/api/period_report?';
@@ -11193,7 +11194,7 @@ async function calcPeriodReport(autoLoad){
   if(to)   url+='date_to='+encodeURIComponent(to)+'&';
   if(pilot) url+='pilot='+encodeURIComponent(pilot)+'&';
   if(poste) url+='poste='+encodeURIComponent(poste)+'&';
-  if(autoLoad) url+='max_sessions=3&';
+  if(autoLoad) url+='max_sessions='+_ms+'&';
   url+='skip_current=1&';  // jamais le poste en cours dans rapport jour
   const d=await apiFetch(url);
   if(!d||!d.ok){resultEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur ou aucune donnée</div>';return;}
@@ -11225,7 +11226,7 @@ async function calcPeriodReport(autoLoad){
     const gH=91,padT=28,padL=4,padR=4,GP=5;
     const CH=_vertA?padT+gH+150:padT+gH+60;
     const n=sd.length;
-    const WB=Math.max(22,Math.min(80,Math.floor((250-padL-padR-n*GP)/Math.max(n,3))));
+    const WB=Math.round(Math.max(26,Math.min(96,Math.floor((250-padL-padR-n*GP)/Math.max(n,3))))*1.2);
     const svgW=Math.max(200,n*(WB+GP)+padL+padR);
     let svgBars='',svgLabels='',svgL='';
     sd.forEach((s,i)=>{
@@ -11237,6 +11238,9 @@ async function calcPeriodReport(autoLoad){
       const col=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgBars+=`<rect x="${x}" y="${by}" width="${WB}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
       if(s.trs>=0){const _lb=s.trs.toFixed(0)+'%';if(bh>=18){const _ty=by+Math.min(bh-4,14);svgLabels+=`<text x="${cx}" y="${_ty}" text-anchor="middle" font-size="13" font-weight="800" fill="white" style="text-shadow:0 1px 2px rgba(0,0,0,.3)">${_lb}</text>`;}else{const _ty=Math.max(by-3,14);const _lw=_lb.length*8+6;svgLabels+=`<rect x="${cx-_lw/2}" y="${_ty-12}" width="${_lw}" height="15" fill="white" rx="2" opacity=".9"/><text x="${cx}" y="${_ty}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb}</text>`;}}
+      // Vignette pièces en bas du baton
+      const _totPc=(s.of_rows||[]).reduce((a,r)=>a+(+r.qte_fab||0),0);
+      if(_totPc>0&&bh>=22){const _pcLbl=String(_totPc);const _pcY=padT+gH-5;svgLabels+=`<text x="${cx}" y="${_pcY}" text-anchor="middle" font-size="11" font-weight="700" fill="white" opacity=".9">${_pcLbl} pcs</text>`;}
       const dp=s.date.split('/');
       if(_vertA){
         const yA=padT+gH+4;
@@ -11265,7 +11269,7 @@ async function calcPeriodReport(autoLoad){
     const gH2=91,padT2=28,padL2=4,padR2=4,GP2=5;
     const CH2=_vertB?padT2+gH2+150:padT2+gH2+60;
     const n2=sd2.length;
-    const WB2=Math.max(22,Math.min(80,Math.floor((250-padL2-padR2-n2*GP2)/Math.max(n2,3))));
+    const WB2=Math.round(Math.max(26,Math.min(96,Math.floor((250-padL2-padR2-n2*GP2)/Math.max(n2,3))))*1.2);
     const svgW2=Math.max(200,n2*(WB2+GP2)+padL2+padR2);
     const tY=padT2+gH2-Math.round(_CAD_CIBLE/maxCad*gH2);
     let svgBars2='',svgLabels2='',svgL2='';
@@ -11565,6 +11569,14 @@ function rjLast3(){
   document.getElementById('rj-poste').value='';
   _rjSetBanner('Rapport des 3 derniers postes');
   loadRptJour();
+}
+function rjLast4(){
+  document.getElementById('rj-from').value='';
+  document.getElementById('rj-to').value='';
+  document.getElementById('rj-pilot').value='';
+  document.getElementById('rj-poste').value='';
+  _rjSetBanner('Rapport des 4 derniers postes');
+  calcPeriodReport(true,4);
 }
 function rjLast7Days(){
   const _t=new Date(),_f=new Date(_t);
