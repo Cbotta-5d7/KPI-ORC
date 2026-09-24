@@ -405,18 +405,29 @@ def _norm_fin(deb_s, fin_s):
     return fin_s + 86400 if fin_s < deb_s else fin_s
 
 def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_date_str):
-    """À la clôture d'un OF, rempli/corrige la colonne B (OF) des lignes d'arrêt dont
-    le début est compris dans [of_start_dt, of_end_dt] pour ce pilot/poste/shift."""
+    """À la clôture d'un OF, rempli la colonne B (OF) des lignes d'arrêt sans OF
+    dont la plage chevauche [of_start_dt, of_end_dt] pour ce pilot/poste/shift."""
     if not of_num:
         return
     of_s = _hms_to_sec(of_start_dt.strftime("%H:%M:%S"))
     of_e_raw = _hms_to_sec(of_end_dt.strftime("%H:%M:%S"))
     of_e_norm = _norm_fin(of_s, of_e_raw)
+    # Dates à couvrir — le poste de nuit peut déborder sur le lendemain
+    shift_dates = {shift_date_str}
+    try:
+        _nxt = (datetime.datetime.strptime(shift_date_str, "%d/%m/%Y") + datetime.timedelta(days=1)).strftime("%d/%m/%Y")
+        if of_e_norm > 86400 or of_end_dt.date() > of_start_dt.date():
+            shift_dates.add(_nxt)
+    except Exception:
+        pass
     rows_to_update = []
     for i, (rn, r) in enumerate(_decl_cache):
         if str(r[4] or "").strip() != pilot:
             continue
         if str(r[3] or "").strip() != poste:
+            continue
+        # Ne remplir que les lignes dont le champ OF est vide
+        if str(r[1] or "").strip():
             continue
         row_type = str(r[0] or "").strip().lower()
         if row_type in ("production", "prod", ""):
@@ -424,15 +435,16 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
         if _is_degrade_type(str(r[0] or "")):
             continue
         row_date = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
-        if row_date != shift_date_str:
+        if row_date not in shift_dates:
             continue
         debut_s = _hms_to_sec(str(r[16] or "00:00:00"))
+        fin_s_raw = _hms_to_sec(str(r[17] or "00:00:00"))
         # Normalise pour les arrêts après minuit (poste de nuit)
         debut_norm = debut_s if debut_s >= of_s else debut_s + 86400
-        if not (of_s <= debut_norm <= of_e_norm):
+        fin_norm = _norm_fin(debut_norm, fin_s_raw)
+        # Chevauchement avec la plage OF ? (sinon on passe)
+        if debut_norm > of_e_norm or fin_norm < of_s:
             continue
-        if str(r[1] or "").strip() == of_num:
-            continue  # déjà correct
         rows_to_update.append((i, rn))
     if not rows_to_update:
         return
@@ -5276,7 +5288,7 @@ select{cursor:default}
     <div class="table-wrap">
       <table class="ktbl">
         <thead><tr>
-          <th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th>
+          <th>Type</th><th>OF</th><th>Produit</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th>
           <th>Début</th><th>Fin</th><th>Durée</th><th>Détails</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>
         </tr></thead>
         <tbody id="main-body"></tbody>
@@ -7673,7 +7685,7 @@ async function loadMainDecl() {
     const lastFin=inShiftDecls.map(r=>r.fin||'').filter(Boolean).sort().pop();
     if(lastFin){const[h,m,s]=(lastFin+'::').split(':').map(Number);const d=new Date();d.setHours(h,m,s||0,0);_lastProdDeclTime=d;}
   }
-  if(!allRows.length){bd.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();updateGauge(ST);return;}
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="13" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();updateGauge(ST);return;}
   window._rowMap={};
   bd.innerHTML=allRows.map(r=>{
     const key=r.row_num||r.debut;
@@ -7681,14 +7693,16 @@ async function loadMainDecl() {
     const isProd=r._rowType==='prod';
     const t=parseFloat(r.trs||0);
     const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.is_degrade?'<span class="row-tag tag-e" style="border-color:#ca8a04;color:#ca8a04">🟡 Dégradé</span>':(r.type&&r.type.toLowerCase().includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>'));
-    const details=isProd?esc(r.taille||''):esc(r.type||'');
+    const details=isProd?((r.taille||r.poids)?esc(r.taille||'')+((r.taille&&r.poids)?' / ':'')+esc(r.poids||''):''):esc(r.type||'');
     const qty=isProd?esc(String(r.qte_fab||'')):'';
     const dur=esc(r.duree||'');
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
     const cmt=esc(r.comment||'');
     const fibre=r.fibre||'';const fibreShort=esc(fibre.slice(0,9));
+    const produit=isProd?esc(r.type_prod||''):'';
     return `<tr class="${isProd?'row-prod':'row-evt'}">
-      <td>${tag}</td><td style="font-weight:700;color:${isProd?'#1e3a8a':'#dc2626'};text-decoration:underline;cursor:pointer" onclick="showMainRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||r.type||'—')}</td>
+      <td>${tag}</td><td style="font-weight:700;color:${isProd?'#1e3a8a':'#dc2626'};text-decoration:underline;cursor:pointer" onclick="showMainRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||'—')}</td>
+      <td style="font-size:calc(10px*var(--zf,1));color:#6b7280">${produit}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600;cursor:${fibre?'pointer':''}" title="${esc(fibre)}" onclick="${fibre?'showFibre(\''+esc(fibre)+'\')':''}">${fibreShort}${fibre.length>9?'…':''}</td>
       <td style="font-size:calc(10px*var(--zf,1))">${esc(r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
@@ -11355,8 +11369,8 @@ async function loadHist(){
     if(db!==da) return db-da;
     return (b.debut||'').localeCompare(a.debut||'');
   });
-  hd.innerHTML='<th>Type</th><th>OF</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Durée</th><th>Détails</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
-  if(!allRows.length){bd.innerHTML='<tr><td colspan="13" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
+  hd.innerHTML='<th>Type</th><th>OF</th><th>Produit</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Durée</th><th>Détails</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="14" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
   window._rowMap=window._rowMap||{};
   window._histEvtsAll=evtsFiltered; // pour showHistRowDetail
   bd.innerHTML=allRows.map(r=>{
@@ -11367,14 +11381,16 @@ async function loadHist(){
     const hftype=isProd?'prod':(r.is_degrade?'degrade':rt||'arret');
     const t=parseFloat(r.trs||0);
     const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.is_degrade?'<span class="row-tag tag-e" style="border-color:#ca8a04;color:#ca8a04">🟡 Dégradé</span>':(rt.includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':rt.includes('pause')?'<span class="row-tag tag-n" style="border-color:#f59e0b;color:#f59e0b">⏸ Pause</span>':(rt.includes('réunion')||rt.includes('reunion'))?'<span class="row-tag tag-n" style="border-color:#8b5cf6;color:#8b5cf6">👥 Réunion</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>'));
-    const details=isProd?esc(r.taille||''):esc(r.type||'');
+    const details=isProd?((r.taille||r.poids)?esc(r.taille||'')+((r.taille&&r.poids)?' / ':'')+esc(r.poids||''):''):esc(r.type||'');
     const qty=isProd?esc(String(r.qte_fab||'')):'';
     const dur=esc(r.duree||'');
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
     const cmt=esc(r.comment||'');
     const fbrH=r.fibre||'';const fbrShH=esc(fbrH.slice(0,9));
+    const produitH=isProd?esc(r.type_prod||''):'';
     return `<tr class="${isProd?'row-prod':'row-evt'}" data-hftype="${esc(hftype)}">
-      <td>${tag}</td><td style="font-weight:700;color:#1e3a8a;text-decoration:underline;cursor:pointer" onclick="showHistRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||r.type||'—')}</td>
+      <td>${tag}</td><td style="font-weight:700;color:#1e3a8a;text-decoration:underline;cursor:pointer" onclick="showHistRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||'—')}</td>
+      <td style="font-size:calc(10px*var(--zf,1));color:#6b7280">${produitH}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600;cursor:${fbrH?'pointer':''}" title="${esc(fbrH)}" onclick="${fbrH?'showFibre(\''+esc(fbrH)+'\')':''}">${fbrShH}${fbrH.length>9?'…':''}</td>
       <td style="font-size:calc(10px*var(--zf,1))">${esc(r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td style="text-align:center;font-size:calc(10px*var(--zf,1));color:#374151">${isProd?esc(r.nb_pers||''):'—'}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
@@ -12253,10 +12269,10 @@ async function loadSessionReport(date,pilot,poste,itemId){
     <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div style="display:flex;flex-direction:column;gap:8px">
         <div class="card" style="padding:10px">
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">PARETO des arrêts non prévus</div>
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">🛑 PARETO des arrêts non prévus</div>
           ${paretoHtml||'<div style="color:var(--gray);font-size:calc(12px*var(--zf,1))">Aucun arrêt</div>'}
-          ${paretoDegHtml?`<div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#92400e;margin-top:10px;margin-bottom:8px">⚠️ PARETO des modes dégradés</div>${paretoDegHtml}`:''}
         </div>
+        ${paretoDegHtml?`<div class="card" style="padding:10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#d97706;margin-bottom:8px">⚠️ PARETO des modes dégradés</div>${paretoDegHtml}</div>`:''}
         <div class="card" style="padding:10px">
           <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:#92400e;margin-bottom:8px">⏱ Arrêts prévus</div>
           ${(()=>{
