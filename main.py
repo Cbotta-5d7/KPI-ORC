@@ -3136,7 +3136,8 @@ def api_cdg_export():
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    fname = f"CDG_{date_from or 'all'}_{date_to or 'all'}.xlsx"
+    app_name = cfg.get("app_name","ORC") if cfg else "ORC"
+    fname = f"Export {app_name} _ CDG _ {date_from or 'tout'} _ {date_to or 'tout'}.xlsx"
     return send_file(output,
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      as_attachment=True,
@@ -13256,9 +13257,12 @@ def generate_dashboard_html():
             '        ];\n'
             '        csv+=cells.map(function(v){return\'"\'+v.replace(/"/g,\'""\')+\'"\';}).join(",")+"\\r\\n";\n'
             '      });\n'
-            '      var blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8;"});\n'
+            '      var blob=new Blob(["\\uFEFFsep=,\\r\\n"+csv],{type:"text/csv;charset=utf-8;"});\n'
             '      var url=URL.createObjectURL(blob);\n'
-            '      var a=document.createElement("a");a.href=url;a.download="CDG_export.csv";document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);\n'
+            '      var fromV=(document.getElementById("cdg-from")||{}).value||"";\n'
+            '      var toV=(document.getElementById("cdg-to")||{}).value||"";\n'
+            '      var fname="Export "+(_an||"ORC")+" _ CDG _ "+fromV+" _ "+toV+".csv";\n'
+            '      var a=document.createElement("a");a.href=url;a.download=fname;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);\n'
             '    };\n'
             '    document.querySelectorAll("[onclick]").forEach(function(el){\n'
             '      if(el.getAttribute("onclick")==="doLogout()")el.style.display="none";\n'
