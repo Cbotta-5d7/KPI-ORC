@@ -3278,6 +3278,15 @@ def api_edit_row():
             for _col_s, _val in updates.items():
                 try: _rl_ec[int(_col_s)-1] = _val
                 except: pass
+            # Recalculer la durée dans le cache si heure début ou fin modifiée
+            if "17" in updates or "18" in updates:
+                try:
+                    _nd = _hms_to_sec(str(_rl_ec[16] or "00:00:00"))
+                    _nf = _norm_fin(_nd, _hms_to_sec(str(_rl_ec[17] or "00:00:00")))
+                    _br = max(0, _nf - _nd)
+                    if _br > 0:
+                        _rl_ec[18] = fmt(_br)
+                except: pass
             _decl_cache[_i_ec] = (_rn_ec, tuple(_rl_ec))
             _row_for_recalc_edit = tuple(_rl_ec)
             break
