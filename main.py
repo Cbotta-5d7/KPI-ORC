@@ -451,32 +451,47 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
     path = cfg.get("db_path", "")
     if not path or not os.path.exists(path):
         return
+    # Collecter les empreintes (pilot, poste, date, heure_début) MAINTENANT (avant le thread)
+    # pour ne pas dépendre de numéros de ligne prédits qui peuvent être faux si load_history()
+    # recharge le cache entre-temps.
+    _fp_list = []
+    for _, rn in rows_to_update:
+        for crn, cr in _decl_cache:
+            if crn == rn:
+                _fp_list.append({
+                    "pilot": str(cr[4] or "").strip(),
+                    "poste": str(cr[3] or "").strip(),
+                    "debut": str(cr[16] or "")[:8],
+                    "date":  str(cr[39] if len(cr) > 39 else "").strip() or _row_date(cr[2]),
+                })
+                break
+    if not _fp_list:
+        return
     def _bg():
         try:
-            rn_set = {rn for _, rn in rows_to_update}
+            n_updated = 0
             with _excel_lock:
                 wb = _get_wb(path)
-                if wb is None:
-                    return
+                if wb is None: return
                 ws = _ensure_decl_sheet(wb)
-                for rn in rn_set:
-                    if 1 <= rn <= ws.max_row:
-                        ws.cell(rn, 2).value = of_num
-                _safe_excel_save(wb, path)
-            for idx, rn in rows_to_update:
-                if idx < len(_decl_cache) and _decl_cache[idx][0] == rn:
-                    r_list = list(_decl_cache[idx][1])
-                    r_list[1] = of_num
-                    _decl_cache[idx] = (rn, tuple(r_list))
-                else:
-                    # fallback: scan par rn
-                    for j, (crn, cr) in enumerate(_decl_cache):
-                        if crn == rn:
-                            r_list = list(cr)
-                            r_list[1] = of_num
-                            _decl_cache[j] = (rn, tuple(r_list))
+                # Lire toutes les lignes une fois pour éviter des appels ws.cell() répétés
+                for excel_rn in range(2, ws.max_row + 1):
+                    if str(ws.cell(excel_rn, 2).value or "").strip():
+                        continue  # déjà un OF
+                    _ep = str(ws.cell(excel_rn, 5).value or "").strip()
+                    _po = str(ws.cell(excel_rn, 4).value or "").strip()
+                    _db = str(ws.cell(excel_rn, 17).value or "")[:8]
+                    _dt = str(ws.cell(excel_rn, 40).value or "").strip() or _row_date(ws.cell(excel_rn, 3).value)
+                    for fp in _fp_list:
+                        if fp["pilot"] == _ep and fp["poste"] == _po and fp["debut"] == _db and fp["date"] == _dt:
+                            ws.cell(excel_rn, 2).value = of_num
+                            n_updated += 1
                             break
-            print(f"[BACKFILL-OF] {len(rn_set)} ligne(s) mises à jour → OF={of_num}")
+                if n_updated:
+                    _safe_excel_save(wb, path)
+            # Toujours recharger le cache après — évite la race condition avec load_history()
+            load_history()
+            print(f"[BACKFILL-OF] {n_updated} ligne(s) mises à jour → OF={of_num}")
         except Exception as _e:
             print(f"[BACKFILL-OF] Erreur : {_e}")
     import threading as _bt
