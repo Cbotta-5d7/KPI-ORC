@@ -436,8 +436,9 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                 if wb is None: return
                 ws = _ensure_decl_sheet(wb)
                 for excel_rn in range(2, ws.max_row + 1):
-                    # Ignorer les lignes qui ont déjà un OF
-                    if str(ws.cell(excel_rn, 2).value or "").strip():
+                    # Ignorer les lignes qui ont un OF différent
+                    _row_of = str(ws.cell(excel_rn, 2).value or "").strip()
+                    if _row_of and _row_of != of_num:
                         continue
                     # Filtre type : ignorer Production/vide
                     _rtype = str(ws.cell(excel_rn, 1).value or "").strip().lower()
@@ -459,8 +460,9 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                     _fn_norm = _norm_fin(_db_norm, _fn_s)
                     if _db_norm > of_e_norm or _fn_norm < of_s:
                         continue
-                    # Mettre à jour
-                    ws.cell(excel_rn, 2).value = of_num
+                    # Mettre à jour : OF si vide, et toujours les champs manquants
+                    if not _row_of:
+                        ws.cell(excel_rn, 2).value = of_num
                     if _bf_nb_pers and not str(ws.cell(excel_rn, 7).value or "").strip():
                         ws.cell(excel_rn, 7).value = _bf_nb_pers
                     if _bf_type_prod and not str(ws.cell(excel_rn, 10).value or "").strip():
@@ -9914,6 +9916,8 @@ async function _doActualStartProd(){
   if(!r) return;
   const d=await r.json();
   if(!d.ok){toast(d.error||'Erreur','err');return;}
+  // Marquer immédiatement pour éviter que _checkFormAutoConfirm re-déclenche avant pollState
+  if(window.ST) window.ST.prod_active=true;
   setToday();
   restoreFormFromStorage();
   await pollState();
@@ -10385,6 +10389,7 @@ async function doPause(){
   // Désactiver tous les boutons pause pendant le traitement (empêche le double-clic)
   const _pbtns=document.querySelectorAll('#btn-pause,#btn-pause-acc,[onclick*="doPause"]');
   _pbtns.forEach(b=>{b.disabled=true;});
+  await _flushFormNow();
   try{await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});}
   catch(e){toast('Erreur connexion serveur','err');_pbtns.forEach(b=>{b.disabled=false;});return;}
   await pollState();
@@ -10393,6 +10398,7 @@ async function doPause(){
 }
 
 async function doReunion(){
+  await _flushFormNow();
   try{await fetch('/api/toggle_reunion',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});}
   catch(e){toast('Erreur connexion serveur','err');return;}
   await pollState();
@@ -10418,12 +10424,14 @@ function doNettoyage(){
 
 async function doStartNettoyage(ntype){
   closeM('m-nett-type');
+  await _flushFormNow();
   try{await fetch('/api/start_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ntype})});}
   catch(e){toast('Erreur connexion serveur','err');return;}
   await pollState();
 }
 
 async function doStartStop(key,cat){
+  await _flushFormNow();
   try{
     const r=await fetch('/api/start_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key,cat})});
     if(!r||!r.ok) toast('Erreur déclaration arrêt','err');
@@ -10454,6 +10462,7 @@ async function confirmEndStop() {
   const k=document.getElementById('cmt-stop-key').value;
   const cmt=document.getElementById('cmt-stop-text').value.trim();
   closeM('m-stopcmt');
+  await _flushFormNow();
   try{
     await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,comment:cmt})});
   }catch(e){
@@ -10595,6 +10604,12 @@ function scheduleAutoSave(){
     fetch('/api/save_form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});
     saveFormToStorage();
   },1500);
+}
+async function _flushFormNow(){
+  clearTimeout(_autoSaveTimer);
+  const f=collectForm();
+  saveFormToStorage();
+  try{await fetch('/api/save_form',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});}catch(e){}
 }
 
 // ── END PROD ──
@@ -10805,6 +10820,7 @@ async function _confirmDegrade(){
   const r=document.querySelector('input[name="deg-motif"]:checked');
   if(!r) return;
   closeM('m-degrade');
+  await _flushFormNow();
   window._degradeInFlight=true;
   window._degradeActive=true;
   try{
@@ -10815,6 +10831,7 @@ async function _confirmDegrade(){
   await pollState().catch(()=>{});
 }
 async function stopDegrade(){
+  await _flushFormNow();
   window._degradeInFlight=true;
   window._degradeActive=false;
   try{
@@ -14128,7 +14145,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       </table>
     </div>
     <!-- Pareto + Arrêts côte à côte -->
-    <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:0.7fr 1.3fr;gap:8px">
       <div style="display:flex;flex-direction:column;gap:8px">
         <div class="card" style="padding:10px">
           <div style="font-size:calc(11px*var(--zf,1));font-weight:800;text-transform:uppercase;color:var(--gray);margin-bottom:8px">🛑 PARETO des arrêts non prévus</div>
