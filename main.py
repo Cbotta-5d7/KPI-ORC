@@ -4466,9 +4466,13 @@ def api_add_past_decl():
     # Si date explicite fournie, la date de poste = date de la déclaration (pas le poste en cours)
     shift_date_str = debut_dt.strftime("%d/%m/%Y") if _explicit_date else shift_dt.strftime("%d/%m/%Y")
     date_str = debut_dt.strftime("%d/%m/%Y")
-    if decl_type == "arret":
+    if decl_type in ("arret", "degrade"):
         stop_type = str(data.get("type","")).strip()
-        if not stop_type: return jsonify({"ok":False,"error":"Type d'arrêt requis"}),400
+        if not stop_type:
+            label = "Type de rattrapage requis" if decl_type == "degrade" else "Type d'arrêt requis"
+            return jsonify({"ok":False,"error":label}),400
+        if decl_type == "degrade" and stop_type not in cfg.get("degrade_motifs",[]):
+            return jsonify({"ok":False,"error":f"Motif dégradé inconnu : {stop_type}"}),400
         row = [
             stop_type, _S.get("form",{}).get("of_num",""), date_str, poste, pilot,
             "","","","","","","","","","","",
@@ -5754,6 +5758,7 @@ select{cursor:default}
       <div style="display:flex;flex-direction:column;gap:10px">
         <button onclick="pdSubmitChoice('prod')" style="padding:14px 20px;background:linear-gradient(135deg,#f5f3ff,#ede9fe);border:2px solid #7c3aed;border-radius:10px;font-size:calc(13px*var(--zf,1));font-weight:800;color:#7c3aed;cursor:pointer">▶ Production (OF)</button>
         <button onclick="pdSubmitChoice('arret')" style="padding:14px 20px;background:linear-gradient(135deg,#fef2f2,#fee2e2);border:2px solid #dc2626;border-radius:10px;font-size:calc(13px*var(--zf,1));font-weight:800;color:#dc2626;cursor:pointer">🛑 Arrêt</button>
+        <button onclick="pdSubmitChoice('degrade')" style="padding:14px 20px;background:linear-gradient(135deg,#fffbeb,#fef3c7);border:2px solid #d97706;border-radius:10px;font-size:calc(13px*var(--zf,1));font-weight:800;color:#92400e;cursor:pointer">⚡ Mode dégradé</button>
       </div>
       <button class="btn btn-ghost" onclick="closeM('m-pd-choose')" style="margin-top:14px;width:100%">Annuler</button>
     </div>
@@ -5874,6 +5879,13 @@ select{cursor:default}
           <select id="pd-stop-type" style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
         <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:3px">Commentaire</label>
           <input id="pd-comment-arret" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
+      </div>
+      <!-- Formulaire mode dégradé -->
+      <div id="pd-form-degrade" style="display:none;flex-direction:column;gap:8px">
+        <div><label style="font-size:calc(10px*var(--zf,1));color:#92400e;font-weight:700;display:block;margin-bottom:3px">Type de rattrapage *</label>
+          <select id="pd-degrade-type" style="width:100%;padding:6px 8px;border:1.5px solid #d97706;border-radius:6px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
+        <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:3px">Commentaire</label>
+          <input id="pd-comment-degrade" placeholder="Optionnel" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"></div>
       </div>
       <!-- Actions -->
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
@@ -13017,14 +13029,24 @@ async function openPastDecl(type){
       stopSel.appendChild(grp);
     });
   }
+  // Peupler le select mode dégradé (motifs depuis ST.degrade_motifs)
+  const degSel=document.getElementById('pd-degrade-type');
+  if(degSel){
+    degSel.innerHTML='<option value="">— Choisir —</option>';
+    const motifs=(ST&&ST.degrade_motifs)||[];
+    motifs.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;degSel.appendChild(o);});
+  }
   pdSwitchType(_pdType);
   openM('m-past-decl');
 }
 function pdSwitchType(t){
   _pdType=t;
-  const fProd=document.getElementById('pd-form-prod');const fArret=document.getElementById('pd-form-arret');
+  const fProd=document.getElementById('pd-form-prod');
+  const fArret=document.getElementById('pd-form-arret');
+  const fDeg=document.getElementById('pd-form-degrade');
   if(fProd){fProd.style.display=t==='prod'?'flex':'none';}
   if(fArret){fArret.style.display=t==='arret'?'flex':'none';}
+  if(fDeg){fDeg.style.display=t==='degrade'?'flex':'none';}
 }
 async function submitPastDecl(){
   const debut=(document.getElementById('pd-debut')||{}).value||'';
@@ -13067,10 +13089,14 @@ async function submitPastDecl(){
     const _t3=(document.getElementById('pd-traca3')||{}).value||'';
     const _traca=[_t1,_t2,_t3].filter(Boolean).join(';');
     body=Object.assign(body,{of_num,code_prod:code,type_prod,taille,nb_pers,qte_fab,qte_emb:(document.getElementById('pd-qteemb')||{}).value||'0',poids,fibre,traca:_traca,copilote:(document.getElementById('pd-copilote')||{}).value||'',kit:(document.getElementById('pd-kit')||{}).value||'',ref_taie:(document.getElementById('pd-ref-taie')||{}).value||'',nb_taie2_choix:(document.getElementById('pd-nb-taie2')||{}).value||'0',nb_def_cout:(document.getElementById('pd-nb-def-cout')||{}).value||'0',mq_taie:(document.getElementById('pd-mq-taie')||{}).value||'0',mq_housse_encart:(document.getElementById('pd-mq-housse')||{}).value||'0',nb_pp_cousue:(document.getElementById('pd-nb-pp')||{}).value||'0',comment:(document.getElementById('pd-comment-prod')||{}).value||''});
-  } else {
+  } else if(_pdType==='arret') {
     const stop_type=(document.getElementById('pd-stop-type')||{}).value||'';
     if(!stop_type){toast('Choisir un type d\'arrêt','err');return;}
     body=Object.assign(body,{type:stop_type,comment:(document.getElementById('pd-comment-arret')||{}).value||''});
+  } else if(_pdType==='degrade') {
+    const deg_type=(document.getElementById('pd-degrade-type')||{}).value||'';
+    if(!deg_type){toast('Choisir un type de rattrapage','err');return;}
+    body=Object.assign(body,{type:deg_type,comment:(document.getElementById('pd-comment-degrade')||{}).value||''});
   }
   showExcelLoading();
   const r=await fetch('/api/add_past_decl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).catch(()=>null);
