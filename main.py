@@ -3894,10 +3894,6 @@ def api_stop_degrade():
     dur_s = max(0, (end_dt_deg - start_dt_deg).total_seconds())
     _S["degrade_periods"].append({"start": start_dt_deg, "end": end_dt_deg, "type": motif})
     _S["degrade_active"] = False; _S["degrade_type"] = ""; _S["degrade_start_dt"] = None
-    # Si durée < 30s (ex: fin de poste juste après fin d'OF), on ne génère pas de ligne parasite
-    if dur_s < 30:
-        save_session()
-        return jsonify({"ok":True})
     pilot = _S.get("pilot",""); poste = _S.get("poste","")
     shift_dt = _S.get("shift_start") or start_dt_deg
     # Col B vide : api_stop_degrade couvre la période hors OF (après le dernier OF)
