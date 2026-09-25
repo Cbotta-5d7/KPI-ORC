@@ -14915,6 +14915,7 @@ def generate_dashboard_html():
         )
         import gzip as _gzip, base64 as _b64
         _xlsx_js = _gzip.decompress(_b64.b64decode(_XLSX_JS_GZ_B64)).decode('utf-8')
+        _xlsx_js = _xlsx_js.replace('</script>', '<\\/script>')  # prevent premature tag closure
         xlsx_script = f'<script>{_xlsx_js}</script>\n'
         dashboard_html = HTML_TEMPLATE.replace('</head>', xlsx_script + '</head>').replace('</body>', inject + '</body>')
         base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
