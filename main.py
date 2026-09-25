@@ -3901,7 +3901,7 @@ def api_stop_degrade():
         motif, "",
         shift_dt.strftime("%d/%m/%Y"), poste, pilot,
         (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-        "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","","",
+        "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
         start_dt_deg.strftime("%H:%M:%S"), end_dt_deg.strftime("%H:%M:%S"), fmt(dur_s),
         "","","","","","","","","","","","","","","","","","","","",
         shift_dt.strftime("%d/%m/%Y"),
@@ -3969,7 +3969,7 @@ def api_end_prod():
                 _dg_motif, _dg_of_num,
                 _sh_dt.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-                "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","","",
+                "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
                 _dg_of_start.strftime("%H:%M:%S"), _dg_of_end.strftime("%H:%M:%S"), fmt(_dg_dur_of),
                 "","","","","","","","","","","","","","","","","","","","",
                 _sh_dt.strftime("%d/%m/%Y"),
@@ -4244,7 +4244,7 @@ def api_end_stop():
             _lbl, (_S.get("form") or {}).get("of_num",""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",comment,"",
             _sh.strftime("%d/%m/%Y"),
@@ -4286,7 +4286,7 @@ def _toggle_pause_internal():
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),
             str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _ps.strftime("%H:%M:%S"), _pe.strftime("%H:%M:%S"), fmt(_pause_dur),
             "","","","","","","","","","","","","","","","","","","","",
             _sh.strftime("%d/%m/%Y"),
@@ -4328,7 +4328,7 @@ def api_toggle_reunion():
                 "Réunion", (_S.get("form") or {}).get("of_num",""),
                 _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-                "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+                "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
                 _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
                 "","","","","","","","","","","","","","","","","","",
                 _sh.strftime("%d/%m/%Y"),
@@ -4379,7 +4379,7 @@ def api_end_nettoyage():
             _lbl, (_S.get("form") or {}).get("of_num", ""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",data.get("comment",""),"",
             _sh.strftime("%d/%m/%Y"),
@@ -9755,7 +9755,10 @@ function _showNextGap(){
   if(cntEl) cntEl.textContent=total>1?`Trou ${idx} / ${total}`:'';
   const debut=g.debut||'';const fin=g.fin||'';
   const now=new Date();const nowStr=String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0');
-  document.getElementById('ps-text').innerHTML=`⚠ Que s'est-il passé entre <b>${debut.replace(':','h')}</b> et maintenant <b>(${nowStr})</b> ?<br><span style="font-size:calc(12px*var(--zf,1));font-weight:600;color:#9f1239">Durée non déclarée : ${dur}</span>`;
+  const titleEl=document.getElementById('ps-title');
+  if(titleEl) titleEl.textContent=_isFirstOfGaps?'⚠ Période non déclarée':'⚠ Temps inter-OF non déclaré';
+  const finLabel=fin?`<b>${fin.replace(':','h')}</b>`:`maintenant <b>(${nowStr})</b>`;
+  document.getElementById('ps-text').innerHTML=`⚠ Que s'est-il passé entre <b>${debut.replace(':','h')}</b> et ${finLabel} ?<br><span style="font-size:calc(12px*var(--zf,1));font-weight:600;color:#9f1239">Durée non déclarée : ${dur}</span>`;
   document.getElementById('ps-gap-s').value=g.duree_s||0;
   // ISO + time input pour Option 2
   const _bdhm=(debut||'').split(':');
