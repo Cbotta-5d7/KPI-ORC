@@ -3889,7 +3889,7 @@ def api_stop_degrade():
     if not _S.get("degrade_active"):
         return jsonify({"ok":False,"error":"Mode dégradé non actif"}),400
     end_dt_deg = datetime.datetime.now()
-    start_dt_deg = _S["degrade_start_dt"]
+    start_dt_deg = _S["degrade_start_dt"] or end_dt_deg
     motif = _S["degrade_type"]
     dur_s = max(0, (end_dt_deg - start_dt_deg).total_seconds())
     _S["degrade_periods"].append({"start": start_dt_deg, "end": end_dt_deg, "type": motif})
