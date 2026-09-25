@@ -404,9 +404,9 @@ def _norm_fin(deb_s, fin_s):
     """Normalise fin_s pour les événements chevauchant minuit (fin < deb → +86400)."""
     return fin_s + 86400 if fin_s < deb_s else fin_s
 
-def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_date_str):
-    """À la clôture d'un OF, rempli la colonne B (OF) des lignes d'arrêt sans OF
-    dont la plage chevauche [of_start_dt, of_end_dt] pour ce pilot/poste/shift."""
+def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_date_str, form_data=None):
+    """À la clôture d'un OF, rempli la colonne B (OF) + fibre/type_prod/nb_pers des lignes
+    d'arrêt sans OF dont la plage chevauche [of_start_dt, of_end_dt] pour ce pilot/poste/shift."""
     if not of_num:
         return
     of_s = _hms_to_sec(of_start_dt.strftime("%H:%M:%S"))
@@ -465,6 +465,10 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                 break
     if not _fp_list:
         return
+    _fd = form_data or {}
+    _bf_nb_pers   = str(_fd.get("nb_pers","") or "")
+    _bf_type_prod = str(_fd.get("type_prod","") or "")
+    _bf_fibre     = str(_fd.get("fibre","") or "")
     def _bg():
         try:
             n_updated = 0
@@ -483,6 +487,12 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                     for fp in _fp_list:
                         if fp["pilot"] == _ep and fp["poste"] == _po and fp["debut"] == _db and fp["date"] == _dt:
                             ws.cell(excel_rn, 2).value = of_num
+                            if _bf_nb_pers and not str(ws.cell(excel_rn, 7).value or "").strip():
+                                ws.cell(excel_rn, 7).value = _bf_nb_pers
+                            if _bf_type_prod and not str(ws.cell(excel_rn, 10).value or "").strip():
+                                ws.cell(excel_rn, 10).value = _bf_type_prod
+                            if _bf_fibre and not str(ws.cell(excel_rn, 12).value or "").strip():
+                                ws.cell(excel_rn, 12).value = _bf_fibre
                             n_updated += 1
                             break
                 if n_updated:
@@ -4165,7 +4175,7 @@ def api_end_prod():
     if _of_start_snap:
         _backfill_of_for_events(
             v.get("of_num", ""), _of_start_snap, end_dt,
-            _backfill_pilot, _backfill_poste, _shift_date_str
+            _backfill_pilot, _backfill_poste, _shift_date_str, form_data=v
         )
     return jsonify({"ok":True,"recap":recap})
 
@@ -4308,7 +4318,7 @@ def _toggle_pause_internal():
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             _S.get("form",{}).get("copilote",""),
             str(_S.get("form",{}).get("nb_pers","") or ""),
-            "","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+            "","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
             _ps.strftime("%H:%M:%S"), _pe.strftime("%H:%M:%S"), fmt(_pause_dur),
             "","","","","","","","","","","","","","","","","","","","",
             _sh.strftime("%d/%m/%Y"),
@@ -7180,8 +7190,6 @@ select{cursor:default}
       </div>
       <!-- RIGHT: recap arrêts + gauges + pie charts -->
       <div class="recap-col" style="width:310px">
-        <div class="recap-hdr" id="recap-hdr">Arrêts de l'OF en cours</div>
-        <div class="recap-body" id="recap-list"></div>
         <!-- Budget arrêts prévus -->
         <div style="padding:5px 8px;border-top:1px solid var(--border);flex-shrink:0;background:#fffbeb">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
