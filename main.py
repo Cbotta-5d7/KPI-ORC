@@ -3932,7 +3932,7 @@ def api_stop_degrade():
     _row = [
         motif, "",
         shift_dt.strftime("%d/%m/%Y"), poste, pilot,
-        _S.get("form",{}).get("copilote",""),str(_S.get("form",{}).get("nb_pers","") or ""),
+        (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
         "","","","","","","","","",
         start_dt_deg.strftime("%H:%M:%S"), end_dt_deg.strftime("%H:%M:%S"), fmt(dur_s),
         "","","","","","","","","","","","","","","","","","","","",
@@ -4000,7 +4000,7 @@ def api_end_prod():
             _degrade_end_row = [
                 _dg_motif, _dg_of_num,
                 _sh_dt.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
-                _S.get("form",{}).get("copilote",""),str(_S.get("form",{}).get("nb_pers","") or ""),
+                (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
                 "","","","","","","","","",
                 _dg_of_start.strftime("%H:%M:%S"), _dg_of_end.strftime("%H:%M:%S"), fmt(_dg_dur_of),
                 "","","","","","","","","","","","","","","","","","","","",
@@ -4212,7 +4212,7 @@ def api_preview_end_prod():
             _d0 = max(_S["degrade_start_dt"], _S["of_start"])
             _prev_deg_s += max(0.0, (now - _d0).total_seconds())
         _adj_s_prev = max(1.0, _eff_s)
-        _pct_prv = get_pct_cadence(_S.get("form",{}).get("nb_pers",1))
+        _pct_prv = get_pct_cadence((_S.get("form") or {}).get("nb_pers",1))
         trs=round(equiv/(prod_ref*_pct_prv*_adj_s_prev/28800)*100,1)
     return jsonify({
         "ok":True,
@@ -4273,10 +4273,10 @@ def api_end_stop():
                     or key)
         _sh = _S.get("shift_start") or _start
         _row = [
-            _lbl, _S.get("form",{}).get("of_num",""),
+            _lbl, (_S.get("form") or {}).get("of_num",""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
-            _S.get("form",{}).get("copilote",""),str(_S.get("form",{}).get("nb_pers","") or ""),
-            "","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+            (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
+            "","","","","","","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",comment,"",
             _sh.strftime("%d/%m/%Y"),
@@ -4316,9 +4316,9 @@ def _toggle_pause_internal():
         _row_p = [
             "Pause", _S.get("form", {}).get("of_num", ""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
-            _S.get("form",{}).get("copilote",""),
-            str(_S.get("form",{}).get("nb_pers","") or ""),
-            "","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+            (_S.get("form") or {}).get("copilote",""),
+            str((_S.get("form") or {}).get("nb_pers","") or ""),
+            "","","","","","","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _ps.strftime("%H:%M:%S"), _pe.strftime("%H:%M:%S"), fmt(_pause_dur),
             "","","","","","","","","","","","","","","","","","","","",
             _sh.strftime("%d/%m/%Y"),
@@ -4357,10 +4357,10 @@ def api_toggle_reunion():
             _dur = max(0, (_end - _start).total_seconds())
             _sh = _S.get("shift_start") or _start
             _row = [
-                "Réunion", _S.get("form",{}).get("of_num",""),
+                "Réunion", (_S.get("form") or {}).get("of_num",""),
                 _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
-                _S.get("form",{}).get("copilote",""),str(_S.get("form",{}).get("nb_pers","") or ""),
-                "","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+                (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
+                "","","","","","","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
                 _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
                 "","","","","","","","","","","","","","","","","","",
                 _sh.strftime("%d/%m/%Y"),
@@ -4410,8 +4410,8 @@ def api_end_nettoyage():
         _row = [
             _lbl, _S.get("form", {}).get("of_num", ""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
-            _S.get("form",{}).get("copilote",""),str(_S.get("form",{}).get("nb_pers","") or ""),
-            "","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+            (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
+            "","","","","","","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",data.get("comment",""),"",
             _sh.strftime("%d/%m/%Y"),
@@ -6017,7 +6017,7 @@ def api_add_stop_decl():
         shift_dt2 = _S.get("shift_start") or now
         shift_date2 = shift_dt2.strftime("%d/%m/%Y")
         row = [
-            stop_type, _S.get("form",{}).get("of_num",""),
+            stop_type, (_S.get("form") or {}).get("of_num",""),
             start_dt.strftime("%d/%m/%Y"), poste, pilot,
             "","","","","","","","","","",
             "",                              # col P : vide pour les arrêts
@@ -6083,9 +6083,9 @@ def api_add_past_decl():
         if decl_type == "degrade" and stop_type not in cfg.get("degrade_motifs",[]):
             return jsonify({"ok":False,"error":f"Motif dégradé inconnu : {stop_type}"}),400
         row = [
-            stop_type, _S.get("form",{}).get("of_num",""), date_str, poste, pilot,
-            _S.get("form",{}).get("copilote",""),
-            str(_S.get("form",{}).get("nb_pers","") or ""),
+            stop_type, (_S.get("form") or {}).get("of_num",""), date_str, poste, pilot,
+            (_S.get("form") or {}).get("copilote",""),
+            str((_S.get("form") or {}).get("nb_pers","") or ""),
             "","","","","","","","","",
             debut_dt.strftime("%H:%M:%S"), fin_dt.strftime("%H:%M:%S"), fmt(dur_s),
             "","","","","","","","","","","","","","","","",
