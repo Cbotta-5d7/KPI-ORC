@@ -5421,16 +5421,8 @@ select{cursor:default}
           <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Répartition</div>
           <svg id="pie-poste-acc" viewBox="0 0 130 100" style="width:220px;height:170px;display:block;margin:0 auto"></svg>
         </div>
-        <!-- Jauge TRS — au centre -->
-        <div style="flex-shrink:0;text-align:center">
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">TRS Poste</div>
-          <svg viewBox="0 0 100 62" style="width:220px;height:136px;display:block;margin:0 auto">
-            <path d="M8,54 A42,42 0 0,1 92,54" fill="none" stroke="rgba(0,0,0,.12)" stroke-width="11" stroke-linecap="round"/>
-            <path id="gauge-poste-acc-arc" d="M8,54 A42,42 0 0,1 92,54" fill="none" stroke="#16a34a" stroke-width="11" stroke-linecap="round" stroke-dasharray="0,132"/>
-            <text x="50" y="50" text-anchor="middle" font-size="20" font-weight="800" fill="#15803d" id="gauge-poste-acc-pct">—</text>
-          </svg>
-          <div style="font-size:calc(13px*var(--zf,1));font-weight:700;color:#0369a1;margin-top:-4px" id="gauge-poste-acc-lbl">—</div>
-        </div>
+        <!-- IDs cachés compat JS (gauge TRS supprimée) -->
+        <div style="display:none"><svg><path id="gauge-poste-acc-arc"/><text id="gauge-poste-acc-pct"></text></svg><span id="gauge-poste-acc-lbl"></span></div>
         <!-- Stats — à droite -->
         <div style="flex:0 0 auto">
           <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;align-items:baseline">
@@ -5509,10 +5501,7 @@ select{cursor:default}
         <div class="pob-lbl">Durée OF</div>
         <div class="pob-val" style="font-size:calc(16px*var(--zf,1));color:#0891b2" id="rc-duree">—</div>
       </div>
-      <div class="pob-item trs">
-        <div class="pob-lbl">TRS estimé</div>
-        <div class="pob-val" id="pob-trs">—</div>
-      </div>
+      <div style="display:none" id="pob-trs"></div>
     </div>
     <!-- Status bar -->
     <div class="sbar">
@@ -5595,17 +5584,12 @@ select{cursor:default}
           </div>
           <div id="budget-bars-prod"></div>
         </div>
-        <!-- Gauge + Pie: OF uniquement -->
+        <!-- Pie OF uniquement (TRS OF supprimé de l'accueil) -->
         <div style="padding:6px;border-top:1px solid var(--border);display:flex;flex-direction:column;align-items:center;flex-shrink:0">
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;margin-bottom:2px;letter-spacing:.4px">TRS — OF en cours</div>
-          <svg viewBox="0 0 100 56" style="width:100%;max-width:98px">
-            <path d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#dde4ef" stroke-width="10" stroke-linecap="round"/>
-            <path id="gauge-arc" d="M8,50 A42,42 0 0,1 92,50" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round" stroke-dasharray="0,1000"/>
-            <text x="50" y="46" text-anchor="middle" font-size="17" font-weight="800" fill="#1a1f5e" id="gauge-pct">—</text>
-          </svg>
-          <div class="gauge-lbl" style="font-size:calc(11px*var(--zf,1))">TRS OF</div>
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-top:4px;margin-bottom:2px">Répartition temps OF</div>
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px;letter-spacing:.4px">Répartition temps OF</div>
           <div id="pie-of" style="width:100%;max-width:154px"></div>
+          <!-- IDs cachés compat JS -->
+          <div style="display:none"><svg><path id="gauge-arc"/><text id="gauge-pct"></text></svg></div>
         </div>
         <!-- Bottom action buttons -->
         <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0;background:var(--card)">
