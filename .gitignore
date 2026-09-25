@@ -6,4 +6,7 @@ build/
 *.spec
 kpi_orc_session.json
 .claude/
+node_modules/
+package.json
+package-lock.json
  
