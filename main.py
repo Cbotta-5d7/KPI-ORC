@@ -9092,6 +9092,7 @@ async function confirmEndProd(){
     await pollState();
     await pollEvts();
     hideExcelLoading();
+    refreshAccFpData();
     goTab('main');
     toast('Production enregistrée','ok');
   } else {hideExcelLoading();toast(d.error||'Erreur','err');}
@@ -9606,7 +9607,7 @@ function saveEditRow() {
   const _erDateFin=rowType==='prod'?v('er-date-fin'):v('er-evtdate-fin');
   const r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:rowNum,updates,date_debut:_erDateDeb,date_fin:_erDateFin})});
   const d=r?await r.json():{};
-  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();loadKPI();toast('Ligne modifiée','ok');}
+  if(d&&d.ok){closeM('m-editrow');await loadMainDecl();if(_curTab==='history')await loadHist();loadKPI();refreshAccFpData();toast('Ligne modifiée','ok');}
   else toast(d?.error||'Erreur modification','err');
   });
 }
@@ -9716,7 +9717,7 @@ async function saveEditStop(){
     r=await fetch('/api/edit_row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw,row_num:ev.row_num,updates,date_debut:dateDeb,date_fin:dateFin})});
   }
   const d=r?await r.json():{};
-  if(d&&d.ok){closeM('m-editstop');await pollState();await pollEvts();if(_curTab==='main')loadMainDecl();toast('Modifié','ok');}
+  if(d&&d.ok){closeM('m-editstop');await pollState();await pollEvts();if(_curTab==='main')loadMainDecl();refreshAccFpData();toast('Modifié','ok');}
   else toast(d?.error||'Mot de passe incorrect','err');
 }
 
@@ -13090,6 +13091,7 @@ async function submitPastDecl(){
     closeM('m-past-decl');
     toast('Déclaration ajoutée','ok');
     await pollState();
+    refreshAccFpData();
   } else {
     bigErr(d.error||'Erreur inconnue','Erreur déclaration');
   }
