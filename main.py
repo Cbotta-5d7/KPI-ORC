@@ -424,6 +424,7 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
         pass
     _fd = form_data or {}
     _bf_nb_pers   = str(_fd.get("nb_pers","") or "")
+    _bf_code_prod = str(_fd.get("code_prod","") or "")
     _bf_type_prod = str(_fd.get("type_prod","") or "")
     _bf_fibre     = str(_fd.get("fibre","") or "")
     def _bg():
@@ -465,6 +466,8 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                         ws.cell(excel_rn, 2).value = of_num
                     if _bf_nb_pers and not str(ws.cell(excel_rn, 7).value or "").strip():
                         ws.cell(excel_rn, 7).value = _bf_nb_pers
+                    if _bf_code_prod and not str(ws.cell(excel_rn, 9).value or "").strip():
+                        ws.cell(excel_rn, 9).value = _bf_code_prod
                     if _bf_type_prod and not str(ws.cell(excel_rn, 10).value or "").strip():
                         ws.cell(excel_rn, 10).value = _bf_type_prod
                     if _bf_fibre and not str(ws.cell(excel_rn, 12).value or "").strip():
@@ -3903,7 +3906,7 @@ def api_stop_degrade():
         motif, "",
         shift_dt.strftime("%d/%m/%Y"), poste, pilot,
         (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-        "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
+        "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
         start_dt_deg.strftime("%H:%M:%S"), end_dt_deg.strftime("%H:%M:%S"), fmt(dur_s),
         "","","","","","","","","","","","","","","","","","","","",
         shift_dt.strftime("%d/%m/%Y"),
@@ -3971,7 +3974,7 @@ def api_end_prod():
                 _dg_motif, _dg_of_num,
                 _sh_dt.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-                "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
+                "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
                 _dg_of_start.strftime("%H:%M:%S"), _dg_of_end.strftime("%H:%M:%S"), fmt(_dg_dur_of),
                 "","","","","","","","","","","","","","","","","","","","",
                 _sh_dt.strftime("%d/%m/%Y"),
@@ -4246,7 +4249,7 @@ def api_end_stop():
             _lbl, (_S.get("form") or {}).get("of_num",""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",comment,"",
             _sh.strftime("%d/%m/%Y"),
@@ -4288,7 +4291,7 @@ def _toggle_pause_internal():
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),
             str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _ps.strftime("%H:%M:%S"), _pe.strftime("%H:%M:%S"), fmt(_pause_dur),
             "","","","","","","","","","","","","","","","","","","","",
             _sh.strftime("%d/%m/%Y"),
@@ -4330,7 +4333,7 @@ def api_toggle_reunion():
                 "Réunion", (_S.get("form") or {}).get("of_num",""),
                 _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-                "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+                "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
                 _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
                 "","","","","","","","","","","","","","","","","","",
                 _sh.strftime("%d/%m/%Y"),
@@ -4381,7 +4384,7 @@ def api_end_nettoyage():
             _lbl, (_S.get("form") or {}).get("of_num", ""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "","",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",data.get("comment",""),"",
             _sh.strftime("%d/%m/%Y"),
