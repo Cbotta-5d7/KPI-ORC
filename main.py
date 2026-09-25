@@ -405,14 +405,16 @@ def _norm_fin(deb_s, fin_s):
     return fin_s + 86400 if fin_s < deb_s else fin_s
 
 def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_date_str, form_data=None):
-    """À la clôture d'un OF, rempli la colonne B (OF) + fibre/type_prod/nb_pers des lignes
-    d'arrêt sans OF dont la plage chevauche [of_start_dt, of_end_dt] pour ce pilot/poste/shift."""
+    """À la clôture d'un OF, rempli la colonne B (OF) + nb_pers/type_prod/fibre des lignes
+    d'arrêt sans OF dont la plage horaire chevauche [of_start_dt, of_end_dt]."""
     if not of_num:
+        return
+    path = cfg.get("db_path", "")
+    if not path or not os.path.exists(path):
         return
     of_s = _hms_to_sec(of_start_dt.strftime("%H:%M:%S"))
     of_e_raw = _hms_to_sec(of_end_dt.strftime("%H:%M:%S"))
     of_e_norm = _norm_fin(of_s, of_e_raw)
-    # Dates à couvrir — le poste de nuit peut déborder sur le lendemain
     shift_dates = {shift_date_str}
     try:
         _nxt = (datetime.datetime.strptime(shift_date_str, "%d/%m/%Y") + datetime.timedelta(days=1)).strftime("%d/%m/%Y")
@@ -420,51 +422,6 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
             shift_dates.add(_nxt)
     except Exception:
         pass
-    rows_to_update = []
-    for i, (rn, r) in enumerate(_decl_cache):
-        if str(r[4] or "").strip() != pilot:
-            continue
-        if str(r[3] or "").strip() != poste:
-            continue
-        # Ne remplir que les lignes dont le champ OF est vide
-        if str(r[1] or "").strip():
-            continue
-        row_type = str(r[0] or "").strip().lower()
-        if row_type in ("production", "prod", ""):
-            continue
-        row_date = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
-        if row_date not in shift_dates:
-            continue
-        debut_s = _hms_to_sec(str(r[16] or "00:00:00"))
-        fin_s_raw = _hms_to_sec(str(r[17] or "00:00:00"))
-        # Normalise pour les arrêts après minuit (poste de nuit)
-        debut_norm = debut_s if debut_s >= of_s else debut_s + 86400
-        fin_norm = _norm_fin(debut_norm, fin_s_raw)
-        # Chevauchement avec la plage OF ? (sinon on passe)
-        if debut_norm > of_e_norm or fin_norm < of_s:
-            continue
-        rows_to_update.append((i, rn))
-    if not rows_to_update:
-        return
-    path = cfg.get("db_path", "")
-    if not path or not os.path.exists(path):
-        return
-    # Collecter les empreintes (pilot, poste, date, heure_début) MAINTENANT (avant le thread)
-    # pour ne pas dépendre de numéros de ligne prédits qui peuvent être faux si load_history()
-    # recharge le cache entre-temps.
-    _fp_list = []
-    for _, rn in rows_to_update:
-        for crn, cr in _decl_cache:
-            if crn == rn:
-                _fp_list.append({
-                    "pilot": str(cr[4] or "").strip(),
-                    "poste": str(cr[3] or "").strip(),
-                    "debut": str(cr[16] or "")[:8],
-                    "date":  str(cr[39] if len(cr) > 39 else "").strip() or _row_date(cr[2]),
-                })
-                break
-    if not _fp_list:
-        return
     _fd = form_data or {}
     _bf_nb_pers   = str(_fd.get("nb_pers","") or "")
     _bf_type_prod = str(_fd.get("type_prod","") or "")
@@ -472,32 +429,47 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
     def _bg():
         try:
             n_updated = 0
+            # Attendre un court instant pour laisser write_excel_bg écrire les lignes de l'OF
+            import time as _t; _t.sleep(1)
             with _excel_lock:
                 wb = _get_wb(path)
                 if wb is None: return
                 ws = _ensure_decl_sheet(wb)
-                # Lire toutes les lignes une fois pour éviter des appels ws.cell() répétés
                 for excel_rn in range(2, ws.max_row + 1):
+                    # Ignorer les lignes qui ont déjà un OF
                     if str(ws.cell(excel_rn, 2).value or "").strip():
-                        continue  # déjà un OF
-                    _ep = str(ws.cell(excel_rn, 5).value or "").strip()
-                    _po = str(ws.cell(excel_rn, 4).value or "").strip()
-                    _db = str(ws.cell(excel_rn, 17).value or "")[:8]
-                    _dt = str(ws.cell(excel_rn, 40).value or "").strip() or _row_date(ws.cell(excel_rn, 3).value)
-                    for fp in _fp_list:
-                        if fp["pilot"] == _ep and fp["poste"] == _po and fp["debut"] == _db and fp["date"] == _dt:
-                            ws.cell(excel_rn, 2).value = of_num
-                            if _bf_nb_pers and not str(ws.cell(excel_rn, 7).value or "").strip():
-                                ws.cell(excel_rn, 7).value = _bf_nb_pers
-                            if _bf_type_prod and not str(ws.cell(excel_rn, 10).value or "").strip():
-                                ws.cell(excel_rn, 10).value = _bf_type_prod
-                            if _bf_fibre and not str(ws.cell(excel_rn, 12).value or "").strip():
-                                ws.cell(excel_rn, 12).value = _bf_fibre
-                            n_updated += 1
-                            break
+                        continue
+                    # Filtre type : ignorer Production/vide
+                    _rtype = str(ws.cell(excel_rn, 1).value or "").strip().lower()
+                    if _rtype in ("production", "prod", ""):
+                        continue
+                    # Filtre pilote et poste
+                    if str(ws.cell(excel_rn, 5).value or "").strip() != pilot:
+                        continue
+                    if str(ws.cell(excel_rn, 4).value or "").strip() != poste:
+                        continue
+                    # Filtre date (col 40 = Date_poste, sinon col 3 = Date)
+                    _row_dt = str(ws.cell(excel_rn, 40).value or "").strip() or _row_date(ws.cell(excel_rn, 3).value)
+                    if _row_dt not in shift_dates:
+                        continue
+                    # Filtre chevauchement horaire
+                    _db_s = _hms_to_sec(str(ws.cell(excel_rn, 17).value or "00:00:00"))
+                    _fn_s = _hms_to_sec(str(ws.cell(excel_rn, 18).value or "00:00:00"))
+                    _db_norm = _db_s if _db_s >= of_s else _db_s + 86400
+                    _fn_norm = _norm_fin(_db_norm, _fn_s)
+                    if _db_norm > of_e_norm or _fn_norm < of_s:
+                        continue
+                    # Mettre à jour
+                    ws.cell(excel_rn, 2).value = of_num
+                    if _bf_nb_pers and not str(ws.cell(excel_rn, 7).value or "").strip():
+                        ws.cell(excel_rn, 7).value = _bf_nb_pers
+                    if _bf_type_prod and not str(ws.cell(excel_rn, 10).value or "").strip():
+                        ws.cell(excel_rn, 10).value = _bf_type_prod
+                    if _bf_fibre and not str(ws.cell(excel_rn, 12).value or "").strip():
+                        ws.cell(excel_rn, 12).value = _bf_fibre
+                    n_updated += 1
                 if n_updated:
                     _safe_excel_save(wb, path)
-            # Toujours recharger le cache après — évite la race condition avec load_history()
             load_history()
             print(f"[BACKFILL-OF] {n_updated} ligne(s) mises à jour → OF={of_num}")
         except Exception as _e:
@@ -3995,7 +3967,7 @@ def api_end_prod():
         _dg_dur_of = max(0.0, (_dg_of_end - _dg_of_start).total_seconds())
         _dg_dur_for_trs = _dg_dur_of  # sauvegarde AVANT d'avancer le pointeur
         _sh_dt = _S.get("shift_start") or _dg_of_start
-        _dg_of_num = _S.get("form", {}).get("of_num", "")
+        _dg_of_num = (_S.get("form") or {}).get("of_num", "")
         if _dg_dur_of >= 1:
             _degrade_end_row = [
                 _dg_motif, _dg_of_num,
@@ -4314,7 +4286,7 @@ def _toggle_pause_internal():
         _sh = _S.get("shift_start") or _ps
         _pause_dur = max(0, (_pe - _ps).total_seconds())
         _row_p = [
-            "Pause", _S.get("form", {}).get("of_num", ""),
+            "Pause", (_S.get("form") or {}).get("of_num", ""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),
             str((_S.get("form") or {}).get("nb_pers","") or ""),
@@ -4408,7 +4380,7 @@ def api_end_nettoyage():
         _lbl = {"court": "Nettoyage court", "long": "Nettoyage long", "grand": "Grand nettoyage"}.get(_ntype, "Nettoyage court")
         _sh = _S.get("shift_start") or _start
         _row = [
-            _lbl, _S.get("form", {}).get("of_num", ""),
+            _lbl, (_S.get("form") or {}).get("of_num", ""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
             "","","","","","","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
