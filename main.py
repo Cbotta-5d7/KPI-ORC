@@ -3080,8 +3080,8 @@ def api_cdg_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "CDG"
-    headers = ["Type","Libellé / Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté produite","Qté équivalence"]
-    col_widths = [28,40,18,14,14,20,20,10,10,10,10,14,16]
+    headers = ["Type","Libellé arrêt","Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté produite","Qté équivalence"]
+    col_widths = [28,30,30,18,14,14,20,20,10,10,10,10,14,16]
     hdr_font  = Font(name="Arial", bold=True, color="FFFFFF", size=11)
     hdr_fill  = PatternFill("solid", fgColor="1E3A8A")
     hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -3105,12 +3105,10 @@ def api_cdg_export():
     for row in rows:
         is_prod = row.get("is_prod", False)
         type_label = "Déclaration de prod (OF)" if is_prod else "Déclaration d'arrêt"
-        libelle_comment = row.get("libelle","")
-        if row.get("comment"):
-            libelle_comment = (libelle_comment + " – " + row["comment"]).strip(" – ")
         cells = [
             type_label,
-            libelle_comment,
+            "" if is_prod else row.get("libelle",""),
+            row.get("comment",""),
             row.get("of",""),
             row.get("date",""),
             row.get("poste",""),
@@ -3133,8 +3131,8 @@ def api_cdg_export():
                 cell2.font = prod_font if is_prod else arret_font
             else:
                 cell2.font = data_font
-            if ci2 in (8,): cell2.alignment = center_al
-            if ci2 in (12,13): cell2.alignment = right_al
+            if ci2 in (9,): cell2.alignment = center_al
+            if ci2 in (13,14): cell2.alignment = right_al
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -5339,7 +5337,7 @@ select{cursor:default}
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
       <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📈 Evolution perf.</button>
-      <button class="htab" id="ht-cdg" onclick="goTab('cdg')">📊 CDG</button>
+      <button class="htab" id="ht-cdg" onclick="goTab('cdg')" style="display:none">📊 CDG</button>
     </div>
     <div id="hdr-right">
       <span id="hdr-pilot-lbl"></span>
@@ -6356,7 +6354,7 @@ select{cursor:default}
     <div style="overflow:auto;flex:1">
       <table style="width:100%;border-collapse:collapse;font-size:calc(11px*var(--zf,1))">
         <thead id="cdg-hd" style="position:sticky;top:0;background:var(--card);z-index:2"></thead>
-        <tbody id="cdg-bd"><tr><td colspan="13" style="text-align:center;color:var(--gray);padding:24px">Sélectionnez une période et cliquez sur Valider</td></tr></tbody>
+        <tbody id="cdg-bd"><tr><td colspan="14" style="text-align:center;color:var(--gray);padding:24px">Sélectionnez une période et cliquez sur Valider</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -11282,26 +11280,27 @@ async function loadCdg(){
   const bd=document.getElementById('cdg-bd');
   const hd=document.getElementById('cdg-hd');
   if(!bd||!hd) return;
-  bd.innerHTML='<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--gray)">Chargement…</td></tr>';
+  bd.innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:var(--gray)">Chargement…</td></tr>';
   const data=await apiFetch(`/api/cdg_data?from=${from}&to=${to}`);
   const rows=Array.isArray(data)?data:[];
   const cnt=document.getElementById('cdg-count');
   if(cnt) cnt.textContent=rows.length+' ligne'+(rows.length>1?'s':'');
-  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left">Libellé / Commentaire</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th></tr>';
+  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Libellé arrêt</th><th style="padding:7px 10px;text-align:left">Commentaire</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th></tr>';
   if(!rows.length){
-    bd.innerHTML='<tr><td colspan="13" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>';
+    bd.innerHTML='<tr><td colspan="14" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>';
     return;
   }
   bd.innerHTML=rows.map(r=>{
     const ip=r.is_prod;
     const typeLabel=ip?"Déclaration de prod (OF)":"Déclaration d'arrêt";
-    let lib=r.libelle||'';
-    if(r.comment) lib=lib?(lib+' – '+r.comment):r.comment;
+    const lib=ip?'':(r.libelle||'');
+    const cmt=r.comment||'';
     const bg=ip?'#eff6ff':'#fffbeb';
     const tc=ip?'#1d4ed8':'#b45309';
     return `<tr style="background:${bg};border-bottom:1px solid #e5e7eb">
       <td style="padding:5px 8px;font-weight:600;color:${tc};white-space:nowrap">${esc(typeLabel)}</td>
-      <td style="padding:5px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(lib)}">${esc(lib)}</td>
+      <td style="padding:5px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(lib)}">${esc(lib)}</td>
+      <td style="padding:5px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cmt)}">${esc(cmt)}</td>
       <td style="padding:5px 8px;font-weight:700;color:#1e3a8a;white-space:nowrap">${esc(r.of||'')}</td>
       <td style="padding:5px 8px;white-space:nowrap">${esc(r.date||'')}</td>
       <td style="padding:5px 8px;white-space:nowrap">${esc(r.poste||'')}</td>
@@ -13177,12 +13176,14 @@ def generate_dashboard_html():
             period_last7 = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=7))}&date_to={fmt(today)}&skip_current=1').get_json(force=True) or {}
             period_last31 = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=31))}&date_to={fmt(today)}&skip_current=1').get_json(force=True) or {}
             period_last6m = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=180))}&date_to={fmt(today)}&skip_current=1').get_json(force=True) or {}
+            cdg_data = c.get('/api/cdg_data').get_json(force=True) or []
         gen_at = _dt.datetime.now().strftime('%d/%m/%Y %H:%M')
         dash_json = _json.dumps({
             'history': history, 'events_list': events_list, 'past_sessions': past_sessions,
             'session_reports': session_reports,
             'period_last3': period_last3, 'period_last7': period_last7,
             'period_last31': period_last31, 'period_last6m': period_last6m,
+            'cdg_data': cdg_data,
             'generated_at': gen_at
         }, ensure_ascii=False, separators=(',', ':'))
         gen_at_escaped = gen_at.replace("'", "\\'")
@@ -13216,6 +13217,7 @@ def generate_dashboard_html():
             '    return d.period_last6m||{};}catch(e){return {};}\n'
             '  }\n'
             '  if(url.indexOf("/api/reload_excel")!==-1)return {ok:true};\n'
+            '  if(url.indexOf("/api/cdg_data")!==-1)return d.cdg_data||[];\n'
             '  return null;\n'
             '};\n'
             # Override fetch: silently swallow all /api/ POST writes; return mock for GETs
@@ -13239,6 +13241,36 @@ def generate_dashboard_html():
             '    ["#ht-prod","#ht-main","#ht-cfg","#zoom-btn","#rj-period-banner"].forEach(function(sel){\n'
             '      var el=document.querySelector(sel);if(el)el.style.display="none";\n'
             '    });\n'
+            '    var cdgBtn=document.getElementById("ht-cdg");if(cdgBtn)cdgBtn.style.display="";\n'
+            '    window.cdgExport=function(){\n'
+            '      var rows=(window.DASH&&window.DASH.cdg_data)||[];\n'
+            '      if(!rows.length){alert("Aucune donnée à exporter.");return;}\n'
+            '      var hdrs=["Type","Libellé arrêt","Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté prod.","Qté équiv."];\n'
+            '      var csv=hdrs.map(function(h){return\'"\'+h+\'"\';}).join(",")+"\r\n";\n'
+            '      rows.forEach(function(r){\n'
+            '        var ip=r.is_prod;\n'
+            '        var cells=[\n'
+            '          ip?"Production":"Arrêt",\n'
+            '          ip?"":String(r.libelle||""),\n'
+            '          String(r.comment||""),\n'
+            '          String(r.of||""),\n'
+            '          String(r.date||""),\n'
+            '          String(r.poste||""),\n'
+            '          String(r.pilote||""),\n'
+            '          String(r.copilote||""),\n'
+            '          String(r.nb_pers||""),\n'
+            '          String(r.debut||""),\n'
+            '          String(r.fin||""),\n'
+            '          String(r.duree||""),\n'
+            '          ip?String(r.qte_fab||""):"",\n'
+            '          ip?String(r.equiv||""):""\n'
+            '        ];\n'
+            '        csv+=cells.map(function(v){return\'"\'+v.replace(/"/g,\'""\')+\'"\';}).join(",")+"\r\n";\n'
+            '      });\n'
+            '      var blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8;"});\n'
+            '      var url=URL.createObjectURL(blob);\n'
+            '      var a=document.createElement("a");a.href=url;a.download="CDG_export.csv";document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);\n'
+            '    };\n'
             '    document.querySelectorAll("[onclick]").forEach(function(el){\n'
             '      if(el.getAttribute("onclick")==="doLogout()")el.style.display="none";\n'
             '    });\n'
