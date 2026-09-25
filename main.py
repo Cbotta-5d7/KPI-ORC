@@ -3901,7 +3901,7 @@ def api_stop_degrade():
         motif, "",
         shift_dt.strftime("%d/%m/%Y"), poste, pilot,
         (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-        "","","","","","","","","",
+        "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","","",
         start_dt_deg.strftime("%H:%M:%S"), end_dt_deg.strftime("%H:%M:%S"), fmt(dur_s),
         "","","","","","","","","","","","","","","","","","","","",
         shift_dt.strftime("%d/%m/%Y"),
@@ -3969,7 +3969,7 @@ def api_end_prod():
                 _dg_motif, _dg_of_num,
                 _sh_dt.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-                "","","","","","","","","",
+                "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","","",
                 _dg_of_start.strftime("%H:%M:%S"), _dg_of_end.strftime("%H:%M:%S"), fmt(_dg_dur_of),
                 "","","","","","","","","","","","","","","","","","","","",
                 _sh_dt.strftime("%d/%m/%Y"),
@@ -4244,7 +4244,7 @@ def api_end_stop():
             _lbl, (_S.get("form") or {}).get("of_num",""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "","","","","","","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",comment,"",
             _sh.strftime("%d/%m/%Y"),
@@ -4286,7 +4286,7 @@ def _toggle_pause_internal():
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),
             str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "","","","","","","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _ps.strftime("%H:%M:%S"), _pe.strftime("%H:%M:%S"), fmt(_pause_dur),
             "","","","","","","","","","","","","","","","","","","","",
             _sh.strftime("%d/%m/%Y"),
@@ -4328,7 +4328,7 @@ def api_toggle_reunion():
                 "Réunion", (_S.get("form") or {}).get("of_num",""),
                 _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-                "","","","","","","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+                "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
                 _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
                 "","","","","","","","","","","","","","","","","","",
                 _sh.strftime("%d/%m/%Y"),
@@ -4379,7 +4379,7 @@ def api_end_nettoyage():
             _lbl, (_S.get("form") or {}).get("of_num", ""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "","","","","","","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            "",str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",data.get("comment",""),"",
             _sh.strftime("%d/%m/%Y"),
@@ -13239,7 +13239,7 @@ async function loadHist(){
     const rt=String(r.type||'').toLowerCase();
     const hftype=isProd?'prod':(r.is_degrade?'degrade':rt||'arret');
     const t=parseFloat(r.trs||0);
-    const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.is_degrade?'<span class="row-tag tag-e" style="border-color:#ca8a04;color:#ca8a04">🟡 Dégradé</span>':(rt.includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':rt.includes('pause')?'<span class="row-tag tag-n" style="border-color:#f59e0b;color:#f59e0b">⏸ Pause</span>':(rt.includes('réunion')||rt.includes('reunion'))?'<span class="row-tag tag-n" style="border-color:#8b5cf6;color:#8b5cf6">👥 Réunion</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>'));
+    const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.is_degrade?`<span class="row-tag tag-e" style="border-color:#ca8a04;color:#ca8a04">🟡 ${esc(r.type||'Dégradé')}</span>`:(rt.includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':rt.includes('pause')?'<span class="row-tag tag-n" style="border-color:#f59e0b;color:#f59e0b">⏸ Pause</span>':(rt.includes('réunion')||rt.includes('reunion'))?'<span class="row-tag tag-n" style="border-color:#8b5cf6;color:#8b5cf6">👥 Réunion</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>'));
     const details=isProd?((r.taille||r.poids)?esc(r.taille||'')+((r.taille&&r.poids)?' / ':'')+esc(r.poids||''):''):esc(r.type||'');
     const qty=isProd?esc(String(r.qte_fab||'')):'';
     const dur=esc(r.duree||'');
@@ -14168,7 +14168,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
           <tbody>${(d.evt_rows||[]).map((r,ri)=>{
             const deg=r.is_degrade;
             return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s${deg?';background:#fff7ed':''}" onclick="showRptEvtDetail(${ri})" title="Voir détail">
-            <td style="padding:4px 5px;font-weight:700;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;color:${deg?'#b45309':'#dc2626'};${deg?'':'text-decoration:underline'}">${deg?'🟡 ':esc(r.type||'')}</td>
+            <td style="padding:4px 5px;font-weight:700;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;color:${deg?'#b45309':'#dc2626'};${deg?'':'text-decoration:underline'}">${deg?'🟡 '+esc(r.type||''):esc(r.type||'')}</td>
             <td style="padding:4px 5px;color:#0369a1;font-weight:700">${esc(r.of||'—')}</td>
             <td style="padding:4px 5px;color:var(--text)">${esc(r.type_prod||'—')}</td>
             <td style="padding:4px 5px;white-space:nowrap;color:var(--gray)">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
