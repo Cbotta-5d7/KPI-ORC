@@ -4403,6 +4403,17 @@ def api_save_form():
     data = request.json or {}
     _S["form"] = data
     save_session()
+    # Backfill immédiat : si OF actif et of_num renseigné, mise à jour des lignes arrêt
+    _of_num = str(data.get("of_num","") or "").strip()
+    if _of_num and _S.get("prod_active") and _S.get("of_start"):
+        _pilot = _S.get("pilot","")
+        _poste = _S.get("poste","")
+        _shift_dt = _S.get("shift_start") or _S["of_start"]
+        _shift_date_str = _shift_dt.strftime("%d/%m/%Y")
+        _backfill_of_for_events(
+            _of_num, _S["of_start"], datetime.datetime.now(),
+            _pilot, _poste, _shift_date_str, form_data=data
+        )
     return jsonify({"ok":True})
 
 @flask_app.route('/api/history')
@@ -7013,16 +7024,16 @@ select{cursor:default}
         <div style="display:none"><svg><path id="gauge-poste-acc-arc"/><text id="gauge-poste-acc-pct"></text></svg><span id="gauge-poste-acc-lbl"></span></div>
         <!-- Stats — à droite -->
         <div style="flex:0 0 auto">
-          <div style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;align-items:baseline">
-            <span style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#15803d;white-space:nowrap">Prod</span>
-            <span style="font-size:calc(12px*var(--zf,1));font-weight:900;color:#15803d;line-height:1.2" id="acc-prod-total">— pcs / — éq</span>
-            <span style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#1e40af;white-space:nowrap">Nb OF</span>
-            <span style="font-size:calc(12px*var(--zf,1));font-weight:900;color:#1e40af;line-height:1.2" id="acc-nb-of">0</span>
-            <span style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626;white-space:nowrap">Arrêts</span>
-            <span style="font-size:calc(12px*var(--zf,1));font-weight:900;color:#b91c1c;line-height:1.2" id="main-stat-arrets">0 min</span>
-            <span style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;white-space:nowrap">Fonct.</span>
-            <span style="font-size:calc(12px*var(--zf,1));font-weight:900;color:#15803d;line-height:1.2" id="main-stat-prod">0 min</span>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 10px;align-items:baseline">
+            <span style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#15803d;white-space:nowrap">Prod</span>
+            <span style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#15803d;line-height:1.1" id="acc-prod-pcs">— pcs</span>
+            <span style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#0369a1;white-space:nowrap">Équivalent</span>
+            <span style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#0369a1;line-height:1.1" id="acc-equiv-total">— pcs</span>
+            <span style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626;white-space:nowrap">Arrêts</span>
+            <span style="font-size:calc(18px*var(--zf,1));font-weight:900;color:#b91c1c;line-height:1.1" id="main-stat-arrets">0 min</span>
           </div>
+          <!-- IDs cachés compat JS -->
+          <div style="display:none"><span id="acc-prod-total"></span><span id="acc-nb-of"></span><span id="main-stat-prod"></span></div>
         </div>
         <!-- acc-model-info conservé invisible pour compat JS -->
         <div id="acc-model-info" style="display:none"></div>
@@ -7170,13 +7181,8 @@ select{cursor:default}
           </div>
           <div id="budget-bars-prod"></div>
         </div>
-        <!-- Pie OF uniquement (TRS OF supprimé de l'accueil) -->
-        <div style="padding:6px;border-top:1px solid var(--border);display:flex;flex-direction:column;align-items:center;flex-shrink:0">
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;text-transform:uppercase;color:var(--gray);margin-bottom:2px;letter-spacing:.4px">Répartition temps OF</div>
-          <div id="pie-of" style="width:100%;max-width:154px"></div>
-          <!-- IDs cachés compat JS -->
-          <div style="display:none"><svg><path id="gauge-arc"/><text id="gauge-pct"></text></svg></div>
-        </div>
+        <!-- IDs cachés compat JS (pie OF supprimé) -->
+        <div style="display:none"><div id="pie-of"></div><svg><path id="gauge-arc"/><text id="gauge-pct"></text></svg></div>
         <!-- Bottom action buttons -->
         <div style="padding:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;flex-shrink:0;background:var(--card)">
           <button class="act-btn act-cancel" onclick="doCancelProd()" style="width:100%;min-height:44px;padding:8px 12px;font-size:calc(17px*var(--zf,1))"><span class="act-icon" style="font-size:calc(22px*var(--zf,1))">✖</span>Annuler prod</button>
@@ -9603,14 +9609,20 @@ async function loadMainKPI() {
   // Nb OF + total pcs/equiv in new accueil block
   const nbOfEl=document.getElementById('acc-nb-of');
   if(nbOfEl) nbOfEl.textContent=d&&d.rows?d.rows.length:0;
-  const prodTotEl=document.getElementById('acc-prod-total');
-  if(prodTotEl&&d&&d.rows){
+  if(d&&d.rows){
     let tPcs=0,tEq=0;
     d.rows.forEach(r=>{
       tPcs+=parseFloat((r.qte_fab||'0').toString().replace(',','.'))||0;
       tEq+=parseFloat(r.equiv||0)||0;
     });
-    prodTotEl.textContent=Math.round(tPcs)+' pcs / '+Math.round(tEq*10)/10+' éq';
+    const _pcsStr=Math.round(tPcs)+' pcs';
+    const _eqStr=Math.round(tEq*10)/10+' pcs';
+    const prodTotEl=document.getElementById('acc-prod-total');
+    const pcsEl2=document.getElementById('acc-prod-pcs');
+    const eqEl=document.getElementById('acc-equiv-total');
+    if(prodTotEl) prodTotEl.textContent=_pcsStr;
+    if(pcsEl2) pcsEl2.textContent=_pcsStr;
+    if(eqEl) eqEl.textContent=_eqStr;
   }
   // Refresh progression pcs
   {const pcsEl=document.getElementById('acc-prog-pcs');const ptEl=document.getElementById('acc-prod-total');if(pcsEl&&ptEl)pcsEl.textContent=ptEl.textContent||'—';}
@@ -10800,8 +10812,8 @@ async function _confirmDegrade(){
     const resp=await fetch('/api/start_degrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({motif:r.value})});
     if(!resp.ok){const d=await resp.json().catch(()=>({}));toast(d.error||'Erreur démarrage dégradé','err');window._degradeActive=false;}
   }catch(e){toast('Erreur connexion','err');window._degradeActive=false;}
-  await pollState();
-  window._degradeInFlight=false;
+  finally{window._degradeInFlight=false;}
+  await pollState().catch(()=>{});
 }
 async function stopDegrade(){
   window._degradeInFlight=true;
@@ -10810,8 +10822,8 @@ async function stopDegrade(){
     const resp=await fetch('/api/stop_degrade',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
     if(!resp.ok){const d=await resp.json().catch(()=>({}));toast(d.error||'Erreur arrêt dégradé','err');window._degradeActive=true;}
   }catch(e){toast('Erreur connexion','err');window._degradeActive=true;}
-  await pollState();
-  window._degradeInFlight=false;
+  finally{window._degradeInFlight=false;}
+  await pollState().catch(()=>{});
 }
 // ── Budget override ─────────────────────────────────────────────────────────
 function openBudgetOverrideModal(){
