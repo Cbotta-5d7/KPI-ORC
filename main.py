@@ -11723,8 +11723,14 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   // ── Donut chart (GROS) ──
   const dS=hm2s2(r.debut),fS=hm2s2(r.fin);
   const totalMin=Math.max(1,Math.round((fS-dS)/60));
-  const {netMin,stopMin}=(window._rptNetProd?window._rptNetProd(r.debut,r.fin):{netMin:0,stopMin:0});
-  const degMin=window._rptDegMin?window._rptDegMin(r.debut,r.fin):0;
+  // Calcul direct depuis ofEvts (fiable quelque soit le contexte d'appel)
+  let stopMin=0,degMin=0;
+  ofEvts.forEach(ev=>{
+    const p=(ev.duree||'0:0:0').split(':').map(Number);
+    const m=Math.round((p[0]||0)*60+(p[1]||0)+(p[2]||0)/60);
+    if(ev.is_degrade) degMin+=m; else stopMin+=m;
+  });
+  const netMin=Math.max(0,totalMin-stopMin);
   const planMin=Math.round((r.plan_stop_s||0)/60);
   const unplanMin=Math.max(0,stopMin-planMin);
   const prodMin=Math.max(0,netMin-degMin);
