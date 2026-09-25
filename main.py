@@ -666,7 +666,7 @@ def _compute_budget_state_now():
     if _S.get("is_paused") and _S.get("pause_start"):
         pause_s += (datetime.datetime.now() - _S["pause_start"]).total_seconds()
     of_consumed["Pause"] = of_consumed.get("Pause", 0.0) + pause_s
-    shift_consumed["Pause"] = shift_consumed.get("Pause", 0.0) + pause_s
+    # pause_total_s already in _decl_cache (written immediately on pause end) → don't add to shift_consumed to avoid double-count
 
     # 4. Calcul des déductibles
     per_type = {}
@@ -4305,7 +4305,9 @@ def _toggle_pause_internal():
         _row_p = [
             "Pause", _S.get("form", {}).get("of_num", ""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
-            "","","","","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
+            _S.get("form",{}).get("copilote",""),
+            str(_S.get("form",{}).get("nb_pers","") or ""),
+            "","","","","","","","Oui" if _S.get("form",{}).get("kit") else "Non",
             _ps.strftime("%H:%M:%S"), _pe.strftime("%H:%M:%S"), fmt(_pause_dur),
             "","","","","","","","","","","","","","","","","","","","",
             _sh.strftime("%d/%m/%Y"),
@@ -6058,7 +6060,9 @@ def api_add_past_decl():
             return jsonify({"ok":False,"error":f"Motif dégradé inconnu : {stop_type}"}),400
         row = [
             stop_type, _S.get("form",{}).get("of_num",""), date_str, poste, pilot,
-            "","","","","","","","","","","",
+            _S.get("form",{}).get("copilote",""),
+            str(_S.get("form",{}).get("nb_pers","") or ""),
+            "","","","","","","","","",
             debut_dt.strftime("%H:%M:%S"), fin_dt.strftime("%H:%M:%S"), fmt(dur_s),
             "","","","","","","","","","","","","","","","",
             str(data.get("comment","")), "","","", shift_date_str,
@@ -7818,7 +7822,6 @@ select{cursor:default}
         <button onclick="rjLast3()" style="background:linear-gradient(180deg,#0ea5e9,#0369a1);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(3,105,161,.35),inset 0 1px 0 rgba(255,255,255,.18)">3 derniers postes</button>
         <button onclick="rjLast4()" style="background:linear-gradient(180deg,#38bdf8,#0284c7);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(2,132,199,.35),inset 0 1px 0 rgba(255,255,255,.18)">4 derniers postes</button>
         <button onclick="rjLast7Days()" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(5,150,105,.35),inset 0 1px 0 rgba(255,255,255,.18)">7 derniers jours</button>
-        <button onclick="rjLast31Days()" style="background:linear-gradient(180deg,#a78bfa,#7c3aed);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(124,58,237,.35),inset 0 1px 0 rgba(255,255,255,.18)">31 derniers jours</button>
       </div>
     </div>
     <div id="rj-result" style="flex:1;overflow-y:auto;padding:14px 18px">
@@ -11490,7 +11493,7 @@ function renderRecap(evts){
   const c=document.getElementById('recap-list');
   if(!c) return;
   window._evMap={};
-  const stops=(evts||[]).filter(e=>e.type);
+  const stops=(evts||[]).filter(e=>e.type&&!e._live);
   if(!stops.length){c.innerHTML='<div style="color:var(--gray);font-size:calc(10px*var(--zf,1));padding:4px">Aucun arrêt</div>';return;}
   let html='';
   stops.forEach((ev,i)=>{
@@ -13616,7 +13619,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colCadRj}">${d.cadence_h||0} <span style="font-weight:600;color:var(--gray)">Pcs/h</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100} pièces/min)</span></div></div>
-        ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
+        ${[['Temps d\'ouverture',((d.ouverture_min||0)/60).toFixed(1)+'h','#64748b'],['Temps utile',((d.temps_utile_min||0)/60).toFixed(1)+'h','#64748b'],['Tps de fonctionnement',((d.temps_fonctionnement_min||0)/60).toFixed(1)+'h',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
       </div>
       <!-- Droite : graphiques+pareto côte à côte, tables -->
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
@@ -13685,7 +13688,7 @@ async function captureRapportJour(){
   });
   const _titleL2=_posteLbls.length?_posteLbls.join(' · '):'';
   // Lignes stats capture — polices -20% (16→13px label, 17→14px valeur)
-  const _statsRows=[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:2px"><span style="font-size:13px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:14px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
+  const _statsRows=[['Temps d\'ouverture',((d.ouverture_min||0)/60).toFixed(1)+'h','#64748b'],['Temps utile',((d.temps_utile_min||0)/60).toFixed(1)+'h','#64748b'],['Tps de fonctionnement',((d.temps_fonctionnement_min||0)/60).toFixed(1)+'h',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:2px"><span style="font-size:13px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:14px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
   // Layout capture : 3 colonnes — col1 272px (-20%), col2 camembert+stats, col3 pareto 324px (+20%)
   const _capHtml=`<div style="display:flex;gap:14px;align-items:flex-start;font-family:Arial,sans-serif;zoom:0.94">
     <!-- Colonne 1 : cards pièces/equiv/cad, graphiques TRS+Cadence (272px) -->
