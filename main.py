@@ -1,6 +1,6 @@
 """KPI-ORC v6.4 - Flask + pywebview"""
 import json, os, sys, datetime, threading, math, shutil, time, atexit, signal
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string, send_file
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Border, Side, PatternFill
 
@@ -2972,6 +2972,163 @@ def api_events_list():
         except: pass
     return jsonify(list(reversed(rows)))
 
+@flask_app.route('/api/cdg_data')
+def api_cdg_data():
+    date_from = request.args.get("from","")
+    date_to   = request.args.get("to","")
+    def _pd(s):
+        try:
+            if "-" in s: return datetime.datetime.strptime(s,"%Y-%m-%d").date()
+            if "/" in s: return datetime.datetime.strptime(s,"%d/%m/%Y").date()
+        except: pass
+        return None
+    d_from = _pd(date_from) if date_from else None
+    d_to   = _pd(date_to)   if date_to   else None
+    rows = []
+    for rn, r in _decl_cache:
+        try:
+            row_d = _pd(_row_date(r[2])) if r[2] else None
+            if d_from and row_d and row_d < d_from: continue
+            if d_to   and row_d and row_d > d_to:   continue
+            type_str = str(r[0] or "").strip()
+            is_prod  = type_str.lower() in ("production","prod","")
+            rows.append({
+                "row_num":  rn,
+                "is_prod":  is_prod,
+                "libelle":  "" if is_prod else type_str,
+                "comment":  str(r[35] or ""),
+                "of":       str(r[1]  or ""),
+                "date":     _row_date(r[2]),
+                "poste":    str(r[3]  or ""),
+                "pilote":   str(r[4]  or ""),
+                "copilote": str(r[5]  or ""),
+                "nb_pers":  str(r[6]  or ""),
+                "debut":    str(r[16] or "")[:5],
+                "fin":      str(r[17] or "")[:5],
+                "duree":    str(r[18] or ""),
+                "qte_fab":  str(r[19] or "") if is_prod else "",
+                "equiv":    str(r[21] or "") if is_prod else "",
+            })
+        except: pass
+    def _sk(row):
+        d = row.get("date",""); p = d.split("/") if d else []
+        dt = (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0)
+        return (dt, row.get("debut",""))
+    rows.sort(key=_sk, reverse=True)
+    return jsonify(rows)
+
+@flask_app.route('/api/cdg_export')
+def api_cdg_export():
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    date_from = request.args.get("from","")
+    date_to   = request.args.get("to","")
+    def _pd(s):
+        try:
+            if "-" in s: return datetime.datetime.strptime(s,"%Y-%m-%d").date()
+            if "/" in s: return datetime.datetime.strptime(s,"%d/%m/%Y").date()
+        except: pass
+        return None
+    d_from = _pd(date_from) if date_from else None
+    d_to   = _pd(date_to)   if date_to   else None
+    rows = []
+    for rn, r in _decl_cache:
+        try:
+            row_d = _pd(_row_date(r[2])) if r[2] else None
+            if d_from and row_d and row_d < d_from: continue
+            if d_to   and row_d and row_d > d_to:   continue
+            type_str = str(r[0] or "").strip()
+            is_prod  = type_str.lower() in ("production","prod","")
+            rows.append({
+                "is_prod":  is_prod,
+                "libelle":  "" if is_prod else type_str,
+                "comment":  str(r[35] or ""),
+                "of":       str(r[1]  or ""),
+                "date":     _row_date(r[2]),
+                "poste":    str(r[3]  or ""),
+                "pilote":   str(r[4]  or ""),
+                "copilote": str(r[5]  or ""),
+                "nb_pers":  str(r[6]  or ""),
+                "debut":    str(r[16] or "")[:5],
+                "fin":      str(r[17] or "")[:5],
+                "duree":    str(r[18] or ""),
+                "qte_fab":  str(r[19] or "") if is_prod else "",
+                "equiv":    str(r[21] or "") if is_prod else "",
+            })
+        except: pass
+    def _sk(row):
+        d = row.get("date",""); p = d.split("/") if d else []
+        dt = (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0)
+        return (dt, row.get("debut",""))
+    rows.sort(key=_sk, reverse=True)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "CDG"
+    headers = ["Type","Libellé / Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté produite","Qté équivalence"]
+    col_widths = [28,40,18,14,14,20,20,10,10,10,10,14,16]
+    hdr_font  = Font(name="Arial", bold=True, color="FFFFFF", size=11)
+    hdr_fill  = PatternFill("solid", fgColor="1E3A8A")
+    hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin = Side(style="thin", color="CCCCCC")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ws.append(headers)
+    ws.row_dimensions[1].height = 24
+    for ci, cell in enumerate(ws[1], start=1):
+        cell.font  = hdr_font
+        cell.fill  = hdr_fill
+        cell.alignment = hdr_align
+        cell.border = border
+        ws.column_dimensions[cell.column_letter].width = col_widths[ci-1]
+    prod_fill  = PatternFill("solid", fgColor="EFF6FF")
+    arret_fill = PatternFill("solid", fgColor="FFFBEB")
+    prod_font  = Font(name="Arial", size=10, color="1D4ED8")
+    arret_font = Font(name="Arial", size=10, color="B45309")
+    data_font  = Font(name="Arial", size=10)
+    center_al  = Alignment(horizontal="center")
+    right_al   = Alignment(horizontal="right")
+    for row in rows:
+        is_prod = row.get("is_prod", False)
+        type_label = "Déclaration de prod (OF)" if is_prod else "Déclaration d'arrêt"
+        libelle_comment = row.get("libelle","")
+        if row.get("comment"):
+            libelle_comment = (libelle_comment + " – " + row["comment"]).strip(" – ")
+        cells = [
+            type_label,
+            libelle_comment,
+            row.get("of",""),
+            row.get("date",""),
+            row.get("poste",""),
+            row.get("pilote",""),
+            row.get("copilote",""),
+            row.get("nb_pers",""),
+            row.get("debut",""),
+            row.get("fin",""),
+            row.get("duree",""),
+            row.get("qte_fab",""),
+            row.get("equiv",""),
+        ]
+        ws.append(cells)
+        xrow = ws.max_row
+        fill = prod_fill if is_prod else arret_fill
+        for ci2, cell2 in enumerate(ws[xrow], start=1):
+            cell2.fill   = fill
+            cell2.border = border
+            if ci2 == 1:
+                cell2.font = prod_font if is_prod else arret_font
+            else:
+                cell2.font = data_font
+            if ci2 in (8,): cell2.alignment = center_al
+            if ci2 in (12,13): cell2.alignment = right_al
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    fname = f"CDG_{date_from or 'all'}_{date_to or 'all'}.xlsx"
+    return send_file(output,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True,
+                     download_name=fname)
+
 def _apply_model_overrides(models):
     """Retourne une copie des modèles horaires avec les surcharges de session appliquées."""
     overrides = _S.get("model_overrides", {})
@@ -5167,6 +5324,7 @@ select{cursor:default}
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
       <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📈 Evolution perf.</button>
+      <button class="htab" id="ht-cdg" onclick="goTab('cdg')">📊 CDG</button>
     </div>
     <div id="hdr-right">
       <span id="hdr-pilot-lbl"></span>
@@ -6170,6 +6328,24 @@ select{cursor:default}
     </div>
   </div>
 
+  <!-- ════ CDG ════ -->
+  <div id="v-cdg" class="view" style="flex-direction:column;overflow:hidden">
+    <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;flex-shrink:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:calc(13px*var(--zf,1));font-weight:700;color:var(--navy)">📊 CDG — Export déclarations</span>
+      <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Du <input type="date" id="cdg-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
+      <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Au <input type="date" id="cdg-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
+      <button onclick="loadCdg()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">✓ Valider</button>
+      <button onclick="cdgExport()" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">⬇ Exporter les données</button>
+      <span id="cdg-count" style="font-size:calc(11px*var(--zf,1));color:var(--gray)"></span>
+    </div>
+    <div style="overflow:auto;flex:1">
+      <table style="width:100%;border-collapse:collapse;font-size:calc(11px*var(--zf,1))">
+        <thead id="cdg-hd" style="position:sticky;top:0;background:var(--card);z-index:2"></thead>
+        <tbody id="cdg-bd"><tr><td colspan="13" style="text-align:center;color:var(--gray);padding:24px">Sélectionnez une période et cliquez sur Valider</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- ════ SETTINGS ════ -->
   <div id="v-settings" class="view" style="flex-direction:column;overflow-y:auto">
     <div id="settings-lock">
@@ -7148,10 +7324,10 @@ function goTab(tab) {
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   document.querySelectorAll('.htab').forEach(t=>t.classList.remove('on'));
-  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports','rpt-jour':'v-rpt-jour'};
+  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports','rpt-jour':'v-rpt-jour',cdg:'v-cdg'};
   const el=document.getElementById(vm[tab]);
   if(el) el.classList.add('on');
-  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour'};
+  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour',cdg:'ht-cdg'};
   const ntEl=document.getElementById(nt[tab]);
   if(ntEl) ntEl.classList.add('on');
   if(tab!=='prod') _clearFieldHighlights();
@@ -7176,7 +7352,7 @@ function goTab(tab) {
   }
   if(tab==='finposte') loadFPData();
   // Vues données : recharge le cache Excel d'abord, puis affiche
-  const _dataViews=['history','rapports','rpt-jour','kpi','main'];
+  const _dataViews=['history','rapports','rpt-jour','kpi','main','cdg'];
   if(_dataViews.includes(tab)){
     if(tab!=='history'&&_prevTab==='history') _resetHistFilters();
     fetch('/api/reload_excel',{method:'POST'}).catch(()=>{}).finally(()=>{
@@ -7185,6 +7361,7 @@ function goTab(tab) {
       if(tab==='rpt-jour') loadRptJour();
       if(tab==='main'){loadMainDecl();refreshAccFpData();}
       if(tab==='kpi') loadKPI();
+      if(tab==='cdg') loadCdg();
     });
   } else if(_prevTab==='history') _resetHistFilters();
   if(tab==='settings') {
@@ -11079,6 +11256,55 @@ async function kpiLastMonths(n){
   ti.value=_t.toISOString().slice(0,10);
   toast(`Période : ${n} dernier${n>1?'s':''} mois`,'ok',1800);
   await loadKPI();
+}
+
+// ── CDG ──
+async function loadCdg(){
+  const today=new Date().toISOString().slice(0,10);
+  const from=document.getElementById('cdg-from').value||today;
+  const to=document.getElementById('cdg-to').value||today;
+  const bd=document.getElementById('cdg-bd');
+  const hd=document.getElementById('cdg-hd');
+  if(!bd||!hd) return;
+  bd.innerHTML='<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--gray)">Chargement…</td></tr>';
+  const data=await apiFetch(`/api/cdg_data?from=${from}&to=${to}`);
+  const rows=Array.isArray(data)?data:[];
+  const cnt=document.getElementById('cdg-count');
+  if(cnt) cnt.textContent=rows.length+' ligne'+(rows.length>1?'s':'');
+  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left">Libellé / Commentaire</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th></tr>';
+  if(!rows.length){
+    bd.innerHTML='<tr><td colspan="13" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>';
+    return;
+  }
+  bd.innerHTML=rows.map(r=>{
+    const ip=r.is_prod;
+    const typeLabel=ip?"Déclaration de prod (OF)":"Déclaration d'arrêt";
+    let lib=r.libelle||'';
+    if(r.comment) lib=lib?(lib+' – '+r.comment):r.comment;
+    const bg=ip?'#eff6ff':'#fffbeb';
+    const tc=ip?'#1d4ed8':'#b45309';
+    return `<tr style="background:${bg};border-bottom:1px solid #e5e7eb">
+      <td style="padding:5px 8px;font-weight:600;color:${tc};white-space:nowrap">${esc(typeLabel)}</td>
+      <td style="padding:5px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(lib)}">${esc(lib)}</td>
+      <td style="padding:5px 8px;font-weight:700;color:#1e3a8a;white-space:nowrap">${esc(r.of||'')}</td>
+      <td style="padding:5px 8px;white-space:nowrap">${esc(r.date||'')}</td>
+      <td style="padding:5px 8px;white-space:nowrap">${esc(r.poste||'')}</td>
+      <td style="padding:5px 8px;white-space:nowrap">${esc(r.pilote||'')}</td>
+      <td style="padding:5px 8px;color:#6b7280;white-space:nowrap">${esc(r.copilote||'')}</td>
+      <td style="padding:5px 8px;text-align:center">${esc(r.nb_pers||'')}</td>
+      <td style="padding:5px 8px;white-space:nowrap">${esc(r.debut||'')}</td>
+      <td style="padding:5px 8px;white-space:nowrap">${esc(r.fin||'')}</td>
+      <td style="padding:5px 8px;white-space:nowrap">${esc(r.duree||'')}</td>
+      <td style="padding:5px 8px;text-align:right;white-space:nowrap">${ip?esc(String(r.qte_fab||'')):'—'}</td>
+      <td style="padding:5px 8px;text-align:right;white-space:nowrap">${ip?esc(String(r.equiv||'')):'—'}</td>
+    </tr>`;
+  }).join('');
+}
+function cdgExport(){
+  const today=new Date().toISOString().slice(0,10);
+  const from=document.getElementById('cdg-from').value||today;
+  const to=document.getElementById('cdg-to').value||today;
+  window.location.href=`/api/cdg_export?from=${from}&to=${to}`;
 }
 
 async function loadKPI(){
