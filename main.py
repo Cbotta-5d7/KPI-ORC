@@ -11342,8 +11342,12 @@ async function deleteStop(){
     toast('Impossible de supprimer cet événement','err');return;
   }
   const d=r?await r.json():{};
-  if(d&&d.ok){closeM('m-editstop');await pollState();await pollEvts();await loadMainDecl();loadKPI();toast('Supprimé','ok');}
-  else toast(d?.error||'Erreur suppression','err');
+  if(d&&d.ok){
+    closeM('m-editstop');
+    if(ev.debut) gEvts=gEvts.filter(e=>e.debut!==ev.debut);
+    else gEvts=[];
+    await pollState();await pollEvts();await loadMainDecl();loadKPI();toast('Supprimé','ok');
+  } else toast(d?.error||'Erreur suppression','err');
 }
 
 // ── TIMELINE ──
