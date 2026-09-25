@@ -11259,8 +11259,13 @@ async function kpiLastMonths(n){
 // ── CDG ──
 async function loadCdg(){
   const today=new Date().toISOString().slice(0,10);
-  const from=document.getElementById('cdg-from').value||today;
-  const to=document.getElementById('cdg-to').value||today;
+  const fromEl=document.getElementById('cdg-from');
+  const toEl=document.getElementById('cdg-to');
+  // Init par défaut : 31 derniers jours
+  if(!fromEl.value){const d31=new Date();d31.setDate(d31.getDate()-31);fromEl.value=d31.toISOString().slice(0,10);}
+  if(!toEl.value){toEl.value=today;}
+  const from=fromEl.value;
+  const to=toEl.value;
   const bd=document.getElementById('cdg-bd');
   const hd=document.getElementById('cdg-hd');
   if(!bd||!hd) return;
