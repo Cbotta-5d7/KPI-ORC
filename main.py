@@ -4864,7 +4864,18 @@ def api_delete_row():
     # Si l'entrée était injectée dans tl_events (past_decl), la retirer aussi
     _del_type_str = str(_del_row_data[0] or "").strip().lower() if _del_row_data is not None else ""
     if _S.get("prod_active"):
-        _S["tl_events"] = [ev for ev in _S["tl_events"] if ev.get("_row_num") != row_num]
+        _del_debut_hms = str(_del_row_data[16] or "")[:8] if _del_row_data is not None else ""
+        def _ev_keep(ev):
+            if ev.get("_row_num") == row_num:
+                return False
+            if _del_debut_hms and ev.get("start"):
+                try:
+                    if ev["start"].strftime("%H:%M:%S") == _del_debut_hms:
+                        return False
+                except Exception:
+                    pass
+            return True
+        _S["tl_events"] = [ev for ev in _S["tl_events"] if _ev_keep(ev)]
         save_session()
     # Si c'est une Pause : nettoyer pause_periods, pause_total_s et _written_pause_starts
     if _del_type_str == "pause" and _del_row_data is not None:
@@ -11331,7 +11342,7 @@ async function deleteStop(){
     toast('Impossible de supprimer cet événement','err');return;
   }
   const d=r?await r.json():{};
-  if(d&&d.ok){closeM('m-editstop');await pollEvts();await loadMainDecl();loadKPI();toast('Supprimé','ok');}
+  if(d&&d.ok){closeM('m-editstop');await pollState();await pollEvts();await loadMainDecl();loadKPI();toast('Supprimé','ok');}
   else toast(d?.error||'Erreur suppression','err');
 }
 
