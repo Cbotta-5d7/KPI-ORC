@@ -432,8 +432,6 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
         row_type = str(r[0] or "").strip().lower()
         if row_type in ("production", "prod", ""):
             continue
-        if _is_degrade_type(str(r[0] or "")):
-            continue
         row_date = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
         if row_date not in shift_dates:
             continue
