@@ -6936,7 +6936,6 @@ select{cursor:default}
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
-      <button class="htab" id="ht-kpi" onclick="goTab('kpi')">📈 Evolution perf.</button>
       <button class="htab" id="ht-cdg" onclick="goTab('cdg')" style="display:none">📊 CDG</button>
     </div>
     <div id="hdr-right">
@@ -7862,68 +7861,6 @@ select{cursor:default}
     </div>
   </div>
 
-  <!-- ════ KPI VIEW ════ -->
-  <div id="v-kpi" class="view" style="flex-direction:column;overflow-y:auto;background:#f1f5f9">
-    <!-- Header -->
-    <div style="background:var(--card);border-bottom:1px solid var(--border);padding:8px 14px;flex-shrink:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:var(--navy)">📈 Evolution perf.</span>
-      <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Du <input type="date" id="kpi-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
-      <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Au <input type="date" id="kpi-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
-      <button onclick="loadKPI()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">↺ Actualiser</button>
-      <button onclick="kpiLastMonths(3)" style="background:linear-gradient(180deg,#0ea5e9,#0369a1);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">3 derniers mois</button>
-      <button onclick="kpiLastMonths(6)" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">6 derniers mois</button>
-      <button onclick="kpiLastMonths(12)" style="background:linear-gradient(180deg,#a78bfa,#7c3aed);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">12 derniers mois</button>
-      <select id="kpi-pilot" style="font-size:calc(11px*var(--zf,1));padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;color:#1e3a8a;font-weight:600;outline:none"><option value="">Pilote</option></select>
-      <select id="kpi-poste" style="font-size:calc(11px*var(--zf,1));padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;color:#1e3a8a;font-weight:600;outline:none"><option value="">Poste</option></select>
-    </div>
-    <!-- 3 courbes côte à côte (compact) -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;min-height:260px;flex-shrink:0;background:#fff;border-bottom:1px solid #e2e8f0">
-      <div style="display:flex;flex-direction:column;overflow:hidden;padding:6px 10px 4px;border-right:1px solid #f1f5f9">
-        <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📈 TRS par poste (%)</div>
-        <div id="kpi-trs-chart" style="flex:1;min-height:200px;overflow-x:auto;overflow-y:hidden"></div>
-      </div>
-      <div style="display:flex;flex-direction:column;padding:6px 10px 4px;border-right:1px solid #f1f5f9;background:#fafafa">
-        <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#dc2626;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">🛑 Arrêts cumulés (min)</div>
-        <div id="kpi-arr-chart" style="flex:1;min-height:200px;overflow-x:auto;overflow-y:hidden"></div>
-      </div>
-      <div style="display:flex;flex-direction:column;padding:6px 10px 4px">
-        <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#6366f1;letter-spacing:.5px;margin-bottom:2px;flex-shrink:0">📦 Nombre d'OF par poste</div>
-        <div id="kpi-of-chart" style="flex:1;min-height:200px;overflow-x:auto;overflow-y:hidden"></div>
-      </div>
-    </div>
-    <!-- Corps principal -->
-    <div style="min-height:400px;display:grid;grid-template-columns:1fr 210px;">
-      <!-- Gauche : cadence + 2 évolutions -->
-      <div style="display:flex;flex-direction:column;border-right:1px solid #e2e8f0;">
-        <div style="min-height:210px;padding:6px 10px;display:flex;flex-direction:column;background:#fff;border-bottom:1px solid #f1f5f9;">
-          <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#f59e0b;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">⚡ Évolution cadence (éq./h)</div>
-          <div id="kpi-cad-chart" style="flex:1;min-height:160px;overflow-x:auto;overflow-y:hidden"></div>
-        </div>
-        <div style="min-height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#f8fafc;border-bottom:1px solid #f1f5f9;">
-          <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#16a34a;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">📦 Équivalence</div>
-          <div id="kpi-qte-chart" style="flex:1;min-height:90px;overflow-x:auto;overflow-y:hidden"></div>
-        </div>
-        <div style="min-height:130px;padding:6px 10px;display:flex;flex-direction:column;background:#fff;">
-          <div style="font-size:calc(12px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#8b5cf6;letter-spacing:.5px;margin-bottom:3px;flex-shrink:0">🧵 Changements de fibre par poste</div>
-          <div id="kpi-fibre-chart" style="flex:1;min-height:90px;overflow-x:auto;overflow-y:hidden"></div>
-        </div>
-      </div>
-      <!-- Droite : donut + pareto -->
-      <div style="display:flex;flex-direction:column;background:#fff;">
-        <div style="padding:7px 10px;border-bottom:1px solid #f1f5f9;flex-shrink:0;display:flex;flex-direction:column;align-items:center">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.5px;margin-bottom:3px;align-self:flex-start">Prod vs Arrêts</div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <svg id="kpi-donut" viewBox="0 0 100 100" style="width:78px;height:78px;flex-shrink:0"></svg>
-            <div id="kpi-donut-legend" style="display:flex;flex-direction:column;gap:3px;font-size:calc(10px*var(--zf,1))"></div>
-          </div>
-        </div>
-        <div style="flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;min-height:0">
-          <div style="font-size:calc(10px*var(--zf,1));font-weight:700;text-transform:uppercase;color:#64748b;letter-spacing:.5px;margin-bottom:6px;flex-shrink:0">PARETO arrêts non prévus</div>
-          <div id="kpi-pareto-new" style="display:flex;flex-direction:column;gap:5px"></div>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- ════ CDG ════ -->
   <div id="v-cdg" class="view" style="flex-direction:column;overflow:hidden">
