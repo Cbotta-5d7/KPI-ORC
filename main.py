@@ -10321,7 +10321,7 @@ function _ddDrop(i){if(_dIdx===null||_dIdx===i)return;const m=_degradeListLocal.
 // Pwd list drag
 function _pdDS(i){_dIdx=i;}
 function _pdDO(e){e.preventDefault();}
-function _pdDrop(i){if(_dIdx===null||_dIdx===i)return;const keys=Object.keys(_cfgPwds);const[rm]=keys.splice(_dIdx,1);keys.splice(i,0,rm);const nw={};keys.forEach(k=>{nw[k]=_cfgPwds[k];});_cfgPwds=nw;_dIdx=null;renderPwdList();}
+function _pdDrop(i){if(_dIdx===null||_dIdx===i)return;const keys=Object.keys(_cfgPwds);const[rm]=keys.splice(_dIdx,1);keys.splice(i,0,rm);const nw={};keys.forEach(k=>{nw[k]=_cfgPwds[k];});_cfgPwds=_sortPwdsAutreLast(nw);_dIdx=null;renderPwdList();}
 
 const _EVT_CAT_ORDER=['ratt','pb','nettoyage','manquants','organisation','autre'];
 const _EVT_CAT_LBL={pb:'▲ Technique',ratt:'★ Rattrapage',nettoyage:'◇ Nettoyage',organisation:'■ Organisationnel',manquants:'◆ Manquants',autre:'○ Autre'};
@@ -14403,9 +14403,16 @@ async function saveArretsPrevus(){
   else toast(d?.error||'Erreur','err');
 }
 
+function _sortPwdsAutreLast(obj){
+  const entries=Object.entries(obj);
+  const autres=entries.filter(([k])=>k.trim().toLowerCase()==='autre');
+  const rest=entries.filter(([k])=>k.trim().toLowerCase()!=='autre');
+  const nw={};[...rest,...autres].forEach(([k,v])=>{nw[k]=v;});return nw;
+}
 function renderPwdList(){
   const c=document.getElementById('pwd-list');
   if(!c) return;
+  _cfgPwds=_sortPwdsAutreLast(_cfgPwds);
   c.innerHTML=Object.entries(_cfgPwds).map(([nm,pw],i)=>`
     <div class="pr" draggable="true" ondragstart="_pdDS(${i})" ondragover="_pdDO(event)" ondrop="_pdDrop(${i})" style="cursor:default">
       <span style="cursor:grab;color:#94a3b8;font-size:16px;padding:0 2px;user-select:none;flex-shrink:0" title="Déplacer">⠿</span>
