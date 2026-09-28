@@ -424,8 +424,10 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
         pass
     _fd = form_data or {}
     _bf_nb_pers   = str(_fd.get("nb_pers","") or "")
+    _bf_taille    = str(_fd.get("taille","") or "")
     _bf_code_prod = str(_fd.get("code_prod","") or "")
     _bf_type_prod = str(_fd.get("type_prod","") or "")
+    _bf_poids     = str(_fd.get("poids","") or "")
     _bf_fibre     = str(_fd.get("fibre","") or "")
     def _bg():
         try:
@@ -466,10 +468,14 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                         ws.cell(excel_rn, 2).value = of_num
                     if _bf_nb_pers and not str(ws.cell(excel_rn, 7).value or "").strip():
                         ws.cell(excel_rn, 7).value = _bf_nb_pers
+                    if _bf_taille and not str(ws.cell(excel_rn, 8).value or "").strip():
+                        ws.cell(excel_rn, 8).value = _bf_taille
                     if _bf_code_prod and not str(ws.cell(excel_rn, 9).value or "").strip():
                         ws.cell(excel_rn, 9).value = _bf_code_prod
                     if _bf_type_prod and not str(ws.cell(excel_rn, 10).value or "").strip():
                         ws.cell(excel_rn, 10).value = _bf_type_prod
+                    if _bf_poids and not str(ws.cell(excel_rn, 11).value or "").strip():
+                        ws.cell(excel_rn, 11).value = _bf_poids
                     if _bf_fibre and not str(ws.cell(excel_rn, 12).value or "").strip():
                         ws.cell(excel_rn, 12).value = _bf_fibre
                     n_updated += 1
@@ -3906,7 +3912,7 @@ def api_stop_degrade():
         motif, "",
         shift_dt.strftime("%d/%m/%Y"), poste, pilot,
         (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-        "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
+        str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
         start_dt_deg.strftime("%H:%M:%S"), end_dt_deg.strftime("%H:%M:%S"), fmt(dur_s),
         "","","","","","","","","","","","","","","","","","","","",
         shift_dt.strftime("%d/%m/%Y"),
@@ -3974,7 +3980,7 @@ def api_end_prod():
                 _dg_motif, _dg_of_num,
                 _sh_dt.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-                "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
+                str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
                 _dg_of_start.strftime("%H:%M:%S"), _dg_of_end.strftime("%H:%M:%S"), fmt(_dg_dur_of),
                 "","","","","","","","","","","","","","","","","","","","",
                 _sh_dt.strftime("%d/%m/%Y"),
@@ -4249,7 +4255,7 @@ def api_end_stop():
             _lbl, (_S.get("form") or {}).get("of_num",""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",comment,"",
             _sh.strftime("%d/%m/%Y"),
@@ -4291,7 +4297,7 @@ def _toggle_pause_internal():
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),
             str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _ps.strftime("%H:%M:%S"), _pe.strftime("%H:%M:%S"), fmt(_pause_dur),
             "","","","","","","","","","","","","","","","","","","","",
             _sh.strftime("%d/%m/%Y"),
@@ -4333,7 +4339,7 @@ def api_toggle_reunion():
                 "Réunion", (_S.get("form") or {}).get("of_num",""),
                 _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-                "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+                str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
                 _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
                 "","","","","","","","","","","","","","","","","","",
                 _sh.strftime("%d/%m/%Y"),
@@ -4384,7 +4390,7 @@ def api_end_nettoyage():
             _lbl, (_S.get("form") or {}).get("of_num", ""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-            "",str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),"",str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",data.get("comment",""),"",
             _sh.strftime("%d/%m/%Y"),
@@ -4559,6 +4565,12 @@ def api_events_list():
                 "date": _row_date(r[2]),
                 "poste": str(r[3] or ""),
                 "pilote": str(r[4] or ""),
+                "nb_pers": str(r[6] or "") if len(r)>6 else "",
+                "taille": str(r[7] or "") if len(r)>7 else "",
+                "code_prod": str(r[8] or "") if len(r)>8 else "",
+                "type_prod": str(r[9] or "") if len(r)>9 else "",
+                "poids": str(r[10] or "") if len(r)>10 else "",
+                "fibre": str(r[11] or "") if len(r)>11 else "",
                 "debut": str(r[16] or "")[:8],
                 "fin": str(r[17] or "")[:8],
                 "duree": str(r[18] or ""),
@@ -9419,7 +9431,7 @@ async function loadMainDecl() {
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
     const cmt=esc(r.comment||'');
     const fibre=r.fibre||'';const fibreShort=esc(fibre.slice(0,9));
-    const produit=isProd?esc(r.type_prod||''):'';
+    const produit=esc(r.type_prod||'');
     return `<tr class="${isProd?'row-prod':'row-evt'}">
       <td>${tag}</td><td style="font-weight:700;color:${isProd?'#1e3a8a':'#dc2626'};text-decoration:underline;cursor:pointer" onclick="showMainRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||'—')}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6b7280">${produit}</td>
@@ -13188,7 +13200,7 @@ async function loadHist(){
     if(db!==da) return db-da;
     return (b.debut||'').localeCompare(a.debut||'');
   });
-  hd.innerHTML='<th>Type</th><th>OF</th><th>Produit</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Durée</th><th>Détails</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
+  hd.innerHTML='<th>Type</th><th>OF</th><th>Détails</th><th>Produit</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
   if(!allRows.length){bd.innerHTML='<tr><td colspan="14" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
   window._rowMap=window._rowMap||{};
   window._histEvtsAll=evtsFiltered; // pour showHistRowDetail
@@ -13206,14 +13218,16 @@ async function loadHist(){
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
     const cmt=esc(r.comment||'');
     const fbrH=r.fibre||'';const fbrShH=esc(fbrH.slice(0,9));
-    const produitH=isProd?esc(r.type_prod||''):'';
+    const produitH=esc(r.type_prod||'');
+    const nbPersH=esc(r.nb_pers||'');
     return `<tr class="${isProd?'row-prod':'row-evt'}" data-hftype="${esc(hftype)}">
       <td>${tag}</td><td style="font-weight:700;color:#1e3a8a;text-decoration:underline;cursor:pointer" onclick="showHistRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||'—')}</td>
+      <td style="font-size:calc(11px*var(--zf,1))">${details}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6b7280">${produitH}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600;cursor:${fbrH?'pointer':''}" title="${esc(fbrH)}" onclick="${fbrH?'showFibre(\''+esc(fbrH)+'\')':''}">${fbrShH}${fbrH.length>9?'…':''}</td>
       <td style="font-size:calc(10px*var(--zf,1))">${esc(r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
-      <td>${esc(r.pilote||'')}</td><td style="text-align:center;font-size:calc(10px*var(--zf,1));color:#374151">${isProd?esc(r.nb_pers||''):'—'}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
-      <td style="font-size:calc(11px*var(--zf,1))">${dur}</td><td style="font-size:calc(11px*var(--zf,1))">${details}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
+      <td>${esc(r.pilote||'')}</td><td style="text-align:center;font-size:calc(10px*var(--zf,1));color:#374151">${nbPersH||'—'}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
+      <td style="font-size:calc(11px*var(--zf,1))">${dur}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
       <td><button onclick="openEditRow('${esc(String(key))}')" class="btn-edit" title="Modifier">✏</button></td>
     </tr>`;
