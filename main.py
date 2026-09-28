@@ -4693,8 +4693,8 @@ def api_cdg_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "CDG"
-    headers = ["Type","Désignation","Arrêts bloquant ?","Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté produite","Qté équivalence"]
-    col_widths = [28,30,16,30,18,14,14,20,20,10,10,10,10,14,16]
+    headers = ["Type","Désignation","Arrêts bloquant ?","OF","Pilote","Co-pilote","Poste","Date","Début","Fin","Durée","Qté produite","Qté équivalence","Nb pers","Commentaire"]
+    col_widths = [28,34,16,18,20,20,14,14,10,10,10,14,16,10,30]
     hdr_font  = Font(name="Arial", bold=True, color="FFFFFF", size=11)
     hdr_fill  = PatternFill("solid", fgColor="1E3A8A")
     hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -4722,18 +4722,18 @@ def api_cdg_export():
             type_label,
             row.get("designation",""),
             row.get("bloquant",""),
-            row.get("comment",""),
             row.get("of",""),
-            row.get("date",""),
-            row.get("poste",""),
             row.get("pilote",""),
             row.get("copilote",""),
-            row.get("nb_pers",""),
+            row.get("poste",""),
+            row.get("date",""),
             row.get("debut",""),
             row.get("fin",""),
             row.get("duree",""),
             row.get("qte_fab",""),
             row.get("equiv",""),
+            row.get("nb_pers",""),
+            row.get("comment",""),
         ]
         ws.append(cells)
         xrow = ws.max_row
@@ -4745,8 +4745,8 @@ def api_cdg_export():
                 cell2.font = prod_font if is_prod else arret_font
             else:
                 cell2.font = data_font
-            if ci2 in (10,): cell2.alignment = center_al
-            if ci2 in (14,15): cell2.alignment = right_al
+            if ci2 in (3, 14): cell2.alignment = center_al
+            if ci2 in (12, 13): cell2.alignment = right_al
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -7346,9 +7346,10 @@ select{cursor:default}
         <!-- Option 1 : Déclarer comme arrêt -->
         <div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:12px;padding:14px 18px">
           <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">🛑 Option 1 — Déclarer comme un arrêt</div>
-          <select id="ps-stop-sel" size="1" style="width:100%;padding:9px 12px;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;font-size:calc(13px*var(--zf,1));color:#1e293b;outline:none;margin-bottom:10px;cursor:pointer;max-height:40vh" onchange="if(this.value){const c=document.getElementById('ps-custom');if(c)c.value=this.value;confirmPsAsStop();}">
-            <option value="">— Choisir un type d'arrêt —</option>
-          </select>
+          <div id="ps-stop-dd" style="position:relative;margin-bottom:10px">
+            <button id="ps-stop-dd-btn" type="button" onclick="_psToggleDd()" style="width:100%;padding:9px 12px;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;font-size:calc(13px*var(--zf,1));color:#94a3b8;outline:none;cursor:pointer;text-align:left;display:flex;justify-content:space-between;align-items:center"><span id="ps-stop-dd-label">— Choisir un type d'arrêt —</span><span style="font-size:10px">▼</span></button>
+            <div id="ps-stop-dd-list" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;max-height:260px;overflow-y:auto;z-index:300;box-shadow:0 6px 20px rgba(0,0,0,.15)"></div>
+          </div>
           <div style="display:flex;gap:8px;align-items:stretch">
             <input id="ps-custom" placeholder="Ou saisie libre…" style="flex:1;padding:9px 12px;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;font-size:calc(13px*var(--zf,1));color:#1e293b;outline:none" onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#fca5a5'" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
             <button onclick="confirmPsAsStop()" style="flex-shrink:0;padding:9px 22px;background:linear-gradient(135deg,#dc2626,#b91c1c);border:none;border-radius:8px;color:#fff;font-size:calc(13px*var(--zf,1));font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 3px 10px rgba(220,38,38,.3)">✓ Valider l'arrêt</button>
@@ -9029,6 +9030,12 @@ async function pollState() {
   // Toast de confirmation quand write direct réussit
   if(_prevWp && !s.write_pending && !s.write_failed && s.backup_pending===0){
     toast('✅ Déclaration enregistrée dans Excel !','ok',4000);
+    // Débloquer le bouton "Fin de poste" maintenant que l'écriture est confirmée
+    if(window._finPosteLockedForWrite){
+      window._finPosteLockedForWrite=false;
+      const bf=document.getElementById('btn-fin-poste');
+      if(bf){bf.disabled=false;bf.style.opacity='';bf.style.cursor='';bf.style.filter='';if(bf._savedHtml){bf.innerHTML=bf._savedHtml;bf._savedHtml=null;}}
+    }
   }
   // Toast de confirmation quand le backup est entièrement vidé
   if(_prevBk>0 && (s.backup_pending||0)===0){
@@ -9981,26 +9988,53 @@ function psCancelAll(){
   _showNextGap();
 }
 
-// ── Sélection rapide dans m-preshift (legacy, kept for compat) ──
-function psPick(lbl){
-  const sel=document.getElementById('ps-stop-sel');if(sel) sel.value='';
-  const el=document.getElementById('ps-custom');
-  if(el) el.value=lbl;
+// ── Sélection rapide dans m-preshift (legacy) ──
+function psPick(lbl){_psPickDd(lbl);}
+
+// ── Custom dropdown inter-OF ──
+function _psToggleDd(){
+  const dd=document.getElementById('ps-stop-dd-list');
+  if(!dd) return;
+  const open=dd.style.display!=='none';
+  dd.style.display=open?'none':'block';
+  if(!open){
+    // close when clicking outside
+    setTimeout(()=>{
+      const _close=ev=>{if(!document.getElementById('ps-stop-dd')?.contains(ev.target)){dd.style.display='none';document.removeEventListener('click',_close,true);}};
+      document.addEventListener('click',_close,true);
+    },0);
+  }
+}
+function _psPickDd(lbl){
+  const dd=document.getElementById('ps-stop-dd-list');if(dd) dd.style.display='none';
+  const btn=document.getElementById('ps-stop-dd-label');if(btn) btn.textContent=lbl;
+  const c=document.getElementById('ps-custom');if(c) c.value=lbl;
   confirmPsAsStop();
 }
 
 // ── Choix pré-poste ──
 function psFillStopBtns(){
-  const sel=document.getElementById('ps-stop-sel');
-  if(!sel) return;
-  sel.innerHTML='<option value="">— Choisir un type d\'arrêt —</option>';
+  const dd=document.getElementById('ps-stop-dd-list');
+  const lbl=document.getElementById('ps-stop-dd-label');
+  if(!dd) return;
+  dd.innerHTML='';
+  if(lbl) lbl.textContent='— Choisir un type d\'arrêt —';
 
-  const _addGroup=(title,labels)=>{
+  const _addGroup=(title,labels,accent)=>{
     if(!labels.length) return;
-    const g=document.createElement('optgroup');
-    g.label=title;
-    labels.forEach(lbl=>{const o=document.createElement('option');o.value=lbl;o.textContent=lbl;g.appendChild(o);});
-    sel.appendChild(g);
+    const hdr=document.createElement('div');
+    hdr.style.cssText=`padding:5px 12px 2px;font-size:calc(10px*var(--zf,1));font-weight:800;text-transform:uppercase;color:${accent||'#64748b'};letter-spacing:.4px;border-top:1px solid #f1f5f9;margin-top:2px`;
+    hdr.textContent=title;
+    dd.appendChild(hdr);
+    labels.forEach(l=>{
+      const item=document.createElement('div');
+      item.style.cssText='padding:8px 16px;font-size:calc(12px*var(--zf,1));color:#1e293b;cursor:pointer;transition:background .1s';
+      item.textContent=l;
+      item.onmouseover=()=>item.style.background='#fef2f2';
+      item.onmouseout=()=>item.style.background='';
+      item.onclick=()=>_psPickDd(l);
+      dd.appendChild(item);
+    });
   };
 
   // Section "Arrêts prévus"
@@ -10014,24 +10048,23 @@ function psFillStopBtns(){
   ];
   const prevusList=PREVUS_CFG.filter(a=>(ap[a.key]||0)>0).map(a=>a.lbl);
   if(!prevusList.length) prevusList.push(...['Pause','Réunion','Nettoyage court','Nettoyage long']);
-  _addGroup('⏱ Arrêts prévus',prevusList);
+  _addGroup('⏱ Arrêts prévus',prevusList,'#d97706');
 
-  // Sections par catégorie depuis _evtsList (paramètres)
+  // Sections par catégorie
   const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
   const seen=new Set(prevusList.map(l=>l.toLowerCase()));
   const cats={pb:[],ratt:[],nettoyage:[],organisation:[],autre:[]};
   evts.forEach(e=>{
-    const lbl=e.label||'';if(!lbl||seen.has(lbl.toLowerCase())) return;
-    seen.add(lbl.toLowerCase());
+    const l=e.label||'';if(!l||seen.has(l.toLowerCase())) return;
+    seen.add(l.toLowerCase());
     const c=e.cat||'autre';
-    if(cats[c]!==undefined) cats[c].push(lbl); else cats.autre.push(lbl);
+    if(cats[c]!==undefined) cats[c].push(l); else cats.autre.push(l);
   });
-  if(cats.pb.length||cats.ratt.length) _addGroup('▲ Pannes / Rattrapages',[...cats.pb,...cats.ratt]);
-  if(cats.nettoyage.length) _addGroup('🧹 Nettoyage',cats.nettoyage);
-  if(cats.organisation.length) _addGroup('📋 Organisation',cats.organisation);
-  if(cats.autre.length) _addGroup('⚫ Autre',cats.autre);
+  if(cats.pb.length||cats.ratt.length) _addGroup('▲ Pannes / Rattrapages',[...cats.pb,...cats.ratt],'#dc2626');
+  if(cats.nettoyage.length) _addGroup('🧹 Nettoyage',cats.nettoyage,'#f97316');
+  if(cats.organisation.length) _addGroup('📋 Organisation',cats.organisation,'#3b82f6');
+  if(cats.autre.length) _addGroup('⚫ Autre',cats.autre,'#64748b');
 
-  sel.value='';
   const c=document.getElementById('ps-custom');if(c) c.value='';
 }
 
@@ -10657,6 +10690,10 @@ async function confirmEndProd(){
   const f=collectForm();
   closeM('m-endprod');
   _lockActionBtns(5);
+  // Griser "Fin de poste" jusqu'à confirmation écriture Excel
+  window._finPosteLockedForWrite=true;
+  const _bfp=document.getElementById('btn-fin-poste');
+  if(_bfp){_bfp._savedHtml=_bfp.innerHTML;_bfp.disabled=true;_bfp.style.opacity='0.45';_bfp.style.cursor='not-allowed';_bfp.style.filter='grayscale(1)';}
   showExcelLoading();
   const r=await fetch('/api/end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
   if(!r){hideExcelLoading();return;}
@@ -12894,7 +12931,8 @@ async function loadCdg(){
   const rows=Array.isArray(data)?data:[];
   const cnt=document.getElementById('cdg-count');
   if(cnt) cnt.textContent=rows.length+' ligne'+(rows.length>1?'s':'');
-  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Désignation</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Arrêts bloquant ?</th><th style="padding:7px 10px;text-align:left">Commentaire</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th></tr>';
+  const _th=(t,al)=>`<th style="padding:7px 10px;text-align:${al||'left'};white-space:nowrap">${t}</th>`;
+  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff">'+[_th('Type'),_th('Désignation'),_th('Arrêts bloquant ?','center'),_th('OF'),_th('Pilote'),_th('Co-pilote'),_th('Poste'),_th('Date'),_th('Début'),_th('Fin'),_th('Durée'),_th('Qté prod.','right'),_th('Qté équiv.','right'),_th('Nb pers','center'),_th('Commentaire')].join('')+'</tr>';
   if(!rows.length){
     bd.innerHTML='<tr><td colspan="15" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>';
     return;
@@ -12908,22 +12946,23 @@ async function loadCdg(){
     const cmt=r.comment||'';
     const bg=ip?'#eff6ff':'#fffbeb';
     const tc=ip?'#1d4ed8':'#b45309';
+    const _td=(v,s)=>`<td style="padding:5px 8px;${s||''}white-space:nowrap">${v}</td>`;
     return `<tr style="background:${bg};border-bottom:1px solid #e5e7eb">
-      <td style="padding:5px 8px;font-weight:600;color:${tc};white-space:nowrap">${esc(typeLabel)}</td>
-      <td style="padding:5px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(desig)}">${esc(desig)}</td>
-      <td style="padding:5px 8px;text-align:center;font-weight:700;color:${blqColor};white-space:nowrap">${esc(blq)}</td>
-      <td style="padding:5px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cmt)}">${esc(cmt)}</td>
-      <td style="padding:5px 8px;font-weight:700;color:#1e3a8a;white-space:nowrap">${esc(r.of||'')}</td>
-      <td style="padding:5px 8px;white-space:nowrap">${esc(r.date||'')}</td>
-      <td style="padding:5px 8px;white-space:nowrap">${esc(r.poste||'')}</td>
-      <td style="padding:5px 8px;white-space:nowrap">${esc(r.pilote||'')}</td>
-      <td style="padding:5px 8px;color:#6b7280;white-space:nowrap">${esc(r.copilote||'')}</td>
-      <td style="padding:5px 8px;text-align:center">${esc(r.nb_pers||'')}</td>
-      <td style="padding:5px 8px;white-space:nowrap">${esc(r.debut||'')}</td>
-      <td style="padding:5px 8px;white-space:nowrap">${esc(r.fin||'')}</td>
-      <td style="padding:5px 8px;white-space:nowrap">${esc(r.duree||'')}</td>
-      <td style="padding:5px 8px;text-align:right;white-space:nowrap">${ip?esc(String(r.qte_fab||'')):'—'}</td>
-      <td style="padding:5px 8px;text-align:right;white-space:nowrap">${ip?esc(String(r.equiv||'')):'—'}</td>
+      ${_td(`<span style="font-weight:600;color:${tc}">${esc(typeLabel)}</span>`)}
+      ${_td(`<span style="max-width:220px;display:inline-block;overflow:hidden;text-overflow:ellipsis" title="${esc(desig)}">${esc(desig)}</span>`)}
+      ${_td(`<span style="font-weight:700;color:${blqColor}">${esc(blq)}</span>`,'text-align:center;')}
+      ${_td(`<span style="font-weight:700;color:#1e3a8a">${esc(r.of||'')}</span>`)}
+      ${_td(esc(r.pilote||''))}
+      ${_td(`<span style="color:#6b7280">${esc(r.copilote||'')}</span>`)}
+      ${_td(esc(r.poste||''))}
+      ${_td(esc(r.date||''))}
+      ${_td(esc(r.debut||''))}
+      ${_td(esc(r.fin||''))}
+      ${_td(esc(r.duree||''))}
+      ${_td(ip?esc(String(r.qte_fab||'')):'—','text-align:right;')}
+      ${_td(ip?esc(String(r.equiv||'')):'—','text-align:right;')}
+      ${_td(esc(r.nb_pers||''),'text-align:center;')}
+      ${_td(`<span style="max-width:200px;display:inline-block;overflow:hidden;text-overflow:ellipsis" title="${esc(cmt)}">${esc(cmt)}</span>`)}
     </tr>`;
   }).join('');
 }
@@ -14875,15 +14914,15 @@ def generate_dashboard_html():
             '      var rows=(window.DASH&&window.DASH.cdg_data)||[];\n'
             '      if(!rows.length){alert("Aucune donnée à exporter.");return;}\n'
             '      function doExport(XLSX){\n'
-            '        var hdrs=["Type","Désignation","Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté prod.","Qté équiv."];\n'
+            '        var hdrs=["Type","Désignation","Arrêts bloquant ?","OF","Pilote","Co-pilote","Poste","Date","Début","Fin","Durée","Qté prod.","Qté équiv.","Nb pers","Commentaire"];\n'
             '        var data=[hdrs];\n'
             '        rows.forEach(function(r){\n'
             '          var ip=r.is_prod;\n'
-            '          data.push([ip?"Production":"Arrêt",String(r.designation||""),String(r.comment||""),String(r.of||""),String(r.date||""),String(r.poste||""),String(r.pilote||""),String(r.copilote||""),String(r.nb_pers||""),String(r.debut||""),String(r.fin||""),String(r.duree||""),ip?String(r.qte_fab||""):"",ip?String(r.equiv||""):""]);\n'
+            '          data.push([ip?"Production":"Arrêt",String(r.designation||""),String(r.bloquant||""),String(r.of||""),String(r.pilote||""),String(r.copilote||""),String(r.poste||""),String(r.date||""),String(r.debut||""),String(r.fin||""),String(r.duree||""),ip?String(r.qte_fab||""):"",ip?String(r.equiv||""):"",String(r.nb_pers||""),String(r.comment||"")]);\n'
             '        });\n'
             '        var wb=XLSX.utils.book_new();\n'
             '        var ws=XLSX.utils.aoa_to_sheet(data);\n'
-            '        ws["!cols"]=[28,30,30,18,14,14,20,20,10,10,10,10,14,16].map(function(w){return{wch:w};});\n'
+            '        ws["!cols"]=[28,34,16,18,20,20,14,14,10,10,10,14,16,10,30].map(function(w){return{wch:w};});\n'
             '        var thin={style:"thin",color:{rgb:"CCCCCC"}};\n'
             '        var bdr={top:thin,bottom:thin,left:thin,right:thin};\n'
             '        var hdrS={font:{bold:true,color:{rgb:"FFFFFF"},sz:11},fill:{fgColor:{rgb:"1E3A8A"}},alignment:{horizontal:"center",vertical:"center"},border:bdr};\n'
@@ -14926,9 +14965,9 @@ def generate_dashboard_html():
             '      });\n'
             '      var cnt=document.getElementById("cdg-count");\n'
             '      if(cnt) cnt.textContent=rows.length+" ligne"+(rows.length>1?"s":"");\n'
-            '      hd.innerHTML=\'<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Désignation</th><th style="padding:7px 10px;text-align:left">Commentaire</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th></tr>\';\n'
+            '      hd.innerHTML=\'<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Désignation</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Arrêts bloquant ?</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left">Commentaire</th></tr>\';\n'
             '      if(!rows.length){\n'
-            '        bd.innerHTML=\'<tr><td colspan="14" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>\';\n'
+            '        bd.innerHTML=\'<tr><td colspan="15" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>\';\n'
             '        return;\n'
             '      }\n'
             '      function esc2(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}\n'
@@ -14936,24 +14975,27 @@ def generate_dashboard_html():
             '        var ip=r.is_prod;\n'
             '        var typeLabel=ip?"Déclaration de prod (OF)":"Déclaration d\'arrêt";\n'
             '        var desig=String(r.designation||"");\n'
+            '        var blq=String(r.bloquant||"");\n'
+            '        var blqC=blq==="OUI"?"#dc2626":blq==="NON"?"#16a34a":"#6b7280";\n'
             '        var cmt=r.comment||"";\n'
             '        var bg=ip?"#eff6ff":"#fffbeb";\n'
             '        var tc=ip?"#1d4ed8":"#b45309";\n'
             '        return "<tr style=\\"background:"+bg+";border-bottom:1px solid #e5e7eb\\">"\n'
             '          +"<td style=\\"padding:5px 8px;font-weight:600;color:"+tc+";white-space:nowrap\\">"+esc2(typeLabel)+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\\" title=\\""+esc2(desig)+"\\">"+esc2(desig)+"</td>"\n'
-            '          +"<td style=\\"padding:5px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\\" title=\\""+esc2(cmt)+"\\">"+esc2(cmt)+"</td>"\n'
+            '          +"<td style=\\"padding:5px 8px;text-align:center;font-weight:700;color:"+blqC+";white-space:nowrap\\">"+esc2(blq)+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;font-weight:700;color:#1e3a8a;white-space:nowrap\\">"+esc2(r.of||"")+"</td>"\n'
-            '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.date||"")+"</td>"\n'
-            '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.poste||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.pilote||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;color:#6b7280;white-space:nowrap\\">"+esc2(r.copilote||"")+"</td>"\n'
-            '          +"<td style=\\"padding:5px 8px;text-align:center\\">"+esc2(r.nb_pers||"")+"</td>"\n'
+            '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.poste||"")+"</td>"\n'
+            '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.date||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.debut||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.fin||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.duree||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;text-align:right;white-space:nowrap\\">"+(ip?esc2(String(r.qte_fab||"")):"—")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;text-align:right;white-space:nowrap\\">"+(ip?esc2(String(r.equiv||"")):"—")+"</td>"\n'
+            '          +"<td style=\\"padding:5px 8px;text-align:center\\">"+esc2(r.nb_pers||"")+"</td>"\n'
+            '          +"<td style=\\"padding:5px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\\" title=\\""+esc2(cmt)+"\\">"+esc2(cmt)+"</td>"\n'
             '          +"</tr>";\n'
             '      }).join("");\n'
             '    };\n'
