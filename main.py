@@ -7329,9 +7329,11 @@ select{cursor:default}
         <!-- Option 1 : Déclarer comme arrêt -->
         <div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:12px;padding:14px 18px">
           <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">🛑 Option 1 — Déclarer comme un arrêt</div>
-          <div id="ps-stop-btns" style="margin-bottom:10px"></div>
+          <select id="ps-stop-sel" style="width:100%;padding:9px 12px;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;font-size:calc(13px*var(--zf,1));color:#1e293b;outline:none;margin-bottom:10px;cursor:pointer" onchange="if(this.value){const c=document.getElementById('ps-custom');if(c)c.value=this.value;confirmPsAsStop();}">
+            <option value="">— Choisir un type d'arrêt —</option>
+          </select>
           <div style="display:flex;gap:8px;align-items:stretch">
-            <input id="ps-custom" placeholder="Type d'arrêt (saisie libre)…" style="flex:1;padding:9px 12px;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;font-size:calc(13px*var(--zf,1));color:#1e293b;outline:none" onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#fca5a5'" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
+            <input id="ps-custom" placeholder="Ou saisie libre…" style="flex:1;padding:9px 12px;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;font-size:calc(13px*var(--zf,1));color:#1e293b;outline:none" onfocus="this.style.borderColor='#dc2626'" onblur="this.style.borderColor='#fca5a5'" onkeydown="if(event.key==='Enter')confirmPsAsStop()">
             <button onclick="confirmPsAsStop()" style="flex-shrink:0;padding:9px 22px;background:linear-gradient(135deg,#dc2626,#b91c1c);border:none;border-radius:8px;color:#fff;font-size:calc(13px*var(--zf,1));font-weight:800;cursor:pointer;white-space:nowrap;box-shadow:0 3px 10px rgba(220,38,38,.3)">✓ Valider l'arrêt</button>
           </div>
         </div>
@@ -9866,6 +9868,7 @@ async function doStartProdNouvel(){
 }
 
 async function _doActualStartProd(){
+  if(window.ST&&window.ST.prod_active) return;
   saveFormToStorage();
   const r=await fetch('/api/start_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   if(!r) return;
@@ -9914,6 +9917,7 @@ async function doStartProdFromOFPrep(id){
 }
 
 async function doStartProd() {
+  if(window.ST&&window.ST.prod_active) return;
   // Check if there are OF préparés
   const ofpd=await apiFetch('/api/of_prepares');
   if(ofpd&&(ofpd.list||[]).length>0){
@@ -9952,8 +9956,9 @@ function psCancelAll(){
   _showNextGap();
 }
 
-// ── Sélection rapide dans m-preshift ──
+// ── Sélection rapide dans m-preshift (legacy, kept for compat) ──
 function psPick(lbl){
+  const sel=document.getElementById('ps-stop-sel');if(sel) sel.value='';
   const el=document.getElementById('ps-custom');
   if(el) el.value=lbl;
   confirmPsAsStop();
@@ -9961,38 +9966,19 @@ function psPick(lbl){
 
 // ── Choix pré-poste ──
 function psFillStopBtns(){
-  const bc=document.getElementById('ps-stop-btns');
-  if(!bc) return;
-  bc.innerHTML='';
+  const sel=document.getElementById('ps-stop-sel');
+  if(!sel) return;
+  sel.innerHTML='<option value="">— Choisir un type d\'arrêt —</option>';
 
-  const _makeBtn=(lbl,accent)=>{
-    const b=document.createElement('button');
-    b.className='btn btn-ghost';
-    b.style.cssText=`font-size:calc(12px*var(--zf,1));transition:all .15s;border:2px solid ${accent||'var(--border)'};color:${accent||'var(--text)'};margin-bottom:3px`;
-    b.textContent=lbl;
-    b.onclick=()=>{
-      document.getElementById('ps-custom').value=lbl;
-      bc.querySelectorAll('.btn').forEach(x=>{x.style.background='';x.style.borderColor='var(--border)';x.style.color='var(--text)';x.style.transform='';});
-      b.style.background='var(--navy)';b.style.color='#fff';b.style.borderColor='var(--navy)';
-      b.style.transform='scale(0.93)';
-      setTimeout(()=>confirmPsAsStop(),180);
-    };
-    return b;
-  };
-
-  const _makeSection=(title,labels,accent)=>{
+  const _addGroup=(title,labels)=>{
     if(!labels.length) return;
-    const hdr=document.createElement('div');
-    hdr.style.cssText='font-size:calc(10px*var(--zf,1));font-weight:800;text-transform:uppercase;color:'+accent+';letter-spacing:.4px;margin:6px 0 4px;border-bottom:1px solid #e5e7eb;padding-bottom:2px';
-    hdr.textContent=title;
-    bc.appendChild(hdr);
-    const row=document.createElement('div');
-    row.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
-    labels.forEach(lbl=>row.appendChild(_makeBtn(lbl,accent)));
-    bc.appendChild(row);
+    const g=document.createElement('optgroup');
+    g.label=title;
+    labels.forEach(lbl=>{const o=document.createElement('option');o.value=lbl;o.textContent=lbl;g.appendChild(o);});
+    sel.appendChild(g);
   };
 
-  // Section "Arrêts prévus" depuis _cfgArretsPrevus
+  // Section "Arrêts prévus"
   const ap=_cfgArretsPrevus||{};
   const PREVUS_CFG=[
     {key:'pause_min',lbl:'Pause'},
@@ -10003,26 +9989,25 @@ function psFillStopBtns(){
   ];
   const prevusList=PREVUS_CFG.filter(a=>(ap[a.key]||0)>0).map(a=>a.lbl);
   if(!prevusList.length) prevusList.push(...['Pause','Réunion','Nettoyage court','Nettoyage long']);
-  _makeSection('⏱ Arrêts prévus',prevusList,'#d97706');
+  _addGroup('⏱ Arrêts prévus',prevusList);
 
   // Sections par catégorie depuis _evtsList (paramètres)
   const evts=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
-  const prevusSet=new Set(prevusList.map(l=>l.toLowerCase()));
-  const cats={pb:[],ratt:[],nettoyage:[],organisation:[],autre:[]};
   const seen=new Set(prevusList.map(l=>l.toLowerCase()));
+  const cats={pb:[],ratt:[],nettoyage:[],organisation:[],autre:[]};
   evts.forEach(e=>{
     const lbl=e.label||'';if(!lbl||seen.has(lbl.toLowerCase())) return;
     seen.add(lbl.toLowerCase());
     const c=e.cat||'autre';
-    if(cats[c]!==undefined) cats[c].push(lbl);
-    else cats.autre.push(lbl);
+    if(cats[c]!==undefined) cats[c].push(lbl); else cats.autre.push(lbl);
   });
-  if(cats.pb.length||cats.ratt.length) _makeSection('▲ Pannes / Rattrapages',[...cats.pb,...cats.ratt],'#dc2626');
-  if(cats.nettoyage.length) _makeSection('🧹 Nettoyage',cats.nettoyage,'#f97316');
-  if(cats.organisation.length) _makeSection('📋 Organisation',cats.organisation,'#3b82f6');
-  if(cats.autre.length) _makeSection('⚫ Autre',cats.autre,'#64748b');
+  if(cats.pb.length||cats.ratt.length) _addGroup('▲ Pannes / Rattrapages',[...cats.pb,...cats.ratt]);
+  if(cats.nettoyage.length) _addGroup('🧹 Nettoyage',cats.nettoyage);
+  if(cats.organisation.length) _addGroup('📋 Organisation',cats.organisation);
+  if(cats.autre.length) _addGroup('⚫ Autre',cats.autre);
 
-  document.getElementById('ps-custom').value='';
+  sel.value='';
+  const c=document.getElementById('ps-custom');if(c) c.value='';
 }
 
 async function confirmPsAsStop(){
