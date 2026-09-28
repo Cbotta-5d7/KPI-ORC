@@ -1737,7 +1737,8 @@ def _backup_excel_daily():
     try:
         os.makedirs(BACKUPS_DIR, exist_ok=True)
         today_str = datetime.date.today().strftime("%Y%m%d")
-        backup_path = os.path.join(BACKUPS_DIR, f"kpi_orc_{today_str}.xlsx")
+        _app_bk = (cfg.get("app_name","") or "kpi_orc").strip().replace(" ","_").replace("/","_")
+        backup_path = os.path.join(BACKUPS_DIR, f"{_app_bk}_{today_str}.xlsx")
         if os.path.exists(backup_path): return  # déjà fait aujourd'hui
         shutil.copy2(path, backup_path)
         print(f"[BACKUP-EXCEL] Copie quotidienne : {backup_path}")
@@ -6999,7 +7000,7 @@ select{cursor:default}
         <button id="btn-nettoyage-acc" class="acc-btn" onclick="doNettoyage()" style="background:radial-gradient(ellipse at 50% 25%,#fed7aa 0%,#f97316 55%,#c2410c 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon"><svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><line x1="6" y1="2" x2="15" y2="15" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/><path d="M3 15 Q6 13 9 14.5 Q12 16 15 14 Q18 12 21 14 L20 21 Q16 23 12 22 Q8 22 4 21 Z" fill="#fff" opacity="0.9"/><line x1="8" y1="15" x2="7" y2="21" stroke="rgba(0,0,0,0.2)" stroke-width="1.2"/><line x1="12" y1="15" x2="12" y2="22" stroke="rgba(0,0,0,0.2)" stroke-width="1.2"/><line x1="16" y1="15" x2="17" y2="21" stroke="rgba(0,0,0,0.2)" stroke-width="1.2"/></svg></span><span>Nettoyage</span></button>
         <button id="btn-pause-acc" class="acc-btn" onclick="doPause()" style="background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">☕</span><span>Pause</span></button>
         <button id="btn-reunion-acc" class="acc-btn" onclick="doReunion()" style="background:radial-gradient(ellipse at 50% 25%,#c4b5fd 0%,#8b5cf6 55%,#5b21b6 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">🗣️</span><span>Réunion</span></button>
-        <button class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
+        <button id="btn-fin-poste" class="acc-btn acc-green" onclick="doFinPoste()"><span class="act-icon">🏁</span><span>Fin de poste</span></button>
         <div style="width:1px;background:rgba(255,255,255,.25);align-self:stretch;margin:0 4px;flex-shrink:0"></div>
         <button class="acc-btn" onclick="pdChooseType()" style="margin-left:auto;background:radial-gradient(ellipse at 50% 25%,#e2e8f0 0%,#64748b 55%,#334155 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none"><span class="act-icon">📝</span><span>Faire une régul</span></button>
         <button class="acc-btn" id="btn-of-prepares" onclick="openOfPrepares()" style="background:radial-gradient(ellipse at 50% 25%,#a5b4fc 0%,#6366f1 55%,#3730a3 100%);color:#fff;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.4);border:none;position:relative"><span class="act-icon">📋</span><span>Prépa OF en avance</span><span id="ofp-badge" style="display:none;position:absolute;top:4px;right:4px;background:#f59e0b;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:900;align-items:center;justify-content:center;line-height:1"></span></button>
@@ -9873,7 +9874,15 @@ async function _doActualStartProd(){
   const r=await fetch('/api/start_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   if(!r) return;
   const d=await r.json();
-  if(!d.ok){toast(d.error||'Erreur','err');return;}
+  if(!d.ok){
+    if((d.error||'').indexOf('déjà')>=0||(d.error||'').indexOf('cours')>=0){
+      // Prod already running — silently sync state
+      if(window.ST) window.ST.prod_active=true;
+      pollState();
+      return;
+    }
+    toast(d.error||'Erreur','err');return;
+  }
   // Marquer immédiatement pour éviter que _checkFormAutoConfirm re-déclenche avant pollState
   if(window.ST) window.ST.prod_active=true;
   setToday();
@@ -10399,11 +10408,24 @@ function doEndStop(key) {
   setTimeout(()=>document.getElementById('cmt-stop-text').focus(),100);
 }
 
+function _lockActionBtns(sec){
+  const bs=document.getElementById('btn-start');
+  const bf=document.getElementById('btn-fin-poste');
+  const _dis=(b,txt)=>{if(!b)return;b.disabled=true;b.style.opacity='0.45';b.style.cursor='not-allowed';b.style.filter='grayscale(1)';if(txt){b.innerHTML=`<span class="act-icon">⏳</span><span>${txt}</span>`;}};
+  const _en=(b,html)=>{if(!b)return;b.disabled=false;b.style.opacity='';b.style.cursor='';b.style.filter='';if(html)b.innerHTML=html;};
+  const _bsHtml=bs?bs.innerHTML:null;
+  const _bfHtml=bf?bf.innerHTML:null;
+  _dis(bs,'Écriture en cours…');
+  _dis(bf,null);
+  setTimeout(()=>{_en(bs,_bsHtml);_en(bf,_bfHtml);},sec*1000);
+}
+
 async function confirmEndStop() {
   const k=document.getElementById('cmt-stop-key').value;
   const cmt=document.getElementById('cmt-stop-text').value.trim();
   closeM('m-stopcmt');
   await _flushFormNow();
+  _lockActionBtns(5);
   try{
     await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,comment:cmt})});
   }catch(e){
@@ -10618,6 +10640,7 @@ function hideExcelLoading(){const el=document.getElementById('excel-loading-over
 async function confirmEndProd(){
   const f=collectForm();
   closeM('m-endprod');
+  _lockActionBtns(5);
   showExcelLoading();
   const r=await fetch('/api/end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
   if(!r){hideExcelLoading();return;}
