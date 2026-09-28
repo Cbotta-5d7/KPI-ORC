@@ -4600,23 +4600,31 @@ def api_cdg_data():
             type_str = str(r[0] or "").strip()
             is_prod  = type_str.lower() in ("production","prod","")
             ev_info  = _evts_map.get(type_str.lower(), {})
+            if is_prod:
+                _tp = str(r[9]  or "").strip() if len(r) > 9  else ""
+                _ta = str(r[7]  or "").strip() if len(r) > 7  else ""
+                _po = str(r[10] or "").strip() if len(r) > 10 else ""
+                _parts = [p for p in [_tp, _ta, (_po + " gr" if _po else "")] if p]
+                desig = " - ".join(_parts)
+            else:
+                desig = type_str
             rows.append({
-                "row_num":  rn,
-                "is_prod":  is_prod,
-                "libelle":  "" if is_prod else type_str,
-                "bloquant": "" if is_prod else ("OUI" if ev_info.get("bloquant") else "NON"),
-                "comment":  str(r[35] or ""),
-                "of":       str(r[1]  or ""),
-                "date":     _row_date(r[2]),
-                "poste":    str(r[3]  or ""),
-                "pilote":   str(r[4]  or ""),
-                "copilote": str(r[5]  or ""),
-                "nb_pers":  str(r[6]  or ""),
-                "debut":    str(r[16] or "")[:5],
-                "fin":      str(r[17] or "")[:5],
-                "duree":    str(r[18] or ""),
-                "qte_fab":  str(r[19] or "") if is_prod else "",
-                "equiv":    str(r[21] or "") if is_prod else "",
+                "row_num":    rn,
+                "is_prod":    is_prod,
+                "designation": desig,
+                "bloquant":   "" if is_prod else ("OUI" if ev_info.get("bloquant") else "NON"),
+                "comment":    str(r[35] or ""),
+                "of":         str(r[1]  or ""),
+                "date":       _row_date(r[2]),
+                "poste":      str(r[3]  or ""),
+                "pilote":     str(r[4]  or ""),
+                "copilote":   str(r[5]  or ""),
+                "nb_pers":    str(r[6]  or ""),
+                "debut":      str(r[16] or "")[:5],
+                "fin":        str(r[17] or "")[:5],
+                "duree":      str(r[18] or ""),
+                "qte_fab":    str(r[19] or "") if is_prod else "",
+                "equiv":      str(r[21] or "") if is_prod else "",
             })
         except: pass
     def _sk(row):
@@ -4651,22 +4659,30 @@ def api_cdg_export():
             type_str = str(r[0] or "").strip()
             is_prod  = type_str.lower() in ("production","prod","")
             ev_info2 = _evts_map2.get(type_str.lower(), {})
+            if is_prod:
+                _tp2 = str(r[9]  or "").strip() if len(r) > 9  else ""
+                _ta2 = str(r[7]  or "").strip() if len(r) > 7  else ""
+                _po2 = str(r[10] or "").strip() if len(r) > 10 else ""
+                _parts2 = [p for p in [_tp2, _ta2, (_po2 + " gr" if _po2 else "")] if p]
+                desig2 = " - ".join(_parts2)
+            else:
+                desig2 = type_str
             rows.append({
-                "is_prod":  is_prod,
-                "libelle":  "" if is_prod else type_str,
-                "bloquant": "" if is_prod else ("OUI" if ev_info2.get("bloquant") else "NON"),
-                "comment":  str(r[35] or ""),
-                "of":       str(r[1]  or ""),
-                "date":     _row_date(r[2]),
-                "poste":    str(r[3]  or ""),
-                "pilote":   str(r[4]  or ""),
-                "copilote": str(r[5]  or ""),
-                "nb_pers":  str(r[6]  or ""),
-                "debut":    str(r[16] or "")[:5],
-                "fin":      str(r[17] or "")[:5],
-                "duree":    str(r[18] or ""),
-                "qte_fab":  str(r[19] or "") if is_prod else "",
-                "equiv":    str(r[21] or "") if is_prod else "",
+                "is_prod":     is_prod,
+                "designation": desig2,
+                "bloquant":    "" if is_prod else ("OUI" if ev_info2.get("bloquant") else "NON"),
+                "comment":     str(r[35] or ""),
+                "of":          str(r[1]  or ""),
+                "date":        _row_date(r[2]),
+                "poste":       str(r[3]  or ""),
+                "pilote":      str(r[4]  or ""),
+                "copilote":    str(r[5]  or ""),
+                "nb_pers":     str(r[6]  or ""),
+                "debut":       str(r[16] or "")[:5],
+                "fin":         str(r[17] or "")[:5],
+                "duree":       str(r[18] or ""),
+                "qte_fab":     str(r[19] or "") if is_prod else "",
+                "equiv":       str(r[21] or "") if is_prod else "",
             })
         except: pass
     def _sk(row):
@@ -4677,7 +4693,7 @@ def api_cdg_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "CDG"
-    headers = ["Type","Libellé arrêt","Arrêts bloquant ?","Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté produite","Qté équivalence"]
+    headers = ["Type","Désignation","Arrêts bloquant ?","Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté produite","Qté équivalence"]
     col_widths = [28,30,16,30,18,14,14,20,20,10,10,10,10,14,16]
     hdr_font  = Font(name="Arial", bold=True, color="FFFFFF", size=11)
     hdr_fill  = PatternFill("solid", fgColor="1E3A8A")
@@ -4704,7 +4720,7 @@ def api_cdg_export():
         type_label = "Déclaration de prod (OF)" if is_prod else "Déclaration d'arrêt"
         cells = [
             type_label,
-            "" if is_prod else row.get("libelle",""),
+            row.get("designation",""),
             row.get("bloquant",""),
             row.get("comment",""),
             row.get("of",""),
@@ -7330,7 +7346,7 @@ select{cursor:default}
         <!-- Option 1 : Déclarer comme arrêt -->
         <div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:12px;padding:14px 18px">
           <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">🛑 Option 1 — Déclarer comme un arrêt</div>
-          <select id="ps-stop-sel" style="width:100%;padding:9px 12px;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;font-size:calc(13px*var(--zf,1));color:#1e293b;outline:none;margin-bottom:10px;cursor:pointer" onchange="if(this.value){const c=document.getElementById('ps-custom');if(c)c.value=this.value;confirmPsAsStop();}">
+          <select id="ps-stop-sel" size="1" style="width:100%;padding:9px 12px;background:#fff;border:1.5px solid #fca5a5;border-radius:8px;font-size:calc(13px*var(--zf,1));color:#1e293b;outline:none;margin-bottom:10px;cursor:pointer;max-height:40vh" onchange="if(this.value){const c=document.getElementById('ps-custom');if(c)c.value=this.value;confirmPsAsStop();}">
             <option value="">— Choisir un type d'arrêt —</option>
           </select>
           <div style="display:flex;gap:8px;align-items:stretch">
@@ -12878,7 +12894,7 @@ async function loadCdg(){
   const rows=Array.isArray(data)?data:[];
   const cnt=document.getElementById('cdg-count');
   if(cnt) cnt.textContent=rows.length+' ligne'+(rows.length>1?'s':'');
-  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Libellé arrêt</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Arrêts bloquant ?</th><th style="padding:7px 10px;text-align:left">Commentaire</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th></tr>';
+  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Désignation</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Arrêts bloquant ?</th><th style="padding:7px 10px;text-align:left">Commentaire</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th></tr>';
   if(!rows.length){
     bd.innerHTML='<tr><td colspan="15" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>';
     return;
@@ -12886,7 +12902,7 @@ async function loadCdg(){
   bd.innerHTML=rows.map(r=>{
     const ip=r.is_prod;
     const typeLabel=ip?"Déclaration de prod (OF)":"Déclaration d'arrêt";
-    const lib=ip?'':(r.libelle||'');
+    const desig=r.designation||'';
     const blq=r.bloquant||'';
     const blqColor=blq==='OUI'?'#dc2626':blq==='NON'?'#16a34a':'#6b7280';
     const cmt=r.comment||'';
@@ -12894,7 +12910,7 @@ async function loadCdg(){
     const tc=ip?'#1d4ed8':'#b45309';
     return `<tr style="background:${bg};border-bottom:1px solid #e5e7eb">
       <td style="padding:5px 8px;font-weight:600;color:${tc};white-space:nowrap">${esc(typeLabel)}</td>
-      <td style="padding:5px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(lib)}">${esc(lib)}</td>
+      <td style="padding:5px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(desig)}">${esc(desig)}</td>
       <td style="padding:5px 8px;text-align:center;font-weight:700;color:${blqColor};white-space:nowrap">${esc(blq)}</td>
       <td style="padding:5px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cmt)}">${esc(cmt)}</td>
       <td style="padding:5px 8px;font-weight:700;color:#1e3a8a;white-space:nowrap">${esc(r.of||'')}</td>
@@ -14859,11 +14875,11 @@ def generate_dashboard_html():
             '      var rows=(window.DASH&&window.DASH.cdg_data)||[];\n'
             '      if(!rows.length){alert("Aucune donnée à exporter.");return;}\n'
             '      function doExport(XLSX){\n'
-            '        var hdrs=["Type","Libellé arrêt","Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté prod.","Qté équiv."];\n'
+            '        var hdrs=["Type","Désignation","Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté prod.","Qté équiv."];\n'
             '        var data=[hdrs];\n'
             '        rows.forEach(function(r){\n'
             '          var ip=r.is_prod;\n'
-            '          data.push([ip?"Production":"Arrêt",ip?"":String(r.libelle||""),String(r.comment||""),String(r.of||""),String(r.date||""),String(r.poste||""),String(r.pilote||""),String(r.copilote||""),String(r.nb_pers||""),String(r.debut||""),String(r.fin||""),String(r.duree||""),ip?String(r.qte_fab||""):"",ip?String(r.equiv||""):""]);\n'
+            '          data.push([ip?"Production":"Arrêt",String(r.designation||""),String(r.comment||""),String(r.of||""),String(r.date||""),String(r.poste||""),String(r.pilote||""),String(r.copilote||""),String(r.nb_pers||""),String(r.debut||""),String(r.fin||""),String(r.duree||""),ip?String(r.qte_fab||""):"",ip?String(r.equiv||""):""]);\n'
             '        });\n'
             '        var wb=XLSX.utils.book_new();\n'
             '        var ws=XLSX.utils.aoa_to_sheet(data);\n'
@@ -14910,7 +14926,7 @@ def generate_dashboard_html():
             '      });\n'
             '      var cnt=document.getElementById("cdg-count");\n'
             '      if(cnt) cnt.textContent=rows.length+" ligne"+(rows.length>1?"s":"");\n'
-            '      hd.innerHTML=\'<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Libellé arrêt</th><th style="padding:7px 10px;text-align:left">Commentaire</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th></tr>\';\n'
+            '      hd.innerHTML=\'<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Désignation</th><th style="padding:7px 10px;text-align:left">Commentaire</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th></tr>\';\n'
             '      if(!rows.length){\n'
             '        bd.innerHTML=\'<tr><td colspan="14" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>\';\n'
             '        return;\n'
@@ -14919,13 +14935,13 @@ def generate_dashboard_html():
             '      bd.innerHTML=rows.map(function(r){\n'
             '        var ip=r.is_prod;\n'
             '        var typeLabel=ip?"Déclaration de prod (OF)":"Déclaration d\'arrêt";\n'
-            '        var lib=ip?"":(r.libelle||"");\n'
+            '        var desig=String(r.designation||"");\n'
             '        var cmt=r.comment||"";\n'
             '        var bg=ip?"#eff6ff":"#fffbeb";\n'
             '        var tc=ip?"#1d4ed8":"#b45309";\n'
             '        return "<tr style=\\"background:"+bg+";border-bottom:1px solid #e5e7eb\\">"\n'
             '          +"<td style=\\"padding:5px 8px;font-weight:600;color:"+tc+";white-space:nowrap\\">"+esc2(typeLabel)+"</td>"\n'
-            '          +"<td style=\\"padding:5px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\\" title=\\""+esc2(lib)+"\\">"+esc2(lib)+"</td>"\n'
+            '          +"<td style=\\"padding:5px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\\" title=\\""+esc2(desig)+"\\">"+esc2(desig)+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\\" title=\\""+esc2(cmt)+"\\">"+esc2(cmt)+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;font-weight:700;color:#1e3a8a;white-space:nowrap\\">"+esc2(r.of||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.date||"")+"</td>"\n'
