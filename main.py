@@ -10333,23 +10333,43 @@ function _sortEvtsByCategory(list){
   });
 }
 
+let _evtEditIdx=null;
+const _EVT_CAT_COLOR={pb:'#ea580c',ratt:'#2563eb',nettoyage:'#16a34a',organisation:'#7c3aed',manquants:'#dc2626',autre:'#64748b'};
+
 function _renderEvtListHTML(){
   const c=document.getElementById('events-list-ui');if(!c) return;
-  if(!_evtsEditing.length){c.innerHTML='<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:4px">Aucun arrêt configuré</div>';return;}
+  if(!_evtsEditing.length){c.innerHTML='<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:8px">Aucun arrêt configuré</div>';return;}
   let html='';let lastCat=null;
   _evtsEditing.forEach((e,i)=>{
+    const catColor=_EVT_CAT_COLOR[e.cat]||'#64748b';
     if(e.cat!==lastCat){
-      if(lastCat!==null) html+=`<div style="border-top:1px solid #e2e8f0;margin:2px 0"></div>`;
+      if(lastCat!==null) html+=`<div style="height:8px"></div>`;
+      html+=`<div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:${catColor};text-transform:uppercase;letter-spacing:0.6px;padding:2px 4px;margin-bottom:4px;border-left:3px solid ${catColor};padding-left:7px">${_EVT_CAT_LBL[e.cat]||e.cat}</div>`;
       lastCat=e.cat;
     }
-    html+=`<div draggable="true" ondragstart="_edDS(${i})" ondragover="_edDO(event)" ondrop="_edDrop(${i})" style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:calc(12px*var(--zf,1));cursor:default">
-      <span style="cursor:grab;color:#94a3b8;font-size:16px;padding:0 2px;user-select:none" title="Déplacer">⠿</span>
-      <span style="flex:1;font-weight:600">${esc(e.label)}</span>
-      <span style="font-size:calc(10px*var(--zf,1));color:var(--gray)">${_EVT_CAT_LBL[e.cat]||e.cat}</span>
-      <label style="display:flex;align-items:center;gap:3px;font-size:calc(10px*var(--zf,1));color:#dc2626;white-space:nowrap;cursor:pointer" title="Arrêt bloquant pour la prod ?"><input type="checkbox" ${e.bloquant?'checked':''} onchange="_evtsEditing[${i}].bloquant=this.checked;_settingsMarkDirty('arrêts configurables')" style="cursor:pointer"> Bloquant</label>
-      <button class="btn-edit" style="font-size:calc(11px*var(--zf,1));padding:3px 7px" onclick="editEvtItem(${i})">✏</button>
-      <button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="rmEvtItem(${i})">✕</button>
-    </div>`;
+    if(_evtEditIdx===i){
+      html+=`<div style="background:#eff6ff;border:1.5px solid #93c5fd;border-radius:8px;padding:8px 10px;margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <input id="evt-edit-lbl" type="text" value="${esc(e.label)}" style="flex:2;min-width:120px;padding:5px 8px;border:1px solid #93c5fd;border-radius:5px;font-size:calc(12px*var(--zf,1))">
+        <select id="evt-edit-cat" style="flex:1;min-width:140px;padding:5px 8px;border:1px solid #93c5fd;border-radius:5px;font-size:calc(12px*var(--zf,1))">
+          ${Object.entries(_EVT_CAT_LBL).map(([k,v])=>`<option value="${k}" ${e.cat===k?'selected':''}>${v}</option>`).join('')}
+        </select>
+        <label style="display:flex;align-items:center;gap:4px;font-size:calc(11px*var(--zf,1));color:#dc2626;white-space:nowrap;cursor:pointer">
+          <input type="checkbox" id="evt-edit-blq" ${e.bloquant?'checked':''} style="cursor:pointer"> Bloquant
+        </label>
+        <button class="btn" style="font-size:calc(11px*var(--zf,1));padding:5px 12px;background:#2563eb;color:#fff;border-color:#2563eb;border-radius:6px" onclick="_saveEvtEdit(${i})">✓ OK</button>
+        <button class="btn" style="font-size:calc(11px*var(--zf,1));padding:5px 10px;border-radius:6px" onclick="_cancelEvtEdit()">Annuler</button>
+      </div>`;
+    } else {
+      html+=`<div draggable="true" ondragstart="_edDS(${i})" ondragover="_edDO(event)" ondrop="_edDrop(${i})" style="background:#f8fafc;border:1px solid #e2e8f0;border-left:3px solid ${catColor};border-radius:8px;padding:8px 10px;margin-bottom:4px;display:flex;align-items:center;gap:8px;cursor:default">
+        <span style="cursor:grab;color:#94a3b8;font-size:16px;user-select:none;flex-shrink:0" title="Déplacer">⠿</span>
+        <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:600;color:#1e293b;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.label)}</span>
+        <label style="display:flex;align-items:center;gap:3px;font-size:calc(10px*var(--zf,1));color:#dc2626;white-space:nowrap;cursor:pointer;flex-shrink:0" title="Arrêt bloquant pour la prod ?">
+          <input type="checkbox" ${e.bloquant?'checked':''} onchange="_evtsEditing[${i}].bloquant=this.checked;_settingsMarkDirty('arrêts configurables')" style="cursor:pointer"> Bloquant
+        </label>
+        <button class="btn-edit" style="font-size:calc(11px*var(--zf,1));padding:4px 10px;flex-shrink:0" onclick="editEvtItem(${i})" title="Modifier ce arrêt">✏ Modifier</button>
+        <button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:4px 8px;flex-shrink:0" onclick="rmEvtItem(${i})" title="Supprimer">✕</button>
+      </div>`;
+    }
   });
   c.innerHTML=html;
 }
@@ -10366,10 +10386,15 @@ function addEvtItem(){
 
 function rmEvtItem(i){_evtsEditing.splice(i,1);_renderEvtListHTML();}
 
-function editEvtItem(i){
-  const e=_evtsEditing[i];
-  const lbl=prompt('Nom de l\'arrêt :',e.label);
-  if(lbl&&lbl.trim()){_evtsEditing[i].label=lbl.trim();_renderEvtListHTML();}
+function editEvtItem(i){_evtEditIdx=i;_renderEvtListHTML();setTimeout(()=>{const el=document.getElementById('evt-edit-lbl');if(el)el.focus();},30);}
+function _cancelEvtEdit(){_evtEditIdx=null;_renderEvtListHTML();}
+function _saveEvtEdit(i){
+  const lbl=(document.getElementById('evt-edit-lbl')?.value||'').trim();
+  const cat=document.getElementById('evt-edit-cat')?.value||'pb';
+  const blq=document.getElementById('evt-edit-blq')?.checked||false;
+  if(!lbl){toast('Nom requis','err');return;}
+  _evtsEditing[i].label=lbl;_evtsEditing[i].cat=cat;_evtsEditing[i].bloquant=blq;
+  _evtEditIdx=null;_settingsMarkDirty('arrêts configurables');_renderEvtListHTML();
 }
 
 async function saveEvtList(){
