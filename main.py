@@ -103,7 +103,7 @@ def _get_or_create_listes_ws(wb):
     return wb["Listes"]
 
 def write_events_to_excel(ev_list):
-    """Écrit la liste des arrêts dans l'onglet Listes col K=label, L=cat."""
+    """Écrit la liste des arrêts dans l'onglet Listes col K=label, L=cat, M=bloquant."""
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return
     def _bg():
@@ -114,13 +114,16 @@ def write_events_to_excel(ev_list):
                 ws = _get_or_create_listes_ws(wb)
                 ws.cell(1, 11).value = "Arrêts"
                 ws.cell(1, 12).value = "Type arrêt"
+                ws.cell(1, 13).value = "Arrêt bloquant"
                 max_r = max(ws.max_row, len(ev_list) + 2)
                 for ri in range(2, max_r + 2):
                     ws.cell(ri, 11).value = None
                     ws.cell(ri, 12).value = None
+                    ws.cell(ri, 13).value = None
                 for ri, ev in enumerate(ev_list, start=2):
                     ws.cell(ri, 11).value = ev.get("label","")
                     ws.cell(ri, 12).value = ev.get("cat","pb")
+                    ws.cell(ri, 13).value = "OUI" if ev.get("bloquant") else "NON"
                 _safe_excel_save(wb, path)
             threading.Thread(target=load_lists, daemon=True).start()
         except: pass
@@ -937,19 +940,12 @@ def load_lists():
                         parts = lbl.split("|"); lbl = parts[0].strip(); cat_v = parts[1].strip()
                     cat = str(cat_v or "pb").strip() or "pb"
                     key = lbl.lower().replace(" ","_").replace("/","_").replace("é","e").replace("è","e").replace("ê","e").replace("à","a").replace("ç","c")[:28]
-                    evts_k.append({"label": lbl, "key": key, "cat": cat})
+                    bloquant_v = ws.cell(ri, 13).value
+                    bloquant = str(bloquant_v or "").strip().upper() == "OUI"
+                    evts_k.append({"label": lbl, "key": key, "cat": cat, "bloquant": bloquant})
             if evts_k:
                 _lists["arrêts_k"] = evts_k
                 cfg["events_list"] = evts_k
-                save_cfg_data()
-            # Col M (13) : labels interposte
-            ipl = []
-            for ri in range(2, ws.max_row+1):
-                v = ws.cell(ri, 13).value
-                if v is not None and str(v).strip():
-                    ipl.append(str(v).strip())
-            if ipl:
-                cfg["interposte_labels"] = ipl
                 save_cfg_data()
             # Col N (14) : arrêts prévus (format "clé=valeur")
             for ri in range(2, ws.max_row+1):
@@ -4593,6 +4589,7 @@ def api_cdg_data():
         return None
     d_from = _pd(date_from) if date_from else None
     d_to   = _pd(date_to)   if date_to   else None
+    _evts_map = {e.get("label","").lower(): e for e in (cfg.get("events_list") or [])}
     rows = []
     for rn, r in _decl_cache:
         try:
@@ -4601,10 +4598,12 @@ def api_cdg_data():
             if d_to   and row_d and row_d > d_to:   continue
             type_str = str(r[0] or "").strip()
             is_prod  = type_str.lower() in ("production","prod","")
+            ev_info  = _evts_map.get(type_str.lower(), {})
             rows.append({
                 "row_num":  rn,
                 "is_prod":  is_prod,
                 "libelle":  "" if is_prod else type_str,
+                "bloquant": "" if is_prod else ("OUI" if ev_info.get("bloquant") else "NON"),
                 "comment":  str(r[35] or ""),
                 "of":       str(r[1]  or ""),
                 "date":     _row_date(r[2]),
@@ -4641,6 +4640,7 @@ def api_cdg_export():
         return None
     d_from = _pd(date_from) if date_from else None
     d_to   = _pd(date_to)   if date_to   else None
+    _evts_map2 = {e.get("label","").lower(): e for e in (cfg.get("events_list") or [])}
     rows = []
     for rn, r in _decl_cache:
         try:
@@ -4649,9 +4649,11 @@ def api_cdg_export():
             if d_to   and row_d and row_d > d_to:   continue
             type_str = str(r[0] or "").strip()
             is_prod  = type_str.lower() in ("production","prod","")
+            ev_info2 = _evts_map2.get(type_str.lower(), {})
             rows.append({
                 "is_prod":  is_prod,
                 "libelle":  "" if is_prod else type_str,
+                "bloquant": "" if is_prod else ("OUI" if ev_info2.get("bloquant") else "NON"),
                 "comment":  str(r[35] or ""),
                 "of":       str(r[1]  or ""),
                 "date":     _row_date(r[2]),
@@ -4674,8 +4676,8 @@ def api_cdg_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "CDG"
-    headers = ["Type","Libellé arrêt","Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté produite","Qté équivalence"]
-    col_widths = [28,30,30,18,14,14,20,20,10,10,10,10,14,16]
+    headers = ["Type","Libellé arrêt","Arrêts bloquant ?","Commentaire","OF","Date","Poste","Pilote","Co-pilote","Nb pers","Début","Fin","Durée","Qté produite","Qté équivalence"]
+    col_widths = [28,30,16,30,18,14,14,20,20,10,10,10,10,14,16]
     hdr_font  = Font(name="Arial", bold=True, color="FFFFFF", size=11)
     hdr_fill  = PatternFill("solid", fgColor="1E3A8A")
     hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -4702,6 +4704,7 @@ def api_cdg_export():
         cells = [
             type_label,
             "" if is_prod else row.get("libelle",""),
+            row.get("bloquant",""),
             row.get("comment",""),
             row.get("of",""),
             row.get("date",""),
@@ -4725,8 +4728,8 @@ def api_cdg_export():
                 cell2.font = prod_font if is_prod else arret_font
             else:
                 cell2.font = data_font
-            if ci2 in (9,): cell2.alignment = center_al
-            if ci2 in (13,14): cell2.alignment = right_al
+            if ci2 in (10,): cell2.alignment = center_al
+            if ci2 in (14,15): cell2.alignment = right_al
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -10300,6 +10303,7 @@ function _renderEvtListHTML(){
       <span style="cursor:grab;color:#94a3b8;font-size:16px;padding:0 2px;user-select:none" title="Déplacer">⠿</span>
       <span style="flex:1;font-weight:600">${esc(e.label)}</span>
       <span style="font-size:calc(10px*var(--zf,1));color:var(--gray)">${_EVT_CAT_LBL[e.cat]||e.cat}</span>
+      <label style="display:flex;align-items:center;gap:3px;font-size:calc(10px*var(--zf,1));color:#dc2626;white-space:nowrap;cursor:pointer" title="Arrêt bloquant pour la prod ?"><input type="checkbox" ${e.bloquant?'checked':''} onchange="_evtsEditing[${i}].bloquant=this.checked;_settingsMarkDirty('arrêts configurables')" style="cursor:pointer"> Bloquant</label>
       <button class="btn-edit" style="font-size:calc(11px*var(--zf,1));padding:3px 7px" onclick="editEvtItem(${i})">✏</button>
       <button class="btn btn-danger" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="rmEvtItem(${i})">✕</button>
     </div>`;
@@ -10312,7 +10316,7 @@ function addEvtItem(){
   const cat=document.getElementById('ev-new-cat').value;
   if(!lbl){toast('Nom requis','err');return;}
   const key=lbl.toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,32)+'_'+Date.now().toString(36);
-  _evtsEditing.push({label:lbl,key,cat});
+  _evtsEditing.push({label:lbl,key,cat,bloquant:false});
   document.getElementById('ev-new-label').value='';
   _renderEvtListHTML();
 }
@@ -12861,26 +12865,29 @@ async function loadCdg(){
   const bd=document.getElementById('cdg-bd');
   const hd=document.getElementById('cdg-hd');
   if(!bd||!hd) return;
-  bd.innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:var(--gray)">Chargement…</td></tr>';
+  bd.innerHTML='<tr><td colspan="15" style="text-align:center;padding:20px;color:var(--gray)">Chargement…</td></tr>';
   const data=await apiFetch(`/api/cdg_data?from=${from}&to=${to}`);
   const rows=Array.isArray(data)?data:[];
   const cnt=document.getElementById('cdg-count');
   if(cnt) cnt.textContent=rows.length+' ligne'+(rows.length>1?'s':'');
-  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Libellé arrêt</th><th style="padding:7px 10px;text-align:left">Commentaire</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th></tr>';
+  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Libellé arrêt</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Arrêts bloquant ?</th><th style="padding:7px 10px;text-align:left">Commentaire</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th></tr>';
   if(!rows.length){
-    bd.innerHTML='<tr><td colspan="14" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>';
+    bd.innerHTML='<tr><td colspan="15" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>';
     return;
   }
   bd.innerHTML=rows.map(r=>{
     const ip=r.is_prod;
     const typeLabel=ip?"Déclaration de prod (OF)":"Déclaration d'arrêt";
     const lib=ip?'':(r.libelle||'');
+    const blq=r.bloquant||'';
+    const blqColor=blq==='OUI'?'#dc2626':blq==='NON'?'#16a34a':'#6b7280';
     const cmt=r.comment||'';
     const bg=ip?'#eff6ff':'#fffbeb';
     const tc=ip?'#1d4ed8':'#b45309';
     return `<tr style="background:${bg};border-bottom:1px solid #e5e7eb">
       <td style="padding:5px 8px;font-weight:600;color:${tc};white-space:nowrap">${esc(typeLabel)}</td>
       <td style="padding:5px 8px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(lib)}">${esc(lib)}</td>
+      <td style="padding:5px 8px;text-align:center;font-weight:700;color:${blqColor};white-space:nowrap">${esc(blq)}</td>
       <td style="padding:5px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(cmt)}">${esc(cmt)}</td>
       <td style="padding:5px 8px;font-weight:700;color:#1e3a8a;white-space:nowrap">${esc(r.of||'')}</td>
       <td style="padding:5px 8px;white-space:nowrap">${esc(r.date||'')}</td>
