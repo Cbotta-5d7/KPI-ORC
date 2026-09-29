@@ -4592,6 +4592,8 @@ def api_events_list():
                 "cat": cat,
                 "of": str(r[1] or ""),
                 "date": _row_date(r[2]),
+                "real_date":    _real_date_str(r),
+                "rattachement": _rattachement_str(r),
                 "poste": str(r[3] or ""),
                 "pilote": str(r[4] or ""),
                 "nb_pers": str(r[6] or "") if len(r)>6 else "",
@@ -7232,7 +7234,7 @@ select{cursor:default}
     <div class="table-wrap">
       <table class="ktbl">
         <thead><tr>
-          <th>Type</th><th>OF</th><th>Produit</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th>
+          <th>Type</th><th>OF</th><th>Produit</th><th>Fibre</th><th>Date réelle</th><th>Rattachement</th><th>Poste</th><th>Pilote</th>
           <th>Début</th><th>Fin</th><th>Durée</th><th>Détails</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>
         </tr></thead>
         <tbody id="main-body"></tbody>
@@ -9587,7 +9589,7 @@ async function loadMainDecl() {
     const lastFin=inShiftDecls.map(r=>r.fin||'').filter(Boolean).sort().pop();
     if(lastFin){const[h,m,s]=(lastFin+'::').split(':').map(Number);const d=new Date();d.setHours(h,m,s||0,0);_lastProdDeclTime=d;}
   }
-  if(!allRows.length){bd.innerHTML='<tr><td colspan="13" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();updateGauge(ST);return;}
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="15" style="text-align:center;color:var(--gray);padding:16px">Aucune déclaration aujourd\'hui</td></tr>';loadMainKPI();updateGauge(ST);return;}
   window._rowMap={};
   bd.innerHTML=allRows.map(r=>{
     const key=r.row_num||r.debut;
@@ -9606,7 +9608,7 @@ async function loadMainDecl() {
       <td>${tag}</td><td style="font-weight:700;color:${isProd?'#1e3a8a':'#dc2626'};text-decoration:underline;cursor:pointer" onclick="showMainRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||'—')}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6b7280">${produit}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600;cursor:${fibre?'pointer':''}" title="${esc(fibre)}" onclick="${fibre?'showFibre(\''+esc(fibre)+'\')':''}">${fibreShort}${fibre.length>9?'…':''}</td>
-      <td style="font-size:calc(10px*var(--zf,1))">${esc(r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
+      <td style="font-size:calc(10px*var(--zf,1))">${esc(r.real_date||r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600">${esc(r.rattachement||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
       <td style="font-size:calc(11px*var(--zf,1))">${dur}</td><td style="font-size:calc(11px*var(--zf,1))">${details}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
