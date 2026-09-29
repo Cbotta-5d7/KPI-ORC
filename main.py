@@ -5862,7 +5862,6 @@ def api_period_report():
         trs_by_day[day]['sum_expected'] += _xl_theorique
         _cad_s = _xl.get('cadence_h') or (round(s['tot_equiv']/utile_min*60) if utile_min>0 else 0)
         _of_rows_sd = []
-        _tot_of_s_pr = 0.0; _tot_of_plan_s_pr = 0.0
         for _rp in s.get('prod_raws', []):
             try:
                 _deb_rp = _hms_to_sec(str(_rp[16] or "00:00:00"))
@@ -5877,23 +5876,9 @@ def api_period_report():
                 _qte_rp  = float(str(_rp[19] or 0).replace(",", "."))
                 _pcoef_rp = _eq_rp / _qte_rp if _qte_rp > 0 and _eq_rp > 0 else 1.0
                 _exp_rp  = prod_ref * _pct_rp * _adj_rp / 28800 if prod_ref > 0 else 0.0
-                # Toujours recalculer (ignore colonne 43 Excel qui peut être obsolète)
                 _obj_rp = round(_exp_rp, 1) if _exp_rp > 0 else -1
-                _tot_of_s_pr += max(0.0, _dur_rp)
-                _tot_of_plan_s_pr += _plan_rp
             except:
-                _plan_rp = 0; _deg_rp = 0; _obj_rp = -1; _pcoef_rp = 1.0
-            if _obj_rp > 0:
-                agg_obj_equiv += _obj_rp
-                agg_obj_pcs += _obj_rp
-        # Ajouter l'objectif du temps non couvert par des OF
-        if model_dur_s > 0 and prod_ref > 0:
-            _uncov_plan_s = max(0.0, planned_ded - _tot_of_plan_s_pr)
-            _uncov_s = max(0.0, model_dur_s - _tot_of_s_pr - _uncov_plan_s)
-            _uncov_obj = round(_uncov_s / 28800 * prod_ref, 1)
-            if _uncov_obj > 0:
-                agg_obj_equiv += _uncov_obj
-                agg_obj_pcs += _uncov_obj
+                _plan_rp = 0; _deg_rp = 0; _obj_rp = -1; _pcoef_rp = 1.0; _eq_rp = 0.0
             _of_rows_sd.append({
                 "of":str(_rp[1] or ""),"debut":str(_rp[16] or "")[:5],"fin":str(_rp[17] or "")[:5],
                 "duree":str(_rp[18] or ""),"qte_fab":str(_rp[19] or ""),"qte_emb":str(_rp[20] or ""),
@@ -5917,6 +5902,11 @@ def api_period_report():
                 "degrade_min":round(_deg_rp/60,1),"plan_stop_s":round(_plan_rp),"objectif":_obj_rp,
                 "budget_overrides":_xl.get('budget_overrides') or {},
             })
+        # Objectif session = même formule que rapport poste : (durée_modèle − arrêts_prévus) × cadence
+        if model_dur_s > 0 and prod_ref > 0:
+            _session_obj = max(0.0, model_dur_s - planned_ded) / 28800 * prod_ref
+            agg_obj_equiv += _session_obj
+            agg_obj_pcs += _session_obj
         _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or "")),"real_date":str(re2[2] or "") if len(re2)>2 else ""} for _rn2, re2 in s.get('evt_rows',[])]
         agg_degrade_min += (_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s / 60.0)
         sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd,'_deb_dt':_pdeb})
@@ -5955,8 +5945,8 @@ def api_period_report():
         'nb_fibre_chg':agg_fibre_chg,
         'depassement_min':round(agg_depassement,1),  # sum col M
         'arret_prevu_min':round(agg_arret_prevu,1),  # sum cols J+K+L postes
-        'objectif_pcs':round(agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected),
-        'objectif_equiv':round(agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected, 1),
+        'objectif_pcs':round(agg_obj_pcs),
+        'objectif_equiv':round(agg_obj_equiv,1),
         'sessions_detail':sessions_detail_sorted,
         'degrade_min_total': round(sum(_merged_degrade_s([re2 for _, re2 in s['evt_rows']]) for s in sessions.values()) / 60, 1),
         'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1),'count':stop_count.get(k,0)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])],
