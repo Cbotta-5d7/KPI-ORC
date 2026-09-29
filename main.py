@@ -13874,8 +13874,8 @@ async function calcPeriodReport(autoLoad,maxSessions){
       <svg viewBox="0 0 76 76" style="width:74px;height:74px"><circle cx="38" cy="38" r="34" fill="#e2e8f0"/>${paths}</svg>
       <div style="font-size:calc(10px*var(--zf,1));display:flex;flex-direction:column;gap:2px;align-self:flex-start">
         <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#16a34a;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Prod : <b>${Math.round(fonctMin)} min</b></span></div>
-        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#dc2626;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Bloquants : <b>${Math.round(unplanStopMinRj)} min</b></span></div>
-        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#f97316;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Non bloquants : <b>${Math.round(planStopMinRj)} min</b></span></div>
+        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#dc2626;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Arrêt bloquant : <b>${Math.round(unplanStopMinRj)} min</b></span></div>
+        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#f97316;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Arrêt non bloquant : <b>${Math.round(planStopMinRj)} min</b></span></div>
       </div>
     </div>`;
   }
