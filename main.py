@@ -5955,8 +5955,8 @@ def api_period_report():
         'nb_fibre_chg':agg_fibre_chg,
         'depassement_min':round(agg_depassement,1),  # sum col M
         'arret_prevu_min':round(agg_arret_prevu,1),  # sum cols J+K+L postes
-        'objectif_pcs':round(agg_obj_pcs),
-        'objectif_equiv':round(agg_obj_equiv,1),
+        'objectif_pcs':round(agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected),
+        'objectif_equiv':round(agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected, 1),
         'sessions_detail':sessions_detail_sorted,
         'degrade_min_total': round(sum(_merged_degrade_s([re2 for _, re2 in s['evt_rows']]) for s in sessions.values()) / 60, 1),
         'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1),'count':stop_count.get(k,0)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])],
@@ -14325,14 +14325,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const _colDegRp=_cLRp(degMin,ouvertureMin);
   const _colPerteRp=perteCadenceRaw<=0?'#16a34a':_cLRp(perteCadenceRaw,ouvertureMin);
   // objectif pièces = objectif equiv (lot de 2 = info uniquement, pas de conversion)
-  const _ofObjEquivRp=(d.prod_rows||[]).reduce((s,r)=>{const o=parseFloat(r.objectif||'-1');return s+(o>=0?o:0);},0);
-  const _modelMinRp=(d.model_dur_s||0)/60;
-  const _coveredMinRp=(d.tot_s||0)/60;
-  // Arrêts prévus dans le temps non couvert = total prévus − prévus déjà dans les OF
-  const _ofPlannedS=(d.prod_rows||[]).reduce((s,r)=>s+(parseFloat(r.plan_stop_s||0)||0),0);
-  const _uncoveredPlannedMin=Math.max(0,((d.planned_ded_s||0)-_ofPlannedS))/60;
-  const _uncoveredObjRp=Math.max(0,_modelMinRp-_coveredMinRp-_uncoveredPlannedMin)*cadenceRefPcsMin;
-  const _objEquivRp=_ofObjEquivRp+_uncoveredObjRp;
+  // Objectif = capacité théorique du poste (durée modèle − arrêts prévus) × cadence — identique au dénominateur TRS
+  const _objEquivRp=Math.max(0,((d.model_dur_s||0)-(d.planned_ded_s||0))/60)*cadenceRefPcsMin;
   const _objPcsRp=_objEquivRp;
   const _colPcsRp=!_objPcsRp?'#16a34a':(totQteFab/_objPcsRp>=0.95?'#16a34a':totQteFab/_objPcsRp>=0.75?'#f59e0b':'#dc2626');
   const _colEquivRp=!_objEquivRp?'#64748b':((d.tot_equiv||0)/_objEquivRp>=0.95?'#16a34a':(d.tot_equiv||0)/_objEquivRp>=0.75?'#f59e0b':'#dc2626');
