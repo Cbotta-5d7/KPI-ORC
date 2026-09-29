@@ -1275,7 +1275,11 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
             label = lbl
         else:
             cat_name = "Rattrapage" if ev["cat"]=="ratt" else "PB Technique"
-            lbl = next((e[0] for e in EVENTS if e[1]==ev["key"]),ev["key"])
+            # Prefer session label (human-readable), then EVENTS lookup, then key fallback
+            _ev_lbl = (ev.get("label","") or "").strip()
+            lbl = (next((e[0] for e in EVENTS if e[1]==ev.get("key","")), None)
+                   or (_ev_lbl if _ev_lbl and _ev_lbl != ev.get("key","") else None)
+                   or ev.get("key",""))
             label = f"{cat_name}: {lbl}"
         rows.append(_base_row(label, start, end, ev.get("comment",""), "OUI" if ev.get("hors_trs") else ""))
     _written_pp = set(id(p) for p in _S.get("_written_pause_starts", []))
@@ -4591,6 +4595,15 @@ def api_cdg_data():
     d_from = _pd(date_from) if date_from else None
     d_to   = _pd(date_to)   if date_to   else None
     _evts_map = {e.get("label","").lower(): e for e in (cfg.get("events_list") or [])}
+    def _get_ev_info(ts):
+        tl = ts.lower().strip()
+        ev = _evts_map.get(tl)
+        if ev: return ev
+        for pfx in ("rattrapage: ", "pb technique: "):
+            if tl.startswith(pfx):
+                ev = _evts_map.get(tl[len(pfx):])
+                if ev: return ev
+        return {}
     rows = []
     for rn, r in _decl_cache:
         try:
@@ -4599,7 +4612,7 @@ def api_cdg_data():
             if d_to   and row_d and row_d > d_to:   continue
             type_str = str(r[0] or "").strip()
             is_prod  = type_str.lower() in ("production","prod","")
-            ev_info  = _evts_map.get(type_str.lower(), {})
+            ev_info  = _get_ev_info(type_str)
             if is_prod:
                 _tp = str(r[9]  or "").strip() if len(r) > 9  else ""
                 _ta = str(r[7]  or "").strip() if len(r) > 7  else ""
@@ -4650,6 +4663,15 @@ def api_cdg_export():
     d_from = _pd(date_from) if date_from else None
     d_to   = _pd(date_to)   if date_to   else None
     _evts_map2 = {e.get("label","").lower(): e for e in (cfg.get("events_list") or [])}
+    def _get_ev_info2(ts):
+        tl = ts.lower().strip()
+        ev = _evts_map2.get(tl)
+        if ev: return ev
+        for pfx in ("rattrapage: ", "pb technique: "):
+            if tl.startswith(pfx):
+                ev = _evts_map2.get(tl[len(pfx):])
+                if ev: return ev
+        return {}
     rows = []
     for rn, r in _decl_cache:
         try:
@@ -4658,7 +4680,7 @@ def api_cdg_export():
             if d_to   and row_d and row_d > d_to:   continue
             type_str = str(r[0] or "").strip()
             is_prod  = type_str.lower() in ("production","prod","")
-            ev_info2 = _evts_map2.get(type_str.lower(), {})
+            ev_info2 = _get_ev_info2(type_str)
             if is_prod:
                 _tp2 = str(r[9]  or "").strip() if len(r) > 9  else ""
                 _ta2 = str(r[7]  or "").strip() if len(r) > 7  else ""
