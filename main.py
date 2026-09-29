@@ -13571,10 +13571,7 @@ async function loadRptJour(){
     if(window._rjAutoLast3.length){
       const _toDate=window._rjAutoLast3[0].date;
       const _fromDate=window._rjAutoLast3[window._rjAutoLast3.length-1].date;
-      const _toISO=_toDate?_toDate.split('/').reverse().join('-'):'';
-      const _fromISO=_fromDate?_fromDate.split('/').reverse().join('-'):'';
-      if(_rjf&&_fromISO)_rjf.value=_fromISO;
-      if(_rjt&&_toISO)_rjt.value=_toISO;
+      // Ne pas remplir les champs date — Actualiser doit rester libre de toute date implicite
     }
   }
   calcPeriodReport(true);
@@ -13958,8 +13955,11 @@ async function captureRapportJour(){
   const {d,trsCol,chartTrsHtml,chartCadHtml,paretoRjHtml,paretoDeghHtml,pieSmall,
     _colPcsRj,_colEquivRj,_colCadRj,pertRaw,
     _colFonctRj,_colArretRj,_colImpRj,_colDegRj,_colPerteRj,_typeProdPieHtml}=v;
-  const _fv=document.getElementById('rj-from')?.value||'';
-  const _tv=document.getElementById('rj-to')?.value||'';
+  // Dates : depuis inputs si renseignés, sinon calculées depuis les sessions
+  const _sdDates=(d.sessions_detail||[]).map(s=>s.date||'').filter(Boolean).sort((a,b)=>{const _p=x=>x.split('/');const _n=x=>(+_p(x)[2])*10000+(+_p(x)[1])*100+(+_p(x)[0]);return _n(a)-_n(b);});
+  const _dmy2iso=s=>{const p=s.split('/');return p.length===3?p[2]+'-'+p[1]+'-'+p[0]:''};
+  const _fv=document.getElementById('rj-from')?.value||(_sdDates.length?_dmy2iso(_sdDates[0]):'');
+  const _tv=document.getElementById('rj-to')?.value||(_sdDates.length?_dmy2iso(_sdDates[_sdDates.length-1]):'');
   const _fmtD=s=>{if(!s)return '?';const p=s.split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:s;};
   // Titre ligne 1 : plage de dates
   const _date1=_fmtD(_fv),_date2=_fmtD(_tv);
