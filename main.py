@@ -299,9 +299,13 @@ def _row_date(v):
     return s[:10]
 
 def _real_date_str(r):
-    """Vraie date calendaire d'une déclaration (poste nuit : +1 jour si heure < 12h)."""
+    """Vraie date calendaire d'une déclaration."""
     sd = _row_date(r[2]) if len(r) > 2 else ""
     if not sd: return sd
+    # Nouveau schéma : r[39] rempli → r[2] est déjà la vraie date
+    if len(r) > 39 and str(r[39] or "").strip():
+        return sd
+    # Ancien schéma (avant migration) : r[2] = date du poste, compensation nuit
     poste = str(r[3] or "").strip().lower() if len(r) > 3 else ""
     hdeb  = str(r[16] or "").strip() if len(r) > 16 else ""
     h     = int(hdeb[:2]) if len(hdeb) >= 2 and hdeb[:2].isdigit() else -1
@@ -314,14 +318,14 @@ def _real_date_str(r):
 
 def _rattachement_str(r):
     """Libellé de rattachement du poste : 'NUIT 28/09/26'."""
-    sd    = _row_date(r[2]) if len(r) > 2 else ""
+    shift_d = str(r[39] if len(r) > 39 else "").strip() or (_row_date(r[2]) if len(r) > 2 else "")
     poste = str(r[3] or "").strip().upper() if len(r) > 3 else ""
     short = ""
-    if sd:
+    if shift_d:
         try:
-            d = datetime.datetime.strptime(sd, "%d/%m/%Y").date()
+            d = datetime.datetime.strptime(shift_d, "%d/%m/%Y").date()
             short = d.strftime("%d/%m/%y")
-        except: short = sd
+        except: short = shift_d
     return f"{poste} {short}".strip()
 
 def _row_time(v):
@@ -663,7 +667,7 @@ def _compute_budget_state_now():
     # 1. Événements des OFs passés (déjà écrits dans Excel)
     for rn, r in _decl_cache:
         if rn in _tl_past_rns: continue  # already counted in step 2 via tl_events
-        rd = _row_date(r[2])
+        rd = str(r[39] if len(r)>39 else "").strip() or _row_date(r[2])
         if rd != shift_date_str and rd != today_str: continue
         if str(r[4] or "") != pilot: continue
         if str(r[0] or "").strip().lower() in ("production","prod",""): continue
@@ -1245,7 +1249,7 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
         return [
             type_decl,                          # 0 Type
             v.get("of_num",""),                 # 1 OF
-            shift_date_str,                     # 2 Date (= date du poste, jamais "aujourd'hui")
+            start.strftime("%d/%m/%Y"),          # 2 Date réelle de la déclaration
             v.get("poste",""),                  # 3 Poste
             v.get("pilote",""),                 # 4 Pilote
             v.get("copilote",""),               # 5 Co-Pilote
@@ -3685,7 +3689,7 @@ def _get_uncovered_gaps(from_dt, to_dt, pilot):
     date_strs.add(datetime.date.today().strftime("%d/%m/%Y"))
     all_slots = []
     for rn, r in _decl_cache:
-        rd = _row_date(r[2])
+        rd = str(r[39] if len(r)>39 else "").strip() or _row_date(r[2])
         if rd not in date_strs: continue
         if pilot and str(r[4] or "") != pilot: continue
         ds = _hms_to_sec(str(r[16] or "00:00:00"))
@@ -4470,7 +4474,7 @@ def api_history():
     all_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() in ("production","prod","")]
     def _hist_key(item):
         _, r = item
-        d_val = (r[39] if len(r) > 39 and r[39] else None) or (r[2] if r[2] else None)
+        d_val = (r[2] if r[2] else None)
         d_tup = (0, 0, 0)
         if d_val:
             if hasattr(d_val, 'year'):
@@ -4679,6 +4683,7 @@ def api_cdg_data():
                 "date":         _row_date(r[2]),
                 "real_date":    _real_date_str(r),
                 "rattachement": _rattachement_str(r),
+                "shift_date":   str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2]),
                 "poste":        str(r[3]  or ""),
                 "pilote":       str(r[4]  or ""),
                 "copilote":     str(r[5]  or ""),
@@ -4766,6 +4771,7 @@ def api_cdg_export():
                 "date":         _row_date(r[2]),
                 "real_date":    _real_date_str(r),
                 "rattachement": _rattachement_str(r),
+                "shift_date":   str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2]),
                 "poste":        str(r[3]  or ""),
                 "pilote":       str(r[4]  or ""),
                 "copilote":     str(r[5]  or ""),
@@ -4785,8 +4791,8 @@ def api_cdg_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "CDG"
-    headers = ["Type","Désignation","Arrêts bloquant ?","OF","Pilote","Co-pilote","Poste","Date réelle","Rattachement","Début","Fin","Durée","Qté produite","Qté équivalence","Nb pers","Commentaire"]
-    col_widths = [28,34,16,18,20,20,14,14,18,10,10,10,14,16,10,30]
+    headers = ["Type","Désignation","Arrêts bloquant ?","OF","Pilote","Co-pilote","Poste","Date réelle","Rattachement","Date rattach.","Début","Fin","Durée","Qté produite","Qté équivalence","Nb pers","Commentaire"]
+    col_widths = [28,34,16,18,20,20,14,14,18,14,10,10,10,14,16,10,30]
     hdr_font  = Font(name="Arial", bold=True, color="FFFFFF", size=11)
     hdr_fill  = PatternFill("solid", fgColor="1E3A8A")
     hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -4820,6 +4826,7 @@ def api_cdg_export():
             row.get("poste",""),
             row.get("real_date",""),
             row.get("rattachement",""),
+            row.get("shift_date",""),
             row.get("debut",""),
             row.get("fin",""),
             row.get("duree",""),
@@ -5476,7 +5483,7 @@ def api_history_today():
     rows = []; _htd_prod_raw = []
     tot_eq=0.0; tot_s=0.0; _htd_ded_s=0.0; _htd_deg_ivs=[]
     for rn,r in _decl_cache:
-        rd = _row_date(r[2])
+        rd = str(r[39] if len(r)>39 else "").strip() or _row_date(r[2])
         if rd != shift_date_str and rd != today: continue
         if str(r[4] or "") != pilot: continue
         _rtype_htd = str(r[0] or "").strip().lower()
@@ -6313,7 +6320,7 @@ def api_update_of_time():
     # Find matching row in cache
     target_rn = None
     for rn, r in _decl_cache:
-        rd = _row_date(r[2])
+        rd = str(r[39] if len(r)>39 else "").strip() or _row_date(r[2])
         if rd not in (today, shift_date_str): continue
         if str(r[4] or "") != pilot: continue
         if str(r[0] or "").strip().lower() not in ("production","prod",""): continue
@@ -13096,15 +13103,15 @@ async function loadCdg(){
   const bd=document.getElementById('cdg-bd');
   const hd=document.getElementById('cdg-hd');
   if(!bd||!hd) return;
-  bd.innerHTML='<tr><td colspan="15" style="text-align:center;padding:20px;color:var(--gray)">Chargement…</td></tr>';
+  bd.innerHTML='<tr><td colspan="17" style="text-align:center;padding:20px;color:var(--gray)">Chargement…</td></tr>';
   const data=await apiFetch(`/api/cdg_data?from=${from}&to=${to}`);
   const rows=Array.isArray(data)?data:[];
   const cnt=document.getElementById('cdg-count');
   if(cnt) cnt.textContent=rows.length+' ligne'+(rows.length>1?'s':'');
   const _th=(t,al)=>`<th style="padding:7px 10px;text-align:${al||'left'};white-space:nowrap">${t}</th>`;
-  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff">'+[_th('Type'),_th('Désignation'),_th('Arrêts bloquant ?','center'),_th('OF'),_th('Pilote'),_th('Co-pilote'),_th('Poste'),_th('Date réelle'),_th('Rattachement'),_th('Début'),_th('Fin'),_th('Durée'),_th('Qté prod.','right'),_th('Qté équiv.','right'),_th('Nb pers','center'),_th('Commentaire')].join('')+'</tr>';
+  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff">'+[_th('Type'),_th('Désignation'),_th('Arrêts bloquant ?','center'),_th('OF'),_th('Pilote'),_th('Co-pilote'),_th('Poste'),_th('Date réelle'),_th('Rattachement'),_th('Date rattach.'),_th('Début'),_th('Fin'),_th('Durée'),_th('Qté prod.','right'),_th('Qté équiv.','right'),_th('Nb pers','center'),_th('Commentaire')].join('')+'</tr>';
   if(!rows.length){
-    bd.innerHTML='<tr><td colspan="15" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>';
+    bd.innerHTML='<tr><td colspan="17" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>';
     return;
   }
   bd.innerHTML=rows.map(r=>{
@@ -13127,6 +13134,7 @@ async function loadCdg(){
       ${_td(esc(r.poste||''))}
       ${_td(esc(r.real_date||r.date||''))}
       ${_td(`<span style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600">${esc(r.rattachement||'')}</span>`)}
+      ${_td(esc(r.shift_date||''))}
       ${_td(esc(r.debut||''))}
       ${_td(esc(r.fin||''))}
       ${_td(esc(r.duree||''))}
