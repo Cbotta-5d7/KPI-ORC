@@ -6425,8 +6425,58 @@ def api_reload():
     threading.Thread(target=load_history,daemon=True).start()
     return jsonify({"ok":True})
 
+def _backfill_nb_pers_shift():
+    """À la fin de poste, remplit les Nb Personnes vides par carry-forward
+    du dernier nb_pers connu dans toutes les déclarations du poste."""
+    path = cfg.get("db_path", "")
+    if not path or not os.path.exists(path):
+        return
+    pilot       = (_S.get("pilot") or "").strip()
+    poste       = (_S.get("poste") or "").strip()
+    shift_start = _S.get("shift_start")
+    if not pilot or not poste or not shift_start:
+        return
+    shift_date_str = shift_start.strftime("%d/%m/%Y")
+    shift_dates = {shift_date_str}
+    try:
+        _nxt = (shift_start.date() + datetime.timedelta(days=1)).strftime("%d/%m/%Y")
+        shift_dates.add(_nxt)
+    except: pass
+    try:
+        with _excel_lock:
+            wb = _get_wb(path)
+            if wb is None: return
+            ws = _ensure_decl_sheet(wb)
+            rows_info = []
+            for excel_rn in range(2, ws.max_row + 1):
+                if str(ws.cell(excel_rn, 5).value or "").strip() != pilot: continue
+                if str(ws.cell(excel_rn, 4).value or "").strip() != poste: continue
+                _row_dt = str(ws.cell(excel_rn, 40).value or "").strip() or _row_date(ws.cell(excel_rn, 3).value)
+                if _row_dt not in shift_dates: continue
+                debut_s = _hms_to_sec(str(ws.cell(excel_rn, 17).value or "00:00:00"))
+                nb_val  = str(ws.cell(excel_rn, 7).value or "").strip()
+                rows_info.append((excel_rn, debut_s, nb_val))
+            if not rows_info: return
+            rows_info.sort(key=lambda x: x[1])
+            last_nb = ""
+            to_fill = []
+            for excel_rn, debut_s, nb_val in rows_info:
+                if nb_val:
+                    last_nb = nb_val
+                elif last_nb:
+                    to_fill.append((excel_rn, last_nb))
+            if not to_fill: return
+            for excel_rn, fill_val in to_fill:
+                ws.cell(excel_rn, 7).value = fill_val
+            _safe_excel_save(wb, path)
+        threading.Thread(target=load_history, daemon=True).start()
+        print(f"[BACKFILL-NB-PERS] {len(to_fill)} ligne(s) mises à jour (carry-forward nb_pers)")
+    except Exception as _e:
+        print(f"[BACKFILL-NB-PERS] Erreur: {_e}")
+
 @flask_app.route('/api/save_poste', methods=['POST'])
 def api_save_poste():
+    _backfill_nb_pers_shift()
     data = request.json or {}
     if not data.get("dur_poste_theorique_min"):
         data["dur_poste_theorique_min"] = round(get_current_shift_duration_s() / 60, 1)
