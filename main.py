@@ -10303,8 +10303,10 @@ function getEvtLabelDynamic(key){
 
 // ── EVENTS LIST UI (Settings) ──
 let _evtsEditing=[];
+const _isPlannedStop=e=>e.cat==='nettoyage'||e.cat==='reunion'||['pause','reunion','nettoyage'].some(w=>e.key.toLowerCase().includes(w));
 function renderEvtListUI(){
-  _evtsEditing=(_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}))).map(e=>({...e}));
+  const _base=_evtsList.length?_evtsList:EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]}));
+  _evtsEditing=_base.map(e=>({...e,bloquant:e.bloquant!==undefined?e.bloquant:_isPlannedStop(e)}));
   _renderEvtListHTML();
 }
 
@@ -10379,7 +10381,7 @@ function addEvtItem(){
   const cat=document.getElementById('ev-new-cat').value;
   if(!lbl){toast('Nom requis','err');return;}
   const key=lbl.toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,32)+'_'+Date.now().toString(36);
-  _evtsEditing.push({label:lbl,key,cat,bloquant:false});
+  _evtsEditing.push({label:lbl,key,cat,bloquant:_isPlannedStop({key,cat})});
   document.getElementById('ev-new-label').value='';
   _renderEvtListHTML();
 }
