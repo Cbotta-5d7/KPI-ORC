@@ -4821,8 +4821,8 @@ def api_cdg_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "CDG"
-    headers = ["Type","Désignation","Arrêts bloquant ?","OF","Pilote","Co-pilote","Poste","Date réelle","Rattachement","Date rattach.","Début","Fin","Durée","Qté produite","Qté équivalence","Nb pers","Commentaire"]
-    col_widths = [28,34,16,18,20,20,14,14,18,14,10,10,10,14,16,10,30]
+    headers = ["Type","Désignation","Arrêts bloquant ?","OF","Pilote","Co-pilote","Poste","Date réelle","Date du poste de rattachement","Début","Fin","Durée","Qté produite","Qté équivalence","Nb pers","Commentaire"]
+    col_widths = [28,34,16,18,20,20,14,14,20,10,10,10,14,16,10,30]
     hdr_font  = Font(name="Arial", bold=True, color="FFFFFF", size=11)
     hdr_fill  = PatternFill("solid", fgColor="1E3A8A")
     hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -4855,7 +4855,6 @@ def api_cdg_export():
             row.get("copilote",""),
             row.get("poste",""),
             row.get("real_date",""),
-            row.get("rattachement",""),
             row.get("shift_date",""),
             row.get("debut",""),
             row.get("fin",""),
@@ -13143,7 +13142,7 @@ async function loadCdg(){
   const cnt=document.getElementById('cdg-count');
   if(cnt) cnt.textContent=rows.length+' ligne'+(rows.length>1?'s':'');
   const _th=(t,al)=>`<th style="padding:7px 10px;text-align:${al||'left'};white-space:nowrap">${t}</th>`;
-  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff">'+[_th('Type'),_th('Désignation'),_th('Arrêts bloquant ?','center'),_th('OF'),_th('Pilote'),_th('Co-pilote'),_th('Poste'),_th('Date réelle'),_th('Rattachement'),_th('Date rattach.'),_th('Début'),_th('Fin'),_th('Durée'),_th('Qté prod.','right'),_th('Qté équiv.','right'),_th('Nb pers','center'),_th('Commentaire')].join('')+'</tr>';
+  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff">'+[_th('Type'),_th('Désignation'),_th('Arrêts bloquant ?','center'),_th('OF'),_th('Pilote'),_th('Co-pilote'),_th('Poste'),_th('Date réelle'),_th('Date du poste de rattachement'),_th('Début'),_th('Fin'),_th('Durée'),_th('Qté prod.','right'),_th('Qté équiv.','right'),_th('Nb pers','center'),_th('Commentaire')].join('')+'</tr>';
   if(!rows.length){
     bd.innerHTML='<tr><td colspan="17" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>';
     return;
@@ -13167,7 +13166,6 @@ async function loadCdg(){
       ${_td(`<span style="color:#6b7280">${esc(r.copilote||'')}</span>`)}
       ${_td(esc(r.poste||''))}
       ${_td(esc(r.real_date||r.date||''))}
-      ${_td(`<span style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600">${esc(r.rattachement||'')}</span>`)}
       ${_td(esc(r.shift_date||''))}
       ${_td(esc(r.debut||''))}
       ${_td(esc(r.fin||''))}
@@ -15153,15 +15151,15 @@ def generate_dashboard_html():
             '      var rows=(window.DASH&&window.DASH.cdg_data)||[];\n'
             '      if(!rows.length){alert("Aucune donnée à exporter.");return;}\n'
             '      function doExport(XLSX){\n'
-            '        var hdrs=["Type","Désignation","Arrêts bloquant ?","OF","Pilote","Co-pilote","Poste","Date","Début","Fin","Durée","Qté prod.","Qté équiv.","Nb pers","Commentaire"];\n'
+            '        var hdrs=["Type","Désignation","Arrêts bloquant ?","OF","Pilote","Co-pilote","Poste","Date réelle","Date du poste de rattachement","Début","Fin","Durée","Qté prod.","Qté équiv.","Nb pers","Commentaire"];\n'
             '        var data=[hdrs];\n'
             '        rows.forEach(function(r){\n'
             '          var ip=r.is_prod;\n'
-            '          data.push([ip?"Production":"Arrêt",String(r.designation||""),String(r.bloquant||""),String(r.of||""),String(r.pilote||""),String(r.copilote||""),String(r.poste||""),String(r.date||""),String(r.debut||""),String(r.fin||""),String(r.duree||""),ip?String(r.qte_fab||""):"",ip?String(r.equiv||""):"",String(r.nb_pers||""),String(r.comment||"")]);\n'
+            '          data.push([ip?"Production":"Arrêt",String(r.designation||""),String(r.bloquant||""),String(r.of||""),String(r.pilote||""),String(r.copilote||""),String(r.poste||""),String(r.date||""),String(r.shift_date||""),String(r.debut||""),String(r.fin||""),String(r.duree||""),ip?String(r.qte_fab||""):"",ip?String(r.equiv||""):"",String(r.nb_pers||""),String(r.comment||"")]);\n'
             '        });\n'
             '        var wb=XLSX.utils.book_new();\n'
             '        var ws=XLSX.utils.aoa_to_sheet(data);\n'
-            '        ws["!cols"]=[28,34,16,18,20,20,14,14,10,10,10,14,16,10,30].map(function(w){return{wch:w};});\n'
+            '        ws["!cols"]=[28,34,16,18,20,20,14,14,20,10,10,10,14,16,10,30].map(function(w){return{wch:w};});\n'
             '        var thin={style:"thin",color:{rgb:"CCCCCC"}};\n'
             '        var bdr={top:thin,bottom:thin,left:thin,right:thin};\n'
             '        var hdrS={font:{bold:true,color:{rgb:"FFFFFF"},sz:11},fill:{fgColor:{rgb:"1E3A8A"}},alignment:{horizontal:"center",vertical:"center"},border:bdr};\n'
@@ -15204,9 +15202,9 @@ def generate_dashboard_html():
             '      });\n'
             '      var cnt=document.getElementById("cdg-count");\n'
             '      if(cnt) cnt.textContent=rows.length+" ligne"+(rows.length>1?"s":"");\n'
-            '      hd.innerHTML=\'<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Désignation</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Arrêts bloquant ?</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left">Commentaire</th></tr>\';\n'
+            '      hd.innerHTML=\'<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Désignation</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Arrêts bloquant ?</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date réelle</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date du poste de rattachement</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left">Commentaire</th></tr>\';\n'
             '      if(!rows.length){\n'
-            '        bd.innerHTML=\'<tr><td colspan="15" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>\';\n'
+            '        bd.innerHTML=\'<tr><td colspan="16" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>\';\n'
             '        return;\n'
             '      }\n'
             '      function esc2(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}\n'
@@ -15228,6 +15226,7 @@ def generate_dashboard_html():
             '          +"<td style=\\"padding:5px 8px;color:#6b7280;white-space:nowrap\\">"+esc2(r.copilote||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.poste||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.date||"")+"</td>"\n'
+            '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.shift_date||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.debut||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.fin||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.duree||"")+"</td>"\n'
