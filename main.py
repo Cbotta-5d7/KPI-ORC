@@ -12535,7 +12535,18 @@ async function saveEcartPlageHoraire(){
   await fetch('/api/update_shift_horaires',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({debut_iso:_debDt.toISOString(),fin_iso:_finDt.toISOString()})});
   toast('Plage mise à jour','ok');
   const fpd=await apiFetch('/api/fin_poste_data');
-  if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
+  if(fpd){
+    if((fpd.overflow_min||0)>0){
+      // Tronquer silencieusement les OFs qui débordent après la nouvelle fin
+      const _trim=(fpd.of_list||[]).filter(o=>o.fin>=fin);
+      if(_trim.length){
+        await Promise.all(_trim.map(o=>apiFetch('/api/update_of_time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({of_num:o.of,old_debut:o.debut,new_debut:o.debut,new_fin:fin})})));
+        const fpd2=await apiFetch('/api/fin_poste_data');
+        window._ecartFpData=fpd2||fpd;_showEcartModal(fpd2||fpd);return;
+      }
+    }
+    window._ecartFpData=fpd;_showEcartModal(fpd);
+  }
 }
 
 async function skipEcartPoste(){
@@ -14777,11 +14788,11 @@ function closeM(id){const m=document.getElementById(id);if(m){m.classList.remove
 document.addEventListener('click',e=>{if(e.target.classList.contains('overlay')&&!e.target.dataset.noDismiss)closeM(e.target.id);});
 
 // ── UTILS ──
-async function apiFetch(url,retries=2){
+async function apiFetch(url,opts=null,retries=2){
   try{
-    const r=await fetch(url);
+    const r=await fetch(url,opts||undefined);
     if(r.status===429){
-      if(retries>0){await new Promise(res=>setTimeout(res,1200));return apiFetch(url,retries-1);}
+      if(retries>0){await new Promise(res=>setTimeout(res,1200));return apiFetch(url,opts,retries-1);}
       return null;
     }
     return r.ok?await r.json():null;
