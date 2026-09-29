@@ -1650,7 +1650,7 @@ def update_poste_horaires(row_num, debut_dt, fin_dt):
             _safe_excel_save(wb, path)
     except: pass
 
-def write_poste_row(data, row_num=None):
+def write_poste_row(data, row_num=None, sync=False):
     """Écrit ou met à jour une ligne dans l'onglet Postes à la fin de chaque poste."""
     path = cfg.get("db_path","")
     if not path: return
@@ -1706,7 +1706,10 @@ def write_poste_row(data, row_num=None):
                     _format_row(ws, ws.max_row)
                 _safe_excel_save(wb, path)
         except: pass
-    threading.Thread(target=_bg, daemon=True).start()
+    if sync:
+        _bg()
+    else:
+        threading.Thread(target=_bg, daemon=True).start()
 
 def get_current_shift_duration_s():
     sd = _S.get("shift_debut_dt")
@@ -12403,9 +12406,9 @@ function _showEcartModal(fpd){
   const pfin=document.getElementById('ecart-plage-fin');
   if(pdebut)pdebut.value=fpd.model_debut||'';
   if(pfin)pfin.value=fpd.model_fin||'';
-  // Ouvrir accordéon si dépassement
+  // Toujours refermer l'accordéon à chaque ouverture du modal
   const advD=document.getElementById('ecart-advanced');
-  if(advD) advD.open=(overflow_min>0);
+  if(advD) advD.open=false;
   openM('m-ecart-poste');
 }
 
@@ -15533,7 +15536,7 @@ def _force_fin_poste_server(force=False):
             "budget_overrides": _xl_bov or {},"dur_poste_theorique_min": ouverture_min,
         }
         try:
-            write_poste_row(recalc_data, row_num=row_num)
+            write_poste_row(recalc_data, row_num=row_num, sync=True)
             print(f"[AUTO-FIN-POSTE] Ligne Postes écrite — TRS={round(trs_shift,1) if trs_shift>=0 else '—'}")
         except Exception as e:
             print(f"[AUTO-FIN-POSTE] Erreur écriture Postes : {e}")
