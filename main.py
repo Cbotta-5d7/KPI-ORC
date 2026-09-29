@@ -437,6 +437,36 @@ def _norm_fin(deb_s, fin_s):
     """Normalise fin_s pour les événements chevauchant minuit (fin < deb → +86400)."""
     return fin_s + 86400 if fin_s < deb_s else fin_s
 
+def _ev_slug(s):
+    s = s.lower()
+    for c, r in [('é','e'),('è','e'),('ê','e'),('ë','e'),('à','a'),('â','a'),('ï','i'),('î','i'),('ô','o'),('ù','u'),('û','u'),('ç','c')]:
+        s = s.replace(c, r)
+    return re.sub(r'[^a-z0-9]', '_', s)[:28]
+
+def _get_ev_bloquant(type_str):
+    """Retourne True si le type d'arrêt est marqué bloquant dans la config events_list."""
+    ev_cfg = cfg.get("events_list") or []
+    ev_map = {e.get("label","").lower(): e for e in ev_cfg}
+    ev_slug_map = {_ev_slug(e.get("label","")): e for e in ev_cfg if e.get("label","")}
+    tl = (type_str or "").lower().strip()
+    ev = ev_map.get(tl)
+    if ev: return bool(ev.get("bloquant"))
+    for pfx in ("rattrapage: ","pb technique: ","nettoyage: ","pause: ","réunion: ","reunion: ","manquants: ","organisation: ","autre: "):
+        if tl.startswith(pfx):
+            sfx = tl[len(pfx):]
+            ev2 = ev_map.get(sfx)
+            if ev2: return bool(ev2.get("bloquant"))
+            best, best_len = None, 4
+            for slug, e in ev_slug_map.items():
+                if len(slug) > best_len and sfx.startswith(slug): best, best_len = e, len(slug)
+            if best: return bool(best.get("bloquant"))
+    ts_slug = _ev_slug(type_str or "")
+    best, best_len = None, 4
+    for slug, e in ev_slug_map.items():
+        if len(slug) > best_len and ts_slug.startswith(slug): best, best_len = e, len(slug)
+    if best: return bool(best.get("bloquant"))
+    return False
+
 def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_date_str, form_data=None):
     """À la clôture d'un OF, rempli la colonne B (OF) + nb_pers/type_prod/fibre des lignes
     d'arrêt sans OF dont la plage horaire chevauche [of_start_dt, of_end_dt]."""
@@ -5113,8 +5143,8 @@ def api_edit_row():
     if _dd_iso:
         try:
             _dd_fmt = datetime.datetime.strptime(_dd_iso, "%Y-%m-%d").strftime("%d/%m/%Y")
-            updates["3"] = _dd_fmt   # col 3 = date de la ligne
-            updates["40"] = _dd_fmt  # col 40 = shift_date_str
+            updates["3"] = _dd_fmt   # col 3 = vraie date calendaire (peut changer)
+            # Ne PAS modifier col 40 (shift_date_str / index du poste) lors d'un edit
         except: pass
     path = cfg.get("db_path","")
     if not row_num or not path or not os.path.exists(path):
@@ -6188,8 +6218,8 @@ def api_add_past_decl():
         if sf and fin_dt > sf:
             return jsonify({"ok":False,"error":f"Après la fin du poste ({sf.strftime('%H:%M')})"}),400
     shift_dt = _S.get("shift_start") or now
-    # Si date explicite fournie, la date de poste = date de la déclaration (pas le poste en cours)
-    shift_date_str = debut_dt.strftime("%d/%m/%Y") if _explicit_date else shift_dt.strftime("%d/%m/%Y")
+    # Toujours utiliser la date du début du poste comme index (y compris pour réguls poste de nuit)
+    shift_date_str = shift_dt.strftime("%d/%m/%Y")
     date_str = debut_dt.strftime("%d/%m/%Y")
     if decl_type in ("arret", "degrade"):
         stop_type = str(data.get("type","")).strip()
