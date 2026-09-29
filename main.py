@@ -5910,7 +5910,7 @@ def api_period_report():
         _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or "")),"real_date":str(re2[2] or "") if len(re2)>2 else ""} for _rn2, re2 in s.get('evt_rows',[])]
         agg_degrade_min += (_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s / 60.0)
         sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd,'_deb_dt':_pdeb})
-    _trs_denom = agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected
+    _trs_denom = agg_obj_equiv if agg_obj_equiv > 0 else (agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected)
     trs_periode = round(agg_equiv/_trs_denom*100,1) if _trs_denom>0 and agg_equiv>0 else -1.0
     def _sort_dmy(d):
         try: p=d.split('/'); return (int(p[2]),int(p[1]),int(p[0]))
