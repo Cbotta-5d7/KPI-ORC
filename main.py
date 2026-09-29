@@ -5862,6 +5862,7 @@ def api_period_report():
         trs_by_day[day]['sum_expected'] += _xl_theorique
         _cad_s = _xl.get('cadence_h') or (round(s['tot_equiv']/utile_min*60) if utile_min>0 else 0)
         _of_rows_sd = []
+        _tot_of_s_pr = 0.0; _tot_of_plan_s_pr = 0.0
         for _rp in s.get('prod_raws', []):
             try:
                 _deb_rp = _hms_to_sec(str(_rp[16] or "00:00:00"))
@@ -5878,11 +5879,21 @@ def api_period_report():
                 _exp_rp  = prod_ref * _pct_rp * _adj_rp / 28800 if prod_ref > 0 else 0.0
                 # Toujours recalculer (ignore colonne 43 Excel qui peut être obsolète)
                 _obj_rp = round(_exp_rp, 1) if _exp_rp > 0 else -1
+                _tot_of_s_pr += max(0.0, _dur_rp)
+                _tot_of_plan_s_pr += _plan_rp
             except:
                 _plan_rp = 0; _deg_rp = 0; _obj_rp = -1; _pcoef_rp = 1.0
             if _obj_rp > 0:
                 agg_obj_equiv += _obj_rp
                 agg_obj_pcs += _obj_rp
+        # Ajouter l'objectif du temps non couvert par des OF
+        if model_dur_s > 0 and prod_ref > 0:
+            _uncov_plan_s = max(0.0, planned_ded - _tot_of_plan_s_pr)
+            _uncov_s = max(0.0, model_dur_s - _tot_of_s_pr - _uncov_plan_s)
+            _uncov_obj = round(_uncov_s / 28800 * prod_ref, 1)
+            if _uncov_obj > 0:
+                agg_obj_equiv += _uncov_obj
+                agg_obj_pcs += _uncov_obj
             _of_rows_sd.append({
                 "of":str(_rp[1] or ""),"debut":str(_rp[16] or "")[:5],"fin":str(_rp[17] or "")[:5],
                 "duree":str(_rp[18] or ""),"qte_fab":str(_rp[19] or ""),"qte_emb":str(_rp[20] or ""),
