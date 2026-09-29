@@ -1,5 +1,5 @@
 """KPI-ORC v6.4 - Flask + pywebview"""
-import json, os, sys, datetime, threading, math, shutil, time, atexit, signal
+import json, os, sys, datetime, threading, math, shutil, time, atexit, signal, re
 from flask import Flask, request, jsonify, render_template_string, send_file
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Border, Side, PatternFill
@@ -297,6 +297,32 @@ def _row_date(v):
         if hasattr(v,"strftime"): return v.strftime("%d/%m/%Y")
     except: pass
     return s[:10]
+
+def _real_date_str(r):
+    """Vraie date calendaire d'une déclaration (poste nuit : +1 jour si heure < 12h)."""
+    sd = _row_date(r[2]) if len(r) > 2 else ""
+    if not sd: return sd
+    poste = str(r[3] or "").strip().lower() if len(r) > 3 else ""
+    hdeb  = str(r[16] or "").strip() if len(r) > 16 else ""
+    h     = int(hdeb[:2]) if len(hdeb) >= 2 and hdeb[:2].isdigit() else -1
+    if poste == "nuit" and 0 <= h < 12:
+        try:
+            d = datetime.datetime.strptime(sd, "%d/%m/%Y").date()
+            return (d + datetime.timedelta(days=1)).strftime("%d/%m/%Y")
+        except: pass
+    return sd
+
+def _rattachement_str(r):
+    """Libellé de rattachement du poste : 'NUIT 28/09/26'."""
+    sd    = _row_date(r[2]) if len(r) > 2 else ""
+    poste = str(r[3] or "").strip().upper() if len(r) > 3 else ""
+    short = ""
+    if sd:
+        try:
+            d = datetime.datetime.strptime(sd, "%d/%m/%Y").date()
+            short = d.strftime("%d/%m/%y")
+        except: short = sd
+    return f"{poste} {short}".strip()
 
 def _row_time(v):
     if not v: return ""
@@ -4523,6 +4549,8 @@ def api_history():
                 "comment": str(r[35] or ""),
                 "perte_cad_of": str(r[43] if len(r)>43 else ""),
                 "objectif": round(float(str(r[42] or 0).replace(",",".")), 1) if len(r)>42 and r[42] not in (None,"") else -1,
+                "real_date":    _real_date_str(r),
+                "rattachement": _rattachement_str(r),
             })
         except: pass
     return jsonify(rows)
@@ -4595,14 +4623,32 @@ def api_cdg_data():
     d_from = _pd(date_from) if date_from else None
     d_to   = _pd(date_to)   if date_to   else None
     _evts_map = {e.get("label","").lower(): e for e in (cfg.get("events_list") or [])}
+    def _py_slug(s):
+        s = s.lower()
+        for _c,_r in [('é','e'),('è','e'),('ê','e'),('ë','e'),('à','a'),('â','a'),('ï','i'),('î','i'),('ô','o'),('ù','u'),('û','u'),('ç','c')]:
+            s = s.replace(_c,_r)
+        return re.sub(r'[^a-z0-9]','_',s)[:28]
+    _evts_slug_map = {_py_slug(e.get("label","")): e for e in (cfg.get("events_list") or []) if e.get("label","")}
     def _get_ev_info(ts):
         tl = ts.lower().strip()
         ev = _evts_map.get(tl)
         if ev: return ev
-        for pfx in ("rattrapage: ", "pb technique: "):
+        for pfx in ("rattrapage: ","pb technique: ","nettoyage: ","pause: ","réunion: ","reunion: ","manquants: ","organisation: ","autre: "):
             if tl.startswith(pfx):
-                ev = _evts_map.get(tl[len(pfx):])
+                sfx = tl[len(pfx):]
+                ev = _evts_map.get(sfx)
                 if ev: return ev
+                best, best_len = None, 4
+                for slug, e in _evts_slug_map.items():
+                    if len(slug) > best_len and sfx.startswith(slug):
+                        best, best_len = e, len(slug)
+                if best: return best
+        ts_slug = _py_slug(ts)
+        best, best_len = None, 4
+        for slug, e in _evts_slug_map.items():
+            if len(slug) > best_len and ts_slug.startswith(slug):
+                best, best_len = e, len(slug)
+        if best: return best
         return {}
     rows = []
     for rn, r in _decl_cache:
@@ -4620,24 +4666,26 @@ def api_cdg_data():
                 _parts = [p for p in [_tp, _ta, (_po + " gr" if _po else "")] if p]
                 desig = " - ".join(_parts)
             else:
-                desig = type_str
+                desig = ev_info.get("label","") or type_str
             rows.append({
-                "row_num":    rn,
-                "is_prod":    is_prod,
-                "designation": desig,
-                "bloquant":   "" if is_prod else ("OUI" if ev_info.get("bloquant") else "NON"),
-                "comment":    str(r[35] or ""),
-                "of":         str(r[1]  or ""),
-                "date":       _row_date(r[2]),
-                "poste":      str(r[3]  or ""),
-                "pilote":     str(r[4]  or ""),
-                "copilote":   str(r[5]  or ""),
-                "nb_pers":    str(r[6]  or ""),
-                "debut":      str(r[16] or "")[:5],
-                "fin":        str(r[17] or "")[:5],
-                "duree":      str(r[18] or ""),
-                "qte_fab":    str(r[19] or "") if is_prod else "",
-                "equiv":      str(r[21] or "") if is_prod else "",
+                "row_num":      rn,
+                "is_prod":      is_prod,
+                "designation":  desig,
+                "bloquant":     "" if is_prod else ("OUI" if ev_info.get("bloquant") else "NON"),
+                "comment":      str(r[35] or ""),
+                "of":           str(r[1]  or ""),
+                "date":         _row_date(r[2]),
+                "real_date":    _real_date_str(r),
+                "rattachement": _rattachement_str(r),
+                "poste":        str(r[3]  or ""),
+                "pilote":       str(r[4]  or ""),
+                "copilote":     str(r[5]  or ""),
+                "nb_pers":      str(r[6]  or ""),
+                "debut":        str(r[16] or "")[:5],
+                "fin":          str(r[17] or "")[:5],
+                "duree":        str(r[18] or ""),
+                "qte_fab":      str(r[19] or "") if is_prod else "",
+                "equiv":        str(r[21] or "") if is_prod else "",
             })
         except: pass
     def _sk(row):
@@ -4663,14 +4711,32 @@ def api_cdg_export():
     d_from = _pd(date_from) if date_from else None
     d_to   = _pd(date_to)   if date_to   else None
     _evts_map2 = {e.get("label","").lower(): e for e in (cfg.get("events_list") or [])}
+    def _py_slug2(s):
+        s = s.lower()
+        for _c,_r in [('é','e'),('è','e'),('ê','e'),('ë','e'),('à','a'),('â','a'),('ï','i'),('î','i'),('ô','o'),('ù','u'),('û','u'),('ç','c')]:
+            s = s.replace(_c,_r)
+        return re.sub(r'[^a-z0-9]','_',s)[:28]
+    _evts_slug_map2 = {_py_slug2(e.get("label","")): e for e in (cfg.get("events_list") or []) if e.get("label","")}
     def _get_ev_info2(ts):
         tl = ts.lower().strip()
         ev = _evts_map2.get(tl)
         if ev: return ev
-        for pfx in ("rattrapage: ", "pb technique: "):
+        for pfx in ("rattrapage: ","pb technique: ","nettoyage: ","pause: ","réunion: ","reunion: ","manquants: ","organisation: ","autre: "):
             if tl.startswith(pfx):
-                ev = _evts_map2.get(tl[len(pfx):])
+                sfx = tl[len(pfx):]
+                ev = _evts_map2.get(sfx)
                 if ev: return ev
+                best, best_len = None, 4
+                for slug, e in _evts_slug_map2.items():
+                    if len(slug) > best_len and sfx.startswith(slug):
+                        best, best_len = e, len(slug)
+                if best: return best
+        ts_slug = _py_slug2(ts)
+        best, best_len = None, 4
+        for slug, e in _evts_slug_map2.items():
+            if len(slug) > best_len and ts_slug.startswith(slug):
+                best, best_len = e, len(slug)
+        if best: return best
         return {}
     rows = []
     for rn, r in _decl_cache:
@@ -4688,23 +4754,25 @@ def api_cdg_export():
                 _parts2 = [p for p in [_tp2, _ta2, (_po2 + " gr" if _po2 else "")] if p]
                 desig2 = " - ".join(_parts2)
             else:
-                desig2 = type_str
+                desig2 = ev_info2.get("label","") or type_str
             rows.append({
-                "is_prod":     is_prod,
-                "designation": desig2,
-                "bloquant":    "" if is_prod else ("OUI" if ev_info2.get("bloquant") else "NON"),
-                "comment":     str(r[35] or ""),
-                "of":          str(r[1]  or ""),
-                "date":        _row_date(r[2]),
-                "poste":       str(r[3]  or ""),
-                "pilote":      str(r[4]  or ""),
-                "copilote":    str(r[5]  or ""),
-                "nb_pers":     str(r[6]  or ""),
-                "debut":       str(r[16] or "")[:5],
-                "fin":         str(r[17] or "")[:5],
-                "duree":       str(r[18] or ""),
-                "qte_fab":     str(r[19] or "") if is_prod else "",
-                "equiv":       str(r[21] or "") if is_prod else "",
+                "is_prod":      is_prod,
+                "designation":  desig2,
+                "bloquant":     "" if is_prod else ("OUI" if ev_info2.get("bloquant") else "NON"),
+                "comment":      str(r[35] or ""),
+                "of":           str(r[1]  or ""),
+                "date":         _row_date(r[2]),
+                "real_date":    _real_date_str(r),
+                "rattachement": _rattachement_str(r),
+                "poste":        str(r[3]  or ""),
+                "pilote":       str(r[4]  or ""),
+                "copilote":     str(r[5]  or ""),
+                "nb_pers":      str(r[6]  or ""),
+                "debut":        str(r[16] or "")[:5],
+                "fin":          str(r[17] or "")[:5],
+                "duree":        str(r[18] or ""),
+                "qte_fab":      str(r[19] or "") if is_prod else "",
+                "equiv":        str(r[21] or "") if is_prod else "",
             })
         except: pass
     def _sk(row):
@@ -4715,8 +4783,8 @@ def api_cdg_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "CDG"
-    headers = ["Type","Désignation","Arrêts bloquant ?","OF","Pilote","Co-pilote","Poste","Date","Début","Fin","Durée","Qté produite","Qté équivalence","Nb pers","Commentaire"]
-    col_widths = [28,34,16,18,20,20,14,14,10,10,10,14,16,10,30]
+    headers = ["Type","Désignation","Arrêts bloquant ?","OF","Pilote","Co-pilote","Poste","Date réelle","Rattachement","Début","Fin","Durée","Qté produite","Qté équivalence","Nb pers","Commentaire"]
+    col_widths = [28,34,16,18,20,20,14,14,18,10,10,10,14,16,10,30]
     hdr_font  = Font(name="Arial", bold=True, color="FFFFFF", size=11)
     hdr_fill  = PatternFill("solid", fgColor="1E3A8A")
     hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -4748,7 +4816,8 @@ def api_cdg_export():
             row.get("pilote",""),
             row.get("copilote",""),
             row.get("poste",""),
-            row.get("date",""),
+            row.get("real_date",""),
+            row.get("rattachement",""),
             row.get("debut",""),
             row.get("fin",""),
             row.get("duree",""),
@@ -12981,7 +13050,7 @@ async function loadCdg(){
   const cnt=document.getElementById('cdg-count');
   if(cnt) cnt.textContent=rows.length+' ligne'+(rows.length>1?'s':'');
   const _th=(t,al)=>`<th style="padding:7px 10px;text-align:${al||'left'};white-space:nowrap">${t}</th>`;
-  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff">'+[_th('Type'),_th('Désignation'),_th('Arrêts bloquant ?','center'),_th('OF'),_th('Pilote'),_th('Co-pilote'),_th('Poste'),_th('Date'),_th('Début'),_th('Fin'),_th('Durée'),_th('Qté prod.','right'),_th('Qté équiv.','right'),_th('Nb pers','center'),_th('Commentaire')].join('')+'</tr>';
+  hd.innerHTML='<tr style="background:#1e3a8a;color:#fff">'+[_th('Type'),_th('Désignation'),_th('Arrêts bloquant ?','center'),_th('OF'),_th('Pilote'),_th('Co-pilote'),_th('Poste'),_th('Date réelle'),_th('Rattachement'),_th('Début'),_th('Fin'),_th('Durée'),_th('Qté prod.','right'),_th('Qté équiv.','right'),_th('Nb pers','center'),_th('Commentaire')].join('')+'</tr>';
   if(!rows.length){
     bd.innerHTML='<tr><td colspan="15" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>';
     return;
@@ -13004,7 +13073,8 @@ async function loadCdg(){
       ${_td(esc(r.pilote||''))}
       ${_td(`<span style="color:#6b7280">${esc(r.copilote||'')}</span>`)}
       ${_td(esc(r.poste||''))}
-      ${_td(esc(r.date||''))}
+      ${_td(esc(r.real_date||r.date||''))}
+      ${_td(`<span style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600">${esc(r.rattachement||'')}</span>`)}
       ${_td(esc(r.debut||''))}
       ${_td(esc(r.fin||''))}
       ${_td(esc(r.duree||''))}
@@ -13319,8 +13389,8 @@ async function loadHist(){
     if(db!==da) return db-da;
     return (b.debut||'').localeCompare(a.debut||'');
   });
-  hd.innerHTML='<th>Type</th><th>OF</th><th>Détails</th><th>Produit</th><th>Fibre</th><th>Date</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
-  if(!allRows.length){bd.innerHTML='<tr><td colspan="14" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
+  hd.innerHTML='<th>Type</th><th>OF</th><th>Détails</th><th>Produit</th><th>Fibre</th><th>Date réelle</th><th>Rattachement</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
+  if(!allRows.length){bd.innerHTML='<tr><td colspan="16" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
   window._rowMap=window._rowMap||{};
   window._histEvtsAll=evtsFiltered; // pour showHistRowDetail
   bd.innerHTML=allRows.map(r=>{
@@ -13344,7 +13414,7 @@ async function loadHist(){
       <td style="font-size:calc(11px*var(--zf,1))">${details}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6b7280">${produitH}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600;cursor:${fbrH?'pointer':''}" title="${esc(fbrH)}" onclick="${fbrH?'showFibre(\''+esc(fbrH)+'\')':''}">${fbrShH}${fbrH.length>9?'…':''}</td>
-      <td style="font-size:calc(10px*var(--zf,1))">${esc(r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
+      <td style="font-size:calc(10px*var(--zf,1))">${esc(r.real_date||r.date||'')}</td><td style="font-size:calc(10px*var(--zf,1));color:#6366f1;font-weight:600">${esc(r.rattachement||'')}</td><td style="font-size:calc(10px*var(--zf,1))">${esc(r.poste||'')}</td>
       <td>${esc(r.pilote||'')}</td><td style="text-align:center;font-size:calc(10px*var(--zf,1));color:#374151">${nbPersH||'—'}</td><td>${esc(r.debut||'')}</td><td>${esc(r.fin||'')}</td>
       <td style="font-size:calc(11px*var(--zf,1))">${dur}</td><td style="font-size:calc(11px*var(--zf,1))">${qty}</td><td>${info}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
