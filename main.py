@@ -14317,7 +14317,10 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const _ofObjEquivRp=(d.prod_rows||[]).reduce((s,r)=>{const o=parseFloat(r.objectif||'-1');return s+(o>=0?o:0);},0);
   const _modelMinRp=(d.model_dur_s||0)/60;
   const _coveredMinRp=(d.tot_s||0)/60;
-  const _uncoveredObjRp=Math.max(0,_modelMinRp-_coveredMinRp)*cadenceRefPcsMin;
+  // Arrêts prévus dans le temps non couvert = total prévus − prévus déjà dans les OF
+  const _ofPlannedS=(d.prod_rows||[]).reduce((s,r)=>s+(parseFloat(r.plan_stop_s||0)||0),0);
+  const _uncoveredPlannedMin=Math.max(0,((d.planned_ded_s||0)-_ofPlannedS))/60;
+  const _uncoveredObjRp=Math.max(0,_modelMinRp-_coveredMinRp-_uncoveredPlannedMin)*cadenceRefPcsMin;
   const _objEquivRp=_ofObjEquivRp+_uncoveredObjRp;
   const _objPcsRp=_objEquivRp;
   const _colPcsRp=!_objPcsRp?'#16a34a':(totQteFab/_objPcsRp>=0.95?'#16a34a':totQteFab/_objPcsRp>=0.75?'#f59e0b':'#dc2626');
