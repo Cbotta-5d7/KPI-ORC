@@ -4318,7 +4318,7 @@ def api_end_stop():
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
             str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
-            "","","","","","","","","","","","","","","","",comment,"",
+            "","","","","","","","","","","","","","","","",comment,"","","",
             _sh.strftime("%d/%m/%Y"),
         ]
         write_excel_bg([], [_row])
@@ -4402,7 +4402,7 @@ def api_toggle_reunion():
                 (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
                 str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
                 _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
-                "","","","","","","","","","","","","","","","","","",
+                "","","","","","","","","","","","","","","","","","","","",
                 _sh.strftime("%d/%m/%Y"),
             ]
             write_excel_bg([], [_row])
@@ -4453,7 +4453,7 @@ def api_end_nettoyage():
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
             str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
-            "","","","","","","","","","","","","","","","",data.get("comment",""),"",
+            "","","","","","","","","","","","","","","","",data.get("comment",""),"","","",
             _sh.strftime("%d/%m/%Y"),
         ]
         write_excel_bg([], [_row])
