@@ -11944,7 +11944,7 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   const planMin=Math.round((r.plan_stop_s||0)/60);
   const unplanMin=Math.max(0,stopMin-planMin);
   const prodMin=Math.max(0,netMin-degMin);
-  const slices=[{v:prodMin,c:'#16a34a',l:'Production'},{v:planMin,c:'#60a5fa',l:'Arrêts prévus'},{v:unplanMin,c:'#dc2626',l:'Arrêts non prévus'},{v:degMin,c:'#f59e0b',l:'Mode dégradé'}].filter(s=>s.v>0);
+  const slices=[{v:prodMin,c:'#16a34a',l:'Production'},{v:planMin,c:'#f97316',l:'Arrêts non bloquants'},{v:unplanMin,c:'#dc2626',l:'Arrêts bloquants'},{v:degMin,c:'#f59e0b',l:'Mode dégradé'}].filter(s=>s.v>0);
   const tot=slices.reduce((a,s)=>a+s.v,0)||1;
   let sA=-Math.PI/2,dpaths='';
   const visSlices=slices.filter(sl=>sl.v>0&&(sl.v/tot)*2*Math.PI>=0.001);
@@ -12697,10 +12697,14 @@ async function loadFPData(){
   const prodS=d.tot_s||0;
   const stopS=stopTotal;
   const _fpDegS=(d.degrade_min||0)*60;
+  const _isPlannedFP=t=>/pause|nettoyage|nett\b|r[eé]union|meeting/i.test(t||'');
+  const _planStopSFP=stops.filter(e=>_isPlannedFP(e.type)).reduce((a,e)=>a+Math.max(0,_hmsS(e.fin)-_hmsS(e.debut)),0);
+  const _unplanStopSFP=Math.max(0,stopS-_planStopSFP);
   drawPie('fp-pie',[
     {label:'Prod',value:Math.max(0,prodS-_fpDegS),color:'#16a34a'},
     {label:'Dégradé',value:_fpDegS,color:'#f59e0b'},
-    {label:'Arrêts',value:stopS,color:'#dc2626'},
+    {label:'Arrêts bloquants',value:_unplanStopSFP,color:'#dc2626'},
+    {label:'Arrêts non bloquants',value:_planStopSFP,color:'#f97316'},
   ],{fLeg:9});
   const trsS=d.trs_shift!==undefined?d.trs_shift:d.trs;
   drawGauge('fp-gauge-arc','fp-gauge-pct',d.is_live?0:trsS>=0?trsS:0);
@@ -13263,9 +13267,20 @@ async function loadKPI(){
   _kpiLineChart('kpi-qte-chart',sessArr,'tot_equiv',()=>'#16a34a','');
 
   // ── Donut Prod/Arrêts ──
+  const _isPlannedKD=t=>/nettoyage|nett\b|r[eé]union|meeting|pause/i.test(t||'');
+  let _totalPlanMinKD=0;
+  sessArr.forEach(s=>{
+    const evtKey=s.pilot+'||'+s.date+'||'+s.poste;
+    evts.filter(e=>(e.pilote||'')+'||'+(e.date||'')+'||'+(e.poste||'')==evtKey&&!e.is_degrade&&_isPlannedKD(e.type)).forEach(e=>{
+      _totalPlanMinKD+=Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0'));
+    });
+  });
+  _totalPlanMinKD=Math.round(_totalPlanMinKD/60);
+  const _totalUnplanMinKD=Math.max(0,totalStopMin-_totalPlanMinKD);
   _kpiDrawDonut('kpi-donut','kpi-donut-legend',[
     {label:'Prod',v:totalProdS,col:'#16a34a'},
-    {label:'Arrêts',v:totalStopMin*60,col:'#dc2626'},
+    {label:'Arrêts bloquants',v:_totalUnplanMinKD*60,col:'#dc2626'},
+    {label:'Arrêts non bloquants',v:_totalPlanMinKD*60,col:'#f97316'},
   ]);
 
   // ── Pareto des arrêts non prévus ──
@@ -13790,11 +13805,13 @@ async function calcPeriodReport(autoLoad,maxSessions){
   // Pie chart: fonctionnement vs arrêts
   const fonctMin=d.temps_fonctionnement_min||0;
   const stopMin=d.net_stop_min||0;
+  const planStopMinRj=d.arret_prevu_min||0;
+  const unplanStopMinRj=Math.max(0,stopMin-planStopMinRj);
   const pieTotal=fonctMin+stopMin;
   let pieHtml='';
   if(pieTotal>0){
     const r=60,cx=65,cy=65;
-    const slices=[{v:fonctMin,c:'#16a34a',l:'Prod'},{v:stopMin,c:'#dc2626',l:'Arrêts'}];
+    const slices=[{v:fonctMin,c:'#16a34a',l:'Prod'},{v:unplanStopMinRj,c:'#dc2626',l:'Arrêts bloquants'},{v:planStopMinRj,c:'#f97316',l:'Arrêts non bloquants'}].filter(s=>s.v>0);
     let startA=-Math.PI/2,svgPaths='';
     slices.forEach(sl=>{
       const a=sl.v/pieTotal*2*Math.PI;
@@ -13815,7 +13832,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
   let pieSmall='';
   if(pieTotal>0){
     const r=34,cx=38,cy=38;let sA=-Math.PI/2,paths='';
-    [{v:fonctMin,c:'#16a34a'},{v:stopMin,c:'#dc2626'}].forEach(sl=>{
+    [{v:fonctMin,c:'#16a34a'},{v:unplanStopMinRj,c:'#dc2626'},{v:planStopMinRj,c:'#f97316'}].filter(s=>s.v>0).forEach(sl=>{
       const a=sl.v/pieTotal*2*Math.PI;
       const x1=cx+r*Math.cos(sA),y1=cy+r*Math.sin(sA);
       const x2=cx+r*Math.cos(sA+a),y2=cy+r*Math.sin(sA+a);
@@ -13827,7 +13844,8 @@ async function calcPeriodReport(autoLoad,maxSessions){
       <svg viewBox="0 0 76 76" style="width:74px;height:74px"><circle cx="38" cy="38" r="34" fill="#e2e8f0"/>${paths}</svg>
       <div style="font-size:calc(10px*var(--zf,1));display:flex;flex-direction:column;gap:2px;align-self:flex-start">
         <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#16a34a;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Prod : <b>${Math.round(fonctMin)} min</b></span></div>
-        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#dc2626;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Arrêts : <b>${Math.round(stopMin)} min</b></span></div>
+        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#dc2626;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Bloquants : <b>${Math.round(unplanStopMinRj)} min</b></span></div>
+        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#f97316;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Non bloquants : <b>${Math.round(planStopMinRj)} min</b></span></div>
       </div>
     </div>`;
   }
@@ -14402,10 +14420,15 @@ async function loadSessionReport(date,pilot,poste,itemId){
       </div>
     </div>`;
   // Dessiner gauge et pie (éléments maintenant dans le DOM)
+  const _isPlannedRp=t=>/pause|nettoyage|nett\b|r[eé]union|meeting/i.test(t||'');
+  const _planStopMsRp=(d.evt_rows||[]).filter(e=>!e.is_degrade&&_isPlannedRp(e.type)).reduce((a,e)=>a+Math.max(0,_rptHmsMs(e.fin)-_rptHmsMs(e.debut)),0);
+  const planStopMinRp=Math.round(_planStopMsRp/60000);
+  const unplanStopMinRp=Math.max(0,netStopMin-planStopMinRp);
   drawPie('rpt-pie',[
     {label:'Prod',value:Math.max(0,tempsFonctionnement-degMin),color:'#16a34a'},
     {label:'Dégradé',value:degMin,color:'#f59e0b'},
-    {label:'Arrêts',value:netStopMin,color:'#dc2626'}
+    {label:'Arrêts bloquants',value:unplanStopMinRp,color:'#dc2626'},
+    {label:'Arrêts non bloquants',value:planStopMinRp,color:'#f97316'}
   ],{fCenter:16,fSub:10,fLeg:10});
 }
 
