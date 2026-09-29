@@ -5906,7 +5906,7 @@ def api_period_report():
                 "degrade_min":round(_deg_rp/60,1),"plan_stop_s":round(_plan_rp),"objectif":_obj_rp,
                 "budget_overrides":_xl.get('budget_overrides') or {},
             })
-        _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or ""))} for _rn2, re2 in s.get('evt_rows',[])]
+        _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or "")),"real_date":str(re2[2] or "") if len(re2)>2 else ""} for _rn2, re2 in s.get('evt_rows',[])]
         agg_degrade_min += (_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s / 60.0)
         sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd,'_deb_dt':_pdeb})
     _trs_denom = agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected
@@ -5996,6 +5996,7 @@ def api_session_report():
                 stop_s += dur_s
                 evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or ""),"is_degrade":False})
             except: pass
+    evt_rows.sort(key=lambda e: e.get('debut') or '')
     _deg_ivs_sr_s = sorted((s, f) for s, f in _deg_ivs_sr if f > s)
     _deg_mg_sr = []
     for _s, _f in _deg_ivs_sr_s:
@@ -13742,7 +13743,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
   let paretoRjHtml='';
   if(d.stop_pareto&&d.stop_pareto.length){
     const maxMp=d.stop_pareto[0].min,totMp=d.stop_pareto.reduce((a,e)=>a+e.min,0);
-    const rows3=d.stop_pareto.map(e=>{
+    const rows3=d.stop_pareto.slice(0,10).map(e=>{
       const pct=Math.round(e.min/maxMp*100),col=STOP_COL[e.cat]||'#94a3b8',pctTot=totMp>0?Math.round(e.min/totMp*100):0;
       return `<div style="margin-bottom:5px">
         <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
@@ -13757,7 +13758,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
         </div>
       </div>`;
     }).join('');
-    paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">🛑 PARETO des arrêts non prévus</div>${rows3}</div>`;
+    paretoRjHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">🛑 PARETO des arrêts non prévus (Top 10)</div>${rows3}</div>`;
   }
   let paretoDeghHtml='';
   if(d.degrade_pareto&&d.degrade_pareto.length){
@@ -13816,7 +13817,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
   (d.sessions_detail||[]).forEach(s=>{
     (s.evt_rows||[]).forEach(r=>{allEvts.push({...r,date:s.date,poste:s.poste,pilote:s.pilot,_rowType:'evt'});});
   });
-  allEvts.sort((a,b)=>{const _pa=(a.date||'').split('/'),_pb=(b.date||'').split('/');const _da=(+_pa[2]||0)*10000+(+_pa[1]||0)*100+(+_pa[0]||0),_db=(+_pb[2]||0)*10000+(+_pb[1]||0)*100+(+_pb[0]||0);if(_db!==_da)return _db-_da;return (b.debut||'').localeCompare(a.debut||'');});
+  allEvts.sort((a,b)=>{const _kd=(x)=>{const d=((x.real_date||x.date||'').split('/'));return(+d[2]||0)*10000+(+d[1]||0)*100+(+d[0]||0);};const _da=_kd(a),_db=_kd(b);if(_db!==_da)return _db-_da;return (b.debut||'').localeCompare(a.debut||'');});
   window._rjEvts=allEvts;
   if(allEvts.length){
     const catCol=t=>{const tl=(t||'').toLowerCase();return tl.includes('nett')?'#f97316':tl.includes('pause')?'#94a3b8':(tl.includes('réunion')||tl.includes('reunion'))?'#8b5cf6':tl.includes('dégrad')?'#ca8a04':'#dc2626';};
@@ -13989,7 +13990,7 @@ async function captureRapportJour(){
     <div style="flex:1;min-width:324px">
       ${(()=>{
         const _mkParSnap=(items,col,title,titleCol)=>{if(!items||!items.length)return '';const mx=items[0].min;const tot=items.reduce((a,e)=>a+e.min,0);const rows=items.map(e=>{const pct=Math.round(e.min/mx*80);const pctTot=tot>0?Math.round(e.min/tot*100):0;return `<div style="margin-bottom:5px"><div style="display:flex;align-items:center;gap:4px;margin-bottom:2px"><div style="width:7px;height:7px;border-radius:2px;background:${col};flex-shrink:0"></div><span style="font-size:10px;color:#374151;word-break:break-word;line-height:1.2"><b>${e.count}×</b> : ${esc(e.type)}</span></div><div style="display:flex;align-items:center;gap:4px"><div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden"><div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div></div><span style="flex-shrink:0;font-size:9px;color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m</span></div></div>`;}).join('');return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:${titleCol};text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">${title}</div>${rows}</div>`;};
-        return _mkParSnap(d.stop_pareto,'#dc2626','🛑 PARETO des arrêts non prévus','#dc2626')+_mkParSnap(d.degrade_pareto,'#f59e0b','⚠️ PARETO des modes dégradés','#d97706');
+        return _mkParSnap((d.stop_pareto||[]).slice(0,10),'#dc2626','🛑 PARETO des arrêts non prévus (Top 10)','#dc2626')+_mkParSnap(d.degrade_pareto,'#f59e0b','⚠️ PARETO des modes dégradés','#d97706');
       })()}
     </div>
   </div>`;
@@ -14313,7 +14314,11 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const _colDegRp=_cLRp(degMin,ouvertureMin);
   const _colPerteRp=perteCadenceRaw<=0?'#16a34a':_cLRp(perteCadenceRaw,ouvertureMin);
   // objectif pièces = objectif equiv (lot de 2 = info uniquement, pas de conversion)
-  const _objEquivRp=(d.prod_rows||[]).reduce((s,r)=>{const o=parseFloat(r.objectif||'-1');return s+(o>=0?o:0);},0);
+  const _ofObjEquivRp=(d.prod_rows||[]).reduce((s,r)=>{const o=parseFloat(r.objectif||'-1');return s+(o>=0?o:0);},0);
+  const _modelMinRp=(d.model_dur_s||0)/60;
+  const _coveredMinRp=(d.tot_s||0)/60;
+  const _uncoveredObjRp=Math.max(0,_modelMinRp-_coveredMinRp)*cadenceRefPcsMin;
+  const _objEquivRp=_ofObjEquivRp+_uncoveredObjRp;
   const _objPcsRp=_objEquivRp;
   const _colPcsRp=!_objPcsRp?'#16a34a':(totQteFab/_objPcsRp>=0.95?'#16a34a':totQteFab/_objPcsRp>=0.75?'#f59e0b':'#dc2626');
   const _colEquivRp=!_objEquivRp?'#64748b':((d.tot_equiv||0)/_objEquivRp>=0.95?'#16a34a':(d.tot_equiv||0)/_objEquivRp>=0.75?'#f59e0b':'#dc2626');
