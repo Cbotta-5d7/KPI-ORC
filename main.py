@@ -12197,7 +12197,8 @@ function showOfDetail(ri) {
   if(!r) return;
   function _hm2s(hm) { if(!hm) return 0; const p=(hm+':0:0').split(':').map(Number); return(p[0]||0)*3600+(p[1]||0)*60+(p[2]||0); }
   const debS = _hm2s(r.debut), finS = _hm2s(r.fin)||86400;
-  const ofEvts = evtRows.filter(e => { const t = _hm2s(e.debut); return t >= debS && t <= finS; });
+  const _nightOf=(finS>0&&finS<debS);
+  const ofEvts = evtRows.filter(e => { const t = _hm2s(e.debut); return _nightOf?(t>=debS||t<=finS):(t>=debS&&t<=finS); });
   _renderAndOpenOfDetail(r, ofEvts);
 }
 
@@ -12209,7 +12210,8 @@ function showMainRowDetail(key) {
   if(isProd) {
     const _hm2s = hm=>{if(!hm)return 0;const[h,m]=(hm+':00').split(':').map(Number);return(h||0)*3600+(m||0)*60;};
     const debS=_hm2s(r.debut), finS=_hm2s(r.fin)||86400;
-    ofEvts=(window._mainEvtsAll||[]).filter(e=>{const t=_hm2s(e.debut);return t>=debS&&t<=finS;});
+    const _nightM=(finS>0&&finS<debS);
+    ofEvts=(window._mainEvtsAll||[]).filter(e=>{const t=_hm2s(e.debut);return _nightM?(t>=debS||t<=finS):(t>=debS&&t<=finS);});
   }
   _renderAndOpenOfDetail(r, ofEvts);
 }
@@ -13458,10 +13460,11 @@ function showHistRowDetail(key){
   if(isProd){
     const _hm2s=hm=>{if(!hm)return 0;const[h,m,s2]=((hm||'')+':0:0').split(':').map(Number);return(h||0)*3600+(m||0)*60+(s2||0);};
     const debS=_hm2s(r.debut), finS=_hm2s(r.fin)||86400;
+    const _nightH=(finS>0&&finS<debS);
     ofEvts=(window._histEvtsAll||[]).filter(e=>{
       if(!e.date||e.date!==r.date) return false;
       if(e.pilote&&r.pilote&&e.pilote!==r.pilote) return false;
-      const t=_hm2s(e.debut); return t>=debS&&t<=finS;
+      const t=_hm2s(e.debut); return _nightH?(t>=debS||t<=finS):(t>=debS&&t<=finS);
     });
     // Set up net prod helpers from this OF's events (same as showRjOfDetail)
     const _h2ms=hm=>{if(!hm)return 0;const[h,m,s3]=((hm||'')+':0:0').split(':').map(Number);return((h||0)*3600+(m||0)*60+(s3||0))*1000;};
@@ -13915,7 +13918,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
       <td style="padding:4px 6px;text-align:right;color:${arretMin>0?'#dc2626':'#94a3b8'}">${arretMin>0?arretMin+' min':'—'}</td>
       <td style="padding:4px 6px;text-align:right;color:${r.degrade_min>0?'#f59e0b':'#94a3b8'}">${r.degrade_min>0?Math.round(r.degrade_min)+' min':'—'}</td>
     </tr>`;}).join('');
-    ofListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">📋 Liste des OF fabriqués</div><div style="overflow-x:auto;overflow-y:auto;max-height:240px"><table style="width:100%;border-collapse:collapse"><thead style="position:sticky;top:0;z-index:1"><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">Pilote</th><th style="padding:4px 6px;text-align:left">Type produit</th><th style="padding:4px 6px;text-align:center">Taille</th><th style="padding:4px 6px;text-align:left">Fibre</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Qté</th><th style="padding:4px 6px;text-align:right">Équiv</th><th style="padding:4px 6px;text-align:right">Objectif</th><th style="padding:4px 6px;text-align:right">TRS</th><th style="padding:4px 6px;text-align:right">Arrêt</th><th style="padding:4px 6px;text-align:right">Dégradé</th></tr></thead><tbody>${ofRows}</tbody></table></div></div>`;
+    ofListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">📋 Liste des OF fabriqués</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead style="position:sticky;top:0;z-index:1"><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">Pilote</th><th style="padding:4px 6px;text-align:left">Type produit</th><th style="padding:4px 6px;text-align:center">Taille</th><th style="padding:4px 6px;text-align:left">Fibre</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Qté</th><th style="padding:4px 6px;text-align:right">Équiv</th><th style="padding:4px 6px;text-align:right">Objectif</th><th style="padding:4px 6px;text-align:right">TRS</th><th style="padding:4px 6px;text-align:right">Arrêt</th><th style="padding:4px 6px;text-align:right">Dégradé</th></tr></thead><tbody>${ofRows}</tbody></table></div></div>`;
   }
   // Events list (all non-prod events)
   let eventsListHtml='';
@@ -13935,7 +13938,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
       <td style="padding:4px 6px;text-align:right;font-weight:700">${esc(r.duree||'—')}</td>
       <td style="padding:4px 6px;color:var(--gray);max-width:260px;min-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.comment||'')}">${esc(r.comment||'—')}</td>
     </tr>`).join('');
-    eventsListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">⏱ Liste des événements (${allEvts.length})</div><div style="overflow-x:auto;overflow-y:auto;max-height:240px"><table style="width:100%;border-collapse:collapse"><thead style="position:sticky;top:0;z-index:1"><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">Type</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Durée</th><th style="padding:4px 6px;text-align:left">Commentaire</th></tr></thead><tbody>${evtRows}</tbody></table></div></div>`;
+    eventsListHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:8px"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">⏱ Liste des événements (${allEvts.length})</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead style="position:sticky;top:0;z-index:1"><tr style="background:#f1f5f9;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#64748b"><th style="padding:4px 6px;text-align:left">Type</th><th style="padding:4px 6px;text-align:left">Poste · Date</th><th style="padding:4px 6px;text-align:left">OF</th><th style="padding:4px 6px;text-align:center">Plage</th><th style="padding:4px 6px;text-align:right">Durée</th><th style="padding:4px 6px;text-align:left">Commentaire</th></tr></thead><tbody>${evtRows}</tbody></table></div></div>`;
   }
   // Pie chart: fonctionnement vs arrêts
   const fonctMin=d.temps_fonctionnement_min||0;
