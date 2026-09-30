@@ -1571,7 +1571,8 @@ def _ensure_postes_sheet(wb):
     return wb["Postes"]
 
 def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
-    """Écrit en arrière-plan. Stocke postes_row_num dans _S pour que update_poste_horaires le retrouve directement."""
+    """Écrit en arrière-plan. Stocke postes_row_num dans _S pour que update_poste_horaires le retrouve directement.
+    Si une ligne vide (NbOF=0, Prod=0) existe déjà pour ce pilote+poste à la même date, la réutilise."""
     path = cfg.get("db_path","")
     if not path or not os.path.exists(path): return
     def _bg():
@@ -1580,14 +1581,40 @@ def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
                 wb = _get_wb(path)
                 if wb is None: return
                 ws = _ensure_postes_sheet(wb)
-                new_row = ws.max_row + 1
-                ws.cell(new_row, 2).value = pilot
-                ws.cell(new_row, 4).value = poste
-                ws.cell(new_row, 16).value = debut_dt.isoformat() if debut_dt else None
-                ws.cell(new_row, 17).value = fin_dt.isoformat() if fin_dt else None
-                _format_row(ws, new_row)
-                _safe_excel_save(wb, path)
-                _S["postes_row_num"] = new_row
+                # Cherche une ligne existante à réutiliser (même pilote + poste + même date de début)
+                target_row = None
+                if debut_dt:
+                    for row in ws.iter_rows(min_row=2, values_only=False):
+                        try:
+                            b = str(row[1].value or "").strip()
+                            d = str(row[3].value or "").strip()
+                            p_val = row[15].value if len(row) > 15 else None
+                            nb_of = row[4].value if len(row) > 4 else None
+                            prod = row[5].value if len(row) > 5 else None
+                            if b.lower() != pilot.lower() or d != poste: continue
+                            if nb_of or prod: continue  # ligne avec données réelles → ne pas écraser
+                            if p_val is not None:
+                                try:
+                                    p_dt = p_val if hasattr(p_val, 'date') else datetime.datetime.fromisoformat(str(p_val))
+                                    if p_dt.date() == debut_dt.date():
+                                        target_row = row[0].row; break
+                                except: pass
+                        except: continue
+                if target_row:
+                    ws.cell(target_row, 16).value = debut_dt.isoformat()
+                    ws.cell(target_row, 17).value = fin_dt.isoformat() if fin_dt else None
+                    _format_row(ws, target_row)
+                    _safe_excel_save(wb, path)
+                    _S["postes_row_num"] = target_row
+                else:
+                    new_row = ws.max_row + 1
+                    ws.cell(new_row, 2).value = pilot
+                    ws.cell(new_row, 4).value = poste
+                    ws.cell(new_row, 16).value = debut_dt.isoformat() if debut_dt else None
+                    ws.cell(new_row, 17).value = fin_dt.isoformat() if fin_dt else None
+                    _format_row(ws, new_row)
+                    _safe_excel_save(wb, path)
+                    _S["postes_row_num"] = new_row
                 save_session()
         except: pass
     threading.Thread(target=_bg, daemon=True).start()
@@ -1696,6 +1723,19 @@ def write_poste_row(data, row_num=None, sync=False):
                     _bov_get("clean_grand_min"),  # col 29 (AC) Budget nett. très long
                     _bov_get("meeting_tol_min"),  # col 30 (AD) Budget réunion
                 ]
+                if not (row_num and row_num > 1):
+                    # Fallback : chercher par pilote + poste + date avant d'appender
+                    _pilot_s = str(data.get("pilot","") or "").strip().lower()
+                    _poste_s = str(data.get("poste","") or "").strip()
+                    _date_s  = str(data.get("date","") or "").strip()
+                    for _row in ws.iter_rows(min_row=2, values_only=False):
+                        try:
+                            _b = str(_row[1].value or "").strip().lower()
+                            _d = str(_row[3].value or "").strip()
+                            _a = str(_row[0].value or "").strip()
+                            if _b == _pilot_s and _d == _poste_s and _a == _date_s:
+                                row_num = _row[0].row; break
+                        except: continue
                 if row_num and row_num > 1:
                     for ci, v in enumerate(vals, start=1):
                         if ci in (16, 17): continue  # Début/Fin Poste: ne pas écraser les timestamps
