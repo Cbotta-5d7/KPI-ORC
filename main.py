@@ -4507,13 +4507,21 @@ def api_history():
     all_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() in ("production","prod","")]
     def _hist_key(item):
         _, r = item
-        # Tri primaire : date du poste de rattachement (col AN = r[39]), secondaire : heure début (col Q)
-        sd = str(r[39] if len(r) > 39 else "") .strip() or _row_date(r[2] if len(r) > 2 else "")
+        sd = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2] if len(r) > 2 else "")
         p = sd.split("/") if sd else []
         try: d_tup = (int(p[2]), int(p[1]), int(p[0])) if len(p) == 3 else (0, 0, 0)
         except: d_tup = (0, 0, 0)
         t_str = str(r[16] or "")[:5]
-        return (d_tup, t_str)
+        # Poste de nuit : les heures < 12h sont après minuit → +24h pour tri cohérent
+        try:
+            th, tm2 = int(t_str[:2]), int(t_str[3:5])
+            t_min = th * 60 + tm2
+            poste_str = str(r[3] or "").lower()
+            if "nuit" in poste_str and t_min < 720:
+                t_min += 1440
+        except:
+            t_min = 0
+        return (d_tup, t_min)
     all_rows.sort(key=_hist_key, reverse=True)
     for rn, r in all_rows[:500]:
         try:
@@ -4722,7 +4730,13 @@ def api_cdg_data():
     def _sk(row):
         sd = row.get("shift_date","") or row.get("date",""); p = sd.split("/") if sd else []
         dt = (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0)
-        return (dt, row.get("debut",""))
+        t_str = row.get("debut","")[:5]
+        try:
+            th, tm2 = int(t_str[:2]), int(t_str[3:5])
+            t_min = th*60+tm2
+            if "nuit" in str(row.get("poste","")).lower() and t_min < 720: t_min += 1440
+        except: t_min = 0
+        return (dt, t_min)
     rows.sort(key=_sk, reverse=True)
     return jsonify(rows)
 
@@ -4810,7 +4824,13 @@ def api_cdg_export():
     def _sk(row):
         sd = row.get("shift_date","") or row.get("date",""); p = sd.split("/") if sd else []
         dt = (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0)
-        return (dt, row.get("debut",""))
+        t_str = row.get("debut","")[:5]
+        try:
+            th, tm2 = int(t_str[:2]), int(t_str[3:5])
+            t_min = th*60+tm2
+            if "nuit" in str(row.get("poste","")).lower() and t_min < 720: t_min += 1440
+        except: t_min = 0
+        return (dt, t_min)
     rows.sort(key=_sk, reverse=True)
     wb = Workbook()
     ws = wb.active
@@ -9597,7 +9617,8 @@ async function loadMainDecl() {
     const _pd=s=>{if(!s)return 0;const p=s.split('/');return p.length===3?(+p[2])*10000+(+p[1])*100+(+p[0]):0;};
     const da=_pd(a.shift_date||a.date),db=_pd(b.shift_date||b.date);
     if(db!==da)return db-da;
-    return (b.debut||'').localeCompare(a.debut||'');
+    const _dm=r=>{const p=(r.debut||'').split(':');let m=parseInt(p[0]||0)*60+parseInt(p[1]||0);if((r.poste||'').toLowerCase().includes('nuit')&&m<720)m+=1440;return m;};
+    return _dm(b)-_dm(a);
   });
   const bd=document.getElementById('main-body');
   if(!bd) return;
@@ -13512,7 +13533,8 @@ async function loadHist(){
     const _pd=s=>{if(!s)return 0;const p=s.split('/');return p.length===3?(+p[2])*10000+(+p[1])*100+(+p[0]):0;};
     const da=_pd(a.shift_date||a.date),db=_pd(b.shift_date||b.date);
     if(db!==da) return db-da;
-    return (b.debut||'').localeCompare(a.debut||'');
+    const _dm=r=>{const p=(r.debut||'').split(':');let m=parseInt(p[0]||0)*60+parseInt(p[1]||0);if((r.poste||'').toLowerCase().includes('nuit')&&m<720)m+=1440;return m;};
+    return _dm(b)-_dm(a);
   });
   hd.innerHTML='<th>Type</th><th>OF</th><th>Détails</th><th>Produit</th><th>Fibre</th><th>Date réelle</th><th>Rattachement</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
   if(!allRows.length){bd.innerHTML='<tr><td colspan="16" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
@@ -13815,7 +13837,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
       allOfs.push({...r,date:s.date,poste:s.poste,pilot:s.pilot,pilote:s.pilot,_rowType:'prod',_ofEvts:_ofEvts});
     });
   });
-  allOfs.sort((a,b)=>{const _pd=s=>{if(!s)return 0;const p=s.split('/');return p.length===3?(+p[2])*10000+(+p[1])*100+(+p[0]):0;};const _da=_pd(a.shift_date||a.date),_db=_pd(b.shift_date||b.date);if(_db!==_da)return _db-_da;return (b.debut||'').localeCompare(a.debut||'');});
+  allOfs.sort((a,b)=>{const _pd=s=>{if(!s)return 0;const p=s.split('/');return p.length===3?(+p[2])*10000+(+p[1])*100+(+p[0]):0;};const _da=_pd(a.shift_date||a.date),_db=_pd(b.shift_date||b.date);if(_db!==_da)return _db-_da;const _dm=r=>{const p=(r.debut||'').split(':');let m=parseInt(p[0]||0)*60+parseInt(p[1]||0);if((r.poste||'').toLowerCase().includes('nuit')&&m<720)m+=1440;return m;};return _dm(b)-_dm(a);});
   window._rjOfs=allOfs;
   if(allOfs.length){
     const ofRows=allOfs.map((r,i)=>{
@@ -13843,7 +13865,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
   (d.sessions_detail||[]).forEach(s=>{
     (s.evt_rows||[]).forEach(r=>{allEvts.push({...r,date:s.date,poste:s.poste,pilote:s.pilot,_rowType:'evt'});});
   });
-  allEvts.sort((a,b)=>{const _pd=s=>{if(!s)return 0;const p=s.split('/');return p.length===3?(+p[2])*10000+(+p[1])*100+(+p[0]):0;};const _da=_pd(a.shift_date||a.real_date||a.date),_db=_pd(b.shift_date||b.real_date||b.date);if(_db!==_da)return _db-_da;return (b.debut||'').localeCompare(a.debut||'');});
+  allEvts.sort((a,b)=>{const _pd=s=>{if(!s)return 0;const p=s.split('/');return p.length===3?(+p[2])*10000+(+p[1])*100+(+p[0]):0;};const _da=_pd(a.shift_date||a.real_date||a.date),_db=_pd(b.shift_date||b.real_date||b.date);if(_db!==_da)return _db-_da;const _dm=r=>{const p=(r.debut||'').split(':');let m=parseInt(p[0]||0)*60+parseInt(p[1]||0);if((r.poste||'').toLowerCase().includes('nuit')&&m<720)m+=1440;return m;};return _dm(b)-_dm(a);});
   window._rjEvts=allEvts;
   if(allEvts.length){
     const catCol=t=>{const tl=(t||'').toLowerCase();return tl.includes('nett')?'#0ea5e9':tl.includes('pause')?'#94a3b8':(tl.includes('réunion')||tl.includes('reunion'))?'#8b5cf6':tl.includes('dégrad')?'#ca8a04':'#dc2626';};
