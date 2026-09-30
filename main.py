@@ -14562,7 +14562,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     {label:'Dégradé',value:degMin,color:'#f59e0b'},
     {label:'Arrêts bloquants',value:unplanStopMinRp,color:'#dc2626'},
     {label:'Arrêts non bloquants',value:planStopMinRp,color:'#f97316'}
-  ],{fCenter:16,fSub:10,fLeg:13});
+  ],{fCenter:18,fSub:11,fLeg:14});
 }
 
 async function doRecalcSession(date,pilot,poste){
