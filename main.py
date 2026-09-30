@@ -10997,14 +10997,14 @@ function drawPie(svgId, segments, opts) {
   const fCenter=(opts&&opts.fCenter)||13;
   const fSub=(opts&&opts.fSub)||7;
   const showLeg=!(opts&&opts.fLeg===0);
-  const fLeg=showLeg?((opts&&opts.fLeg)||9):0;
+  const fLeg=showLeg?((opts&&opts.fLeg)||11):0;
   const total=segments.reduce((a,s)=>a+s.value,0);
-  const cx=65,cy=57,r=44,ir=24;
+  const cx=75,cy=57,r=44,ir=24;
   const visSegs=segments.filter(s=>s.value>0&&(s.value/total)*2*Math.PI>=0.001);
-  const legBase=cy+r+9;
-  const legLineH=12;
-  const totalH=showLeg&&visSegs.length>0?(legBase+visSegs.length*legLineH+4):(cy+r+6);
-  svg.setAttribute('viewBox',`0 0 130 ${totalH}`);
+  const legBase=cy+r+11;
+  const legLineH=15;
+  const totalH=showLeg&&visSegs.length>0?(legBase+visSegs.length*legLineH+6):(cy+r+6);
+  svg.setAttribute('viewBox',`0 0 160 ${totalH}`);
   svg.style.height='auto';
   if(total<=0){svg.innerHTML=`<text x="${cx}" y="${cy}" text-anchor="middle" font-size="${fCenter}" fill="#94a3b8">Pas de données</text>`;return;}
   let html='',startAngle=-Math.PI/2;
@@ -12816,7 +12816,7 @@ async function loadFPData(){
     {label:'Dégradé',value:_fpDegS,color:'#f59e0b'},
     {label:'Arrêts bloquants',value:_unplanStopSFP,color:'#dc2626'},
     {label:'Arrêts non bloquants',value:_planStopSFP,color:'#f97316'},
-  ],{fLeg:9});
+  ],{fLeg:12});
   const trsS=d.trs_shift!==undefined?d.trs_shift:d.trs;
   drawGauge('fp-gauge-arc','fp-gauge-pct',d.is_live?0:trsS>=0?trsS:0);
   const fpGaugePct=document.getElementById('fp-gauge-pct');
@@ -14551,7 +14551,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
     {label:'Dégradé',value:degMin,color:'#f59e0b'},
     {label:'Arrêts bloquants',value:unplanStopMinRp,color:'#dc2626'},
     {label:'Arrêts non bloquants',value:planStopMinRp,color:'#f97316'}
-  ],{fCenter:16,fSub:10,fLeg:10});
+  ],{fCenter:16,fSub:10,fLeg:13});
 }
 
 async function doRecalcSession(date,pilot,poste){
