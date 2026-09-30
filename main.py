@@ -13558,7 +13558,7 @@ async function loadHist(){
     const produitH=esc(r.type_prod||'');
     const nbPersH=esc(r.nb_pers||'');
     const curShift=r.shift_date||r.date||'';
-    if(_lastShift!==null&&curShift!==_lastShift){
+    if(curShift!==_lastShift){
       const shiftLabel=esc(r.rattachement||curShift||'');
       _histHtml+=`<tr class="hist-sep-row" data-hftype="sep"><td colspan="17" style="background:linear-gradient(90deg,#e2e8f0 0%,#f1f5f9 100%);border-top:2px solid #94a3b8;border-bottom:1px solid #cbd5e1;padding:1px 10px;font-size:calc(8.5px*var(--zf,1));font-weight:700;color:#64748b;letter-spacing:.06em;user-select:none">▸ ${shiftLabel}</td></tr>`;
     }
