@@ -15362,7 +15362,6 @@ def generate_dashboard_html():
             '      "#rpt-left-kpi .fp-card{padding:3px 4px!important}",\n'
             '      "#rpt-left-kpi .fp-big{font-size:calc(11px*var(--zf,1))!important}",\n'
             '      "#rpt-left-kpi .fp-lbl{font-size:calc(7px*var(--zf,1))!important}",\n'
-            '      "#rpt-pie{width:100px!important;height:100px!important}",\n'
             '      "#app-hdr img{height:38px!important}",\n'
             '      ".htab{padding:4px 8px!important;font-size:calc(11px*var(--zf,1))!important}"\n'
             '    ].join("");\n'
