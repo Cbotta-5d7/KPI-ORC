@@ -6051,7 +6051,13 @@ def api_session_report():
                 stop_s += dur_s
                 evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or ""),"is_degrade":False})
             except: pass
-    evt_rows.sort(key=lambda e: e.get('debut') or '')
+    def _evt_sort_key(e):
+        t = e.get('debut') or ''
+        try: th, tm2 = int(t[:2]), int(t[3:5]); m = th*60+tm2
+        except: return 0
+        if 'nuit' in poste.lower() and m < 720: m += 1440
+        return m
+    evt_rows.sort(key=_evt_sort_key)
     _deg_ivs_sr_s = sorted((s, f) for s, f in _deg_ivs_sr if f > s)
     _deg_mg_sr = []
     for _s, _f in _deg_ivs_sr_s:
@@ -14528,7 +14534,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
             <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Durée</th>
             <th style="padding:3px 5px;text-align:left;font-weight:700;color:var(--gray)">Commentaire</th>
           </tr></thead>
-          <tbody>${(d.evt_rows||[]).map((r,ri)=>{
+          <tbody>${[...(d.evt_rows||[])].sort((a,b)=>{const _dm=r=>{const p=(r.debut||'').split(':');let m=parseInt(p[0]||0)*60+parseInt(p[1]||0);if((d.poste||'').toLowerCase().includes('nuit')&&m<720)m+=1440;return m;};return _dm(a)-_dm(b);}).map((r,ri)=>{
             const deg=r.is_degrade;
             return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s${deg?';background:#fff7ed':''}" onclick="showRptEvtDetail(${ri})" title="Voir détail">
             <td style="padding:4px 5px;font-weight:700;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;color:${deg?'#b45309':'#dc2626'};${deg?'':'text-decoration:underline'}">${deg?'🟡 '+esc(r.type||''):esc(r.type||'')}</td>
