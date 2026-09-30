@@ -4507,22 +4507,11 @@ def api_history():
     all_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() in ("production","prod","")]
     def _hist_key(item):
         _, r = item
-        d_val = (r[2] if r[2] else None)
-        d_tup = (0, 0, 0)
-        if d_val:
-            if hasattr(d_val, 'year'):
-                d_tup = (d_val.year, d_val.month, d_val.day)
-            else:
-                s = str(d_val)
-                p = s.split("/")
-                if len(p) == 3:
-                    try: d_tup = (int(p[2]), int(p[1]), int(p[0]))
-                    except: pass
-                else:
-                    q = s[:10].split("-")
-                    if len(q) == 3:
-                        try: d_tup = (int(q[0]), int(q[1]), int(q[2]))
-                        except: pass
+        # Tri primaire : date du poste de rattachement (col AN = r[39]), secondaire : heure début (col Q)
+        sd = str(r[39] if len(r) > 39 else "") .strip() or _row_date(r[2] if len(r) > 2 else "")
+        p = sd.split("/") if sd else []
+        try: d_tup = (int(p[2]), int(p[1]), int(p[0])) if len(p) == 3 else (0, 0, 0)
+        except: d_tup = (0, 0, 0)
         t_str = str(r[16] or "")[:5]
         return (d_tup, t_str)
     all_rows.sort(key=_hist_key, reverse=True)
@@ -4588,6 +4577,7 @@ def api_history():
                 "objectif": round(float(str(r[42] or 0).replace(",",".")), 1) if len(r)>42 and r[42] not in (None,"") else -1,
                 "real_date":    _real_date_str(r),
                 "rattachement": _rattachement_str(r),
+                "shift_date":   str(r[39] if len(r)>39 else "").strip() or _row_date(r[2]),
             })
         except: pass
     return jsonify(rows)
@@ -4645,6 +4635,7 @@ def api_events_list():
                 "comment": str(r[35] or ""),
                 "hors_trs": hors=="OUI",
                 "is_degrade": _is_degrade_type(type_str),
+                "shift_date":   str(r[39] if len(r)>39 else "").strip() or _row_date(r[2]),
             })
         except: pass
     return jsonify(list(reversed(rows)))
@@ -4729,7 +4720,7 @@ def api_cdg_data():
             })
         except: pass
     def _sk(row):
-        d = row.get("date",""); p = d.split("/") if d else []
+        sd = row.get("shift_date","") or row.get("date",""); p = sd.split("/") if sd else []
         dt = (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0)
         return (dt, row.get("debut",""))
     rows.sort(key=_sk, reverse=True)
@@ -4817,7 +4808,7 @@ def api_cdg_export():
             })
         except: pass
     def _sk(row):
-        d = row.get("date",""); p = d.split("/") if d else []
+        sd = row.get("shift_date","") or row.get("date",""); p = sd.split("/") if sd else []
         dt = (int(p[2]),int(p[1]),int(p[0])) if len(p)==3 else (0,0,0)
         return (dt, row.get("debut",""))
     rows.sort(key=_sk, reverse=True)
@@ -6166,10 +6157,11 @@ def api_add_stop_decl():
         dur_s = max(0, (end_dt - start_dt).total_seconds())
         shift_dt2 = _S.get("shift_start") or now
         shift_date2 = shift_dt2.strftime("%d/%m/%Y")
+        copilote_v = str(data.get("copilote","") or (_S.get("form") or {}).get("copilote","") or "")
         row = [
             stop_type, (_S.get("form") or {}).get("of_num",""),
             start_dt.strftime("%d/%m/%Y"), poste, pilot,
-            "","","","","","","","","","",
+            copilote_v,"","","","","","","","","",
             "",                              # col P : vide pour les arrêts
             start_dt.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"), fmt(dur_s),
             "","","","","","","","","","","","","","","","",comment,"","","",
@@ -7376,7 +7368,7 @@ select{cursor:default}
           <svg id="tl-svg" viewBox="0 0 800 64" preserveAspectRatio="none" style="width:100%;height:64px;display:block">
             <rect x="0" y="4" width="800" height="35" fill="#e2e8f0" rx="4"/>
           </svg>
-          <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Dégradé ↓</span></div>
+          <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#0ea5e9"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Dégradé ↓</span></div>
         </div>
         <!-- Action buttons row (below timeline) -->
         <div class="prod-act-row" style="justify-content:center">
@@ -7464,7 +7456,7 @@ select{cursor:default}
       <svg id="fp-tl" viewBox="0 0 800 62" preserveAspectRatio="none" style="width:100%;height:62px;display:block">
         <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
       </svg>
-      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Dégradé ↓</span></div>
+      <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#0ea5e9"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:#8b5cf6"></i>Réunion</span><span><i style="background:#bbf7d0;border:1px solid #86efac"></i>Prod</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Dégradé ↓</span></div>
     </div>
     <!-- Corps défilant : productions + arrêts côte à côte -->
     <div style="flex:1;overflow-y:auto;padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -8070,7 +8062,7 @@ select{cursor:default}
         <button class="hf-btn" data-hf="production" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #16a34a;color:#16a34a;background:none;cursor:pointer;font-weight:700;transition:all .15s">🏭 Production</button>
         <button class="hf-btn" data-hf="arret" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #dc2626;color:#dc2626;background:none;cursor:pointer;font-weight:700;transition:all .15s">⛔ Arrêts</button>
         <button class="hf-btn" data-hf="degrade" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #ca8a04;color:#ca8a04;background:none;cursor:pointer;font-weight:700;transition:all .15s">🟡 Mode dégradé</button>
-        <button class="hf-btn" data-hf="nettoyage" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #f97316;color:#f97316;background:none;cursor:pointer;font-weight:700;transition:all .15s">🧹 Nettoyage</button>
+        <button class="hf-btn" data-hf="nettoyage" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #0ea5e9;color:#0ea5e9;background:none;cursor:pointer;font-weight:700;transition:all .15s">🧹 Nettoyage</button>
         <button class="hf-btn" data-hf="pause" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #94a3b8;color:#94a3b8;background:none;cursor:pointer;font-weight:700;transition:all .15s">⏸ Pause</button>
         <button class="hf-btn" data-hf="reunion" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #8b5cf6;color:#8b5cf6;background:none;cursor:pointer;font-weight:700;transition:all .15s">👥 Réunion</button>
       </div>
@@ -8414,7 +8406,7 @@ select{cursor:default}
         <svg id="ep-tl" viewBox="0 0 800 60" preserveAspectRatio="none" style="width:100%;height:60px;display:block">
           <rect x="0" y="4" width="800" height="28" fill="#e2e8f0" rx="4"/>
         </svg>
-        <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#f97316"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Prod dégradé ↓</span></div>
+        <div class="tl-legend"><span><i style="background:#dc2626"></i>Arrêt</span><span><i style="background:#0ea5e9"></i>Nettoyage</span><span><i style="background:#94a3b8"></i>Pause</span><span><i style="background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></i>Prod dégradé ↓</span></div>
       </div>
     </div>
     <div class="mftr">
@@ -8621,7 +8613,7 @@ const EVENTS = [
 
 const STOP_COL = {
   ratt:"#dc2626",pb:"#dc2626",autre:"#64748b",
-  nettoyage:"#f97316",
+  nettoyage:"#0ea5e9",
   organisation:"#3b82f6",
   manquants:"#9333ea",
   reunion:"#8b5cf6",
@@ -8632,7 +8624,7 @@ const _STOP_GRAD = {
   pb:          ['#f87171','#dc2626','#991b1b'],
   manquants:   ['#d8b4fe','#9333ea','#6b21a8'],
   organisation:['#93c5fd','#3b82f6','#1d4ed8'],
-  nettoyage:   ['#fdba74','#f97316','#c2410c'],
+  nettoyage:   ['#7dd3fc','#0ea5e9','#0369a1'],
   autre:       ['#94a3b8','#64748b','#334155'],
   _pause:      ['#cbd5e1','#64748b','#334155'],
   Pause:       ['#cbd5e1','#64748b','#334155'],
@@ -9601,7 +9593,12 @@ async function loadMainDecl() {
   const allRows=[];
   decls.forEach(r=>allRows.push({...r,_rowType:'prod'}));
   evts.forEach(r=>allRows.push({...r,_rowType:'evt'}));
-  allRows.sort((a,b)=>(b.debut||'').localeCompare(a.debut||''));
+  allRows.sort((a,b)=>{
+    const _pd=s=>{if(!s)return 0;const p=s.split('/');return p.length===3?(+p[2])*10000+(+p[1])*100+(+p[0]):0;};
+    const da=_pd(a.shift_date||a.date),db=_pd(b.shift_date||b.date);
+    if(db!==da)return db-da;
+    return (b.debut||'').localeCompare(a.debut||'');
+  });
   const bd=document.getElementById('main-body');
   if(!bd) return;
   // Accumuler équivalences et arrêts du poste pour les jauges
@@ -10245,7 +10242,7 @@ function psFillStopBtns(){
     if(cats[c]!==undefined) cats[c].push(l); else cats.autre.push(l);
   });
   if(cats.pb.length||cats.ratt.length) _addGroup('▲ Pannes / Rattrapages',[...cats.pb,...cats.ratt],'#dc2626');
-  if(cats.nettoyage.length) _addGroup('🧹 Nettoyage',cats.nettoyage,'#f97316');
+  if(cats.nettoyage.length) _addGroup('🧹 Nettoyage',cats.nettoyage,'#0ea5e9');
   if(cats.organisation.length) _addGroup('📋 Organisation',cats.organisation,'#3b82f6');
   if(cats.autre.length) _addGroup('⚫ Autre',cats.autre,'#64748b');
 
@@ -10442,7 +10439,7 @@ function rebuildStopGrids(){
     {key:'ratt',label:'★ Rattrapage',col:'#dc2626'},
     {key:'organisation',label:'■ Organisationnel',col:'#3b82f6'},
     {key:'pb',label:'▲ Technique',col:'#dc2626'},
-    {key:'nettoyage',label:'🧹 Nettoyage',col:'#f97316'},
+    {key:'nettoyage',label:'🧹 Nettoyage',col:'#0ea5e9'},
     {key:'autre',label:'⚫ Autre',col:'#64748b'},
   ];
   const bycat={};
@@ -12442,20 +12439,28 @@ function ecartToggleGapForm(gi){
 }
 
 async function saveEcartGapStop(gi){
-  const debut=(document.getElementById('ecart-gap-debut-'+gi)||{}).value||'';
-  const fin=(document.getElementById('ecart-gap-fin-'+gi)||{}).value||'';
-  const type=((document.getElementById('ecart-gap-type-'+gi)||{}).value||'').trim();
-  if(!debut||!fin||!type){toast('Renseigner début, fin et type d\'arrêt','err');return;}
-  const _egDateIso=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso).toISOString().slice(0,10):'';
-  const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,date_debut:_egDateIso,comment:''})});
-  const d=r?await r.json():{};
-  if(d.ok){
-    toast(type+' ajouté','ok');
-    const fpd=await apiFetch('/api/fin_poste_data');
-    if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
-  } else {
-    toast('Erreur : '+(d.error||'?'),'err');
+  const btn=document.querySelector(`#ecart-gap-form-${gi} button`);
+  if(btn&&btn.disabled)return;
+  if(btn){btn.disabled=true;btn.style.opacity='0.5';}
+  try{
+    const debut=(document.getElementById('ecart-gap-debut-'+gi)||{}).value||'';
+    const fin=(document.getElementById('ecart-gap-fin-'+gi)||{}).value||'';
+    const type=((document.getElementById('ecart-gap-type-'+gi)||{}).value||'').trim();
+    if(!debut||!fin||!type){toast('Renseigner début, fin et type d\'arrêt','err');return;}
+    const _egDateIso=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso).toISOString().slice(0,10):'';
+    const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,date_debut:_egDateIso,comment:'',copilote:window._loginCopilote||''})});
+    const d=r?await r.json():{};
+    if(d.ok){
+      toast(type+' ajouté','ok');
+      const fpd=await apiFetch('/api/fin_poste_data');
+      if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
+    } else {
+      toast('Erreur : '+(d.error||'?'),'err');
+      if(btn){btn.disabled=false;btn.style.opacity='';}
+    }
+  }finally{
+    if(btn&&btn.disabled){btn.disabled=false;btn.style.opacity='';}
   }
 }
 
@@ -13445,6 +13450,7 @@ function _applyHistFilter(){
   rows.forEach(tr=>{
     if(tr.dataset.searchHidden==='1'){tr.style.display='none';return;}
     const t=tr.dataset.hftype||'';
+    if(t==='sep'){tr.style.display='';return;}
     const isProd=t==='prod';
     const isDegrade=t==='degrade';
     const isNett=t.includes('nettoyage')||t.includes('nett');
@@ -13504,7 +13510,7 @@ async function loadHist(){
   evtsFiltered.forEach(r=>allRows.push({...r,_rowType:'evt'}));
   allRows.sort((a,b)=>{
     const _pd=s=>{if(!s)return 0;const p=s.split('/');return p.length===3?(+p[2])*10000+(+p[1])*100+(+p[0]):0;};
-    const da=_pd(a.date),db=_pd(b.date);
+    const da=_pd(a.shift_date||a.date),db=_pd(b.shift_date||b.date);
     if(db!==da) return db-da;
     return (b.debut||'').localeCompare(a.debut||'');
   });
@@ -13512,7 +13518,8 @@ async function loadHist(){
   if(!allRows.length){bd.innerHTML='<tr><td colspan="16" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
   window._rowMap=window._rowMap||{};
   window._histEvtsAll=evtsFiltered; // pour showHistRowDetail
-  bd.innerHTML=allRows.map(r=>{
+  let _histHtml='',_lastShift=null;
+  allRows.forEach(r=>{
     const key=r.row_num||r.debut;
     window._rowMap[String(key)]=r;
     const isProd=r._rowType==='prod';
@@ -13528,7 +13535,13 @@ async function loadHist(){
     const fbrH=r.fibre||'';const fbrShH=esc(fbrH.slice(0,9));
     const produitH=esc(r.type_prod||'');
     const nbPersH=esc(r.nb_pers||'');
-    return `<tr class="${isProd?'row-prod':'row-evt'}" data-hftype="${esc(hftype)}">
+    const curShift=r.shift_date||r.date||'';
+    if(_lastShift!==null&&curShift!==_lastShift){
+      const shiftLabel=esc(r.rattachement||curShift||'');
+      _histHtml+=`<tr class="hist-sep-row" data-hftype="sep"><td colspan="17" style="background:linear-gradient(90deg,#e2e8f0 0%,#f1f5f9 100%);border-top:2px solid #94a3b8;border-bottom:1px solid #cbd5e1;padding:1px 10px;font-size:calc(8.5px*var(--zf,1));font-weight:700;color:#64748b;letter-spacing:.06em;user-select:none">▸ ${shiftLabel}</td></tr>`;
+    }
+    _lastShift=curShift;
+    _histHtml+=`<tr class="${isProd?'row-prod':'row-evt'}" data-hftype="${esc(hftype)}">
       <td>${tag}</td><td style="font-weight:700;color:#1e3a8a;text-decoration:underline;cursor:pointer" onclick="showHistRowDetail('${esc(String(key))}')" title="Voir détail">${esc(r.of||'—')}</td>
       <td style="font-size:calc(11px*var(--zf,1))">${details}</td>
       <td style="font-size:calc(10px*var(--zf,1));color:#6b7280">${produitH}</td>
@@ -13539,7 +13552,8 @@ async function loadHist(){
       <td style="font-size:calc(10px*var(--zf,1));color:var(--gray);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cmt}">${cmt}</td>
       <td><button onclick="openEditRow('${esc(String(key))}')" class="btn-edit" title="Modifier">✏</button></td>
     </tr>`;
-  }).join('');
+  });
+  bd.innerHTML=_histHtml;
   _applyHistFilter();
 }
 
@@ -13801,7 +13815,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
       allOfs.push({...r,date:s.date,poste:s.poste,pilot:s.pilot,pilote:s.pilot,_rowType:'prod',_ofEvts:_ofEvts});
     });
   });
-  allOfs.sort((a,b)=>{const _pa=(a.date||'').split('/'),_pb=(b.date||'').split('/');const _da=(+_pa[2]||0)*10000+(+_pa[1]||0)*100+(+_pa[0]||0),_db=(+_pb[2]||0)*10000+(+_pb[1]||0)*100+(+_pb[0]||0);if(_db!==_da)return _db-_da;return (b.debut||'').localeCompare(a.debut||'');});
+  allOfs.sort((a,b)=>{const _pd=s=>{if(!s)return 0;const p=s.split('/');return p.length===3?(+p[2])*10000+(+p[1])*100+(+p[0]):0;};const _da=_pd(a.shift_date||a.date),_db=_pd(b.shift_date||b.date);if(_db!==_da)return _db-_da;return (b.debut||'').localeCompare(a.debut||'');});
   window._rjOfs=allOfs;
   if(allOfs.length){
     const ofRows=allOfs.map((r,i)=>{
@@ -13829,10 +13843,10 @@ async function calcPeriodReport(autoLoad,maxSessions){
   (d.sessions_detail||[]).forEach(s=>{
     (s.evt_rows||[]).forEach(r=>{allEvts.push({...r,date:s.date,poste:s.poste,pilote:s.pilot,_rowType:'evt'});});
   });
-  allEvts.sort((a,b)=>{const _kd=(x)=>{const d=((x.real_date||x.date||'').split('/'));return(+d[2]||0)*10000+(+d[1]||0)*100+(+d[0]||0);};const _da=_kd(a),_db=_kd(b);if(_db!==_da)return _db-_da;return (b.debut||'').localeCompare(a.debut||'');});
+  allEvts.sort((a,b)=>{const _pd=s=>{if(!s)return 0;const p=s.split('/');return p.length===3?(+p[2])*10000+(+p[1])*100+(+p[0]):0;};const _da=_pd(a.shift_date||a.real_date||a.date),_db=_pd(b.shift_date||b.real_date||b.date);if(_db!==_da)return _db-_da;return (b.debut||'').localeCompare(a.debut||'');});
   window._rjEvts=allEvts;
   if(allEvts.length){
-    const catCol=t=>{const tl=(t||'').toLowerCase();return tl.includes('nett')?'#f97316':tl.includes('pause')?'#94a3b8':(tl.includes('réunion')||tl.includes('reunion'))?'#8b5cf6':tl.includes('dégrad')?'#ca8a04':'#dc2626';};
+    const catCol=t=>{const tl=(t||'').toLowerCase();return tl.includes('nett')?'#0ea5e9':tl.includes('pause')?'#94a3b8':(tl.includes('réunion')||tl.includes('reunion'))?'#8b5cf6':tl.includes('dégrad')?'#ca8a04':'#dc2626';};
     const evtRows=allEvts.map((r,i)=>`<tr style="border-bottom:1px solid var(--border);font-size:calc(10px*var(--zf,1));cursor:pointer;transition:background .12s" onclick="showRjEvtDetail(${i})" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
       <td style="padding:4px 6px;font-weight:700;color:${catCol(r.type)};text-decoration:underline">${esc(r.type||'—')}</td>
       <td style="padding:4px 6px">${esc(r.date||'')} · ${esc(r.poste||'')}</td>
@@ -14284,7 +14298,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
       const x1=toX(t1),x2=toX(t2||t1+1800000);
       if(x2<=x1) return;
       const tl=(r.type||'').toLowerCase();
-      const col=r.is_degrade?'url(#dpat_rpt)':(tl.includes('nett')?'#f97316':tl.includes('pause')?'#94a3b8':(tl.includes('réunion')||tl.includes('reunion')||tl.includes('meeting'))?'#8b5cf6':tl.includes('ratt')?'#f59e0b':'#dc2626');
+      const col=r.is_degrade?'url(#dpat_rpt)':(tl.includes('nett')?'#0ea5e9':tl.includes('pause')?'#94a3b8':(tl.includes('réunion')||tl.includes('reunion')||tl.includes('meeting'))?'#8b5cf6':tl.includes('ratt')?'#f59e0b':'#dc2626');
       html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${col}" rx="2" opacity=".75"/>`;
     });
     const fmt=ms=>{const d=new Date(ms);return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');};
@@ -15081,9 +15095,17 @@ async function resetSimTime(){
 def generate_dashboard_html():
     import json as _json, datetime as _dt
     try:
+        def _dedup(rows):
+            seen = set(); out = []
+            for r in (rows or []):
+                k = r.get("row_num")
+                if k is None or k not in seen:
+                    if k is not None: seen.add(k)
+                    out.append(r)
+            return out
         with flask_app.test_client() as c:
-            history = c.get('/api/history').get_json(force=True) or []
-            events_list = c.get('/api/events_list').get_json(force=True) or []
+            history = _dedup(c.get('/api/history').get_json(force=True) or [])
+            events_list = _dedup(c.get('/api/events_list').get_json(force=True) or [])
             past_sessions = c.get('/api/past_sessions').get_json(force=True) or []
             session_reports = {}
             for s in past_sessions:
