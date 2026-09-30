@@ -14013,13 +14013,19 @@ async function calcPeriodReport(autoLoad,maxSessions){
       <!-- Droite : graphiques+pareto côte à côte, tables -->
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">
-          <!-- Sous-colonne graphiques : camemberts + graphiques -->
-          <div style="flex:0 0 504px;display:flex;flex-direction:column;gap:6px">
-            ${(pieSmall||_typeProdPieHtml)?`<div style="display:flex;gap:14px;align-items:flex-start;justify-content:center;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:10px 14px">${pieSmall?`<div style="flex-shrink:0">${pieSmall}</div>`:''}${pieSmall&&_typeProdPieHtml?`<div style="width:1px;background:var(--border,#e2e8f0);align-self:stretch;flex-shrink:0"></div>`:''}${_typeProdPieHtml?`<div style="flex-shrink:0">${_typeProdPieHtml}</div>`:''}</div>`:''}
-            ${chartTrsHtml}${chartCadHtml}
+          <!-- Sous-colonne graphiques : camemberts à gauche de chaque graphique -->
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;gap:6px;align-items:flex-start">
+              ${pieSmall?`<div style="flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px">${pieSmall}</div>`:''}
+              <div style="flex:1;min-width:0">${chartTrsHtml}</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:flex-start">
+              ${_typeProdPieHtml?`<div style="flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px">${_typeProdPieHtml}</div>`:''}
+              <div style="flex:1;min-width:0">${chartCadHtml}</div>
+            </div>
           </div>
-          <!-- Pareto à droite, hauteur libre -->
-          <div style="flex:1;min-width:200px">${paretoRjHtml}${paretoDeghHtml}</div>
+          <!-- Pareto à droite, largeur réduite -->
+          <div style="flex:0 0 200px;min-width:0">${paretoRjHtml}${paretoDeghHtml}</div>
         </div>
         <!-- Tableaux OF + événements -->
         ${ofListHtml}${eventsListHtml}
