@@ -14013,15 +14013,15 @@ async function calcPeriodReport(autoLoad,maxSessions){
       </div>
       <!-- Droite : graphiques+pareto côte à côte, tables -->
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
-        <div style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">
+        <div style="display:flex;gap:6px;flex-shrink:0;align-items:stretch">
           <!-- Sous-colonne graphiques : camemberts à gauche de chaque graphique -->
           <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
-            <div style="display:flex;gap:6px;align-items:flex-start">
-              ${pieSmall?`<div style="flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px">${pieSmall}</div>`:''}
+            <div style="flex:1;display:flex;gap:6px;align-items:stretch">
+              ${pieSmall?`<div style="flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:center">${pieSmall}</div>`:''}
               <div style="flex:1;min-width:0">${chartTrsHtml}</div>
             </div>
-            <div style="display:flex;gap:6px;align-items:flex-start">
-              ${_typeProdPieHtml?`<div style="flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px">${_typeProdPieHtml}</div>`:''}
+            <div style="flex:1;display:flex;gap:6px;align-items:stretch">
+              ${_typeProdPieHtml?`<div style="flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:center">${_typeProdPieHtml}</div>`:''}
               <div style="flex:1;min-width:0">${chartCadHtml}</div>
             </div>
           </div>
