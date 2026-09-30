@@ -4565,7 +4565,8 @@ def api_history():
     all_rows.sort(key=_hist_key, reverse=True)
     for rn, r in all_rows[:500]:
         try:
-            row_d = _parse_date(_row_date(r[2])) if r[2] else None
+            row_d_str = str(r[39] if len(r) > 39 else "").strip() or (_row_date(r[2]) if r[2] else "")
+            row_d = _parse_date(row_d_str) if row_d_str else None
             if d_from and row_d and row_d < d_from: continue
             if d_to and row_d and row_d > d_to: continue
             trs = -1
