@@ -12016,7 +12016,7 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   let tlBandHtml='';
   if(r.debut&&r.fin){
     const dMs=hm2ms(r.debut),fMs=hm2ms(r.fin);
-    const span=Math.max(1,fMs-dMs);
+    const span=Math.max(1,fMs<dMs?fMs+86400000-dMs:fMs-dMs);
     const pct=ms=>Math.max(0,Math.min(100,Math.round((ms-dMs)/span*1000)/10));
     const segs=ofEvts.map(ev=>({s:hm2ms(ev.debut),e:hm2ms(ev.fin||ev.debut),c:ev.is_degrade?'#f59e0b':'#dc2626',l:ev.is_degrade?'Dégradé':(ev.type||'Arrêt')})).filter(sg=>sg.e>sg.s);
     const tlBar=segs.map(sg=>`<div title="${esc(sg.l)} ${Math.round((sg.e-sg.s)/60000)}min" style="position:absolute;top:0;bottom:0;left:${pct(sg.s)}%;width:${Math.max(.6,pct(sg.e)-pct(sg.s))}%;background:${sg.c};border-radius:3px;opacity:.9;box-shadow:0 2px 5px rgba(0,0,0,.22)"></div>`).join('');
@@ -12035,7 +12035,8 @@ function _renderAndOpenOfDetail(r, ofEvts) {
 
   // ── Donut chart (GROS) ──
   const dS=hm2s2(r.debut),fS=hm2s2(r.fin);
-  const totalMin=Math.max(1,Math.round((fS-dS)/60));
+  const fS2=fS<dS?fS+86400:fS;
+  const totalMin=Math.max(1,Math.round((fS2-dS)/60));
   // Calcul direct depuis ofEvts (fiable quelque soit le contexte d'appel)
   let stopMin=0,degMin=0;
   ofEvts.forEach(ev=>{
@@ -12142,7 +12143,7 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     <div style="text-align:center;font-size:calc(10px*var(--zf,1));color:#94a3b8">pour cet OF</div>
   </div>`;
   let chart4Html=_objNum>0?`<div style="width:100%;margin-top:14px;border-top:1px solid #e2e8f0;padding-top:14px">
-    <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;text-align:center">Réalisé (éq)</div>
+    <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;text-align:center">Equivalence</div>
     <div style="text-align:center;font-size:calc(28px*var(--zf,1));font-weight:900;color:${_eqCol};line-height:1.05;margin-bottom:2px">${_equivNum.toFixed(1)}</div>
     <div style="text-align:center;font-size:calc(10px*var(--zf,1));color:#64748b;margin-bottom:10px">cible : <b style="color:#0369a1">${_objNum.toFixed(1)} éq</b></div>
     <div style="background:#e5e7eb;border-radius:8px;height:14px;margin:0 4px"><div style="background:${_eqCol};width:${_eqPct}%;height:14px;border-radius:8px;transition:width .4s;box-shadow:0 2px 4px rgba(0,0,0,.15)"></div></div>
@@ -12162,16 +12163,16 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     </div>
     <!-- Timeline bandeau plein-largeur -->
     ${tlBandHtml}
-    <!-- Corps 3 colonnes + panneau graphiques -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr minmax(240px,300px);flex:1;min-height:0;overflow:hidden">
-      <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col1Html}</div>
-      <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col2Html}</div>
+    <!-- Corps 4 colonnes -->
+    <div style="display:grid;grid-template-columns:minmax(220px,260px) 1fr 1fr 1fr;flex:1;min-height:0;overflow:hidden">
       <div style="padding:12px 10px;border-right:1px solid #e2e8f0;overflow-y:auto;background:linear-gradient(180deg,#f8fafc 0%,#fff 100%);display:flex;flex-direction:column;align-items:center">
         <div style="font-size:calc(11px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;text-align:center">Répartition temps</div>
         ${chartHtml2}
         ${chart3Html}
         ${chart4Html}
       </div>
+      <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col1Html}</div>
+      <div style="padding:12px 12px;border-right:1px solid #e2e8f0;overflow-y:auto;background:#fff">${col2Html}</div>
       <div style="padding:12px 12px;overflow-y:auto;background:#fff">${col3Html}</div>
     </div>`;
   const box=document.getElementById('of-detail-box');
