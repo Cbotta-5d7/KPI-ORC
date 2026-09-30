@@ -14018,17 +14018,19 @@ async function calcPeriodReport(autoLoad,maxSessions){
           <!-- Sous-colonne graphiques : camemberts à gauche de chaque graphique -->
           <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
             <div style="height:${_rjRowH}px;flex-shrink:0;display:flex;gap:6px;align-items:stretch">
-              ${pieSmall?`<div style="flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:center">${pieSmall}</div>`:''}
+              ${pieSmall?`<div style="width:190px;flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:center;overflow:hidden">${pieSmall}</div>`:''}
               <div style="flex:1;min-width:0">${chartTrsHtml}</div>
             </div>
             <div style="height:${_rjRowH}px;flex-shrink:0;display:flex;gap:6px;align-items:stretch">
-              ${_typeProdPieHtml?`<div style="flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:center">${_typeProdPieHtml}</div>`:''}
+              ${_typeProdPieHtml?`<div style="width:190px;flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:center;overflow:hidden">${_typeProdPieHtml}</div>`:''}
               <div style="flex:1;min-width:0">${chartCadHtml}</div>
             </div>
           </div>
-          <!-- Pareto à droite -->
-          <div style="flex:1;min-width:0">${paretoRjHtml}${paretoDeghHtml}</div>
+          <!-- Pareto arrêts à droite (sans dégradés) -->
+          <div style="flex:1;min-width:0">${paretoRjHtml}</div>
         </div>
+        <!-- Pareto modes dégradés pleine largeur -->
+        ${paretoDeghHtml}
         <!-- Tableaux OF + événements -->
         ${ofListHtml}${eventsListHtml}
       </div>
