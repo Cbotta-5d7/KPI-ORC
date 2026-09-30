@@ -13724,13 +13724,14 @@ async function calcPeriodReport(autoLoad,maxSessions){
   const _cadRefHRj=Math.round((d.cadence_ref_pcs_min||0)*60);
   const _colCadRj=!_cadRefHRj?'#0369a1':((d.cadence_h||0)/_cadRefHRj>=0.95?'#16a34a':(d.cadence_h||0)/_cadRefHRj>=0.75?'#f59e0b':'#dc2626');
   // ── Chart A : TRS par équipe — barres verticales SVG ──────────────────────────
+  let _rjRowH=219; // hauteur ligne (SVG 179 + overhead 40), recalculée ci-dessous
   let chartTrsHtml='';
   if(d.sessions_detail&&d.sessions_detail.length>0){
     const sd=d.sessions_detail;
     const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),100);
     const _vertA=sd.length>8;
     const gH=91,padT=28,padL=4,padR=4,GP=5;
-    const CH=_vertA?padT+gH+150:padT+gH+60;const CHs=_vertA?padT+gH+150:padT+gH+74;
+    const CH=_vertA?padT+gH+150:padT+gH+60;const CHs=_vertA?padT+gH+150:padT+gH+74;_rjRowH=CH+40;
     const n=sd.length;
     const WB=Math.round(Math.max(26,Math.min(96,Math.floor((250-padL-padR-n*GP)/Math.max(n,3))))*1.2);
     const svgW=Math.max(200,n*(WB+GP)+padL+padR);
@@ -14016,11 +14017,11 @@ async function calcPeriodReport(autoLoad,maxSessions){
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:stretch">
           <!-- Sous-colonne graphiques : camemberts à gauche de chaque graphique -->
           <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px">
-            <div style="flex:1;display:flex;gap:6px;align-items:stretch">
+            <div style="height:${_rjRowH}px;flex-shrink:0;display:flex;gap:6px;align-items:stretch">
               ${pieSmall?`<div style="flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:center">${pieSmall}</div>`:''}
               <div style="flex:1;min-width:0">${chartTrsHtml}</div>
             </div>
-            <div style="flex:1;display:flex;gap:6px;align-items:stretch">
+            <div style="height:${_rjRowH}px;flex-shrink:0;display:flex;gap:6px;align-items:stretch">
               ${_typeProdPieHtml?`<div style="flex-shrink:0;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;align-items:center;justify-content:center">${_typeProdPieHtml}</div>`:''}
               <div style="flex:1;min-width:0">${chartCadHtml}</div>
             </div>
