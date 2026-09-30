@@ -14025,8 +14025,8 @@ async function calcPeriodReport(autoLoad,maxSessions){
               <div style="flex:1;min-width:0">${chartCadHtml}</div>
             </div>
           </div>
-          <!-- Pareto à droite, largeur réduite -->
-          <div style="flex:0 0 200px;min-width:0">${paretoRjHtml}${paretoDeghHtml}</div>
+          <!-- Pareto à droite -->
+          <div style="flex:1;min-width:0">${paretoRjHtml}${paretoDeghHtml}</div>
         </div>
         <!-- Tableaux OF + événements -->
         ${ofListHtml}${eventsListHtml}
