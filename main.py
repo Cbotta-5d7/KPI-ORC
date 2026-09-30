@@ -12016,9 +12016,14 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   let tlBandHtml='';
   if(r.debut&&r.fin){
     const dMs=hm2ms(r.debut),fMs=hm2ms(r.fin);
-    const span=Math.max(1,fMs<dMs?fMs+86400000-dMs:fMs-dMs);
+    const _isNight=fMs<dMs;
+    const span=Math.max(1,_isNight?fMs+86400000-dMs:fMs-dMs);
     const pct=ms=>Math.max(0,Math.min(100,Math.round((ms-dMs)/span*1000)/10));
-    const segs=ofEvts.map(ev=>({s:hm2ms(ev.debut),e:hm2ms(ev.fin||ev.debut),c:ev.is_degrade?'#f59e0b':'#dc2626',l:ev.is_degrade?'Dégradé':(ev.type||'Arrêt')})).filter(sg=>sg.e>sg.s);
+    const segs=ofEvts.map(ev=>{
+      let s=hm2ms(ev.debut),e=hm2ms(ev.fin||ev.debut);
+      if(_isNight){if(s<dMs)s+=86400000;if(e<dMs||e<s)e+=86400000;}
+      return {s,e,c:ev.is_degrade?'#f59e0b':'#dc2626',l:ev.is_degrade?'Dégradé':(ev.type||'Arrêt')};
+    }).filter(sg=>sg.e>sg.s);
     const tlBar=segs.map(sg=>`<div title="${esc(sg.l)} ${Math.round((sg.e-sg.s)/60000)}min" style="position:absolute;top:0;bottom:0;left:${pct(sg.s)}%;width:${Math.max(.6,pct(sg.e)-pct(sg.s))}%;background:${sg.c};border-radius:3px;opacity:.9;box-shadow:0 2px 5px rgba(0,0,0,.22)"></div>`).join('');
     tlBandHtml=`<div style="padding:10px 22px 8px;background:#f8fafc;border-bottom:2px solid #e2e8f0;flex-shrink:0">
       <div style="font-size:calc(10px*var(--zf,1));font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Timeline OF · ${r.debut} → ${r.fin}</div>
