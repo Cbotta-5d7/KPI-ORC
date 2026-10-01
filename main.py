@@ -6171,7 +6171,7 @@ def api_session_report():
             _exp_of = prod_ref * _pct_of * _adj_of_s / 28800 if prod_ref > 0 else 0.0
             # Toujours recalculer l'objectif (ignore colonne 43 Excel qui peut être obsolète)
             _obj_of = round(_exp_of, 1) if _exp_of > 0 else -1
-            prod_rows[pi]["plan_stop_s"] = round(planned_ded)  # total shift, pas overlap
+            prod_rows[pi]["plan_stop_s"] = round(_plan_of_s)
             prod_rows[pi]["objectif"] = _obj_of
             # Perte de cadence toujours recalculée
             if _obj_of > 0 and prod_ref > 0:
