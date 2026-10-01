@@ -5703,12 +5703,16 @@ def _compute_session_trs_shift(date_str, pilot, poste):
             if _dur > 0 and _plan_used[_bk] < _plan_bdata[_bk]:
                 _plan_ivs.append((_ds, _ds + min(_dur, _plan_bdata[_bk] - _plan_used[_bk])))
             _plan_used[_bk] += _dur
-    if _pm and _pm.get('deb_dt') and _pm.get('fin_dt'):
-        model_dur_s = max(0.0, (_pm['fin_dt'] - _pm['deb_dt']).total_seconds())
+    # model_dur_s : identique à api_session_report
+    if _pm:
+        _pdeb = _pm.get('deb_dt'); _pfin = _pm.get('fin_dt')
+        if _pdeb and _pfin:
+            model_dur_s = max(0.0, (_pfin - _pdeb).total_seconds())
+        else:
+            model_dur_s = get_current_shift_duration_s() if _is_live else 0.0
     else:
-        try: _date_obj_ts = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
-        except: _date_obj_ts = None
-        model_dur_s = get_shift_duration_s(poste, _date_obj_ts)
+        model_dur_s = get_shift_duration_s(poste)
+    _xl_trs = _pm.get('trs') if _pm else None
     trs_shift = -1.0
     if _pers_pct_map and _prod_raws and tot_eq > 0:
         _adj = max(1.0, model_dur_s - planned_ded)
@@ -5716,10 +5720,8 @@ def _compute_session_trs_shift(date_str, pilot, poste):
     elif model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
         _adj = max(1.0, model_dur_s - planned_ded)
         trs_shift = round(tot_eq / (prod_ref * _adj / 28800) * 100, 1)
-    if trs_shift < 0 and _pm:
-        _xl_trs = _pm.get('trs')
-        if _xl_trs is not None and _xl_trs > 0 and tot_eq > 0:
-            trs_shift = _xl_trs
+    if trs_shift < 0 and _xl_trs is not None and _xl_trs > 0 and tot_eq > 0:
+        trs_shift = _xl_trs
     return trs_shift
 
 @flask_app.route('/api/past_sessions')
@@ -5801,7 +5803,8 @@ def api_past_sessions():
                     _deg_ivs_lv = _merged_degrade_ivs([re for _, re in _evts_ps])
                     trs, _ = _option_b_trs(_prod_raws_ps, _deg_ivs_lv, prod_ref, _plan_ivs_lv)
                 elif _live_dur > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
-                    _live_ded = _compute_planned_deduction_s(_evts_ps, _ses_ov)
+                    _evts_dicts_lv = [{"type": str(_re[0] or ""), "duree": _brut_dur_str(_re)} for _, _re in _evts_ps]
+                    _live_ded = _compute_planned_deduction_s(_evts_dicts_lv, _ses_ov)
                     _live_el = max(1.0, _live_dur - _live_ded)
                     trs = round(s["tot_equiv"] / (prod_ref * _live_el / 28800) * 100, 1)
             else:
