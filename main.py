@@ -6101,6 +6101,16 @@ def api_session_report():
         if 'nuit' in poste.lower() and m < 720: m += 1440
         return m
     evt_rows.sort(key=_evt_sort_key)
+    # Normalisation passage minuit : si le poste commence en soirée (>12h),
+    # les intervalles après minuit (s<12h) doivent être décalés de +86400
+    _all_prod_deb_sr = [_hms_to_sec(str(rp[16] or '00:00:00')) for rp in _prod_raws_sr if rp[16]]
+    _shift_base_sr = min(_all_prod_deb_sr) if _all_prod_deb_sr else 0.0
+    _cross_midnight_sr = _shift_base_sr > 43200
+    if _cross_midnight_sr:
+        _deg_ivs_sr = [
+            (ds + (86400 if ds < 43200 else 0), df + (86400 if df < 43200 else 0))
+            for ds, df in _deg_ivs_sr
+        ]
     _deg_ivs_sr_s = sorted((s, f) for s, f in _deg_ivs_sr if f > s)
     _deg_mg_sr = []
     for _s, _f in _deg_ivs_sr_s:
@@ -6138,6 +6148,8 @@ def api_session_report():
         if _bk_sr and _bk_sr in _plan_bdata_sr:
             _ds_sr = _hms_to_sec(str(r2[16] or '00:00:00'))
             _fs_sr = _norm_fin(_ds_sr, _hms_to_sec(str(r2[17] or '00:00:00')))
+            if _cross_midnight_sr and _ds_sr < 43200:
+                _ds_sr += 86400; _fs_sr += 86400
             _dur_sr = _fs_sr - _ds_sr
             if _dur_sr > 0 and _plan_used_sr[_bk_sr] < _plan_bdata_sr[_bk_sr]:
                 _plan_ivs_sr.append((_ds_sr, _ds_sr + min(_dur_sr, _plan_bdata_sr[_bk_sr] - _plan_used_sr[_bk_sr])))
@@ -6146,8 +6158,8 @@ def api_session_report():
     for pi, raw_r in enumerate(_prod_raws_sr):
         try:
             _deb_of = _hms_to_sec(str(raw_r[16] or "00:00:00"))
-            _fin_of = _hms_to_sec(str(raw_r[17] or "00:00:00"))
-            _dur_of = _norm_fin(_deb_of, _fin_of) - _deb_of
+            _fin_of = _norm_fin(_deb_of, _hms_to_sec(str(raw_r[17] or "00:00:00")))
+            _dur_of = _fin_of - _deb_of
             _plan_of_s = _deg_overlap_s(_deb_of, _fin_of, _plan_ivs_sr)
             _deg_of_s = _deg_overlap_s(_deb_of, _fin_of, _deg_mg_sr)
             _nb_p = max(1, int(float(str(raw_r[6] or 1) or 1)))
