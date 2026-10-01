@@ -268,6 +268,18 @@ def fmt(seconds):
     s = max(0, int(seconds or 0))
     return f"{s//3600:02d}:{(s%3600)//60:02d}:{s%60:02d}"
 
+def _brut_dur_str(r):
+    """Durée brute FIN−DÉBUT depuis r[16]/r[17], gestion passage minuit. Fallback sur r[18]."""
+    try:
+        deb_s = _hms_to_sec(str(r[16] or ""))
+        fin_s = _hms_to_sec(str(r[17] or ""))
+        if deb_s > 0 or fin_s > 0:
+            brut_s = fin_s - deb_s
+            if brut_s < 0: brut_s += 86400
+            if brut_s > 0: return fmt(brut_s)
+    except: pass
+    return str(r[18] or "")
+
 def _hms_to_sec(s):
     try:
         if hasattr(s,'hour'): return s.hour*3600+s.minute*60+getattr(s,'second',0)
@@ -4684,7 +4696,7 @@ def api_events_list():
                 "fibre": str(r[11] or "") if len(r)>11 else "",
                 "debut": str(r[16] or "")[:8],
                 "fin": str(r[17] or "")[:8],
-                "duree": str(r[18] or ""),
+                "duree": _brut_dur_str(r),
                 "comment": str(r[35] or ""),
                 "hors_trs": hors=="OUI",
                 "is_degrade": _is_degrade_type(type_str),
@@ -4750,7 +4762,7 @@ def api_cdg_data():
                 desig = " - ".join(_parts)
             else:
                 desig = ev_info.get("label","") or type_str
-            _duree_str = str(r[18] or "")
+            _duree_str = _brut_dur_str(r)
             _duree_min = 0.0
             try:
                 _dp = _duree_str.split(":"); _duree_min = float(_dp[0])*60+float(_dp[1])+float(_dp[2])/60 if len(_dp)==3 else float(_dp[0])*60+float(_dp[1]) if len(_dp)==2 else 0.0
@@ -5600,7 +5612,7 @@ def api_history_today():
         _rtype_htd = str(r[0] or "").strip().lower()
         if _rtype_htd in ("production","prod",""):
             eq=float(str(r[21] or 0).replace(",",".") or 0)
-            s=_hms_to_sec(str(r[18] or "00:00:00"))
+            s=_hms_to_sec(_brut_dur_str(r))
             tot_eq+=eq; tot_s+=s
             _htd_prod_raw.append(r)
             trs_of=-1
@@ -5966,7 +5978,7 @@ def api_period_report():
                 _plan_rp = 0; _deg_rp = 0; _obj_rp = -1; _pcoef_rp = 1.0; _eq_rp = 0.0
             _of_rows_sd.append({
                 "of":str(_rp[1] or ""),"debut":str(_rp[16] or "")[:5],"fin":str(_rp[17] or "")[:5],
-                "duree":str(_rp[18] or ""),"qte_fab":str(_rp[19] or ""),"qte_emb":str(_rp[20] or ""),
+                "duree":_brut_dur_str(_rp),"qte_fab":str(_rp[19] or ""),"qte_emb":str(_rp[20] or ""),
                 "equiv":str(_rp[21] or ""),"cadence_h":str(_rp[22] if len(_rp)>22 else ""),
                 "cadence_h_pers":str(_rp[23] if len(_rp)>23 else ""),"fibre":str(_rp[11] or ""),
                 "taille":str(_rp[7] or ""),"code_prod":str(_rp[8] or ""),"type_prod":str(_rp[9] or ""),
@@ -6069,18 +6081,18 @@ def api_session_report():
                 tot_eq += eq; tot_s += dur_s
                 if fin_s > max_fin_s: max_fin_s = fin_s
                 _prod_raws_sr.append(r)
-                prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),"traca":str(r[13] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),"qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),"cadence_h":str(r[22] if len(r)>22 else ""),"cadence_h_pers":str(r[23] if len(r)>23 else ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"trs":trs,"comment":str(r[35] or ""),"prevu_hors_trs":str(r[36] if len(r)>36 else ""),"nb_pers":str(r[6] or ""),"copilote":str(r[5] or ""),"qte_init_taie":str(r[25] if len(r)>25 else ""),"nb_taie2":str(r[26] if len(r)>26 else ""),"nb_def_cout":str(r[27] if len(r)>27 else ""),"mq_taie":str(r[28] if len(r)>28 else ""),"mq_housse":str(r[29] if len(r)>29 else ""),"nb_pp":str(r[30] if len(r)>30 else ""),"duree_mq_mp":str(r[32] if len(r)>32 else ""),"manquant_pers":str(r[33] if len(r)>33 else "")})
+                prod_rows.append({"of":str(r[1] or ""),"taille":str(r[7] or ""),"code_prod":str(r[8] or ""),"type_prod":str(r[9] or ""),"poids":str(r[10] or ""),"fibre":str(r[11] or ""),"of_taie":str(r[12] or ""),"traca":str(r[13] or ""),"ref_taie":str(r[14] or ""),"kit":str(r[15] or ""),"qte_fab":str(r[19] or ""),"qte_emb":str(r[20] or ""),"equiv":str(r[21] or ""),"cadence_h":str(r[22] if len(r)>22 else ""),"cadence_h_pers":str(r[23] if len(r)>23 else ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":_brut_dur_str(r),"trs":trs,"comment":str(r[35] or ""),"prevu_hors_trs":str(r[36] if len(r)>36 else ""),"nb_pers":str(r[6] or ""),"copilote":str(r[5] or ""),"qte_init_taie":str(r[25] if len(r)>25 else ""),"nb_taie2":str(r[26] if len(r)>26 else ""),"nb_def_cout":str(r[27] if len(r)>27 else ""),"mq_taie":str(r[28] if len(r)>28 else ""),"mq_housse":str(r[29] if len(r)>29 else ""),"nb_pp":str(r[30] if len(r)>30 else ""),"duree_mq_mp":str(r[32] if len(r)>32 else ""),"manquant_pers":str(r[33] if len(r)>33 else "")})
             except: pass
         elif _is_degrade_type(str(r[0] or "").strip()):
             try:
                 _deg_ivs_sr.append((_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00"))))
-                evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or ""),"is_degrade":True})
+                evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":_brut_dur_str(r),"comment":str(r[35] or ""),"is_degrade":True})
             except: pass
         else:
             try:
-                dur_s = _hms_to_sec(str(r[18] or "00:00:00"))
+                dur_s = _hms_to_sec(_brut_dur_str(r))
                 stop_s += dur_s
-                evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":str(r[18] or ""),"comment":str(r[35] or ""),"is_degrade":False})
+                evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":_brut_dur_str(r),"comment":str(r[35] or ""),"is_degrade":False})
             except: pass
     def _evt_sort_key(e):
         t = e.get('debut') or ''
