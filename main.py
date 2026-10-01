@@ -15614,7 +15614,7 @@ def generate_dashboard_html():
             # Build Section 3 — OF/jour par semaine
             '        var _s3=\'<div style="background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.08);margin-bottom:18px;overflow:hidden">\'\n'
             '          +\'<div style="background:#0369a1;padding:10px 16px">\'\n'
-            '          +\'<span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#fff">📦 Nombre d\'OF par jour (moyenne hebdo)</span>\'\n'
+            '          +\'<span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#fff">📦 Nombre d&#39;OF par jour (moyenne hebdo)</span>\'\n'
             '          +\'</div>\'\n'
             '          +\'<div id="s3-body" style="padding:14px 16px 10px"><div id="s3-chart" style="width:100%;min-height:200px"></div></div>\'\n'
             '          +\'</div>\';\n'
