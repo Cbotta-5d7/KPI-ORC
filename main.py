@@ -5726,8 +5726,6 @@ def api_past_sessions():
                     _live_ded = _compute_planned_deduction_s(_evts_ps, _ses_ov)
                     _live_el = max(1.0, _live_dur - _live_ded)
                     trs = round(s["tot_equiv"] / (prod_ref * _live_el / 28800) * 100, 1)
-            elif _xl_trs_ps is not None and _xl_trs_ps > 0:
-                trs = _xl_trs_ps
             elif _pers_pct_map and _prod_raws_ps:
                 _deg_ivs_ps = _merged_degrade_ivs([re for _, re in _evts_ps])
                 # Recalcul plan_ivs identique à session_report (arrêts planifiés capés au budget)
@@ -5749,6 +5747,8 @@ def api_past_sessions():
                             _plan_ivs_ps.append((_ds_p, _ds_p + min(_dur_p, _plan_bdata_ps[_bk_p] - _plan_used_ps2[_bk_p])))
                         _plan_used_ps2[_bk_p] += _dur_p
                 trs, _ = _option_b_trs(_prod_raws_ps, _deg_ivs_ps, prod_ref, _plan_ivs_ps)
+            elif _xl_trs_ps is not None and _xl_trs_ps > 0:
+                trs = _xl_trs_ps
             else:
                 planned_ded = _compute_planned_deduction_s(_evts_ps)
                 if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
@@ -6171,7 +6171,7 @@ def api_session_report():
             _exp_of = prod_ref * _pct_of * _adj_of_s / 28800 if prod_ref > 0 else 0.0
             # Toujours recalculer l'objectif (ignore colonne 43 Excel qui peut être obsolète)
             _obj_of = round(_exp_of, 1) if _exp_of > 0 else -1
-            prod_rows[pi]["plan_stop_s"] = round(_plan_of_s)
+            prod_rows[pi]["plan_stop_s"] = round(planned_ded)  # total shift, pas overlap
             prod_rows[pi]["objectif"] = _obj_of
             # Perte de cadence toujours recalculée
             if _obj_of > 0 and prod_ref > 0:
