@@ -6199,15 +6199,7 @@ def api_session_report():
     ecart_s = max(0.0, model_dur_s - (tot_s + stop_s))
     trs_shift = -1.0
     perte_cadence_s = 0.0
-    if _xl_trs_sr is not None and _xl_trs_sr > 0 and tot_eq > 0:
-        trs_shift = _xl_trs_sr
-        _cadence_ref_s = prod_ref / 28800
-        if _cadence_ref_s > 0:
-            _sum_exp_xl = tot_eq * 100.0 / _xl_trs_sr
-            perte_cadence_s = (_sum_exp_xl - tot_eq) / _cadence_ref_s
-            if _xl_perte_sr is not None:
-                perte_cadence_s = _xl_perte_sr * 60.0
-    elif _pers_pct_map and _prod_raws_sr and tot_eq > 0:
+    if _pers_pct_map and _prod_raws_sr and tot_eq > 0:
         _, _sum_exp_sr = _option_b_trs(_prod_raws_sr, _deg_mg_sr, prod_ref, _plan_ivs_sr)
         _adj_sr = max(1.0, model_dur_s - planned_ded)
         trs_shift = round(tot_eq / (prod_ref * _adj_sr / 28800) * 100, 1) if prod_ref > 0 and _adj_sr > 0 else -1.0
@@ -6221,6 +6213,10 @@ def api_session_report():
         _cadence_ref_s = prod_ref / 28800
         if _cadence_ref_s > 0:
             perte_cadence_s = (prod_ref * adj_s / 28800 - tot_eq) / _cadence_ref_s
+    if trs_shift < 0 and _xl_trs_sr is not None and _xl_trs_sr > 0 and tot_eq > 0:
+        trs_shift = _xl_trs_sr
+        if _xl_perte_sr is not None:
+            perte_cadence_s = _xl_perte_sr * 60.0
     trs_of = round(tot_eq/(prod_ref*tot_s/28800)*100,1) if prod_ref>0 and tot_s>0 and tot_eq>0 else -1
     _budget_labels = {"pause_min":"Pause","meeting_tol_min":"Réunion","clean_short_min":"Nettoyage court","clean_long_min":"Nettoyage long","clean_grand_min":"Nettoyage très long"}
     budget_data = {bk:{"label":bl,"budget_min":float(cfg.get(bk,0) or 0),"used_min":0.0} for bk,bl in _budget_labels.items()}
