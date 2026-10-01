@@ -465,6 +465,9 @@ def _get_ev_bloquant(type_str):
     for slug, e in ev_slug_map.items():
         if len(slug) > best_len and ts_slug.startswith(slug): best, best_len = e, len(slug)
     if best: return bool(best.get("bloquant"))
+    _sys_bloquant = {"réunion","reunion","nettoyage long","nettoyage très long","nettoyage tres long","grand nettoyage"}
+    if tl.split(":")[0].strip() in _sys_bloquant:
+        return True
     return False
 
 def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_date_str, form_data=None):
@@ -4760,7 +4763,7 @@ def api_cdg_data():
                 "row_num":      rn,
                 "is_prod":      is_prod,
                 "designation":  desig,
-                "bloquant":     "" if is_prod else ("OUI" if ev_info.get("bloquant") else "NON"),
+                "bloquant":     "" if is_prod else ("OUI" if _get_ev_bloquant(type_str) else "NON"),
                 "cat":          _cat,
                 "key":          _key,
                 "prevu":        _prevu,
@@ -4859,7 +4862,7 @@ def api_cdg_export():
             rows.append({
                 "is_prod":      is_prod,
                 "designation":  desig2,
-                "bloquant":     "" if is_prod else ("OUI" if ev_info2.get("bloquant") else "NON"),
+                "bloquant":     "" if is_prod else ("OUI" if _get_ev_bloquant(type_str) else "NON"),
                 "comment":      str(r[35] or ""),
                 "of":           str(r[1]  or ""),
                 "date":         _row_date(r[2]),
@@ -4946,6 +4949,15 @@ def api_cdg_export():
                 cell2.font = data_font
             if ci2 in (3, 14): cell2.alignment = center_al
             if ci2 in (12, 13): cell2.alignment = right_al
+        if row.get("bloquant","") == "OUI":
+            _dur_str = row.get("duree","")
+            _dur_min = 0.0
+            try:
+                _dp = _dur_str.split(":")
+                _dur_min = float(_dp[0])*60+float(_dp[1])+float(_dp[2])/60 if len(_dp)==3 else float(_dp[0])*60+float(_dp[1]) if len(_dp)==2 else 0.0
+            except: pass
+            if _dur_min > 30:
+                ws.cell(xrow, 12).font = Font(name="Arial", size=10, color="FF0000", bold=True)
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -6243,10 +6255,12 @@ def api_add_stop_decl():
         shift_dt2 = _S.get("shift_start") or now
         shift_date2 = shift_dt2.strftime("%d/%m/%Y")
         copilote_v = str(data.get("copilote","") or (_S.get("form") or {}).get("copilote","") or "")
+        of_num_v = str(data.get("of_num","") or (_S.get("form") or {}).get("of_num","") or "").strip()
+        nb_pers_v = str(data.get("nb_pers","") or "").strip()
         row = [
-            stop_type, (_S.get("form") or {}).get("of_num",""),
+            stop_type, of_num_v,
             start_dt.strftime("%d/%m/%Y"), poste, pilot,
-            copilote_v,"","","","","","","","","",
+            copilote_v, nb_pers_v,"","","","","","","","",
             "",                              # col P : vide pour les arrêts
             start_dt.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"), fmt(dur_s),
             "","","","","","","","","","","","","","","","",comment,"","","",
@@ -12409,6 +12423,7 @@ function _showEcartModal(fpd){
     blocks.sort((a,b)=>a.s-b.s||(a.e-b.e));
     let html='';
     let gapIdx=0;
+    const _ecartLastOf=(fpd.of_list&&fpd.of_list.length>0)?fpd.of_list[fpd.of_list.length-1].of||'':'';
     if(blocks.length===0){
       html='<div style="color:#94a3b8;font-size:calc(12px*var(--zf,1));padding:8px 0">Aucune déclaration pour ce poste.</div>';
     } else {
@@ -12428,6 +12443,10 @@ function _showEcartModal(fpd){
                 <input type="time" id="ecart-gap-fin-${gi}" value="${esc(b.fin)}" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:88px"></div>
               <div style="flex:1;min-width:150px"><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">Type d'arrêt</label>
                 ${_buildEcartStopSelect(gi)}</div>
+              <div style="width:90px"><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">OF</label>
+                <input type="text" id="ecart-gap-of-${gi}" value="${esc(_ecartLastOf)}" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:80px"></div>
+              <div style="width:70px"><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">Nb pers</label>
+                <input type="number" id="ecart-gap-nbpers-${gi}" value="10" min="1" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:58px"></div>
               <button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:5px 12px;background:#dc2626;border-color:#dc2626" onclick="saveEcartGapStop(${gi})">✓ Déclarer</button>
             </div>
           </div>`;
@@ -12546,8 +12565,10 @@ async function saveEcartGapStop(gi){
     const type=((document.getElementById('ecart-gap-type-'+gi)||{}).value||'').trim();
     if(!debut||!fin||!type){toast('Renseigner début, fin et type d\'arrêt','err');return;}
     const _egDateIso=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso).toISOString().slice(0,10):'';
+    const _egOf=((document.getElementById('ecart-gap-of-'+gi)||{}).value||'').trim();
+    const _egNbPers=((document.getElementById('ecart-gap-nbpers-'+gi)||{}).value||'10').trim();
     const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,date_debut:_egDateIso,comment:'',copilote:window._loginCopilote||''})});
+      body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,date_debut:_egDateIso,comment:'',copilote:window._loginCopilote||'',of_num:_egOf,nb_pers:_egNbPers})});
     const d=r?await r.json():{};
     if(d.ok){
       toast(type+' ajouté','ok');
@@ -13288,7 +13309,7 @@ async function loadCdg(){
       ${_td(esc(r.shift_date||''))}
       ${_td(esc(r.debut||''))}
       ${_td(esc(r.fin||''))}
-      ${_td(esc(r.duree||''))}
+      ${_td(r.bloquant==='OUI'&&(r.duree_min||0)>30?'<span style="color:#dc2626;font-weight:700">'+esc(r.duree||'')+'</span>':esc(r.duree||''))}
       ${_td(ip?esc(String(r.qte_fab||'')):'—','text-align:right;')}
       ${_td(ip?esc(String(r.equiv||'')):'—','text-align:right;')}
       ${_td(esc(r.nb_pers||''),'text-align:center;')}
