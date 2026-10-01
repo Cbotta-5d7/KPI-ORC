@@ -445,10 +445,13 @@ def _ev_slug(s):
 
 def _get_ev_bloquant(type_str):
     """Retourne True si le type d'arrêt est marqué bloquant dans la config events_list."""
+    tl = (type_str or "").lower().strip()
+    _sys_bloquant = {"réunion","reunion","réunion / formation","reunion / formation","nettoyage long","nettoyage très long","nettoyage tres long","grand nettoyage"}
+    if tl.split(":")[0].strip() in _sys_bloquant:
+        return True
     ev_cfg = cfg.get("events_list") or []
     ev_map = {e.get("label","").lower(): e for e in ev_cfg}
     ev_slug_map = {_ev_slug(e.get("label","")): e for e in ev_cfg if e.get("label","")}
-    tl = (type_str or "").lower().strip()
     ev = ev_map.get(tl)
     if ev: return bool(ev.get("bloquant"))
     for pfx in ("rattrapage: ","pb technique: ","nettoyage: ","pause: ","réunion: ","reunion: ","manquants: ","organisation: ","autre: "):
@@ -465,9 +468,6 @@ def _get_ev_bloquant(type_str):
     for slug, e in ev_slug_map.items():
         if len(slug) > best_len and ts_slug.startswith(slug): best, best_len = e, len(slug)
     if best: return bool(best.get("bloquant"))
-    _sys_bloquant = {"réunion","reunion","nettoyage long","nettoyage très long","nettoyage tres long","grand nettoyage"}
-    if tl.split(":")[0].strip() in _sys_bloquant:
-        return True
     return False
 
 def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_date_str, form_data=None):
