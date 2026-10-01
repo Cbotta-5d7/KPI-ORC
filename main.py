@@ -5808,8 +5808,27 @@ def api_past_sessions():
                     _live_el = max(1.0, _live_dur - _live_ded)
                     trs = round(s["tot_equiv"] / (prod_ref * _live_el / 28800) * 100, 1)
             else:
-                # Session passée : même calcul que api_session_report
-                trs = _compute_session_trs_shift(s["date"], s["pilot"], s["poste"])
+                # Session passée : même calcul que api_session_report, données déjà collectées
+                _xl_bov_ps = {k: v for k, v in (_pm_ps.get('budget_overrides') or {}).items() if v is not None} if _pm_ps else {}
+                _evts_dicts_ps = [{"type": str(_re[0] or ""), "duree": _brut_dur_str(_re)} for _, _re in _evts_ps]
+                _ov_ps = _xl_bov_ps if _xl_bov_ps else None
+                _ded_ps = _compute_planned_deduction_s(_evts_dicts_ps, _ov_ps)
+                if _pm_ps:
+                    _pdeb2 = _pm_ps.get('deb_dt'); _pfin2 = _pm_ps.get('fin_dt')
+                    if _pdeb2 and _pfin2:
+                        _mdur_ps = max(0.0, (_pfin2 - _pdeb2).total_seconds())
+                    else:
+                        _mdur_ps = 0.0
+                else:
+                    _mdur_ps = get_shift_duration_s(s["poste"])
+                if _pers_pct_map and _prod_raws_ps and s["tot_equiv"] > 0:
+                    _adj_ps = max(1.0, _mdur_ps - _ded_ps)
+                    trs = round(s["tot_equiv"] / (prod_ref * _adj_ps / 28800) * 100, 1) if prod_ref > 0 and _adj_ps > 0 else -1.0
+                elif _mdur_ps > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
+                    _adj_ps = max(1.0, _mdur_ps - _ded_ps)
+                    trs = round(s["tot_equiv"] / (prod_ref * _adj_ps / 28800) * 100, 1)
+                if trs < 0 and _xl_trs_ps is not None and _xl_trs_ps > 0:
+                    trs = _xl_trs_ps
         if not _pm_get(postes_map, s["pilot"].lower(), s["date"], s.get("poste","")):
             continue
         _is_live_ps = bool(_live_key and key == _live_key)
