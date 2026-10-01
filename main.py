@@ -1608,6 +1608,7 @@ def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
                     _S["postes_row_num"] = target_row
                 else:
                     new_row = ws.max_row + 1
+                    ws.cell(new_row, 1).value = debut_dt.strftime("%d/%m/%Y") if debut_dt else ""
                     ws.cell(new_row, 2).value = pilot
                     ws.cell(new_row, 4).value = poste
                     ws.cell(new_row, 16).value = debut_dt.isoformat() if debut_dt else None
@@ -4357,7 +4358,7 @@ def api_end_stop():
         _sh = _S.get("shift_start") or _start
         _row = [
             _lbl, (_S.get("form") or {}).get("of_num",""),
-            _sh.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
+            _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
             str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
@@ -4398,7 +4399,7 @@ def _toggle_pause_internal():
         _pause_dur = max(0, (_pe - _ps).total_seconds())
         _row_p = [
             "Pause", (_S.get("form") or {}).get("of_num", ""),
-            _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
+            _ps.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),
             str((_S.get("form") or {}).get("nb_pers","") or ""),
             str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
@@ -5697,11 +5698,14 @@ def api_past_sessions():
                 _plan_bdata_ps = {bk: float((_xl_bov_ps.get(bk) if _xl_bov_ps.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab_ps}
                 _plan_used_ps2 = {bk: 0.0 for bk in _blab_ps}
                 _plan_ivs_ps = []
+                _pdeb_s_ps = (_pdeb_ps.hour*3600+_pdeb_ps.minute*60+_pdeb_ps.second) if (_pm_ps and _pm_ps.get('deb_dt')) else 0
                 for _, _rp in _evts_ps:
                     _bk_p = _get_arret_budget_key(str(_rp[0] or ''))
                     if _bk_p and _bk_p in _plan_bdata_ps:
                         _ds_p = _hms_to_sec(str(_rp[16] or '00:00:00'))
                         _fs_p = _norm_fin(_ds_p, _hms_to_sec(str(_rp[17] or '00:00:00')))
+                        if _pdeb_s_ps > 43200 and _ds_p < _pdeb_s_ps:
+                            _ds_p += 86400; _fs_p += 86400
                         _dur_p = _fs_p - _ds_p
                         if _dur_p > 0 and _plan_used_ps2[_bk_p] < _plan_bdata_ps[_bk_p]:
                             _plan_ivs_ps.append((_ds_p, _ds_p + min(_dur_p, _plan_bdata_ps[_bk_p] - _plan_used_ps2[_bk_p])))
@@ -12964,10 +12968,10 @@ async function confirmFinPoste(){
     budget_overrides:window._budgetOverrides||{},
   };
   await fetch('/api/save_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posteRow)});
-  fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{});
   await fetch('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   resetToLogin();
   toast('Bonne fin de poste !','ok');
+  setTimeout(()=>fetch('/api/generate_dashboard',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{}),2000);
 }
 
 // ── KPI TAB ──
