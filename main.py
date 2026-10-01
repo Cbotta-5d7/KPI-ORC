@@ -5644,6 +5644,84 @@ def api_history_today():
     if prod_ref>0 and tot_s>0: trs_of_time=round(tot_eq/(prod_ref*tot_s/28800)*100,1)
     return jsonify({"rows":rows,"trs_shift":trs_shift,"trs_of":trs_of_time,"tot_eq":round(tot_eq,1),"shift_s":shift_s})
 
+def _compute_session_trs_shift(date_str, pilot, poste):
+    """Calcule trs_shift pour une session — même algo que api_session_report.
+    Utilisé par api_past_sessions pour garantir la même valeur que le rapport."""
+    prod_ref = get_prod_ref()
+    tot_eq = 0.0; tot_s = 0.0; _deg_ivs = []; _prod_raws = []; evt_rows_ts = []
+    for rn, r in _decl_cache:
+        row_date_key = str(r[39] if len(r) > 39 else "").strip() or _row_date(r[2])
+        if row_date_key != date_str: continue
+        if str(r[4] or "") != pilot: continue
+        if str(r[3] or "") != poste: continue
+        row_type = str(r[0] or "").strip().lower()
+        if row_type in ("production","prod",""):
+            try:
+                eq = float(str(r[21] or 0).replace(",","."))
+                deb_s = _hms_to_sec(str(r[16] or "00:00:00"))
+                fin_s = _norm_fin(deb_s, _hms_to_sec(str(r[17] or "00:00:00")))
+                tot_eq += eq; tot_s += fin_s - deb_s
+                _prod_raws.append(r)
+            except: pass
+        elif _is_degrade_type(str(r[0] or "").strip()):
+            try: _deg_ivs.append((_hms_to_sec(str(r[16] or "00:00:00")), _hms_to_sec(str(r[17] or "00:00:00"))))
+            except: pass
+            evt_rows_ts.append({"type": str(r[0] or ""), "duree": _brut_dur_str(r)})
+        else:
+            evt_rows_ts.append({"type": str(r[0] or ""), "duree": _brut_dur_str(r)})
+    _all_prod_deb = [_hms_to_sec(str(rp[16] or '00:00:00')) for rp in _prod_raws if rp[16]]
+    _shift_base = min(_all_prod_deb) if _all_prod_deb else 0.0
+    _cross_mid = _shift_base > 43200
+    if _cross_mid:
+        _deg_ivs = [(ds + (86400 if ds < 43200 else 0), df + (86400 if df < 43200 else 0)) for ds, df in _deg_ivs]
+    _deg_ivs_s = sorted((s, f) for s, f in _deg_ivs if f > s)
+    _deg_mg = []
+    for _s, _f in _deg_ivs_s:
+        if _deg_mg and _s <= _deg_mg[-1][1]: _deg_mg[-1] = (_deg_mg[-1][0], max(_deg_mg[-1][1], _f))
+        else: _deg_mg.append((_s, _f))
+    postes_map_ts = load_postes_shift_map()
+    _pm = _pm_get(postes_map_ts, pilot.lower(), date_str, poste)
+    _xl_bov = {k: v for k, v in (_pm.get('budget_overrides') or {}).items() if v is not None} if _pm else {}
+    _is_live = bool(_S.get("pilot") == pilot and _S.get("poste") == poste)
+    _ses_ov = (_S.get("budget_overrides") or {}) if _is_live else _xl_bov
+    planned_ded = _compute_planned_deduction_s(evt_rows_ts, _ses_ov if (_is_live or _xl_bov) else None)
+    _blab = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
+    _plan_bdata = {bk: float((_ses_ov.get(bk) if _ses_ov.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab}
+    _plan_used = {bk: 0.0 for bk in _blab}
+    _plan_ivs = []
+    for _, r2 in _decl_cache:
+        _rd2 = str(r2[39] if len(r2) > 39 else "").strip() or _row_date(r2[2])
+        if _rd2 != date_str: continue
+        if str(r2[4] or "") != pilot or str(r2[3] or "") != poste: continue
+        if str(r2[0] or "").strip().lower() in ("production","prod",""): continue
+        _bk = _get_arret_budget_key(str(r2[0] or ''))
+        if _bk and _bk in _plan_bdata:
+            _ds = _hms_to_sec(str(r2[16] or '00:00:00'))
+            _fs = _norm_fin(_ds, _hms_to_sec(str(r2[17] or '00:00:00')))
+            if _cross_mid and _ds < 43200: _ds += 86400; _fs += 86400
+            _dur = _fs - _ds
+            if _dur > 0 and _plan_used[_bk] < _plan_bdata[_bk]:
+                _plan_ivs.append((_ds, _ds + min(_dur, _plan_bdata[_bk] - _plan_used[_bk])))
+            _plan_used[_bk] += _dur
+    if _pm and _pm.get('deb_dt') and _pm.get('fin_dt'):
+        model_dur_s = max(0.0, (_pm['fin_dt'] - _pm['deb_dt']).total_seconds())
+    else:
+        try: _date_obj_ts = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
+        except: _date_obj_ts = None
+        model_dur_s = get_shift_duration_s(poste, _date_obj_ts)
+    trs_shift = -1.0
+    if _pers_pct_map and _prod_raws and tot_eq > 0:
+        _adj = max(1.0, model_dur_s - planned_ded)
+        trs_shift = round(tot_eq / (prod_ref * _adj / 28800) * 100, 1) if prod_ref > 0 and _adj > 0 else -1.0
+    elif model_dur_s > 0 and prod_ref > 0 and tot_eq > 0:
+        _adj = max(1.0, model_dur_s - planned_ded)
+        trs_shift = round(tot_eq / (prod_ref * _adj / 28800) * 100, 1)
+    if trs_shift < 0 and _pm:
+        _xl_trs = _pm.get('trs')
+        if _xl_trs is not None and _xl_trs > 0 and tot_eq > 0:
+            trs_shift = _xl_trs
+    return trs_shift
+
 @flask_app.route('/api/past_sessions')
 def api_past_sessions():
     prod_ref = get_prod_ref()
@@ -5726,34 +5804,9 @@ def api_past_sessions():
                     _live_ded = _compute_planned_deduction_s(_evts_ps, _ses_ov)
                     _live_el = max(1.0, _live_dur - _live_ded)
                     trs = round(s["tot_equiv"] / (prod_ref * _live_el / 28800) * 100, 1)
-            elif _pers_pct_map and _prod_raws_ps:
-                _deg_ivs_ps = _merged_degrade_ivs([re for _, re in _evts_ps])
-                # Recalcul plan_ivs identique à session_report (arrêts planifiés capés au budget)
-                _blab_ps = ("pause_min","meeting_tol_min","clean_short_min","clean_long_min","clean_grand_min")
-                _xl_bov_ps = {k: v for k, v in (_pm_ps.get('budget_overrides') or {}).items() if v is not None}
-                _plan_bdata_ps = {bk: float((_xl_bov_ps.get(bk) if _xl_bov_ps.get(bk) is not None else cfg.get(bk, 0)) or 0) * 60 for bk in _blab_ps}
-                _plan_used_ps2 = {bk: 0.0 for bk in _blab_ps}
-                _plan_ivs_ps = []
-                _pdeb_s_ps = (_pdeb_ps.hour*3600+_pdeb_ps.minute*60+_pdeb_ps.second) if (_pm_ps and _pm_ps.get('deb_dt')) else 0
-                for _, _rp in _evts_ps:
-                    _bk_p = _get_arret_budget_key(str(_rp[0] or ''))
-                    if _bk_p and _bk_p in _plan_bdata_ps:
-                        _ds_p = _hms_to_sec(str(_rp[16] or '00:00:00'))
-                        _fs_p = _norm_fin(_ds_p, _hms_to_sec(str(_rp[17] or '00:00:00')))
-                        if _pdeb_s_ps > 43200 and _ds_p < _pdeb_s_ps:
-                            _ds_p += 86400; _fs_p += 86400
-                        _dur_p = _fs_p - _ds_p
-                        if _dur_p > 0 and _plan_used_ps2[_bk_p] < _plan_bdata_ps[_bk_p]:
-                            _plan_ivs_ps.append((_ds_p, _ds_p + min(_dur_p, _plan_bdata_ps[_bk_p] - _plan_used_ps2[_bk_p])))
-                        _plan_used_ps2[_bk_p] += _dur_p
-                trs, _ = _option_b_trs(_prod_raws_ps, _deg_ivs_ps, prod_ref, _plan_ivs_ps)
             else:
-                planned_ded = _compute_planned_deduction_s(_evts_ps)
-                if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
-                    _el2 = max(1.0, _mdur2 - planned_ded)
-                    trs = round(s["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
-            if trs < 0 and _xl_trs_ps is not None and _xl_trs_ps > 0:
-                trs = _xl_trs_ps
+                # Session passée : même calcul que api_session_report
+                trs = _compute_session_trs_shift(s["date"], s["pilot"], s["poste"])
         if not _pm_get(postes_map, s["pilot"].lower(), s["date"], s.get("poste","")):
             continue
         _is_live_ps = bool(_live_key and key == _live_key)
