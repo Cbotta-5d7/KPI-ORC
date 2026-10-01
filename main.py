@@ -5747,13 +5747,13 @@ def api_past_sessions():
                             _plan_ivs_ps.append((_ds_p, _ds_p + min(_dur_p, _plan_bdata_ps[_bk_p] - _plan_used_ps2[_bk_p])))
                         _plan_used_ps2[_bk_p] += _dur_p
                 trs, _ = _option_b_trs(_prod_raws_ps, _deg_ivs_ps, prod_ref, _plan_ivs_ps)
-            elif _xl_trs_ps is not None and _xl_trs_ps > 0:
-                trs = _xl_trs_ps
             else:
                 planned_ded = _compute_planned_deduction_s(_evts_ps)
                 if _mdur2 > 0 and prod_ref > 0 and s["tot_equiv"] > 0:
                     _el2 = max(1.0, _mdur2 - planned_ded)
                     trs = round(s["tot_equiv"] / (prod_ref * _el2 / 28800) * 100, 1)
+            if trs < 0 and _xl_trs_ps is not None and _xl_trs_ps > 0:
+                trs = _xl_trs_ps
         if not _pm_get(postes_map, s["pilot"].lower(), s["date"], s.get("poste","")):
             continue
         _is_live_ps = bool(_live_key and key == _live_key)
