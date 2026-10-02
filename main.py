@@ -507,6 +507,7 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
     _bf_type_prod = str(_fd.get("type_prod","") or "")
     _bf_poids     = str(_fd.get("poids","") or "")
     _bf_fibre     = str(_fd.get("fibre","") or "")
+    _bf_kit       = "Oui" if _fd.get("kit") else ""
     def _bg():
         try:
             n_updated = 0
@@ -556,6 +557,8 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                         ws.cell(excel_rn, 11).value = _bf_poids
                     if _bf_fibre and not str(ws.cell(excel_rn, 12).value or "").strip():
                         ws.cell(excel_rn, 12).value = _bf_fibre
+                    if _bf_kit:
+                        ws.cell(excel_rn, 16).value = "Oui"
                     n_updated += 1
                 if n_updated:
                     _safe_excel_save(wb, path)
@@ -12194,7 +12197,9 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     const segs=ofEvts.map(ev=>{
       let s=hm2ms(ev.debut),e=hm2ms(ev.fin||ev.debut);
       if(_isNight){if(s<dMs)s+=86400000;if(e<dMs||e<s)e+=86400000;}
-      return {s,e,c:ev.is_degrade?'#f59e0b':'#dc2626',l:ev.is_degrade?'Dégradé':(ev.type||'Arrêt')};
+      const _cat=ev.cat||'';
+      const _col=ev.is_degrade?'#f59e0b':ev.hors_trs?'#60a5fa':(_cat==='nettoyage'?'#0ea5e9':(_cat==='_pause'||_cat.includes('pause')?'#94a3b8':'#dc2626'));
+      return {s,e,c:_col,l:ev.is_degrade?'Dégradé':(ev.type||'Arrêt')};
     }).filter(sg=>sg.e>sg.s);
     const tlBar=segs.map(sg=>`<div title="${esc(sg.l)} ${Math.round((sg.e-sg.s)/60000)}min" style="position:absolute;top:0;bottom:0;left:${pct(sg.s)}%;width:${Math.max(.6,pct(sg.e)-pct(sg.s))}%;background:${sg.c};border-radius:3px;opacity:.9;box-shadow:0 2px 5px rgba(0,0,0,.22)"></div>`).join('');
     tlBandHtml=`<div style="padding:10px 22px 8px;background:#f8fafc;border-bottom:2px solid #e2e8f0;flex-shrink:0">
@@ -12205,6 +12210,8 @@ function _renderAndOpenOfDetail(r, ofEvts) {
         <div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1));color:#374151"><div style="width:12px;height:12px;border-radius:3px;background:#16a34a"></div>Production</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1));color:#374151"><div style="width:12px;height:12px;border-radius:3px;background:#dc2626"></div>Arrêt non prévu</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1));color:#374151"><div style="width:12px;height:12px;border-radius:3px;background:#60a5fa"></div>Arrêt prévu</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1));color:#374151"><div style="width:12px;height:12px;border-radius:3px;background:#0ea5e9"></div>Nettoyage</div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1));color:#374151"><div style="width:12px;height:12px;border-radius:3px;background:#94a3b8"></div>Pause</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1));color:#374151"><div style="width:12px;height:12px;border-radius:3px;background:#f59e0b"></div>Mode dégradé</div>
       </div>
     </div>`;
