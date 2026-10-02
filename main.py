@@ -6717,7 +6717,7 @@ def api_save_poste():
         data["dur_poste_theorique_min"] = round(get_current_shift_duration_s() / 60, 1)
     # Utiliser postes_row_num stocké au login (évite find_postes_row_num qui peut rater)
     row_num = _S.get("postes_row_num") or find_postes_row_num(_S.get("pilot",""), _S.get("shift_debut_dt"))
-    write_poste_row(data, row_num=row_num)
+    write_poste_row(data, row_num=row_num, sync=True)  # sync : garantit l'écriture avant api_logout
     return jsonify({"ok":True})
 
 def _recalc_session_internal(date_str, pilot, poste):
