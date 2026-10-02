@@ -3770,6 +3770,145 @@ def api_logout():
     cfg.update(load_cfg())
     return jsonify({"ok":True})
 
+@flask_app.route('/api/cancel_poste_preview', methods=['GET'])
+def api_cancel_poste_preview():
+    pilot = _S.get("pilot") or ""
+    poste = _S.get("poste") or ""
+    row_num = _S.get("postes_row_num")
+    if not pilot:
+        return jsonify({"ok": False, "error": "Non connecté"}), 400
+    path = _db_path_resolved()
+    if not path or not os.path.exists(path):
+        return jsonify({"ok": False, "error": "Base de données introuvable"}), 500
+    decls = []
+    try:
+        with _db_lock:
+            conn = _get_conn(path)
+            if conn:
+                try:
+                    # Récupère les déclarations du pilote pour ce poste
+                    c = conn.cursor()
+                    c.execute("SELECT c01, c02, c03, c04, c17, c18 FROM declarations WHERE LOWER(c05)=LOWER(?) AND c04=?",
+                              (pilot, poste))
+                    for row in c.fetchall():
+                        typ, of_num, date, poste_row, h_deb, h_fin = row
+                        parts = [x for x in [typ, of_num, date, h_deb, h_fin] if x]
+                        decls.append(" | ".join(str(p) for p in parts))
+                finally:
+                    conn.close()
+    except Exception as _e:
+        _log_err(f"[CANCEL-PREVIEW] {_e}")
+        return jsonify({"ok": False, "error": str(_e)}), 500
+    return jsonify({"ok": True, "declarations": decls, "nb": len(decls)})
+
+@flask_app.route('/api/cancel_poste', methods=['POST'])
+def api_cancel_poste():
+    if _S.get("prod_active"):
+        return jsonify({"ok": False, "error": "OF en cours — terminer la production d'abord"}), 400
+    pilot = _S.get("pilot") or ""
+    poste = _S.get("poste") or ""
+    row_num = _S.get("postes_row_num")
+    if not pilot:
+        return jsonify({"ok": False, "error": "Non connecté"}), 400
+    path = _db_path_resolved()
+    if not path or not os.path.exists(path):
+        return jsonify({"ok": False, "error": "Base de données introuvable"}), 500
+    try:
+        with _db_lock:
+            conn = _get_conn(path)
+            if conn is None:
+                return jsonify({"ok": False, "error": "Connexion DB impossible"}), 500
+            try:
+                c = conn.cursor()
+                c.execute("DELETE FROM declarations WHERE LOWER(c05)=LOWER(?) AND c04=?",
+                          (pilot, poste))
+                if row_num:
+                    c.execute("DELETE FROM postes WHERE rowid=?", (row_num,))
+                conn.commit()
+            finally:
+                conn.close()
+        # Vider le cache en mémoire
+        global _decl_cache
+        with _cache_lock:
+            _decl_cache = [r for r in _decl_cache
+                           if not (str(r[1][4]).lower() == pilot.lower() and r[1][3] == poste)]
+        # Reset session
+        _S["pilot"] = None
+        _S["poste"] = None
+        _S["shift_start"] = None
+        _S["postes_row_num"] = None
+        _S["prod_active"] = False
+        _S["of_start"] = None
+        _S["budget_overrides"] = {}
+        _S["of_prepares"] = []
+        save_session()
+        global cfg
+        cfg.clear()
+        cfg.update(load_cfg())
+    except Exception as _e:
+        _log_err(f"[CANCEL-POSTE] pilot={pilot} poste={poste} : {_e}")
+        return jsonify({"ok": False, "error": str(_e)}), 500
+    return jsonify({"ok": True})
+
+@flask_app.route('/api/export_all', methods=['GET'])
+def api_export_all():
+    path = _db_path_resolved()
+    if not path or not os.path.exists(path):
+        return jsonify({"error": "Base de données introuvable"}), 500
+    from_date = request.args.get("from", "")
+    to_date   = request.args.get("to", "")
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from io import BytesIO
+        hdr_font  = Font(bold=True, color="FFFFFF", size=10)
+        hdr_fill  = PatternFill("solid", fgColor="1a1f5e")
+        hdr_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        wb = Workbook()
+        def _make_sheet(ws, headers, rows):
+            for ci, h in enumerate(headers, 1):
+                c = ws.cell(1, ci, h)
+                c.font = hdr_font; c.fill = hdr_fill; c.alignment = hdr_align
+                ws.column_dimensions[ws.cell(1, ci).column_letter].width = max(12, len(str(h)) + 2)
+            for ri, row in enumerate(rows, 2):
+                for ci, v in enumerate(row, 1):
+                    ws.cell(ri, ci).value = v
+            ws.freeze_panes = ws.cell(2, 1)
+        with _db_lock:
+            conn = _get_conn(path)
+            if conn is None:
+                return jsonify({"error": "Connexion DB impossible"}), 500
+            try:
+                c = conn.cursor()
+                # Déclarations
+                if from_date and to_date:
+                    c.execute(f"SELECT {_DECL_COLS} FROM declarations WHERE c03 BETWEEN ? AND ? ORDER BY rowid",
+                              (from_date, to_date))
+                else:
+                    c.execute(f"SELECT {_DECL_COLS} FROM declarations ORDER BY rowid")
+                ws_d = wb.active
+                ws_d.title = "Declarations"
+                _make_sheet(ws_d, DECL_HEADERS, c.fetchall())
+                # Postes
+                if from_date and to_date:
+                    c.execute(f"SELECT {_POSTES_COLS} FROM postes WHERE p01 BETWEEN ? AND ? ORDER BY rowid",
+                              (from_date, to_date))
+                else:
+                    c.execute(f"SELECT {_POSTES_COLS} FROM postes ORDER BY rowid")
+                ws_p = wb.create_sheet("Postes")
+                _make_sheet(ws_p, POSTES_HEADERS, c.fetchall())
+            finally:
+                conn.close()
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        fname = f"export_kpi_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                         as_attachment=True, download_name=fname)
+    except Exception as _e:
+        _log_err(f"[EXPORT-ALL] {_e}")
+        return jsonify({"error": str(_e)}), 500
+
 @flask_app.route('/api/of_prepares', methods=['GET'])
 def api_of_prepares_list():
     return jsonify({"ok": True, "list": _S.get("of_prepares", [])})
@@ -7506,7 +7645,20 @@ select{cursor:default}
 
       <button class="btn-sm btn-ghost" onclick="toggleZoomPop()" id="zoom-btn" style="font-size:calc(11px*var(--zf,1));display:flex;align-items:center;gap:4px" title="Zoom texte">🔍 Zoom</button>
       <button id="btn-logout" class="btn-sm btn-ghost" onclick="doLogout()" style="font-size:calc(11px*var(--zf,1))">Déconnexion</button>
+      <button id="btn-annuler-poste" class="btn-sm" onclick="annulerPoste()" style="display:none;font-size:calc(11px*var(--zf,1));background:#dc2626;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-weight:700" title="Annuler ce poste et toutes ses déclarations">🗑 Annuler ce poste</button>
       <button class="btn-sm btn-ghost" id="ht-cfg" onclick="goTab('settings')" style="font-size:calc(18px*var(--zf,1));padding:4px 8px;line-height:1" title="Paramètres">⚙</button>
+    </div>
+  </div>
+  <!-- Modal Annuler ce poste -->
+  <div id="modal-annuler-poste" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:12px;padding:24px;max-width:520px;width:92%;box-shadow:0 8px 32px rgba(0,0,0,.3);max-height:80vh;display:flex;flex-direction:column">
+      <h3 style="margin:0 0 8px;color:#dc2626;font-size:16px">🗑 Annuler ce poste</h3>
+      <p style="margin:0 0 12px;font-size:13px;color:#374151">Les déclarations suivantes vont être <strong>définitivement supprimées</strong> :</p>
+      <div id="annuler-decl-list" style="flex:1;overflow-y:auto;max-height:280px;border:1px solid #e5e7eb;border-radius:8px;padding:8px;font-size:12px;color:#374151;margin-bottom:14px"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="document.getElementById('modal-annuler-poste').style.display='none'" style="padding:7px 18px;border:1.5px solid #94a3b8;border-radius:7px;background:#fff;color:#374151;cursor:pointer;font-weight:600">Annuler</button>
+        <button onclick="confirmerAnnulerPoste()" style="padding:7px 18px;border:none;border-radius:7px;background:#dc2626;color:#fff;cursor:pointer;font-weight:700">Confirmer la suppression</button>
+      </div>
     </div>
   </div>
   <!-- Zoom popover -->
@@ -8413,6 +8565,8 @@ select{cursor:default}
         <button class="hf-btn" data-hf="pause" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #94a3b8;color:#94a3b8;background:none;cursor:pointer;font-weight:700;transition:all .15s">⏸ Pause</button>
         <button class="hf-btn" data-hf="reunion" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #8b5cf6;color:#8b5cf6;background:none;cursor:pointer;font-weight:700;transition:all .15s">👥 Réunion</button>
       </div>
+      <div style="width:1px;height:22px;background:var(--border);flex-shrink:0"></div>
+      <button onclick="exportHistory()" style="font-size:calc(11px*var(--zf,1));padding:5px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(5,150,105,.3)">⬇ Exporter les données</button>
     </div>
     <div style="flex:1;overflow-y:auto">
       <table class="ktbl"><thead><tr id="hist-hd"></tr></thead><tbody id="hist-bd"></tbody></table>
@@ -9344,6 +9498,42 @@ async function doLogout() {
   resetToLogin();
 }
 
+async function annulerPoste(){
+  if(ST.prod_active){toast('OF en cours — terminer la production avant d\'annuler le poste','err');return;}
+  const d=await apiFetch('/api/cancel_poste_preview');
+  if(!d){toast('Erreur prévisualisation','err');return;}
+  const list=document.getElementById('annuler-decl-list');
+  if(d.declarations&&d.declarations.length){
+    list.innerHTML=d.declarations.map(r=>`<div style="padding:3px 0;border-bottom:1px solid #f3f4f6">${r}</div>`).join('');
+  } else {
+    list.innerHTML='<em style="color:#94a3b8">Aucune déclaration pour ce poste.</em>';
+  }
+  const m=document.getElementById('modal-annuler-poste');
+  m.style.display='flex';
+}
+
+async function confirmerAnnulerPoste(){
+  document.getElementById('modal-annuler-poste').style.display='none';
+  const r=await apiFetch('/api/cancel_poste',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  if(r&&r.ok){
+    toast('Poste annulé — toutes les déclarations supprimées','ok');
+    resetToLogin();
+  } else {
+    toast('Erreur annulation : '+(r&&r.error||'?'),'err');
+  }
+}
+
+function exportHistory(){
+  const from=document.getElementById('hist-from')?document.getElementById('hist-from').value:'';
+  const to=document.getElementById('hist-to')?document.getElementById('hist-to').value:'';
+  let url='/api/export_all';
+  const params=[];
+  if(from) params.push('from='+encodeURIComponent(from));
+  if(to) params.push('to='+encodeURIComponent(to));
+  if(params.length) url+='?'+params.join('&');
+  window.location.href=url;
+}
+
 // ── Zoom texte ──
 var _zoomOpen=false;
 function applyZoom(pct){
@@ -9479,6 +9669,11 @@ function goTab(tab) {
     document.getElementById('lock-pw').value='';
     document.getElementById('lock-err').textContent='';
     setTimeout(()=>document.getElementById('lock-pw')?.focus(), 80);
+  }
+  // Bouton "Annuler ce poste" visible uniquement sur accueil, si pilote connecté
+  const btnAnnuler=document.getElementById('btn-annuler-poste');
+  if(btnAnnuler){
+    btnAnnuler.style.display=(tab==='main'&&ST&&ST.pilot)?'':'none';
   }
 }
 
@@ -12988,6 +13183,7 @@ async function saveEcartOf(btn){
     // Recalculer l'écart
     const fpd=await apiFetch('/api/fin_poste_data');
     if(fpd){window._ecartFpData=fpd;_showEcartModal(fpd);}
+    await loadFPData();
   } else {
     toast('Erreur mise à jour','err');
   }
