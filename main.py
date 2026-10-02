@@ -778,14 +778,14 @@ def _compute_budget_state_now():
 def t_start(key):
     t = _S["timers"].setdefault(key,{"elapsed":0.0,"running":False,"start":None})
     if not t["running"]:
-        t["start"] = datetime.datetime.now()
+        t["start"] = _now()
         t["running"] = True
     save_session()
 
 def t_stop(key, end_time=None):
     t = _S["timers"].get(key)
     if t and t["running"]:
-        end = end_time or datetime.datetime.now()
+        end = end_time or _now()
         t["elapsed"] += (end - t["start"]).total_seconds()
         t["running"] = False
         t["start"] = None
@@ -796,7 +796,7 @@ def t_get(key):
     if not t: return 0.0
     el = t["elapsed"]
     if t["running"] and t["start"]:
-        el += (datetime.datetime.now() - t["start"]).total_seconds()
+        el += (_now() - t["start"]).total_seconds()
     return el
 
 def t_running(key):
@@ -823,19 +823,19 @@ def t_wall_clock_stops():
 def tl_open(key, cat):
     existing = next((e for e in _S["tl_events"] if e["key"]==key and not e.get("end")), None)
     if not existing:
-        _S["tl_events"].append({"key":key,"cat":cat,"start":datetime.datetime.now(),"end":None,"comment":"","hors_trs":False})
+        _S["tl_events"].append({"key":key,"cat":cat,"start":_now(),"end":None,"comment":"","hors_trs":False})
     save_session()
 
 def tl_close(key, comment="", end_time=None):
     for ev in _S["tl_events"]:
         if ev["key"]==key and not ev.get("end"):
-            ev["end"] = end_time or datetime.datetime.now()
+            ev["end"] = end_time or _now()
             ev["comment"] = comment
             break
     save_session()
 
 def tl_close_all():
-    now = datetime.datetime.now()
+    now = _now()
     for ev in _S["tl_events"]:
         if not ev.get("end"):
             ev["end"] = now
