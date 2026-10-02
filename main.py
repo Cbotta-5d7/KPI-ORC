@@ -1242,16 +1242,31 @@ def _get_wb(path):
     except: return None
 
 def _safe_excel_save(wb, path):
+    import time as _time
     bak = path+".bak"
     try: shutil.copy2(path,bak)
     except: pass
-    try:
-        wb.save(path)
-    finally:
-        try: wb.close()
-        except: pass
-    try: os.remove(bak)
+    saved = False
+    last_err = None
+    for _attempt in range(4):
+        try:
+            wb.save(path)
+            saved = True
+            break
+        except PermissionError as _pe:
+            last_err = _pe
+            _time.sleep(1)
+        except Exception as _e:
+            last_err = _e
+            break
+    try: wb.close()
     except: pass
+    if saved:
+        try: os.remove(bak)
+        except: pass
+    else:
+        print(f"[EXCEL-SAVE] Échec sauvegarde '{path}': {last_err}")
+        raise last_err
 
 def _format_row(ws, row_num):
     thin = Side(style="thin")
@@ -1757,7 +1772,8 @@ def write_poste_row(data, row_num=None, sync=False):
                     ws.append(vals)
                     _format_row(ws, ws.max_row)
                 _safe_excel_save(wb, path)
-        except: pass
+        except Exception as _wpr_e:
+            print(f"[POSTES-WRITE] Erreur écriture Postes (row={row_num}): {_wpr_e}")
     if sync:
         _bg()
     else:
@@ -6704,13 +6720,13 @@ def _backfill_nb_pers_shift():
 
 @flask_app.route('/api/save_poste', methods=['POST'])
 def api_save_poste():
-    _backfill_nb_pers_shift()
     data = request.json or {}
     if not data.get("dur_poste_theorique_min"):
         data["dur_poste_theorique_min"] = round(get_current_shift_duration_s() / 60, 1)
-    # Utiliser postes_row_num stocké au login (évite find_postes_row_num qui peut rater)
+    # Écrire les KPI AVANT _backfill (qui lance load_history en thread, pouvant verrouiller le fichier)
     row_num = _S.get("postes_row_num") or find_postes_row_num(_S.get("pilot",""), _S.get("shift_debut_dt"))
     write_poste_row(data, row_num=row_num, sync=True)  # sync : garantit l'écriture avant api_logout
+    _backfill_nb_pers_shift()
     return jsonify({"ok":True})
 
 def _recalc_session_internal(date_str, pilot, poste):
