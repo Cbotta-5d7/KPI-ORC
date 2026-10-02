@@ -251,8 +251,15 @@ def _ensure_db_schema(conn):
         value3 TEXT,
         PRIMARY KEY (list_name, position)
     )""")
-    _ensure_db_views(conn)
     conn.commit()
+
+def _log_err(msg):
+    """Écrit une erreur dans kpi_orc_errors.log pour diagnostic."""
+    try:
+        log_path = os.path.join(BASE_DIR, "kpi_orc_errors.log")
+        with open(log_path, "a", encoding="utf-8") as _lf:
+            _lf.write(f"{datetime.datetime.now().isoformat()} {msg}\n")
+    except: pass
 
 def _ensure_db_views(conn):
     """Crée des vues lisibles (vue_declarations, vue_postes) pour DB Browser."""
@@ -1358,6 +1365,8 @@ def load_history():
             _hist_loading = max(0, _hist_loading - 1)
             return
         _ensure_db_schema(conn)
+        _ensure_db_views(conn)
+        conn.commit()
         _excel_busy = False
         _new_cache = []
         c = conn.cursor()
@@ -1674,6 +1683,7 @@ def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
     path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     def _bg():
+        conn = None
         try:
             with _db_lock:
                 conn = _get_conn(path)
@@ -1696,7 +1706,7 @@ def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
                 if target_row:
                     c.execute("UPDATE postes SET p16=?, p17=? WHERE rowid=?",
                               (debut_dt.isoformat(), fin_dt.isoformat() if fin_dt else None, target_row))
-                    _db_commit(conn)
+                    _db_commit(conn); conn = None
                     _S["postes_row_num"] = target_row
                 else:
                     c.execute("INSERT INTO postes (p01, p02, p04, p16, p17) VALUES (?,?,?,?,?)",
@@ -1705,10 +1715,15 @@ def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
                                debut_dt.isoformat() if debut_dt else None,
                                fin_dt.isoformat() if fin_dt else None))
                     new_rowid = c.lastrowid
-                    _db_commit(conn)
+                    _db_commit(conn); conn = None
                     _S["postes_row_num"] = new_rowid
-                save_session()
-        except: pass
+        except Exception as _e:
+            _log_err(f"[LOGIN-ROW] pilot={pilot} poste={poste} debut={debut_dt} : {_e}")
+        finally:
+            if conn is not None:
+                try: conn.close()
+                except: pass
+        save_session()
     threading.Thread(target=_bg, daemon=True).start()
 
 def find_postes_row_num(pilot, debut_dt):
@@ -1759,6 +1774,7 @@ def write_poste_row(data, row_num=None, sync=False):
     path = _db_path_resolved()
     if not path: return
     def _bg():
+        conn = None
         try:
             with _db_lock:
                 conn = _get_conn(path)
@@ -1836,9 +1852,13 @@ def write_poste_row(data, row_num=None, sync=False):
                         _bov_get("clean_long_min"), _bov_get("clean_grand_min"),
                         _bov_get("meeting_tol_min"),
                     ))
-                _db_commit(conn)
+                _db_commit(conn); conn = None
         except Exception as _wpr_e:
-            print(f"[POSTES-WRITE] Erreur écriture postes (row={row_num}): {_wpr_e}")
+            _log_err(f"[POSTES-WRITE] row={row_num} pilot={data.get('pilot','')} : {_wpr_e}")
+        finally:
+            if conn is not None:
+                try: conn.close()
+                except: pass
     if sync:
         _bg()
     else:
