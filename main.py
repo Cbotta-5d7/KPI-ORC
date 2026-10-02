@@ -102,6 +102,7 @@ _DECL_COLS = ",".join(f"c{i:02d}" for i in range(1, 45))
 _DECL_PLACEHOLDERS = ",".join("?" * 44)
 _POSTES_COLS = ",".join(f"p{i:02d}" for i in range(1, 31))
 _POSTES_PLACEHOLDERS = ",".join("?" * 30)
+_db_views_ready = False
 
 def _db_path_resolved(path=None):
     """Returns the actual .db path, redirecting .xlsx → .db transparently."""
@@ -250,7 +251,24 @@ def _ensure_db_schema(conn):
         value3 TEXT,
         PRIMARY KEY (list_name, position)
     )""")
+    _ensure_db_views(conn)
     conn.commit()
+
+def _ensure_db_views(conn):
+    """Crée des vues lisibles (vue_declarations, vue_postes) pour DB Browser."""
+    global _db_views_ready
+    if _db_views_ready: return
+    try:
+        def _sn(h, i): return (h.strip() or f"col_{i+1:02d}").replace('"', "'")
+        decl_cols = ", ".join(f'c{i+1:02d} AS "{_sn(h,i)}"' for i,h in enumerate(DECL_HEADERS))
+        conn.execute("DROP VIEW IF EXISTS vue_declarations")
+        conn.execute(f"CREATE VIEW vue_declarations AS SELECT rowid, {decl_cols} FROM declarations")
+        postes_cols = ", ".join(f'p{i+1:02d} AS "{_sn(h,i)}"' for i,h in enumerate(POSTES_HEADERS))
+        conn.execute("DROP VIEW IF EXISTS vue_postes")
+        conn.execute(f"CREATE VIEW vue_postes AS SELECT rowid, {postes_cols} FROM postes")
+        _db_views_ready = True
+    except Exception as _e:
+        print(f"[DB-VIEWS] Erreur création vues : {_e}")
 
 def _decl_row_to_tuple(row):
     """Converts a row list to a 44-element tuple for INSERT."""
