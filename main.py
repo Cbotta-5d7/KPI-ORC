@@ -131,7 +131,7 @@ def _start_db_watcher():
     threading.Thread(target=_run, daemon=True).start()
 
 def _auto_backup_db():
-    """Copie le .db dans backups/ + exporte un .xlsx lisible. Garde les 30 derniers jours."""
+    """Copie le .db dans backups/. Garde les 30 derniers jours."""
     def _run():
         try:
             path = _db_path_resolved()
@@ -140,63 +140,14 @@ def _auto_backup_db():
             os.makedirs(bak_dir, exist_ok=True)
             today = datetime.datetime.now().strftime("%Y-%m-%d")
             base = os.path.splitext(os.path.basename(path))[0]
-            dest_db   = os.path.join(bak_dir, f"{base}_{today}.db")
-            dest_xlsx = os.path.join(bak_dir, f"{base}_{today}.xlsx")
-            # ── Backup .db ──────────────────────────────────────────────
+            dest_db = os.path.join(bak_dir, f"{base}_{today}.db")
             if not os.path.exists(dest_db):
                 shutil.copy2(path, dest_db)
                 print(f"[BACKUP] SQLite : {dest_db}")
-            # ── Backup .xlsx ─────────────────────────────────────────────
-            if not os.path.exists(dest_xlsx):
-                try:
-                    from openpyxl import Workbook
-                    from openpyxl.styles import Font, PatternFill, Alignment
-                    conn = sqlite3.connect(path)
-                    wb = Workbook()
-                    hdr_font  = Font(bold=True, color="FFFFFF", size=10)
-                    hdr_fill  = PatternFill("solid", fgColor="1a1f5e")
-                    hdr_align = Alignment(horizontal="center", vertical="center")
-                    def _sheet(name, headers, rows):
-                        ws = wb.create_sheet(name)
-                        for ci, h in enumerate(headers, 1):
-                            c = ws.cell(1, ci, h)
-                            c.font = hdr_font; c.fill = hdr_fill; c.alignment = hdr_align
-                        for ri, row in enumerate(rows, 2):
-                            for ci, v in enumerate(row, 1):
-                                ws.cell(ri, ci).value = v
-                    # Declarations
-                    cur = conn.execute(f"SELECT {_DECL_COLS} FROM declarations ORDER BY rowid")
-                    _sheet("Declarations", DECL_HEADERS, cur.fetchall())
-                    # Postes
-                    cur = conn.execute(f"SELECT {_POSTES_COLS} FROM postes ORDER BY rowid")
-                    _sheet("Postes", POSTES_HEADERS, cur.fetchall())
-                    # Listes — une colonne par list_name
-                    cur = conn.execute("SELECT list_name, position, value1, value2, value3 FROM listes ORDER BY list_name, position")
-                    listes_rows = cur.fetchall()
-                    from collections import defaultdict
-                    listes_map = defaultdict(list)
-                    for ln, pos, v1, v2, v3 in listes_rows:
-                        listes_map[ln].append((v1, v2, v3))
-                    ws_l = wb.create_sheet("Listes")
-                    col = 1
-                    for ln, vals in sorted(listes_map.items()):
-                        c = ws_l.cell(1, col, ln)
-                        c.font = hdr_font; c.fill = hdr_fill; c.alignment = hdr_align
-                        for ri, (v1, v2, v3) in enumerate(vals, 2):
-                            ws_l.cell(ri, col).value = v1
-                            if v2: ws_l.cell(ri, col+1).value = v2
-                            if v3: ws_l.cell(ri, col+2).value = v3
-                        col += (3 if any(v2 or v3 for v1,v2,v3 in vals) else 1) + 1
-                    if "Sheet" in wb.sheetnames: del wb["Sheet"]
-                    conn.close()
-                    wb.save(dest_xlsx)
-                    print(f"[BACKUP] Excel   : {dest_xlsx}")
-                except Exception as _xe:
-                    print(f"[BACKUP] Erreur export Excel : {_xe}")
             # ── Nettoyage > 30 jours ─────────────────────────────────────
             cutoff = datetime.datetime.now() - datetime.timedelta(days=30)
             for f in os.listdir(bak_dir):
-                if not (f.endswith(".db") or f.endswith(".xlsx")): continue
+                if not f.endswith(".db"): continue
                 fp = os.path.join(bak_dir, f)
                 try:
                     if datetime.datetime.fromtimestamp(os.path.getmtime(fp)) < cutoff:
