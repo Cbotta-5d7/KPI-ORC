@@ -6918,7 +6918,11 @@ def api_set_sim_time():
         if target_date:
             base = datetime.datetime.fromisoformat(target_date).replace(hour=h, minute=m, second=0, microsecond=0)
         else:
-            base = now_real.replace(hour=h, minute=m, second=0, microsecond=0)
+            # Utiliser la date simulée (pas réelle) comme base
+            # Si l'heure cible est déjà passée dans la sim, passer au jour suivant
+            base = now_sim.replace(hour=h, minute=m, second=0, microsecond=0)
+            if base <= now_sim:
+                base += datetime.timedelta(days=1)
         _sim_offset_s = int((base - now_real).total_seconds())
         return jsonify({"ok":True,"offset_s":_sim_offset_s,"msg":f"Heure simulée : {base.strftime('%d/%m/%Y %H:%M')}","sim_dt":base.strftime("%Y-%m-%dT%H:%M")})
     except Exception as e:
