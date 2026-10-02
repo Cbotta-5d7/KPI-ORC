@@ -7279,14 +7279,6 @@ select{cursor:default}
   <button onclick="document.getElementById('excel-write-failed-banner').style.display='none'" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:calc(11px*var(--zf,1))">✕</button>
 </div>
 
-<!-- ════ OVERLAY CHARGEMENT ════ -->
-<div id="hist-loading-overlay" style="display:none;position:fixed;inset:0;z-index:99990;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);background:rgba(0,0,0,0.45);align-items:center;justify-content:center;flex-direction:column;gap:18px;pointer-events:none">
-  <div style="background:#fff;border-radius:16px;padding:32px 44px;display:flex;flex-direction:column;align-items:center;gap:16px;box-shadow:0 8px 40px rgba(0,0,0,.35);min-width:260px">
-    <div style="width:48px;height:48px;border:5px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:spin 0.8s linear infinite"></div>
-    <div style="font-size:calc(15px*var(--zf,1));font-weight:700;color:#1e293b;letter-spacing:.01em">Chargement en cours...</div>
-    <div style="font-size:calc(12px*var(--zf,1));color:#64748b;text-align:center">Veuillez patienter,<br>les données sont en cours d'enregistrement.</div>
-  </div>
-</div>
 <!-- ════ LOGIN ════ -->
 <div id="v-login" class="view on">
   <div class="login-card">
@@ -8158,15 +8150,6 @@ select{cursor:default}
     </div>
   </div>
 
-<!-- Overlay chargement Excel -->
-<div id="excel-loading-overlay" style="display:none;position:fixed;inset:0;z-index:19999;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);background:rgba(15,23,42,.55);align-items:center;justify-content:center;flex-direction:column;gap:16px">
-  <div style="background:#fff;border-radius:16px;padding:28px 36px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;gap:14px">
-    <svg width="48" height="48" viewBox="0 0 48 48" style="animation:spin 1s linear infinite"><circle cx="24" cy="24" r="20" fill="none" stroke="#e2e8f0" stroke-width="4"/><path d="M44 24a20 20 0 0 0-20-20" fill="none" stroke="#1d4ed8" stroke-width="4" stroke-linecap="round"/></svg>
-    <div style="font-size:15px;font-weight:800;color:#1e293b">Chargement en cours</div>
-    <div style="font-size:12px;color:#64748b;font-weight:500">Veuillez patienter…</div>
-  </div>
-</div>
-<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
 <!-- Modal saisie code formaté (DDDDDD_DDD) -->
 <div id="m-code-input" class="modal" style="position:fixed;inset:0;z-index:9999;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);background:rgba(0,0,0,0.75);align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-code-input')">
@@ -9400,12 +9383,6 @@ async function pollState() {
     _curStopElap=s.timers&&s.timers[k]?s.timers[k].elapsed:0;
   } else {
     _curStopKey=null; _curStopElap=0;
-  }
-
-  // Overlay chargement (bloque l'UI pendant load_history post-déclaration)
-  const _hlOverlay=document.getElementById('hist-loading-overlay');
-  if(_hlOverlay){
-    _hlOverlay.style.display=s.hist_loading?'flex':'none';
   }
 
   // Bannière enregistrement Excel en attente / backup
@@ -11130,8 +11107,8 @@ function renderEPModal(d,f){
   drawTLFromISO('ep-tl',epDisplayEvts,new Date(_epS).toISOString(),new Date(_epE).toISOString());
 }
 
-function showExcelLoading(){const el=document.getElementById('excel-loading-overlay');if(el)el.style.display='flex';}
-function hideExcelLoading(){const el=document.getElementById('excel-loading-overlay');if(el)el.style.display='none';}
+function showExcelLoading(){}
+function hideExcelLoading(){}
 
 async function confirmEndProd(){
   const f=collectForm();
