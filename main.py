@@ -3858,30 +3858,27 @@ def api_start_prod():
         # Trouver la fin de la dernière déclaration (prod OU arrêt) pour détecter les trous inter-OF
         _today_s = now.strftime("%d/%m/%Y")
         _shift_date_s = (_S.get("shift_start") or now).strftime("%d/%m/%Y")
-        _last_fin_s = _hms_to_sec(_S["last_of_end"].strftime("%H:%M:%S")) if _S["last_of_end"] else 0.0
+        # Comparaison par datetime pour gérer les postes cross-minuit
+        _last_fin_dt = _S["last_of_end"]
         for _, _r in _decl_cache:
             _rd = _row_date(_r[2])
             if _rd not in (_today_s, _shift_date_s): continue
             if str(_r[4] or "") != pilot: continue
             _fs = _hms_to_sec(str(_r[17] or "00:00:00"))
-            if _fs > _last_fin_s: _last_fin_s = _fs
-        if _last_fin_s > 0:
-            _lh = int(_last_fin_s // 3600); _lm = int((_last_fin_s % 3600) // 60); _ls = int(_last_fin_s % 60)
-            last_decl_dt = now.replace(hour=_lh, minute=_lm, second=_ls, microsecond=0)
-            if last_decl_dt > now: last_decl_dt -= datetime.timedelta(days=1)
+            if _fs <= 0: continue
+            _fh = int(_fs // 3600); _fm = int((_fs % 3600) // 60); _fsec = int(_fs % 60)
+            _f_dt = now.replace(hour=_fh, minute=_fm, second=_fsec, microsecond=0)
+            if _f_dt > now: _f_dt -= datetime.timedelta(days=1)
+            if _last_fin_dt is None or _f_dt > _last_fin_dt:
+                _last_fin_dt = _f_dt
+        if _last_fin_dt is not None:
+            last_decl_dt = _last_fin_dt
             gap_s = max(0.0, (now - last_decl_dt).total_seconds())
             _S["interposte_s"] = gap_s
             ip_debut_hms = last_decl_dt.strftime("%H:%M")
             ip_debut_iso = last_decl_dt.isoformat()
             if gap_s >= 60:
                 gaps = _get_uncovered_gaps(last_decl_dt, now, pilot)
-        elif _S["last_of_end"]:
-            gap_s = max(0.0, (now - _S["last_of_end"]).total_seconds())
-            _S["interposte_s"] = gap_s
-            ip_debut_hms = _S["last_of_end"].strftime("%H:%M")
-            ip_debut_iso = _S["last_of_end"].isoformat()
-            if gap_s >= 60:
-                gaps = _get_uncovered_gaps(_S["last_of_end"], now, pilot)
     return jsonify({"ok":True,"gap_s":round(gap_s,0),
                     "pre_shift_gap_s":round(pre_shift_gap_s,0),
                     "gaps": gaps,
@@ -6348,12 +6345,12 @@ def api_add_stop_decl():
     try:
         dh,dm = [int(x) for x in debut_hms.split(":")[:2]]
         fh,fm = [int(x) for x in fin_hms.split(":")[:2]]
-        if date_debut_str:
-            base_date = datetime.datetime.strptime(date_debut_str, "%Y-%m-%d")
-        else:
-            base_date = _S.get("shift_start") or datetime.datetime.now()
-        start_dt = base_date.replace(hour=dh, minute=dm, second=0, microsecond=0)
-        end_dt   = base_date.replace(hour=fh, minute=fm, second=0, microsecond=0)
+        # Calcul de la date depuis shift_start (ignore date JS qui peut être périmée)
+        _shift_ref = _S.get("shift_start") or now
+        start_dt = _shift_ref.replace(hour=dh, minute=dm, second=0, microsecond=0)
+        if (start_dt - _shift_ref).total_seconds() < -3600:
+            start_dt += datetime.timedelta(days=1)  # heure post-minuit du poste
+        end_dt = start_dt.replace(hour=fh, minute=fm, second=0, microsecond=0)
         if end_dt <= start_dt: end_dt += datetime.timedelta(days=1)  # poste de nuit
         dur_s = max(0, (end_dt - start_dt).total_seconds())
         shift_dt2 = _S.get("shift_start") or now
@@ -12615,7 +12612,7 @@ function _showEcartModal(fpd){
           const c=_typeColor(b.type);
           const isProd=_isProd(b.type);
           const lbl=isProd?(b.of?'OF '+esc(b.of):'Production'):(esc(b.type)||'Arrêt');
-          const dur=(b.e!=null&&b.s!=null)?(b.e-b.s):null;
+          const dur=(b.e!=null&&b.s!=null)?(b.e>=b.s?b.e-b.s:b.e+1440-b.s):null;
           html+=`<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:${c.bg};border:1px solid ${c.border};border-radius:7px;margin-bottom:4px">
             <span style="font-size:15px;line-height:1">${isProd?'🟦':'🔵'}</span>
             <span style="flex:1;font-size:calc(12px*var(--zf,1));font-weight:700;color:${c.text}">${lbl}</span>
