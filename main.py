@@ -111,6 +111,24 @@ def _db_path_resolved(path=None):
         return path[:-5] + '.db'
     return path
 
+def _start_db_watcher():
+    """Thread qui surveille le .db toutes les 5s et recharge si modifié depuis l'extérieur."""
+    def _run():
+        last_mtime = None
+        while True:
+            try:
+                path = _db_path_resolved()
+                if path and os.path.exists(path):
+                    mtime = os.path.getmtime(path)
+                    if last_mtime is not None and mtime != last_mtime:
+                        load_history()
+                        load_lists()
+                        print(f"[DB-WATCHER] Rechargement automatique (fichier modifié)")
+                    last_mtime = mtime
+            except: pass
+            import time as _t; _t.sleep(5)
+    threading.Thread(target=_run, daemon=True).start()
+
 def _auto_backup_db():
     """Copie le .db dans backups/ + exporte un .xlsx lisible. Garde les 30 derniers jours."""
     def _run():
@@ -16456,6 +16474,8 @@ def main():
 
     # Backup automatique quotidien de la base SQLite
     _auto_backup_db()
+    # Watcher : rechargement auto si le .db est modifié depuis l'extérieur (DB Browser etc.)
+    _start_db_watcher()
 
     try:
         import webview
