@@ -3901,7 +3901,6 @@ def api_set_of_start():
         if getattr(dt, 'tzinfo', None) is not None:
             dt = dt.astimezone().replace(tzinfo=None)
         _S["of_start"] = dt
-        _S["shift_start"] = dt
         save_session()
         return jsonify({"ok":True})
     except Exception as e:
@@ -6884,18 +6883,40 @@ def api_change_admin_pw():
 
 @flask_app.route('/api/set_sim_time', methods=['POST'])
 def api_set_sim_time():
-    """DEBUG : définit un décalage horaire pour simuler un poste de nuit."""
+    """DEBUG : définit un décalage horaire pour simuler un poste de nuit.
+    Accepte target_iso (YYYY-MM-DDTHH:MM) ou target_time (HH:MM) + target_date (YYYY-MM-DD).
+    delta_min : avancer/reculer de N minutes par rapport à l'heure simulée actuelle."""
     global _sim_offset_s
     data = request.json or {}
-    target = str(data.get("target_time","")).strip()  # "HH:MM" ou "" pour reset
-    if not target:
+    # Reset
+    if not data or (not data.get("target_iso") and not data.get("target_time") and not data.get("delta_min")):
         _sim_offset_s = 0
-        return jsonify({"ok":True,"offset_s":0,"msg":"Simulation désactivée"})
+        return jsonify({"ok":True,"offset_s":0,"msg":"Simulation désactivée","sim_dt":None})
     try:
+        now_real = datetime.datetime.now()
+        now_sim = now_real + datetime.timedelta(seconds=_sim_offset_s)
+        # Avance/recul relatif
+        delta_min = data.get("delta_min")
+        if delta_min is not None:
+            new_sim = now_sim + datetime.timedelta(minutes=int(delta_min))
+            _sim_offset_s = int((new_sim - now_real).total_seconds())
+            return jsonify({"ok":True,"offset_s":_sim_offset_s,"msg":f"Heure simulée : {new_sim.strftime('%d/%m/%Y %H:%M')}","sim_dt":new_sim.strftime("%Y-%m-%dT%H:%M")})
+        # Datetime complet
+        target_iso = str(data.get("target_iso","")).strip()
+        if target_iso:
+            sim_now = datetime.datetime.fromisoformat(target_iso)
+            _sim_offset_s = int((sim_now - now_real).total_seconds())
+            return jsonify({"ok":True,"offset_s":_sim_offset_s,"msg":f"Heure simulée : {sim_now.strftime('%d/%m/%Y %H:%M')}","sim_dt":sim_now.strftime("%Y-%m-%dT%H:%M")})
+        # HH:MM + date optionnelle
+        target = str(data.get("target_time","")).strip()
+        target_date = str(data.get("target_date","")).strip()
         h, m = map(int, target.split(":"))
-        sim_now = datetime.datetime.now().replace(hour=h, minute=m, second=0, microsecond=0)
-        _sim_offset_s = int((sim_now - datetime.datetime.now()).total_seconds())
-        return jsonify({"ok":True,"offset_s":_sim_offset_s,"msg":f"Heure simulée : {target}"})
+        if target_date:
+            base = datetime.datetime.fromisoformat(target_date).replace(hour=h, minute=m, second=0, microsecond=0)
+        else:
+            base = now_real.replace(hour=h, minute=m, second=0, microsecond=0)
+        _sim_offset_s = int((base - now_real).total_seconds())
+        return jsonify({"ok":True,"offset_s":_sim_offset_s,"msg":f"Heure simulée : {base.strftime('%d/%m/%Y %H:%M')}","sim_dt":base.strftime("%Y-%m-%dT%H:%M")})
     except Exception as e:
         return jsonify({"ok":False,"error":str(e)}),400
 
@@ -7342,8 +7363,9 @@ select{cursor:default}
     </div>
     <div id="hdr-right">
       <span id="hdr-pilot-lbl"></span>
+      <span id="sim-badge" style="display:none;font-size:calc(10px*var(--zf,1));font-weight:700;color:#fbbf24;background:rgba(251,191,36,.15);border:1px solid #fbbf24;border-radius:10px;padding:2px 8px;cursor:pointer" onclick="goTab('settings')" title="Simulateur actif — cliquer pour modifier">⏰ <span id="sim-badge-time"></span> SIM</span>
       <button class="btn-sm btn-ghost" onclick="toggleZoomPop()" id="zoom-btn" style="font-size:calc(11px*var(--zf,1));display:flex;align-items:center;gap:4px" title="Zoom texte">🔍 Zoom</button>
-      <button class="btn-sm btn-ghost" onclick="doLogout()" style="font-size:calc(11px*var(--zf,1))">Déconnexion</button>
+      <button id="btn-logout" class="btn-sm btn-ghost" onclick="doLogout()" style="font-size:calc(11px*var(--zf,1))">Déconnexion</button>
       <button class="btn-sm btn-ghost" id="ht-cfg" onclick="goTab('settings')" style="font-size:calc(18px*var(--zf,1));padding:4px 8px;line-height:1" title="Paramètres">⚙</button>
     </div>
   </div>
@@ -8297,6 +8319,25 @@ select{cursor:default}
       </div>
     </div>
     <div id="v-settings-content">
+      <div class="ss" style="border:2px dashed #fbbf24;background:rgba(251,191,36,.05)">
+        <h3>⏰ Simulateur d'heure <span style="font-size:calc(10px*var(--zf,1));font-weight:400;color:#92400e;background:#fef3c7;padding:2px 7px;border-radius:8px;margin-left:6px">DEBUG</span></h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Simule un décalage horaire pour tester les postes de nuit. Désactivé au redémarrage.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px">
+          <div style="display:flex;gap:4px;align-items:center">
+            <label style="font-size:calc(11px*var(--zf,1));font-weight:600;white-space:nowrap">Date</label>
+            <input type="date" id="sim-date-input" style="padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))">
+          </div>
+          <div style="display:flex;gap:4px;align-items:center">
+            <label style="font-size:calc(11px*var(--zf,1));font-weight:600;white-space:nowrap">Heure</label>
+            <input type="time" id="sim-time-input" style="padding:5px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(12px*var(--zf,1))">
+          </div>
+          <button onclick="applySimTime()" style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">▶ Appliquer</button>
+          <button onclick="simAdvance(30)" style="background:#78716c;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:calc(11px*var(--zf,1));cursor:pointer">+30 min</button>
+          <button onclick="simAdvance(60)" style="background:#78716c;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:calc(11px*var(--zf,1));cursor:pointer">+1h</button>
+          <button onclick="resetSimTime()" style="background:#6b7280;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:calc(11px*var(--zf,1));cursor:pointer">✕ Désactiver</button>
+        </div>
+        <div id="sim-time-status" style="font-size:calc(12px*var(--zf,1));font-weight:700;color:#d97706;min-height:18px"></div>
+      </div>
       <div class="ss">
         <h3>🔑 Changer le mot de passe administrateur</h3>
         <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:10px">Le MDP est enregistré dans la cellule G2 de l'onglet Listes du fichier Excel.</div>
@@ -9157,6 +9198,8 @@ function showApp(s) {
     _S_pilot_poste={poste:s.poste};
     updatePobModel(s.poste);
   }
+  // Cacher le bouton Déconnexion pendant le poste (seule la fin de poste peut déconnecter)
+  const _btnLo=document.getElementById('btn-logout');if(_btnLo&&!window._guestMode)_btnLo.style.display='none';
   // Show prod tab button immediately if prod is active (don't wait for applyState)
   const tp=document.getElementById('ht-prod');
   if(tp) tp.classList.toggle('prod-visible',!!s.prod_active);
@@ -9227,6 +9270,8 @@ function resetToLogin() {
   document.getElementById('ln-err').textContent='';
   document.getElementById('v-login').classList.add('on');
   _settingsUnlocked = false;
+  // Restaurer le bouton Déconnexion à l'écran login
+  const _btnLoR=document.getElementById('btn-logout');if(_btnLoR)_btnLoR.style.display='';
   // Restaurer les éléments cachés en mode invité
   const actionBtns=document.getElementById('main-action-btns');if(actionBtns) actionBtns.style.display='';
   const _btnStart=document.getElementById('btn-start');
@@ -15295,21 +15340,65 @@ async function generateDashboard(){
 }
 
 // ── Simulation heure (DEBUG) ──────────────────────────────────────────────
+function _simUpdateBadge(simDt){
+  const badge=document.getElementById('sim-badge');
+  const badgeTime=document.getElementById('sim-badge-time');
+  if(!badge) return;
+  if(simDt){
+    const d=new Date(simDt);
+    const pad=n=>String(n).padStart(2,'0');
+    if(badgeTime) badgeTime.textContent=pad(d.getDate())+'/'+pad(d.getMonth()+1)+' '+pad(d.getHours())+':'+pad(d.getMinutes());
+    badge.style.display='';
+  } else {
+    badge.style.display='none';
+  }
+}
 async function applySimTime(){
   const t=document.getElementById('sim-time-input').value;
+  const dateInput=document.getElementById('sim-date-input');
+  const dateVal=dateInput?dateInput.value:'';
   if(!t){toast('Entrer une heure','err');return;}
   try{
-    const r=await fetch('/api/set_sim_time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_time:t})});
+    const body=dateVal?{target_time:t,target_date:dateVal}:{target_time:t};
+    const r=await fetch('/api/set_sim_time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
-    if(d.ok){document.getElementById('sim-time-status').textContent=d.msg;toast(d.msg,'ok');}
-    else toast(d.error||'Erreur','err');
+    if(d.ok){
+      const st=document.getElementById('sim-time-status');
+      if(st)st.textContent=d.msg;
+      toast(d.msg,'ok');
+      _simUpdateBadge(d.sim_dt);
+    } else toast(d.error||'Erreur','err');
+  }catch(e){toast('Erreur réseau','err');}
+}
+async function simAdvance(minutes){
+  try{
+    const r=await fetch('/api/set_sim_time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delta_min:minutes})});
+    const d=await r.json();
+    if(d.ok){
+      const st=document.getElementById('sim-time-status');
+      if(st)st.textContent=d.msg;
+      // Mettre à jour l'input heure avec la nouvelle heure simulée
+      if(d.sim_dt){
+        const ndt=new Date(d.sim_dt);
+        const pad=n=>String(n).padStart(2,'0');
+        const ti=document.getElementById('sim-time-input');
+        if(ti)ti.value=pad(ndt.getHours())+':'+pad(ndt.getMinutes());
+        const di=document.getElementById('sim-date-input');
+        if(di)di.value=ndt.toISOString().slice(0,10);
+      }
+      toast(d.msg,'ok');
+      _simUpdateBadge(d.sim_dt);
+    } else toast(d.error||'Erreur','err');
   }catch(e){toast('Erreur réseau','err');}
 }
 async function resetSimTime(){
   try{
-    await fetch('/api/set_sim_time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target_time:''})});
-    document.getElementById('sim-time-status').textContent='';
-    document.getElementById('sim-time-input').value='';
+    await fetch('/api/set_sim_time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    const st=document.getElementById('sim-time-status');
+    if(st)st.textContent='';
+    const ti=document.getElementById('sim-time-input');
+    if(ti)ti.value='';
+    _simUpdateBadge(null);
     toast('Simulation désactivée','ok');
   }catch(e){toast('Erreur réseau','err');}
 }
