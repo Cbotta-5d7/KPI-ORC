@@ -16191,7 +16191,7 @@ def _force_fin_poste_server(force=False):
         shift_start = _S.get("shift_start")
     if not pilot or not poste or already_done:
         return
-    now = datetime.datetime.now()
+    now = _now()
     if not force:
         # Timer background : JAMAIS fermer une prod active
         if prod_active:
