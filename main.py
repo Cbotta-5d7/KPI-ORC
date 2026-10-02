@@ -15713,13 +15713,31 @@ def generate_dashboard_html():
         _cat_labels = {'ratt':'Rattrapage','pb':'PB technique','nettoyage':'Nettoyage','pause':'Pause','interposte':'Interposte','degrade':'Mode dégradé','org':'Organisation','manquants':'Manquants','autre':'Autre'}
         events_cfg = [{'label': e.get('label',''), 'key': e.get('key',''), 'cat': e.get('cat',''), 'cat_label': _cat_labels.get(e.get('cat',''), e.get('cat',''))} for e in _ev_cfg_raw]
         gen_at = _dt.datetime.now().strftime('%d/%m/%Y %H:%M')
+        # Données brutes Déclarations + Postes pour l'export historique
+        _decl_rows_raw = []
+        _postes_rows_raw = []
+        try:
+            _db_path = _db_path_resolved()
+            if _db_path and os.path.exists(_db_path):
+                with _db_lock:
+                    _raw_conn = sqlite3.connect(_db_path, check_same_thread=False)
+                    _raw_conn.execute("PRAGMA journal_mode=WAL")
+                    _rc = _raw_conn.cursor()
+                    _rc.execute(f"SELECT {_DECL_COLS} FROM declarations ORDER BY rowid")
+                    _decl_rows_raw = [list(r) for r in _rc.fetchall()]
+                    _rc.execute(f"SELECT {_POSTES_COLS} FROM postes ORDER BY rowid")
+                    _postes_rows_raw = [list(r) for r in _rc.fetchall()]
+                    _raw_conn.close()
+        except Exception as _re: pass
         dash_json = _json.dumps({
             'history': history, 'events_list': events_list, 'past_sessions': past_sessions,
             'session_reports': session_reports,
             'period_last3': period_last3, 'period_last7': period_last7,
             'period_last31': period_last31, 'period_last6m': period_last6m,
             'cdg_data': cdg_data, 'events_cfg': events_cfg,
-            'generated_at': gen_at
+            'generated_at': gen_at,
+            'decl_rows': _decl_rows_raw, 'decl_headers': DECL_HEADERS,
+            'postes_rows': _postes_rows_raw, 'postes_headers': POSTES_HEADERS
         }, ensure_ascii=False, separators=(',', ':'))
         gen_at_escaped = gen_at.replace("'", "\\'")
         inject = (
@@ -15813,6 +15831,42 @@ def generate_dashboard_html():
             '        XLSX.writeFile(wb,fname);\n'
             '      }\n'
             '      if(window.XLSX){doExport(window.XLSX);}\n'
+            '      else{alert("Bibliothèque XLSX non disponible.");}\n'
+            '    };\n'
+            '    window.exportHistory=function(){\n'
+            '      var hdrsD=(window.DASH&&window.DASH.decl_headers)||[];\n'
+            '      var rowsD=(window.DASH&&window.DASH.decl_rows)||[];\n'
+            '      var hdrsP=(window.DASH&&window.DASH.postes_headers)||[];\n'
+            '      var rowsP=(window.DASH&&window.DASH.postes_rows)||[];\n'
+            '      var fromEl=document.getElementById("hist-from");\n'
+            '      var toEl=document.getElementById("hist-to");\n'
+            '      var from=fromEl?fromEl.value:"";\n'
+            '      var to=toEl?toEl.value:"";\n'
+            '      function _toIso(s){var p=String(s||"").split("/");return p.length===3?p[2]+"-"+p[1]+"-"+p[0]:String(s||"");}\n'
+            '      if(from||to){\n'
+            '        rowsD=rowsD.filter(function(r){var d=_toIso(r[2]);if(from&&d<from)return false;if(to&&d>to)return false;return true;});\n'
+            '        rowsP=rowsP.filter(function(r){var d=_toIso(r[0]);if(from&&d<from)return false;if(to&&d>to)return false;return true;});\n'
+            '      }\n'
+            '      if(!rowsD.length&&!rowsP.length){alert("Aucune donnée à exporter.");return;}\n'
+            '      function doExpH(XLSX){\n'
+            '        var thin={style:"thin",color:{rgb:"CCCCCC"}};\n'
+            '        var bdr={top:thin,bottom:thin,left:thin,right:thin};\n'
+            '        var hdrS={font:{bold:true,color:{rgb:"FFFFFF"},sz:10},fill:{fgColor:{rgb:"1E3A8A"}},alignment:{horizontal:"center",vertical:"center",wrapText:true},border:bdr};\n'
+            '        function makeSheet(headers,rows){\n'
+            '          var ws=XLSX.utils.aoa_to_sheet([headers].concat(rows));\n'
+            '          ws["!cols"]=headers.map(function(h){return{wch:Math.max(12,String(h||"").length+2)};});\n'
+            '          ws["!freeze"]={xSplit:0,ySplit:1};\n'
+            '          for(var ci=0;ci<headers.length;ci++){var ca=XLSX.utils.encode_cell({r:0,c:ci});if(ws[ca])ws[ca].s=hdrS;}\n'
+            '          return ws;\n'
+            '        }\n'
+            '        var wb=XLSX.utils.book_new();\n'
+            '        XLSX.utils.book_append_sheet(wb,makeSheet(hdrsD,rowsD),"Declarations");\n'
+            '        XLSX.utils.book_append_sheet(wb,makeSheet(hdrsP,rowsP),"Postes");\n'
+            '        var _an=' + _json.dumps(cfg.get("app_name","ORC1")) + ';\n'
+            '        var fname="Export_"+_an+"_"+new Date().toISOString().slice(0,10)+".xlsx";\n'
+            '        XLSX.writeFile(wb,fname);\n'
+            '      }\n'
+            '      if(window.XLSX){doExpH(window.XLSX);}\n'
             '      else{alert("Bibliothèque XLSX non disponible.");}\n'
             '    };\n'
             '    window.loadCdg=function(){\n'
