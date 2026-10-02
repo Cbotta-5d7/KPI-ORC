@@ -4120,7 +4120,7 @@ def api_end_prod():
         _S["pause_periods"].append((_S["pause_start"], _pnow))
         _S["is_paused"] = False
         _S["pause_start"] = None
-    end_dt = datetime.datetime.now()
+    end_dt = _now()
     of_s_brut = (end_dt-_S["of_start"]).total_seconds()
     # Budget arrêts prévus — calculé après tl_close_all (tous les événements sont terminés)
     _of_budget = _compute_budget_state_now()
@@ -4143,6 +4143,7 @@ def api_end_prod():
     trs = -1.0
     trs_str = ""
     _objectif_pcs = ""
+    _deg_s = 0.0
     if prod_ref>0 and of_s_brut>0:
         # Calculer le temps en mode dégradé pendant cet OF
         _deg_s = 0.0
@@ -11150,9 +11151,12 @@ async function confirmEndProd(){
   const _bfp=document.getElementById('btn-fin-poste');
   if(_bfp){_bfp._savedHtml=_bfp.innerHTML;_bfp.disabled=true;_bfp.style.opacity='0.45';_bfp.style.cursor='not-allowed';_bfp.style.filter='grayscale(1)';}
   showExcelLoading();
-  const r=await fetch('/api/end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
-  if(!r){hideExcelLoading();return;}
-  const d=await r.json();
+  let r,d;
+  try{
+    r=await fetch('/api/end_prod',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({form:f})});
+    if(!r){hideExcelLoading();return;}
+    d=await r.json();
+  }catch(e){hideExcelLoading();toast('Erreur serveur','err');console.error('end_prod error',e);return;}
   if(d.ok){
     FORM_FIELDS.forEach(k=>{
       const el=document.getElementById('f-'+k);
