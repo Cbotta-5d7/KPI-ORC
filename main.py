@@ -9174,7 +9174,7 @@ function saveExcelPath(){
         var p=document.getElementById('excel-panel');
         if(p) p.style.display='none';
         if(typeof loadLists==='function') loadLists();
-        toast('Excel OK','ok');
+        toast('Base de données OK','ok');
       } else {
         if(errEl) errEl.textContent=d.error||'Erreur';
       }
@@ -9515,7 +9515,7 @@ async function pollState() {
   }
   // Toast de confirmation quand write direct réussit
   if(_prevWp && !s.write_pending && !s.write_failed && s.backup_pending===0){
-    toast('✅ Déclaration enregistrée dans Excel !','ok',4000);
+    toast('✅ Déclaration enregistrée !','ok',4000);
     // Débloquer le bouton "Fin de poste" maintenant que l'écriture est confirmée
     if(window._finPosteLockedForWrite){
       window._finPosteLockedForWrite=false;
@@ -9525,7 +9525,7 @@ async function pollState() {
   }
   // Toast de confirmation quand le backup est entièrement vidé
   if(_prevBk>0 && (s.backup_pending||0)===0){
-    toast('✅ '+_prevBk+' déclaration'+((_prevBk>1)?'s':'')+' enregistrée'+((_prevBk>1)?'s':'')+' dans Excel depuis le backup !','ok',5000);
+    toast('✅ '+_prevBk+' déclaration'+((_prevBk>1)?'s':'')+' enregistrée'+((_prevBk>1)?'s':'')+' depuis le backup !','ok',5000);
   }
 
   applyState(s);
@@ -13894,7 +13894,7 @@ async function loadHist(){
 
 // ── RAPPORTS DES POSTES ──
 async function reloadAndLoadRapports(){
-  toast('Rechargement depuis Excel…','ok');
+  toast('Rechargement des données…','ok');
   await apiFetch('/api/reload_excel',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   await loadRapports();
 }
@@ -15036,7 +15036,7 @@ async function savePwds(){
   document.querySelectorAll('#pwd-list input[data-n]').forEach(i=>_cfgPwds[i.dataset.n]=i.value);
   const r=await fetch('/api/pilot_passwords_excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,pilot_passwords:_cfgPwds})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('MDP enregistrés et sauvegardés dans Excel','ok');_settingsClearDirty('mots de passe pilotes');loadCfg();}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('MDP enregistrés','ok');_settingsClearDirty('mots de passe pilotes');loadCfg();}else toast(d&&d.error||'Erreur','err');
 }
 
 async function changeAdminPw(){
@@ -15084,7 +15084,7 @@ function addCopilote(){const v=document.getElementById('cp-new-name').value.trim
 async function saveCopilotes(){
   const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'copilotes',items:_copilotesList})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('Co-pilotes enregistrés dans Excel','ok');_settingsClearDirty('co-pilotes');}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('Co-pilotes enregistrés','ok');_settingsClearDirty('co-pilotes');}else toast(d&&d.error||'Erreur','err');
 }
 
 function renderTaillesList(){
@@ -15095,7 +15095,7 @@ function addTaille(){const v=document.getElementById('tl-new-val').value.trim();
 async function saveTailles(){
   const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'tailles',items:_taillesList})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('Tailles enregistrées dans Excel','ok');_settingsClearDirty('tailles');}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('Tailles enregistrées','ok');_settingsClearDirty('tailles');}else toast(d&&d.error||'Erreur','err');
 }
 
 function renderFibresList(){
@@ -15106,7 +15106,7 @@ function addFibre(){const v=document.getElementById('fb-new-val').value.trim();i
 async function saveFibres(){
   const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'fibres',items:_fibresList})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('Fibres enregistrées dans Excel','ok');_settingsClearDirty('fibres');}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('Fibres enregistrées','ok');_settingsClearDirty('fibres');}else toast(d&&d.error||'Erreur','err');
 }
 
 function renderEquivList(){
@@ -15123,7 +15123,7 @@ function addEquiv(){
 async function saveEquiv(){
   const r=await fetch('/api/save_list',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,list_type:'equiv',items:_equivList})});
   const d=r?await r.json():{};
-  if(d&&d.ok){toast('Coefficients enregistrés dans Excel','ok');_settingsClearDirty('coefficients');}else toast(d&&d.error||'Erreur','err');
+  if(d&&d.ok){toast('Coefficients enregistrés','ok');_settingsClearDirty('coefficients');}else toast(d&&d.error||'Erreur','err');
 }
 
 const DAYS=[{k:'lun',l:'Lun'},{k:'mar',l:'Mar'},{k:'mer',l:'Mer'},{k:'jeu',l:'Jeu'},{k:'ven',l:'Ven'},{k:'sam',l:'Sam'},{k:'dim',l:'Dim'}];
@@ -15212,7 +15212,7 @@ function toast(msg,type,dur){
 }
 
 async function reloadAllData(){
-  toast('Rechargement des données depuis Excel…','ok',4000);
+  toast('Rechargement des données…','ok',4000);
   await fetch('/api/reload_excel',{method:'POST'}).catch(()=>{});
   if(typeof loadHist==='function')loadHist();
   if(typeof loadRapports==='function')loadRapports();
