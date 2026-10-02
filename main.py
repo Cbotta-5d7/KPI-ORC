@@ -111,6 +111,35 @@ def _db_path_resolved(path=None):
         return path[:-5] + '.db'
     return path
 
+def _auto_backup_db():
+    """Copie le .db dans backups/ avec la date du jour. Garde les 30 derniers jours."""
+    def _run():
+        try:
+            path = _db_path_resolved()
+            if not path or not os.path.exists(path): return
+            bak_dir = os.path.join(os.path.dirname(path), "backups")
+            os.makedirs(bak_dir, exist_ok=True)
+            today = datetime.datetime.now().strftime("%Y-%m-%d")
+            base = os.path.splitext(os.path.basename(path))[0]
+            dest = os.path.join(bak_dir, f"{base}_{today}.db")
+            if not os.path.exists(dest):
+                shutil.copy2(path, dest)
+                print(f"[BACKUP] Sauvegarde créée : {dest}")
+            # Supprimer les backups de plus de 30 jours
+            cutoff = datetime.datetime.now() - datetime.timedelta(days=30)
+            for f in os.listdir(bak_dir):
+                if not f.endswith(".db"): continue
+                fp = os.path.join(bak_dir, f)
+                try:
+                    mtime = datetime.datetime.fromtimestamp(os.path.getmtime(fp))
+                    if mtime < cutoff:
+                        os.remove(fp)
+                        print(f"[BACKUP] Ancien backup supprimé : {f}")
+                except: pass
+        except Exception as _e:
+            print(f"[BACKUP] Erreur backup auto : {_e}")
+    threading.Thread(target=_run, daemon=True).start()
+
 def _get_conn(path=None):
     """Returns sqlite3.Connection (WAL mode) or None on failure."""
     path = _db_path_resolved(path)
@@ -16376,6 +16405,9 @@ def main():
             _backup_pending = len(_items) if isinstance(_items, list) else 0
     except:
         _backup_pending = 0
+
+    # Backup automatique quotidien de la base SQLite
+    _auto_backup_db()
 
     try:
         import webview
