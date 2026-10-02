@@ -3894,7 +3894,7 @@ def api_start_prod():
 @flask_app.route('/api/set_of_start', methods=['POST'])
 @require_pilot
 def api_set_of_start():
-    """Rétrodate le début de l'OF en cours (et shift_start) à l'heure du modèle horaire."""
+    """Rétrodate le début de l'OF en cours à l'heure du modèle horaire."""
     data = request.json or {}
     iso = data.get("iso","")
     if not iso or not _S["prod_active"]:
@@ -3903,7 +3903,13 @@ def api_set_of_start():
         dt = datetime.datetime.fromisoformat(iso)
         if getattr(dt, 'tzinfo', None) is not None:
             dt = dt.astimezone().replace(tzinfo=None)
-        _S["of_start"] = dt
+        # Recalculer la date correcte à partir de l'heure simulée actuelle
+        # (l'ISO reçu peut avoir la mauvaise date si la session vient d'un ancien run)
+        _now_ref = _now()
+        candidate = _now_ref.replace(hour=dt.hour, minute=dt.minute, second=dt.second, microsecond=0)
+        if (candidate - _now_ref).total_seconds() > 3600:
+            candidate -= datetime.timedelta(days=1)
+        _S["of_start"] = candidate
         save_session()
         return jsonify({"ok":True})
     except Exception as e:
