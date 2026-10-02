@@ -266,6 +266,14 @@ def _ensure_db_views(conn):
         postes_cols = ", ".join(f'p{i+1:02d} AS "{_sn(h,i)}"' for i,h in enumerate(POSTES_HEADERS))
         conn.execute("DROP VIEW IF EXISTS vue_postes")
         conn.execute(f"CREATE VIEW vue_postes AS SELECT rowid, {postes_cols} FROM postes")
+        conn.execute("DROP VIEW IF EXISTS vue_listes")
+        conn.execute("""CREATE VIEW vue_listes AS SELECT
+            list_name AS "Nom Liste",
+            position  AS "Position",
+            value1    AS "Valeur 1",
+            value2    AS "Valeur 2 (catégorie/MDP)",
+            value3    AS "Valeur 3 (bloquant OUI/NON)"
+            FROM listes""")
         _db_views_ready = True
     except Exception as _e:
         print(f"[DB-VIEWS] Erreur création vues : {_e}")
@@ -3719,7 +3727,8 @@ def api_login():
         except: pass
     _S["shift_debut_dt"] = shift_debut_dt
     _S["shift_fin_dt"] = shift_fin_dt
-    write_poste_login_row(pilot, poste, shift_debut_dt, shift_fin_dt)  # async, non bloquant
+    _debut_fallback = shift_debut_dt or _S.get("shift_start") or now
+    write_poste_login_row(pilot, poste, _debut_fallback, shift_fin_dt)  # async, non bloquant
     save_session()
     return jsonify({"ok":True})
 
