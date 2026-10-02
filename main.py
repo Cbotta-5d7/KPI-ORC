@@ -1,8 +1,6 @@
 """KPI-ORC v6.4 - Flask + pywebview"""
-import json, os, sys, datetime, threading, math, shutil, time, atexit, signal, re
+import json, os, sys, datetime, threading, math, shutil, time, atexit, signal, re, sqlite3
 from flask import Flask, request, jsonify, render_template_string, send_file
-from openpyxl import load_workbook
-from openpyxl.styles import Alignment, Border, Side, PatternFill
 
 # Dossier de l'exe (PyInstaller) ou du script — tout est portable dans ce dossier
 if getattr(sys, 'frozen', False):
@@ -97,96 +95,146 @@ def get_events_list():
         return custom
     return [{"label": e[0], "key": e[1], "cat": e[2]} for e in EVENTS]
 
-def _get_or_create_listes_ws(wb):
-    if "Listes" not in wb.sheetnames:
-        wb.create_sheet("Listes")
-    return wb["Listes"]
+_ARRETS_PREVUS_KEYS = ["clean_short_min","clean_long_min","clean_grand_min","meeting_tol_min","pause_min"]
+
+# ── SQLite helpers ─────────────────────────────────────────────────────────────
+_DECL_COLS = ",".join(f"c{i:02d}" for i in range(1, 45))
+_DECL_PLACEHOLDERS = ",".join("?" * 44)
+_POSTES_COLS = ",".join(f"p{i:02d}" for i in range(1, 31))
+_POSTES_PLACEHOLDERS = ",".join("?" * 30)
+
+def _db_path_resolved(path=None):
+    """Returns the actual .db path, redirecting .xlsx → .db transparently."""
+    if path is None:
+        path = cfg.get("db_path", "")
+    if path and path.lower().endswith('.xlsx'):
+        return path[:-5] + '.db'
+    return path
+
+def _get_conn(path=None):
+    """Returns sqlite3.Connection (WAL mode) or None on failure."""
+    path = _db_path_resolved(path)
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        conn = sqlite3.connect(path, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=OFF")
+        return conn
+    except:
+        return None
+
+def _db_commit(conn):
+    """Commits and closes connection. Raises on failure."""
+    try:
+        conn.commit()
+    finally:
+        try: conn.close()
+        except: pass
+
+def _ensure_db_schema(conn):
+    """Creates all 3 tables if they don't exist."""
+    c = conn.cursor()
+    c.execute(f"""CREATE TABLE IF NOT EXISTS declarations (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+        {', '.join(f'c{i:02d} TEXT' for i in range(1, 45))}
+    )""")
+    c.execute(f"""CREATE TABLE IF NOT EXISTS postes (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+        p01 TEXT, p02 TEXT, p03 TEXT, p04 TEXT, p05 REAL, p06 REAL, p07 REAL,
+        p08 TEXT, p09 REAL, p10 REAL, p11 REAL, p12 REAL, p13 REAL, p14 REAL,
+        p15 TEXT, p16 TEXT, p17 TEXT, p18 REAL, p19 REAL, p20 REAL, p21 REAL,
+        p22 REAL, p23 REAL, p24 REAL, p25 REAL, p26 REAL, p27 REAL, p28 REAL,
+        p29 REAL, p30 REAL
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS listes (
+        list_name TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        value1 TEXT,
+        value2 TEXT,
+        value3 TEXT,
+        PRIMARY KEY (list_name, position)
+    )""")
+    conn.commit()
+
+def _decl_row_to_tuple(row):
+    """Converts a row list to a 44-element tuple for INSERT."""
+    vals = list(row)[:44]
+    vals.extend([None] * (44 - len(vals)))
+    return tuple(str(v) if v is not None else None for v in vals)
 
 def write_events_to_excel(ev_list):
-    """Écrit la liste des arrêts dans l'onglet Listes col K=label, L=cat, M=bloquant."""
-    path = cfg.get("db_path","")
+    """Écrit la liste des arrêts dans la table listes (list_name='arrets')."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _get_or_create_listes_ws(wb)
-                ws.cell(1, 11).value = "Arrêts"
-                ws.cell(1, 12).value = "Type arrêt"
-                ws.cell(1, 13).value = "Arrêt bloquant"
-                max_r = max(ws.max_row, len(ev_list) + 2)
-                for ri in range(2, max_r + 2):
-                    ws.cell(ri, 11).value = None
-                    ws.cell(ri, 12).value = None
-                    ws.cell(ri, 13).value = None
-                for ri, ev in enumerate(ev_list, start=2):
-                    ws.cell(ri, 11).value = ev.get("label","")
-                    ws.cell(ri, 12).value = ev.get("cat","pb")
-                    ws.cell(ri, 13).value = "OUI" if ev.get("bloquant") else "NON"
-                _safe_excel_save(wb, path)
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                c = conn.cursor()
+                c.execute("DELETE FROM listes WHERE list_name='arrets'")
+                for pos, ev in enumerate(ev_list, start=1):
+                    c.execute("INSERT INTO listes (list_name, position, value1, value2, value3) VALUES (?,?,?,?,?)",
+                              ('arrets', pos, ev.get("label",""), ev.get("cat","pb"),
+                               "OUI" if ev.get("bloquant") else "NON"))
+                _db_commit(conn)
             threading.Thread(target=load_lists, daemon=True).start()
         except: pass
     threading.Thread(target=_bg, daemon=True).start()
 
 def write_interposte_to_excel(labels):
-    """Écrit les labels interposte dans l'onglet Listes col M."""
-    path = cfg.get("db_path","")
+    """Écrit les labels interposte dans la table listes (list_name='interposte')."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _get_or_create_listes_ws(wb)
-                ws.cell(1, 13).value = "Interposte"
-                max_r = max(ws.max_row, len(labels) + 2)
-                for ri in range(2, max_r + 2):
-                    ws.cell(ri, 13).value = None
-                for ri, lbl in enumerate(labels, start=2):
-                    ws.cell(ri, 13).value = lbl
-                _safe_excel_save(wb, path)
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                c = conn.cursor()
+                c.execute("DELETE FROM listes WHERE list_name='interposte'")
+                for pos, lbl in enumerate(labels, start=1):
+                    c.execute("INSERT INTO listes (list_name, position, value1) VALUES (?,?,?)",
+                              ('interposte', pos, lbl))
+                _db_commit(conn)
         except: pass
     threading.Thread(target=_bg, daemon=True).start()
 
-_ARRETS_PREVUS_KEYS = ["clean_short_min","clean_long_min","clean_grand_min","meeting_tol_min","pause_min"]
-
 def write_arrets_prevus_to_excel():
-    """Écrit les budgets arrêts prévus dans l'onglet Listes col N (clé=valeur)."""
-    path = cfg.get("db_path","")
+    """Écrit les budgets arrêts prévus dans la table listes (list_name='arrets_prevus')."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _get_or_create_listes_ws(wb)
-                ws.cell(1, 14).value = "Arrêts prévus"
-                for ri in range(2, len(_ARRETS_PREVUS_KEYS) + 3):
-                    ws.cell(ri, 14).value = None
-                for ri, k in enumerate(_ARRETS_PREVUS_KEYS, start=2):
-                    ws.cell(ri, 14).value = f"{k}={cfg.get(k, 0)}"
-                _safe_excel_save(wb, path)
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                c = conn.cursor()
+                c.execute("DELETE FROM listes WHERE list_name='arrets_prevus'")
+                for pos, k in enumerate(_ARRETS_PREVUS_KEYS, start=1):
+                    c.execute("INSERT INTO listes (list_name, position, value1) VALUES (?,?,?)",
+                              ('arrets_prevus', pos, f"{k}={cfg.get(k, 0)}"))
+                _db_commit(conn)
         except: pass
     threading.Thread(target=_bg, daemon=True).start()
 
 def write_degrade_list_to_excel():
-    """Écrit les motifs mode dégradé dans l'onglet Listes col O."""
-    path = cfg.get("db_path","")
+    """Écrit les motifs mode dégradé dans la table listes (list_name='degrade_motifs')."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     def _bg2():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _get_or_create_listes_ws(wb)
-                ws.cell(1, 15).value = "Mode dégradé"
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                c = conn.cursor()
+                c.execute("DELETE FROM listes WHERE list_name='degrade_motifs'")
                 motifs = cfg.get("degrade_motifs", [])
-                for ri in range(2, max(len(motifs)+3, 20)):
-                    ws.cell(ri, 15).value = None
-                for ri, m in enumerate(motifs, start=2):
-                    ws.cell(ri, 15).value = m
-                _safe_excel_save(wb, path)
+                for pos, m in enumerate(motifs, start=1):
+                    c.execute("INSERT INTO listes (list_name, position, value1) VALUES (?,?,?)",
+                              ('degrade_motifs', pos, m))
+                _db_commit(conn)
         except: pass
     threading.Thread(target=_bg2, daemon=True).start()
 
@@ -223,7 +271,7 @@ _S = {
     "degrade_periods": [],
     "of_prepares": [],
 }
-_excel_lock = threading.Lock()
+_db_lock = threading.Lock()
 _S_lock = threading.RLock()   # verrou réentrant pour protéger _S contre les race conditions
 _cache_lock = threading.Lock()  # protège _decl_cache contre les accès concurrents
 _lists = {}
@@ -476,11 +524,10 @@ def _get_ev_bloquant(type_str):
     return False
 
 def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_date_str, form_data=None):
-    """À la clôture d'un OF, rempli la colonne B (OF) + nb_pers/type_prod/fibre des lignes
-    d'arrêt sans OF dont la plage horaire chevauche [of_start_dt, of_end_dt]."""
+    """À la clôture d'un OF, remplit c02 (OF) + champs manquants des lignes d'arrêt dans la plage horaire."""
     if not of_num:
         return
-    path = cfg.get("db_path", "")
+    path = _db_path_resolved()
     if not path or not os.path.exists(path):
         return
     of_s = _hms_to_sec(of_start_dt.strftime("%H:%M:%S"))
@@ -504,57 +551,61 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
     def _bg():
         try:
             n_updated = 0
-            # Attendre un court instant pour laisser write_excel_bg écrire les lignes de l'OF
             import time as _t; _t.sleep(1)
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _ensure_decl_sheet(wb)
-                for excel_rn in range(2, ws.max_row + 1):
-                    # Ignorer les lignes qui ont un OF différent
-                    _row_of = str(ws.cell(excel_rn, 2).value or "").strip()
-                    if _row_of and _row_of != of_num:
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                _ensure_db_schema(conn)
+                c = conn.cursor()
+                # Fetch candidate rows from SQLite (non-prod, matching pilot+poste)
+                shift_dates_list = list(shift_dates)
+                placeholders = ",".join("?" * len(shift_dates_list))
+                c.execute(f"""SELECT rowid, c02, c01, c17, c18, c07, c08, c09, c10, c11, c12, c16, c40, c03
+                              FROM declarations
+                              WHERE c05=? AND c04=?
+                              AND LOWER(c01) NOT IN ('production','prod','')""",
+                          (pilot, poste))
+                rows_to_check = c.fetchall()
+                for row in rows_to_check:
+                    rid, _row_of, _rtype, deb_hms, fin_hms, nb_pers_v, taille_v, code_prod_v, type_prod_v, poids_v, fibre_v, kit_v, date_poste_v, date_cal_v = row
+                    if _row_of and str(_row_of).strip() and str(_row_of).strip() != of_num:
                         continue
-                    # Filtre type : ignorer Production/vide
-                    _rtype = str(ws.cell(excel_rn, 1).value or "").strip().lower()
-                    if _rtype in ("production", "prod", ""):
-                        continue
-                    # Filtre pilote et poste
-                    if str(ws.cell(excel_rn, 5).value or "").strip() != pilot:
-                        continue
-                    if str(ws.cell(excel_rn, 4).value or "").strip() != poste:
-                        continue
-                    # Filtre date (col 40 = Date_poste, sinon col 3 = Date)
-                    _row_dt = str(ws.cell(excel_rn, 40).value or "").strip() or _row_date(ws.cell(excel_rn, 3).value)
+                    _row_dt = str(date_poste_v or "").strip() or _row_date(date_cal_v)
                     if _row_dt not in shift_dates:
                         continue
-                    # Filtre chevauchement horaire
-                    _db_s = _hms_to_sec(str(ws.cell(excel_rn, 17).value or "00:00:00"))
-                    _fn_s = _hms_to_sec(str(ws.cell(excel_rn, 18).value or "00:00:00"))
+                    _db_s = _hms_to_sec(str(deb_hms or "00:00:00"))
+                    _fn_s = _hms_to_sec(str(fin_hms or "00:00:00"))
                     _db_norm = _db_s if _db_s >= of_s else _db_s + 86400
                     _fn_norm = _norm_fin(_db_norm, _fn_s)
                     if _db_norm > of_e_norm or _fn_norm < of_s:
                         continue
-                    # Mettre à jour : OF si vide, et toujours les champs manquants
-                    if not _row_of:
-                        ws.cell(excel_rn, 2).value = of_num
-                    if _bf_nb_pers and not str(ws.cell(excel_rn, 7).value or "").strip():
-                        ws.cell(excel_rn, 7).value = _bf_nb_pers
-                    if _bf_taille and not str(ws.cell(excel_rn, 8).value or "").strip():
-                        ws.cell(excel_rn, 8).value = _bf_taille
-                    if _bf_code_prod and not str(ws.cell(excel_rn, 9).value or "").strip():
-                        ws.cell(excel_rn, 9).value = _bf_code_prod
-                    if _bf_type_prod and not str(ws.cell(excel_rn, 10).value or "").strip():
-                        ws.cell(excel_rn, 10).value = _bf_type_prod
-                    if _bf_poids and not str(ws.cell(excel_rn, 11).value or "").strip():
-                        ws.cell(excel_rn, 11).value = _bf_poids
-                    if _bf_fibre and not str(ws.cell(excel_rn, 12).value or "").strip():
-                        ws.cell(excel_rn, 12).value = _bf_fibre
+                    # Build update
+                    updates = {}
+                    if not str(_row_of or "").strip():
+                        updates["c02"] = of_num
+                    if _bf_nb_pers and not str(nb_pers_v or "").strip():
+                        updates["c07"] = _bf_nb_pers
+                    if _bf_taille and not str(taille_v or "").strip():
+                        updates["c08"] = _bf_taille
+                    if _bf_code_prod and not str(code_prod_v or "").strip():
+                        updates["c09"] = _bf_code_prod
+                    if _bf_type_prod and not str(type_prod_v or "").strip():
+                        updates["c10"] = _bf_type_prod
+                    if _bf_poids and not str(poids_v or "").strip():
+                        updates["c11"] = _bf_poids
+                    if _bf_fibre and not str(fibre_v or "").strip():
+                        updates["c12"] = _bf_fibre
                     if _bf_kit:
-                        ws.cell(excel_rn, 16).value = "Oui"
-                    n_updated += 1
+                        updates["c16"] = "Oui"
+                    if updates:
+                        set_clause = ", ".join(f"{k}=?" for k in updates)
+                        c.execute(f"UPDATE declarations SET {set_clause} WHERE rowid=?",
+                                  list(updates.values()) + [rid])
+                        n_updated += 1
                 if n_updated:
-                    _safe_excel_save(wb, path)
+                    _db_commit(conn)
+                else:
+                    conn.close()
             load_history()
             print(f"[BACKFILL-OF] {n_updated} ligne(s) mises à jour → OF={of_num}")
         except Exception as _e:
@@ -958,193 +1009,214 @@ except: pass
 try: signal.signal(signal.SIGINT, _on_exit)
 except: pass
 
-# ── Listes depuis Excel ────────────────────────────────────────────────────────
+# ── Listes depuis SQLite ────────────────────────────────────────────────────────
 def load_lists():
     global _lists, _prod_ref_cached
-    path = cfg.get("db_path","")
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
-    wb = None
+    conn = None
     try:
-        wb = load_workbook(path, read_only=True, data_only=True)
-        if "Listes" in wb.sheetnames:
-            ws = wb["Listes"]
-            headers = [ws.cell(1,c).value for c in range(1, ws.max_column+1)]
-            for ci, h in enumerate(headers, start=1):
-                if not h: continue
-                vals = []
-                for ri in range(2, ws.max_row+1):
-                    v = ws.cell(ri,ci).value
-                    if v is not None and str(v).strip(): vals.append(str(v).strip())
-                _lists[str(h).strip()] = vals
-            # Production ref from list
-            pr_vals = _lists.get("Prod ref 8h",[]) or _lists.get("prod_ref",[])
-            if pr_vals:
-                try: _prod_ref_cached = float(str(pr_vals[0]).replace(",","."))
-                except: pass
-            # Load pilot passwords from col A (pilote names) + col B (MDP) — Excel is source of truth
+        conn = _get_conn(path)
+        if conn is None: return
+        _ensure_db_schema(conn)
+        c = conn.cursor()
+
+        # Generic lists by list_name (all non-special ones)
+        _SPECIAL = {'pilotes','arrets','arrets_prevus','degrade_motifs','pers_pct','admin_pw','types_prod','interposte','copilotes','tailles','fibres'}
+        c.execute("SELECT list_name, position, value1 FROM listes ORDER BY list_name, position")
+        for ln, _pos, v1 in c.fetchall():
+            if ln not in _SPECIAL and v1 is not None and str(v1).strip():
+                _lists.setdefault(ln, [])
+                if str(v1).strip() not in _lists[ln]:
+                    _lists[ln].append(str(v1).strip())
+        # Re-build (replace to avoid stale entries)
+        c.execute("SELECT list_name FROM listes WHERE list_name NOT IN ({})".format(
+            ",".join("?"*len(_SPECIAL))), list(_SPECIAL))
+        _gen_names = set(r[0] for r in c.fetchall())
+        for ln in _gen_names:
+            c.execute("SELECT value1 FROM listes WHERE list_name=? ORDER BY position", (ln,))
+            _lists[ln] = [r[0] for r in c.fetchall() if r[0] is not None and str(r[0]).strip()]
+
+        # Prod ref from generic list
+        pr_vals = _lists.get("Prod ref 8h",[]) or _lists.get("prod_ref",[])
+        if pr_vals:
+            try: _prod_ref_cached = float(str(pr_vals[0]).replace(",","."))
+            except: pass
+
+        # Pilotes (name + pw)
+        c.execute("SELECT value1, value2 FROM listes WHERE list_name='pilotes' ORDER BY position")
+        rows_pil = c.fetchall()
+        if rows_pil:
             pil_map = {}
-            for ri in range(2, ws.max_row+1):
-                pil_v = ws.cell(ri, 1).value
-                pw_v = ws.cell(ri, 2).value
-                if pil_v and str(pil_v).strip():
-                    pil_map[str(pil_v).strip()] = str(pw_v or "").strip()
+            pil_names = []
+            for name, pw in rows_pil:
+                if name and str(name).strip():
+                    pil_map[str(name).strip()] = str(pw or "").strip()
+                    pil_names.append(str(name).strip())
             if pil_map:
                 cfg["pilot_passwords"] = pil_map
-            # Also read fixed-position columns: C=copilotes, D=tailles, E=types_prod, F=equiv_coef, J=fibres
-            for col_idx, list_key in [(3,"copilotes"),(4,"tailles_col"),(5,"types_prod_col"),(6,"equivalences_col"),(10,"fibres_col")]:
-                vals = []
-                for ri in range(2, ws.max_row+1):
-                    v = ws.cell(ri, col_idx).value
-                    if v is not None and str(v).strip():
-                        vals.append(str(v).strip())
-                if vals:
-                    _lists[list_key] = vals
-            # Col K (11)=label, L (12)=cat : liste des arrêts configurables
-            evts_k = []
-            for ri in range(2, ws.max_row+1):
-                lbl_v = ws.cell(ri, 11).value
-                cat_v = ws.cell(ri, 12).value
-                if lbl_v is not None and str(lbl_v).strip():
-                    lbl = str(lbl_v).strip()
-                    # Rétro-compat : ancien format "label|cat" en col K seule
-                    if "|" in lbl and not cat_v:
-                        parts = lbl.split("|"); lbl = parts[0].strip(); cat_v = parts[1].strip()
-                    cat = str(cat_v or "pb").strip() or "pb"
-                    key = lbl.lower().replace(" ","_").replace("/","_").replace("é","e").replace("è","e").replace("ê","e").replace("à","a").replace("ç","c")[:28]
-                    bloquant_v = ws.cell(ri, 13).value
-                    bloquant = str(bloquant_v or "").strip().upper() == "OUI"
-                    evts_k.append({"label": lbl, "key": key, "cat": cat, "bloquant": bloquant})
-            if evts_k:
-                _lists["arrêts_k"] = evts_k
-                cfg["events_list"] = evts_k
-                save_cfg_data()
-            # Col N (14) : arrêts prévus (format "clé=valeur")
-            for ri in range(2, ws.max_row+1):
-                v = ws.cell(ri, 14).value
-                if v is not None and str(v).strip():
-                    try:
-                        k, val = str(v).strip().split("=", 1)
-                        k = k.strip(); val = val.strip()
-                        if k in _ARRETS_PREVUS_KEYS:
-                            cfg[k] = float(val)
-                    except: pass
+                _lists["Pilotes"] = pil_names
+                _lists["pilotes"] = pil_names
+
+        # Copilotes
+        c.execute("SELECT value1 FROM listes WHERE list_name='copilotes' ORDER BY position")
+        copilotes = [r[0] for r in c.fetchall() if r[0] is not None and str(r[0]).strip()]
+        if copilotes: _lists["copilotes"] = copilotes
+
+        # Tailles
+        c.execute("SELECT value1 FROM listes WHERE list_name='tailles' ORDER BY position")
+        tailles = [r[0] for r in c.fetchall() if r[0] is not None and str(r[0]).strip()]
+        if tailles: _lists["tailles_col"] = tailles
+
+        # Types produit + Equivalences (stored together in list_name='types_prod')
+        c.execute("SELECT value1, value2 FROM listes WHERE list_name='types_prod' ORDER BY position")
+        rows_tp = c.fetchall()
+        tp_vals = [r[0] for r in rows_tp if r[0] is not None and str(r[0]).strip()]
+        eq_vals = [str(r[1] or '') for r in rows_tp if r[0] is not None and str(r[0]).strip()]
+        if tp_vals: _lists["types_prod_col"] = tp_vals
+        if any(eq_vals): _lists["equivalences_col"] = eq_vals
+
+        # Fibres
+        c.execute("SELECT value1 FROM listes WHERE list_name='fibres' ORDER BY position")
+        fibres = [r[0] for r in c.fetchall() if r[0] is not None and str(r[0]).strip()]
+        if fibres: _lists["fibres_col"] = fibres
+
+        # Arrêts (label, cat, bloquant)
+        c.execute("SELECT value1, value2, value3 FROM listes WHERE list_name='arrets' ORDER BY position")
+        evts_k = []
+        for lbl_v, cat_v, bloquant_v in c.fetchall():
+            if lbl_v is not None and str(lbl_v).strip():
+                lbl = str(lbl_v).strip()
+                if "|" in lbl and not cat_v:
+                    parts = lbl.split("|"); lbl = parts[0].strip(); cat_v = parts[1].strip()
+                cat = str(cat_v or "pb").strip() or "pb"
+                key = lbl.lower().replace(" ","_").replace("/","_").replace("é","e").replace("è","e").replace("ê","e").replace("à","a").replace("ç","c")[:28]
+                bloquant = str(bloquant_v or "").strip().upper() == "OUI"
+                evts_k.append({"label": lbl, "key": key, "cat": cat, "bloquant": bloquant})
+        if evts_k:
+            _lists["arrêts_k"] = evts_k
+            cfg["events_list"] = evts_k
             save_cfg_data()
-            # Col O (15) : motifs mode dégradé (depuis row 1 pour accepter saisie manuelle)
-            _deg_motifs = []
-            for ri in range(1, ws.max_row+1):
-                _ov2 = ws.cell(ri, 15).value
-                if _ov2 is None: continue
-                _ov2_s = str(_ov2).strip()
-                if not _ov2_s or _ov2_s.lower() in ("mode dégradé", "mode degrade"): continue
-                _deg_motifs.append(_ov2_s)
-            if _deg_motifs:
-                cfg["degrade_motifs"] = _deg_motifs
-                save_cfg_data()
-            # Col P (16) = nb_pers, Col Q (17) = % cadence attendu
-            _pers_map_new = {}
-            for ri in range(2, ws.max_row+1):
-                _pv = ws.cell(ri, 16).value
-                _qv = ws.cell(ri, 17).value
-                if _pv is None and _qv is None: continue
+
+        # Arrêts prévus
+        c.execute("SELECT value1 FROM listes WHERE list_name='arrets_prevus' ORDER BY position")
+        for (v,) in c.fetchall():
+            if v is not None and str(v).strip():
                 try:
-                    _np = int(float(str(_pv or "").strip()))
-                    _pct_raw = float(str(_qv or "").strip().replace(",",".").replace("%","").strip())
-                    if 1 <= _np <= 10 and 0 < _pct_raw <= 200:
-                        _pers_map_new[_np] = _pct_raw / 100.0 if _pct_raw > 2 else _pct_raw
+                    k, val = str(v).strip().split("=", 1)
+                    k = k.strip(); val = val.strip()
+                    if k in _ARRETS_PREVUS_KEYS:
+                        cfg[k] = float(val)
                 except: pass
-            if _pers_map_new:
-                _pers_pct_map.clear(); _pers_pct_map.update(_pers_map_new)
-            # Col G (7) row 2 : MDP admin
-            _adm_pw_v = ws.cell(2, 7).value
-            if _adm_pw_v is not None and str(_adm_pw_v).strip():
-                cfg["supervisor_pw"] = str(_adm_pw_v).strip()
-                save_cfg_data()
+        save_cfg_data()
+
+        # Mode dégradé
+        c.execute("SELECT value1 FROM listes WHERE list_name='degrade_motifs' ORDER BY position")
+        _deg_motifs = []
+        for (v,) in c.fetchall():
+            if v is None: continue
+            _ov2_s = str(v).strip()
+            if not _ov2_s or _ov2_s.lower() in ("mode dégradé", "mode degrade"): continue
+            _deg_motifs.append(_ov2_s)
+        if _deg_motifs:
+            cfg["degrade_motifs"] = _deg_motifs
+            save_cfg_data()
+
+        # Nb personnes / % cadence
+        c.execute("SELECT value1, value2 FROM listes WHERE list_name='pers_pct' ORDER BY position")
+        _pers_map_new = {}
+        for (_pv, _qv) in c.fetchall():
+            if _pv is None and _qv is None: continue
+            try:
+                _np = int(float(str(_pv or "").strip()))
+                _pct_raw = float(str(_qv or "").strip().replace(",",".").replace("%","").strip())
+                if 1 <= _np <= 10 and 0 < _pct_raw <= 200:
+                    _pers_map_new[_np] = _pct_raw / 100.0 if _pct_raw > 2 else _pct_raw
+            except: pass
+        if _pers_map_new:
+            _pers_pct_map.clear(); _pers_pct_map.update(_pers_map_new)
+
+        # Admin pw
+        c.execute("SELECT value1 FROM listes WHERE list_name='admin_pw' AND position=1")
+        row_adm = c.fetchone()
+        if row_adm and row_adm[0] and str(row_adm[0]).strip():
+            cfg["supervisor_pw"] = str(row_adm[0]).strip()
+            save_cfg_data()
     except: pass
     finally:
-        if wb is not None:
-            try: wb.close()
+        if conn is not None:
+            try: conn.close()
             except: pass
 
 def write_pers_pct_to_excel():
-    """Persiste _pers_pct_map dans l'onglet Listes, colonnes P (16) et Q (17)."""
-    path = cfg.get("db_path", "")
+    """Persiste _pers_pct_map dans la table listes (list_name='pers_pct')."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     try:
-        wb = load_workbook(path, read_only=False, data_only=False)
-        if "Listes" not in wb.sheetnames: wb.close(); return
-        ws = wb["Listes"]
-        if not ws.cell(1, 16).value: ws.cell(1, 16).value = "Nombre de personne"
-        if not ws.cell(1, 17).value: ws.cell(1, 17).value = "% cadence attendu"
-        for ri in range(2, 15):
-            ws.cell(ri, 16).value = None; ws.cell(ri, 17).value = None
-        ri = 2
-        for np_k in sorted(_pers_pct_map.keys()):
-            ws.cell(ri, 16).value = np_k
-            ws.cell(ri, 17).value = round(_pers_pct_map[np_k] * 100, 1)
-            ri += 1
-        wb.save(path); wb.close()
+        with _db_lock:
+            conn = _get_conn(path)
+            if conn is None: return
+            c = conn.cursor()
+            c.execute("DELETE FROM listes WHERE list_name='pers_pct'")
+            for pos, np_k in enumerate(sorted(_pers_pct_map.keys()), start=1):
+                c.execute("INSERT INTO listes (list_name, position, value1, value2) VALUES (?,?,?,?)",
+                          ('pers_pct', pos, str(np_k), str(round(_pers_pct_map[np_k] * 100, 1))))
+            _db_commit(conn)
     except: pass
 
 def write_admin_pw_to_excel(pw):
-    """Écrit le MDP admin en G2 de l'onglet Listes."""
-    path = cfg.get("db_path","")
+    """Écrit le MDP admin dans la table listes (list_name='admin_pw')."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return False
     try:
-        with _excel_lock:
-            wb = _get_wb(path)
-            if wb is None: return False
-            if "Listes" not in wb.sheetnames: wb.close(); return False
-            ws = wb["Listes"]
-            if not ws.cell(1,7).value: ws.cell(1,7).value = "MDP Admin"
-            ws.cell(2,7).value = pw
-            _safe_excel_save(wb, path)
+        with _db_lock:
+            conn = _get_conn(path)
+            if conn is None: return False
+            c = conn.cursor()
+            c.execute("INSERT OR REPLACE INTO listes (list_name, position, value1) VALUES (?,?,?)",
+                      ('admin_pw', 1, pw))
+            _db_commit(conn)
         return True
     except: return False
 
+_COLNAME_MAP = {3: 'copilotes', 4: 'tailles', 10: 'fibres'}
+
 def write_simple_list_to_excel(col_idx, header, items):
-    """Écrit une liste dans une colonne de l'onglet Listes (row 2+), efface l'ancien contenu."""
-    path = cfg.get("db_path","")
+    """Écrit une liste dans la table listes par list_name déduit de col_idx ou header."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return False
+    list_name = _COLNAME_MAP.get(col_idx, header.lower().replace(" ","_"))
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                if "Listes" not in wb.sheetnames: wb.close(); return
-                ws = wb["Listes"]
-                if not ws.cell(1, col_idx).value: ws.cell(1, col_idx).value = header
-                clear_until = max(ws.max_row, len(items) + 5)
-                for ri in range(2, clear_until + 1):
-                    ws.cell(ri, col_idx).value = None
-                for ri, val in enumerate(items, start=2):
-                    ws.cell(ri, col_idx).value = val
-                _safe_excel_save(wb, path)
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                c = conn.cursor()
+                c.execute("DELETE FROM listes WHERE list_name=?", (list_name,))
+                for pos, val in enumerate(items, start=1):
+                    c.execute("INSERT INTO listes (list_name, position, value1) VALUES (?,?,?)",
+                              (list_name, pos, val))
+                _db_commit(conn)
         except: pass
         threading.Thread(target=load_lists, daemon=True).start()
     threading.Thread(target=_bg, daemon=True).start()
     return True
 
 def write_equiv_list_to_excel(items):
-    """Écrit la liste type_produit (col E=5) + coeff (col F=6) de façon synchronisée."""
-    path = cfg.get("db_path","")
+    """Écrit la liste type_produit + coeff dans la table listes (list_name='types_prod')."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return False
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                if "Listes" not in wb.sheetnames: wb.close(); return
-                ws = wb["Listes"]
-                if not ws.cell(1,5).value: ws.cell(1,5).value = "Type Produit"
-                if not ws.cell(1,6).value: ws.cell(1,6).value = "Equivalence"
-                clear_until = max(ws.max_row, len(items) + 5)
-                for ri in range(2, clear_until + 1):
-                    ws.cell(ri, 5).value = None
-                    ws.cell(ri, 6).value = None
-                for ri, it in enumerate(items, start=2):
-                    ws.cell(ri, 5).value = it.get("type","")
-                    ws.cell(ri, 6).value = it.get("coeff","")
-                _safe_excel_save(wb, path)
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                c = conn.cursor()
+                c.execute("DELETE FROM listes WHERE list_name='types_prod'")
+                for pos, it in enumerate(items, start=1):
+                    c.execute("INSERT INTO listes (list_name, position, value1, value2) VALUES (?,?,?,?)",
+                              ('types_prod', pos, it.get("type",""), it.get("coeff","")))
+                _db_commit(conn)
         except: pass
         threading.Thread(target=load_lists, daemon=True).start()
     threading.Thread(target=_bg, daemon=True).start()
@@ -1155,71 +1227,34 @@ def get_list(h):
 
 def load_history():
     global _decl_cache, _excel_busy, _hist_loading
-    path = cfg.get("db_path","")
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     _hist_loading += 1
-    wb = None
+    conn = None
     try:
-        wb = load_workbook(path, read_only=True, data_only=True)
+        conn = _get_conn(path)
+        if conn is None:
+            _hist_loading = max(0, _hist_loading - 1)
+            return
+        _ensure_db_schema(conn)
         _excel_busy = False
-        # Construire le nouveau cache dans une variable locale, puis swap atomique
         _new_cache = []
-        # Nouveau schéma unifié
-        if "Declarations" in wb.sheetnames:
-            ws = wb["Declarations"]
-            for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                if r and any(r):
-                    _new_cache.append((i, list(r)+[None]*5))
-        # Rétro-compat: lire Data + Evenements si Declarations absent
-        elif "Data" in wb.sheetnames:
-            ws = wb["Data"]
-            for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                if r and any(r):
-                    row = list(r)+[None]*5
-                    # Convertir en format unifié (mettre "Production" en pos 0)
-                    unified = [None]*37
-                    unified[0] = "Production"
-                    unified[1] = row[0]   # OF
-                    unified[2] = row[1]   # Date
-                    unified[3] = row[2]   # Poste
-                    unified[4] = row[3]   # Pilote
-                    unified[5] = row[4]   # Co-Pilote
-                    unified[6] = row[5]   # Nb Personnes
-                    unified[7] = row[6]   # Taille
-                    unified[8] = row[7]   # Code Produit
-                    unified[9] = row[8]   # Type Produit
-                    unified[10] = row[9]  # Poids
-                    unified[11] = row[10] # Fibre
-                    unified[12] = row[11] # OF Taie
-                    unified[13] = row[12] # Traca
-                    unified[14] = row[22] # Ref Taie (col 23 dans Data)
-                    unified[15] = row[21] # Kit (col 22 dans Data)
-                    unified[16] = row[17] # Heure Debut
-                    unified[17] = row[18] # Heure Fin
-                    unified[18] = row[16] # Duree
-                    unified[19] = row[13] # Qte Fab
-                    unified[20] = row[14] # Qte Emb
-                    unified[21] = row[15] # Equiv
-                    unified[22] = row[19] # Cadence/h
-                    unified[23] = row[20] # Cadence/h/pers
-                    unified[35] = row[57] if len(row)>57 else None  # Commentaire
-                    _new_cache.append((i, unified))
-        # Swap atomique : remplace le cache d'un coup pour éviter la race condition
+        c = conn.cursor()
+        c.execute(f"SELECT rowid, {_DECL_COLS} FROM declarations ORDER BY rowid")
+        for row in c.fetchall():
+            rowid = row[0]
+            vals = list(row[1:])  # 44 values
+            if any(v is not None for v in vals):
+                _new_cache.append((rowid, vals + [None]*5))
         with _cache_lock:
             _decl_cache = _new_cache
         _hist_loading = max(0, _hist_loading - 1)
-    except PermissionError:
-        _excel_busy = True
-        _hist_loading = max(0, _hist_loading - 1)
-        def _retry():
-            import time as _t; _t.sleep(5)
-            load_history()
-        threading.Thread(target=_retry, daemon=True).start()
-    except:
+    except Exception as _e_lh:
+        _excel_busy = False
         _hist_loading = max(0, _hist_loading - 1)
     finally:
-        if wb is not None:
-            try: wb.close()
+        if conn is not None:
+            try: conn.close()
             except: pass
 
 # ── Calcul équivalence ────────────────────────────────────────────────────────
@@ -1234,63 +1269,7 @@ def calc_equiv(qte, taille, type_prod):
                     except: pass
     return round(float(qte or 0),2)
 
-# ── Excel helpers ─────────────────────────────────────────────────────────────
-def _get_wb(path):
-    if not path or not os.path.exists(path):
-        return None
-    try: return load_workbook(path)
-    except: return None
-
-def _safe_excel_save(wb, path):
-    import time as _time
-    bak = path+".bak"
-    try: shutil.copy2(path,bak)
-    except: pass
-    saved = False
-    last_err = None
-    for _attempt in range(4):
-        try:
-            wb.save(path)
-            saved = True
-            break
-        except PermissionError as _pe:
-            last_err = _pe
-            _time.sleep(1)
-        except Exception as _e:
-            last_err = _e
-            break
-    try: wb.close()
-    except: pass
-    if saved:
-        try: os.remove(bak)
-        except: pass
-    else:
-        print(f"[EXCEL-SAVE] Échec sauvegarde '{path}': {last_err}")
-        raise last_err
-
-def _format_row(ws, row_num):
-    thin = Side(style="thin")
-    border = Border(left=thin,right=thin,top=thin,bottom=thin)
-    for cell in ws[row_num]:
-        cell.border = border
-        cell.alignment = Alignment(horizontal="center",vertical="center",wrap_text=True)
-
-def _ensure_decl_sheet(wb):
-    if "Declarations" not in wb.sheetnames:
-        ws = wb.create_sheet("Declarations",0)
-        for i,h in enumerate(DECL_HEADERS,start=1): ws.cell(1,i).value=h
-        _format_row(ws,1)
-        # Couleur header
-        fill = PatternFill("solid", fgColor="1a1f5e")
-        from openpyxl.styles import Font
-        for cell in ws[1]:
-            cell.fill = fill
-            cell.font = Font(color="FFFFFF", bold=True, size=10)
-    else:
-        ws = wb["Declarations"]
-        for i,h in enumerate(DECL_HEADERS,start=1):
-            if ws.cell(1,i).value is None: ws.cell(1,i).value=h
-    return wb["Declarations"]
+# ── (Legacy Excel helpers removed — now using SQLite via _get_conn/_db_commit) ──
 
 def build_decl_rows(v, tl_events, of_start, pause_periods):
     """Construit les lignes arrêts/pauses au format unifié (40 cols)."""
@@ -1397,10 +1376,10 @@ def _append_to_backup(prod_row, evt_rows):
 
 
 def _flush_backup():
-    """Tente d'écrire toutes les déclarations du backup dans Excel.
+    """Tente d'écrire toutes les déclarations du backup dans SQLite.
     Retourne True si le backup est vide après la tentative."""
     global _backup_pending
-    path = cfg.get("db_path", "")
+    path = _db_path_resolved()
     if not path or not os.path.exists(BACKUP_FILE): return True
     with _backup_lock:
         try:
@@ -1411,28 +1390,26 @@ def _flush_backup():
         if not items:
             _backup_pending = 0
             return True
-    # Essayer d'écrire item par item dans Excel
     remaining = []
     flushed = 0
     for item in items:
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None:
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None:
                     remaining.append(item)
                     continue
-                ws = _ensure_decl_sheet(wb)
+                _ensure_db_schema(conn)
+                c = conn.cursor()
                 pr = item.get("prod_row")
                 if pr:
-                    ws.append(pr)
-                    _format_row(ws, ws.max_row)
+                    c.execute(f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})",
+                              _decl_row_to_tuple(pr))
                 for er in item.get("evt_rows", []):
-                    ws.append(er)
-                    _format_row(ws, ws.max_row)
-                _safe_excel_save(wb, path)
+                    c.execute(f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})",
+                              _decl_row_to_tuple(er))
+                _db_commit(conn)
                 flushed += 1
-        except PermissionError:
-            remaining.append(item)
         except Exception:
             remaining.append(item)
     with _backup_lock:
@@ -1457,14 +1434,14 @@ def _backup_flush_bg():
 
 
 def write_excel_bg(prod_row, evt_rows):
-    """Écrit la ligne production + lignes arrêts dans la feuille Declarations.
-    3 tentatives rapides (15 s). Si Excel reste bloqué → backup immédiat + retry toutes les 30 s."""
+    """Écrit la ligne production + lignes arrêts dans la table declarations (SQLite).
+    3 tentatives. Si SQLite inaccessible → backup immédiat + retry toutes les 30 s."""
     global _write_pending, _write_failed
-    path = cfg.get("db_path","")
+    path = _db_path_resolved()
     if not path: return
     _write_pending += 1
     _write_failed = False
-    # Ajouter à PENDING_FILE (liste) pour survivre à un crash même en cas d'appels concurrents
+    # Ajouter à PENDING_FILE pour survivre à un crash
     try:
         with _backup_lock:
             _pf_items = []
@@ -1482,34 +1459,35 @@ def write_excel_bg(prod_row, evt_rows):
         global _write_pending, _write_failed
         for _attempt in range(3):
             try:
-                with _excel_lock:
-                    wb = _get_wb(path)
-                    if wb is None:
-                        time.sleep(5)
+                with _db_lock:
+                    conn = _get_conn(path)
+                    if conn is None:
+                        time.sleep(2)
                         continue
-                    ws = _ensure_decl_sheet(wb)
+                    _ensure_db_schema(conn)
+                    c = conn.cursor()
                     if prod_row:
-                        ws.append(prod_row)
-                        _format_row(ws, ws.max_row)
+                        c.execute(f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})",
+                                  _decl_row_to_tuple(prod_row))
                     for er in evt_rows:
-                        ws.append(er)
-                        _format_row(ws, ws.max_row)
-                    _safe_excel_save(wb, path)
+                        c.execute(f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})",
+                                  _decl_row_to_tuple(er))
+                    _db_commit(conn)
                     try: os.remove(PENDING_FILE)
                     except: pass
                     _write_pending = max(0, _write_pending - 1)
                     threading.Thread(target=load_history, daemon=True).start()
                     return  # succès
-            except PermissionError:
-                time.sleep(5)
             except Exception as _exc_bg:
                 print(f"[WRITE-BG] Erreur inattendue (tentative {_attempt+1}/3) : {_exc_bg}")
-                _write_pending = max(0, _write_pending - 1)
-                _append_to_backup(prod_row, evt_rows)
-                try: os.remove(PENDING_FILE)
-                except: pass
-                return
-        # Toujours bloqué après 3 tentatives → on sauvegarde dans le backup
+                if _attempt == 2:
+                    _write_pending = max(0, _write_pending - 1)
+                    _append_to_backup(prod_row, evt_rows)
+                    try: os.remove(PENDING_FILE)
+                    except: pass
+                    return
+                time.sleep(2)
+        # Toujours bloqué après 3 tentatives → backup
         _append_to_backup(prod_row, evt_rows)
         try: os.remove(PENDING_FILE)
         except: pass
@@ -1517,7 +1495,7 @@ def write_excel_bg(prod_row, evt_rows):
     threading.Thread(target=_bg, daemon=True).start()
 
 def write_changement_of(start_dt, end_dt, label=None, comment=""):
-    path = cfg.get("db_path","")
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     pilot = _S.get("last_of_pilot") or _S.get("pilot") or ""
     dur_s = (end_dt-start_dt).total_seconds()
@@ -1534,246 +1512,212 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
     ]
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _ensure_decl_sheet(wb)
-                ws.append(row)
-                _format_row(ws,ws.max_row)
-                _safe_excel_save(wb,path)
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                _ensure_db_schema(conn)
+                c = conn.cursor()
+                c.execute(f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})",
+                          _decl_row_to_tuple(row))
+                _db_commit(conn)
             threading.Thread(target=load_history,daemon=True).start()
         except Exception as _e_cof:
-            print(f"[CHANGEMENT-OF] Erreur écriture Excel : {_e_cof} — backup")
+            print(f"[CHANGEMENT-OF] Erreur écriture SQLite : {_e_cof} — backup")
             _append_to_backup(row, [])
     threading.Thread(target=_bg,daemon=True).start()
 
 POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Cadence (equiv/h)","Total Pauses (min)","Nettoyage (min)","Réunion (min)","Dépassement arrêts (min)","Nb chgt fibre","Commentaire","Début Poste","Fin Poste","Temps ouverture (min)","Temps utile (min)","Temps fonctionnement (min)","Temps en arrêt (min)","Réf cadence (pcs/min)","Perte cadence (min)","Temps dégradé (min)","Objectif éq","Budget pause (min)","Budget nett. court (min)","Budget nett. long (min)","Budget nett. très long (min)","Budget réunion (min)"]
 
 def write_pilots_to_excel(pilot_passwords):
-    """Écrit la liste pilote+MDP dans l'onglet Listes col A+B."""
-    path = cfg.get("db_path","")
+    """Écrit la liste pilote+MDP dans la table listes (list_name='pilotes')."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return False
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                if "Listes" not in wb.sheetnames:
-                    ws = wb.create_sheet("Listes")
-                    ws.cell(1,1).value = "Pilotes"
-                    ws.cell(1,2).value = "MDP"
-                else:
-                    ws = wb["Listes"]
-                    if not ws.cell(1,1).value: ws.cell(1,1).value = "Pilotes"
-                    if not ws.cell(1,2).value: ws.cell(1,2).value = "MDP"
-                # Clear existing pilot rows
-                for ri in range(2, ws.max_row+2):
-                    ws.cell(ri,1).value = None
-                    ws.cell(ri,2).value = None
-                # Write new pilot data
-                for ri,(p,pw) in enumerate(pilot_passwords.items(),start=2):
-                    ws.cell(ri,1).value = p
-                    ws.cell(ri,2).value = pw
-                _safe_excel_save(wb,path)
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                c = conn.cursor()
+                c.execute("DELETE FROM listes WHERE list_name='pilotes'")
+                for pos, (p, pw) in enumerate(pilot_passwords.items(), start=1):
+                    c.execute("INSERT INTO listes (list_name, position, value1, value2) VALUES (?,?,?,?)",
+                              ('pilotes', pos, p, pw))
+                _db_commit(conn)
         except: pass
-        threading.Thread(target=load_lists,daemon=True).start()
-    threading.Thread(target=_bg,daemon=True).start()
+        threading.Thread(target=load_lists, daemon=True).start()
+    threading.Thread(target=_bg, daemon=True).start()
     return True
 
-def _ensure_postes_sheet(wb):
-    if "Postes" not in wb.sheetnames:
-        ws = wb.create_sheet("Postes")
-        for i, h in enumerate(POSTES_HEADERS, start=1): ws.cell(1, i).value = h
-        _format_row(ws, 1)
-        from openpyxl.styles import PatternFill, Font
-        fill = PatternFill("solid", fgColor="1a1f5e")
-        for cell in ws[1]:
-            cell.fill = fill
-            cell.font = Font(color="FFFFFF", bold=True, size=10)
-    else:
-        ws = wb["Postes"]
-        for i, h in enumerate(POSTES_HEADERS, start=1):
-            if ws.cell(1, i).value is None: ws.cell(1, i).value = h
-    return wb["Postes"]
-
 def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
-    """Écrit en arrière-plan. Stocke postes_row_num dans _S pour que update_poste_horaires le retrouve directement.
-    Si une ligne vide (NbOF=0, Prod=0) existe déjà pour ce pilote+poste à la même date, la réutilise."""
-    path = cfg.get("db_path","")
+    """Insère ou réutilise une ligne Postes. Stocke le rowid SQLite dans _S['postes_row_num']."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _ensure_postes_sheet(wb)
-                # Cherche une ligne existante à réutiliser (même pilote + poste + même date de début)
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                _ensure_db_schema(conn)
+                c = conn.cursor()
                 target_row = None
                 if debut_dt:
-                    for row in ws.iter_rows(min_row=2, values_only=False):
-                        try:
-                            b = str(row[1].value or "").strip()
-                            d = str(row[3].value or "").strip()
-                            p_val = row[15].value if len(row) > 15 else None
-                            nb_of = row[4].value if len(row) > 4 else None
-                            prod = row[5].value if len(row) > 5 else None
-                            if b.lower() != pilot.lower() or d != poste: continue
-                            if nb_of or prod: continue  # ligne avec données réelles → ne pas écraser
-                            if p_val is not None:
-                                try:
-                                    p_dt = p_val if hasattr(p_val, 'date') else datetime.datetime.fromisoformat(str(p_val))
-                                    if p_dt.date() == debut_dt.date():
-                                        target_row = row[0].row; break
-                                except: pass
-                        except: continue
+                    c.execute("SELECT rowid, p05, p06, p16 FROM postes WHERE LOWER(p02)=? AND p04=?",
+                              (pilot.lower(), poste))
+                    for rr in c.fetchall():
+                        _rid, nb_of, prod, p16 = rr
+                        if nb_of or prod: continue  # ligne avec données réelles
+                        if p16 is not None:
+                            try:
+                                p_dt = datetime.datetime.fromisoformat(str(p16))
+                                if p_dt.date() == debut_dt.date():
+                                    target_row = _rid; break
+                            except: pass
                 if target_row:
-                    ws.cell(target_row, 16).value = debut_dt.isoformat()
-                    ws.cell(target_row, 17).value = fin_dt.isoformat() if fin_dt else None
-                    _format_row(ws, target_row)
-                    _safe_excel_save(wb, path)
+                    c.execute("UPDATE postes SET p16=?, p17=? WHERE rowid=?",
+                              (debut_dt.isoformat(), fin_dt.isoformat() if fin_dt else None, target_row))
+                    _db_commit(conn)
                     _S["postes_row_num"] = target_row
                 else:
-                    new_row = ws.max_row + 1
-                    ws.cell(new_row, 1).value = debut_dt.strftime("%d/%m/%Y") if debut_dt else ""
-                    ws.cell(new_row, 2).value = pilot
-                    ws.cell(new_row, 4).value = poste
-                    ws.cell(new_row, 16).value = debut_dt.isoformat() if debut_dt else None
-                    ws.cell(new_row, 17).value = fin_dt.isoformat() if fin_dt else None
-                    _format_row(ws, new_row)
-                    _safe_excel_save(wb, path)
-                    _S["postes_row_num"] = new_row
+                    c.execute("INSERT INTO postes (p01, p02, p04, p16, p17) VALUES (?,?,?,?,?)",
+                              (debut_dt.strftime("%d/%m/%Y") if debut_dt else "",
+                               pilot, poste,
+                               debut_dt.isoformat() if debut_dt else None,
+                               fin_dt.isoformat() if fin_dt else None))
+                    new_rowid = c.lastrowid
+                    _db_commit(conn)
+                    _S["postes_row_num"] = new_rowid
                 save_session()
         except: pass
     threading.Thread(target=_bg, daemon=True).start()
 
 def find_postes_row_num(pilot, debut_dt):
-    """Cherche dans POSTES la ligne correspondant à ce pilote + date debut. Retourne row_num ou None."""
-    path = cfg.get("db_path","")
+    """Cherche dans postes la ligne correspondant à ce pilote + date debut. Retourne rowid ou None."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path) or not debut_dt: return None
-    _found_row = None
     try:
-        with _excel_lock:
-            wb = _get_wb(path)
-            if wb is None: return None
+        with _db_lock:
+            conn = _get_conn(path)
+            if conn is None: return None
             try:
-                if "Postes" not in wb.sheetnames: return None
-                ws = wb["Postes"]
+                _ensure_db_schema(conn)
+                c = conn.cursor()
                 target_date = debut_dt.date()
-                for row in ws.iter_rows(min_row=2, values_only=False):
+                c.execute("SELECT rowid, p16 FROM postes WHERE LOWER(p02)=?", (pilot.lower(),))
+                for rid, p16 in c.fetchall():
+                    if p16 is None: continue
                     try:
-                        b = row[1].value if len(row) > 1 else None  # col B pilot
-                        p = row[15].value if len(row) > 15 else None  # col P debut
-                        if str(b or "").strip().lower() != pilot.lower(): continue
-                        if p is None: continue
-                        if isinstance(p, str):
-                            try:
-                                p_dt = datetime.datetime.fromisoformat(p)
-                            except ValueError:
-                                try:
-                                    p_dt = datetime.datetime.strptime(p, "%d/%m/%Y %H:%M:%S")
-                                except:
-                                    try:
-                                        p_dt = datetime.datetime.strptime(p, "%d/%m/%Y")
-                                    except:
-                                        continue
-                        else:
-                            p_dt = p
-                        if hasattr(p_dt, 'date') and p_dt.date() == target_date:
-                            _found_row = row[0].row
-                            break
-                    except: continue
+                        p_dt = datetime.datetime.fromisoformat(str(p16))
+                        if p_dt.date() == target_date:
+                            return rid
+                    except: pass
             finally:
-                try: wb.close()
+                try: conn.close()
                 except: pass
     except: pass
-    return _found_row
+    return None
 
 def update_poste_horaires(row_num, debut_dt, fin_dt):
-    """Écrit P et Q directement (pas de thread interne — à appeler depuis un thread background)."""
-    if not row_num or row_num <= 1: return
-    path = cfg.get("db_path","")
+    """Met à jour p16/p17 (début/fin poste) directement."""
+    if not row_num: return
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     try:
-        with _excel_lock:
-            wb = _get_wb(path)
-            if wb is None: return
-            if "Postes" not in wb.sheetnames: return
-            ws = wb["Postes"]
-            ws.cell(row_num, 16).value = debut_dt.isoformat() if debut_dt else None
-            ws.cell(row_num, 17).value = fin_dt.isoformat() if fin_dt else None
-            _safe_excel_save(wb, path)
+        with _db_lock:
+            conn = _get_conn(path)
+            if conn is None: return
+            c = conn.cursor()
+            c.execute("UPDATE postes SET p16=?, p17=? WHERE rowid=?",
+                      (debut_dt.isoformat() if debut_dt else None,
+                       fin_dt.isoformat() if fin_dt else None,
+                       row_num))
+            _db_commit(conn)
     except: pass
 
 def write_poste_row(data, row_num=None, sync=False):
-    """Écrit ou met à jour une ligne dans l'onglet Postes à la fin de chaque poste."""
-    path = cfg.get("db_path","")
+    """Écrit ou met à jour une ligne dans la table postes à la fin de chaque poste."""
+    path = _db_path_resolved()
     if not path: return
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                ws = _ensure_postes_sheet(wb)
-                vals = [
-                    data.get("date",""),                                          # col 1  (A) Date
-                    data.get("pilot",""),                                         # col 2  (B) Pilote
-                    data.get("copilote",""),                                      # col 3  (C) Co-Pilote
-                    data.get("poste",""),                                         # col 4  (D) Poste
-                    data.get("nb_of",0),                                          # col 5  (E) Nb OF
-                    round(float(data.get("prod_total",0) or 0),0),               # col 6  (F) Prod Total
-                    round(float(data.get("tot_equiv",0) or 0),1),                # col 7  (G) Prod Equiv
-                    data.get("trs_shift",""),                                     # col 8  (H) TRS Poste %
-                    round(float(data.get("cadence_h",0) or 0),0),               # col 9  (I) Cadence/h
-                    round(float(data.get("pause_min",0) or 0),1),                # col 10 (J) Total Pauses
-                    round(float(data.get("nett_min",0) or 0),1),                 # col 11 (K) Nettoyage
-                    round(float(data.get("reunion_min",0) or 0),1),              # col 12 (L) Temps en réunion (min)
-                    round(float(data.get("depassement_min",0) or 0),1),          # col 13 (M) Temps hors budget (min)
-                    int(data.get("nb_fibre_chg",0) or 0),                        # col 14 (N) Nb changements fibre
-                    data.get("comment",""),                                       # col 15 (O) Commentaire
-                    None,                                                          # col 16 (P) Début Poste — géré par write_poste_login_row/update_poste_horaires
-                    None,                                                          # col 17 (Q) Fin Poste   — géré par write_poste_login_row/update_poste_horaires
-                    round(float(data.get("temps_ouverture_min",0) or 0),1),      # col 18 (R) Temps ouverture
-                    round(float(data.get("temps_utile_min",0) or 0),1),          # col 19 (S) Temps utile
-                    round(float(data.get("temps_fonctionnement_min",0) or 0),1), # col 20 (T) Temps fonctionnement
-                    round(float(data.get("temps_arret_min",0) or 0),1),          # col 21 (U) Temps en arrêt
-                    round(float(data.get("cadence_ref_pcs_min",0) or 0),4),      # col 22 (V) Réf cadence
-                    round(float(data.get("perte_cadence_min",0) or 0),1),        # col 23 (W) Perte cadence
-                    round(float(data.get("degrade_min",0) or 0),1),              # col 24 (X) Temps en mode dégradé
-                    round(float(data.get("pcs_theorique",0) or 0),1),             # col 25 (Y) Objectif éq
-                ]
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                _ensure_db_schema(conn)
+                c = conn.cursor()
                 _bov = data.get("budget_overrides") or {}
                 _bov_get = lambda k: float((_bov.get(k) if _bov.get(k) is not None else cfg.get(k,0)) or 0)
-                vals += [
-                    _bov_get("pause_min"),        # col 26 (Z)  Budget pause
-                    _bov_get("clean_short_min"),  # col 27 (AA) Budget nett. court
-                    _bov_get("clean_long_min"),   # col 28 (AB) Budget nett. long
-                    _bov_get("clean_grand_min"),  # col 29 (AC) Budget nett. très long
-                    _bov_get("meeting_tol_min"),  # col 30 (AD) Budget réunion
-                ]
-                if not (row_num and row_num > 1):
-                    # Fallback : chercher par pilote + poste + date avant d'appender
+                # Fallback: search by pilot+poste+date if row_num not provided
+                _rn = row_num
+                if not _rn:
                     _pilot_s = str(data.get("pilot","") or "").strip().lower()
                     _poste_s = str(data.get("poste","") or "").strip()
                     _date_s  = str(data.get("date","") or "").strip()
-                    for _row in ws.iter_rows(min_row=2, values_only=False):
-                        try:
-                            _b = str(_row[1].value or "").strip().lower()
-                            _d = str(_row[3].value or "").strip()
-                            _a = str(_row[0].value or "").strip()
-                            if _b == _pilot_s and _d == _poste_s and _a == _date_s:
-                                row_num = _row[0].row; break
-                        except: continue
-                if row_num and row_num > 1:
-                    for ci, v in enumerate(vals, start=1):
-                        if ci in (16, 17): continue  # Début/Fin Poste: ne pas écraser les timestamps
-                        ws.cell(row_num, ci).value = v
-                    _format_row(ws, row_num)
+                    c.execute("SELECT rowid FROM postes WHERE LOWER(p02)=? AND p04=? AND p01=? LIMIT 1",
+                              (_pilot_s, _poste_s, _date_s))
+                    r = c.fetchone()
+                    if r: _rn = r[0]
+                if _rn:
+                    # UPDATE — skip p16/p17 (managed by write_poste_login_row)
+                    c.execute("""UPDATE postes SET
+                        p01=?,p02=?,p03=?,p04=?,p05=?,p06=?,p07=?,p08=?,p09=?,p10=?,
+                        p11=?,p12=?,p13=?,p14=?,p15=?,
+                        p18=?,p19=?,p20=?,p21=?,p22=?,p23=?,p24=?,p25=?,
+                        p26=?,p27=?,p28=?,p29=?,p30=?
+                        WHERE rowid=?""", (
+                        data.get("date",""), data.get("pilot",""), data.get("copilote",""), data.get("poste",""),
+                        data.get("nb_of",0),
+                        round(float(data.get("prod_total",0) or 0),0),
+                        round(float(data.get("tot_equiv",0) or 0),1),
+                        data.get("trs_shift",""),
+                        round(float(data.get("cadence_h",0) or 0),0),
+                        round(float(data.get("pause_min",0) or 0),1),
+                        round(float(data.get("nett_min",0) or 0),1),
+                        round(float(data.get("reunion_min",0) or 0),1),
+                        round(float(data.get("depassement_min",0) or 0),1),
+                        int(data.get("nb_fibre_chg",0) or 0),
+                        data.get("comment",""),
+                        round(float(data.get("temps_ouverture_min",0) or 0),1),
+                        round(float(data.get("temps_utile_min",0) or 0),1),
+                        round(float(data.get("temps_fonctionnement_min",0) or 0),1),
+                        round(float(data.get("temps_arret_min",0) or 0),1),
+                        round(float(data.get("cadence_ref_pcs_min",0) or 0),4),
+                        round(float(data.get("perte_cadence_min",0) or 0),1),
+                        round(float(data.get("degrade_min",0) or 0),1),
+                        round(float(data.get("pcs_theorique",0) or 0),1),
+                        _bov_get("pause_min"), _bov_get("clean_short_min"),
+                        _bov_get("clean_long_min"), _bov_get("clean_grand_min"),
+                        _bov_get("meeting_tol_min"),
+                        _rn))
                 else:
-                    ws.append(vals)
-                    _format_row(ws, ws.max_row)
-                _safe_excel_save(wb, path)
+                    c.execute(f"INSERT INTO postes ({_POSTES_COLS}) VALUES ({_POSTES_PLACEHOLDERS})", (
+                        data.get("date",""), data.get("pilot",""), data.get("copilote",""), data.get("poste",""),
+                        data.get("nb_of",0),
+                        round(float(data.get("prod_total",0) or 0),0),
+                        round(float(data.get("tot_equiv",0) or 0),1),
+                        data.get("trs_shift",""),
+                        round(float(data.get("cadence_h",0) or 0),0),
+                        round(float(data.get("pause_min",0) or 0),1),
+                        round(float(data.get("nett_min",0) or 0),1),
+                        round(float(data.get("reunion_min",0) or 0),1),
+                        round(float(data.get("depassement_min",0) or 0),1),
+                        int(data.get("nb_fibre_chg",0) or 0),
+                        data.get("comment",""),
+                        None, None,  # p16, p17 — gérés par write_poste_login_row
+                        round(float(data.get("temps_ouverture_min",0) or 0),1),
+                        round(float(data.get("temps_utile_min",0) or 0),1),
+                        round(float(data.get("temps_fonctionnement_min",0) or 0),1),
+                        round(float(data.get("temps_arret_min",0) or 0),1),
+                        round(float(data.get("cadence_ref_pcs_min",0) or 0),4),
+                        round(float(data.get("perte_cadence_min",0) or 0),1),
+                        round(float(data.get("degrade_min",0) or 0),1),
+                        round(float(data.get("pcs_theorique",0) or 0),1),
+                        _bov_get("pause_min"), _bov_get("clean_short_min"),
+                        _bov_get("clean_long_min"), _bov_get("clean_grand_min"),
+                        _bov_get("meeting_tol_min"),
+                    ))
+                _db_commit(conn)
         except Exception as _wpr_e:
-            print(f"[POSTES-WRITE] Erreur écriture Postes (row={row_num}): {_wpr_e}")
+            print(f"[POSTES-WRITE] Erreur écriture postes (row={row_num}): {_wpr_e}")
     if sync:
         _bg()
     else:
@@ -1787,8 +1731,8 @@ def get_current_shift_duration_s():
     return get_shift_duration_s(_S.get("poste",""))
 
 def load_postes_shift_map():
-    """Lit l'onglet Postes et retourne un dict (pilot_lower, date_dmy) -> dict de toutes les valeurs Excel."""
-    path = cfg.get("db_path","")
+    """Lit la table postes et retourne un dict (pilot_lower, date_dmy) -> dict de toutes les valeurs."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return {}
     result = {}
     def _flt(v):
@@ -1799,61 +1743,64 @@ def load_postes_shift_map():
         if isinstance(v, datetime.datetime): return v
         if isinstance(v, datetime.date): return datetime.datetime.combine(v, datetime.time())
         s = str(v).strip()
-        for fmt in ('%Y-%m-%d %H:%M:%S','%Y-%m-%dT%H:%M:%S','%Y-%m-%d %H:%M','%d/%m/%Y %H:%M'):
-            try: return datetime.datetime.strptime(s, fmt)
+        for _fmt in ('%Y-%m-%d %H:%M:%S','%Y-%m-%dT%H:%M:%S','%Y-%m-%d %H:%M','%d/%m/%Y %H:%M'):
+            try: return datetime.datetime.strptime(s, _fmt)
             except: pass
         try: return datetime.datetime.fromisoformat(s)
         except: return None
     try:
-        with _excel_lock:
-            wb = _get_wb(path)
-            if wb is None: return {}
+        with _db_lock:
+            conn = _get_conn(path)
+            if conn is None: return {}
             try:
-                if "Postes" not in wb.sheetnames: return {}
-                ws = wb["Postes"]
-                for ri in range(2, ws.max_row + 1):
-                    pilot_v = ws.cell(ri, 2).value   # col B: Pilote
-                    deb_v   = ws.cell(ri, 16).value  # col P: Debut Poste (datetime)
+                _ensure_db_schema(conn)
+                c = conn.cursor()
+                c.execute(f"SELECT rowid, {_POSTES_COLS} FROM postes")
+                for row in c.fetchall():
+                    rid = row[0]
+                    p = row[1:]  # p01..p30
+                    pilot_v = p[1]  # p02
+                    deb_v   = p[15] # p16
                     if not pilot_v or not deb_v: continue
                     deb_dt = _parse_dt(deb_v)
                     if deb_dt is None: continue
-                    fin_v  = ws.cell(ri, 17).value   # col Q: Fin Poste (datetime)
-                    fin_dt = _parse_dt(fin_v)
+                    fin_dt = _parse_dt(p[16])  # p17
                     date_str = deb_dt.strftime("%d/%m/%Y")
-                    _poste_v = str(ws.cell(ri, 4).value or '').strip()
+                    _poste_v = str(p[3] or '').strip()  # p04
                     pk = (str(pilot_v).strip().lower(), date_str)
                     pk3 = (str(pilot_v).strip().lower(), date_str, _poste_v.lower())
-                    result[pk] = {
+                    entry = {
                         'deb_dt':        deb_dt,
                         'fin_dt':        fin_dt,
                         'date_str':      date_str,
                         'pilot':         str(pilot_v).strip(),
-                        'poste':         _poste_v,  # col D
-                        'trs':           _flt(ws.cell(ri, 8).value),   # col H: TRS Poste %
-                        'cadence_h':     _flt(ws.cell(ri, 9).value),   # col I: Cadence/h
-                        'ouverture_min': _flt(ws.cell(ri, 18).value),  # col R: Temps ouverture
-                        'utile_min':     _flt(ws.cell(ri, 19).value),  # col S: Temps utile
-                        'fonct_min':     _flt(ws.cell(ri, 20).value),  # col T: Temps fonctionnement
-                        'arret_min':     _flt(ws.cell(ri, 21).value),  # col U: Temps arret
-                        'pause_min':     _flt(ws.cell(ri, 10).value),  # col J: Total Pauses
-                        'nett_min':      _flt(ws.cell(ri, 11).value),  # col K: Nettoyage
-                        'reunion_min':   _flt(ws.cell(ri, 12).value),  # col L: Réunion
-                        'perte_min':     _flt(ws.cell(ri, 23).value),  # col W: Perte cadence (min)
-                        'degrade_min':   _flt(ws.cell(ri, 24).value),  # col X: Temps degrade
-                        'pcs_theorique': _flt(ws.cell(ri, 25).value),  # col Y: Pièces théoriques
-                        'depassement_min': _flt(ws.cell(ri, 13).value), # col M: Dépassement arrêts
-                        'row_idx':       ri,
+                        'poste':         _poste_v,
+                        'trs':           _flt(p[7]),   # p08
+                        'cadence_h':     _flt(p[8]),   # p09
+                        'ouverture_min': _flt(p[17]),  # p18
+                        'utile_min':     _flt(p[18]),  # p19
+                        'fonct_min':     _flt(p[19]),  # p20
+                        'arret_min':     _flt(p[20]),  # p21
+                        'pause_min':     _flt(p[9]),   # p10
+                        'nett_min':      _flt(p[10]),  # p11
+                        'reunion_min':   _flt(p[11]),  # p12
+                        'perte_min':     _flt(p[22]),  # p23
+                        'degrade_min':   _flt(p[23]),  # p24
+                        'pcs_theorique': _flt(p[24]),  # p25
+                        'depassement_min': _flt(p[12]), # p13
+                        'row_idx':       rid,
                         'budget_overrides': {
-                            'pause_min':       _flt(ws.cell(ri, 26).value),
-                            'clean_short_min': _flt(ws.cell(ri, 27).value),
-                            'clean_long_min':  _flt(ws.cell(ri, 28).value),
-                            'clean_grand_min': _flt(ws.cell(ri, 29).value),
-                            'meeting_tol_min': _flt(ws.cell(ri, 30).value),
+                            'pause_min':       _flt(p[25]),  # p26
+                            'clean_short_min': _flt(p[26]),  # p27
+                            'clean_long_min':  _flt(p[27]),  # p28
+                            'clean_grand_min': _flt(p[28]),  # p29
+                            'meeting_tol_min': _flt(p[29]),  # p30
                         },
                     }
-                    result[pk3] = result[pk]  # clé 3-tuples pour éviter collision pilote/2 postes même jour
+                    result[pk] = entry
+                    result[pk3] = entry
             finally:
-                try: wb.close()
+                try: conn.close()
                 except: pass
     except: pass
     return result
@@ -1866,19 +1813,19 @@ def _pm_get(pm, pilot_lw, date_str, poste=""):
     return pm.get((pilot_lw, date_str), {})
 
 def _backup_excel_daily():
-    """Copie le fichier Excel dans backups/ une fois par jour. Ne supprime jamais les anciens backups."""
-    path = cfg.get("db_path", "")
+    """Copie le fichier .db dans backups/ une fois par jour."""
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     try:
         os.makedirs(BACKUPS_DIR, exist_ok=True)
         today_str = datetime.date.today().strftime("%Y%m%d")
         _app_bk = (cfg.get("app_name","") or "kpi_orc").strip().replace(" ","_").replace("/","_")
-        backup_path = os.path.join(BACKUPS_DIR, f"{_app_bk}_{today_str}.xlsx")
+        backup_path = os.path.join(BACKUPS_DIR, f"{_app_bk}_{today_str}.db")
         if os.path.exists(backup_path): return  # déjà fait aujourd'hui
         shutil.copy2(path, backup_path)
-        print(f"[BACKUP-EXCEL] Copie quotidienne : {backup_path}")
+        print(f"[BACKUP-DB] Copie quotidienne : {backup_path}")
     except Exception as _e_bxl:
-        print(f"[BACKUP-EXCEL] Erreur : {_e_bxl}")
+        print(f"[BACKUP-DB] Erreur : {_e_bxl}")
 
 def _backup_excel_bg():
     """Thread qui effectue le backup quotidien du fichier Excel toutes les 24h."""
@@ -1899,19 +1846,18 @@ def _start_periodic_excel_sync():
     t.start()
 
 def toggle_hors_trs_excel(row_num, new_val):
-    path = cfg.get("db_path","")
+    path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                if "Declarations" in wb.sheetnames:
-                    ws = wb["Declarations"]
-                    ws.cell(row_num, 37).value = new_val  # col 37 = Prevu/Hors TRS
-                    _safe_excel_save(wb,path)
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                c = conn.cursor()
+                c.execute("UPDATE declarations SET c37=? WHERE rowid=?", (new_val, row_num))
+                _db_commit(conn)
         except: pass
-    threading.Thread(target=_bg,daemon=True).start()
+    threading.Thread(target=_bg, daemon=True).start()
 
 # ── Flask helpers ─────────────────────────────────────────────────────────────
 def _check_pw(pw):
@@ -3615,20 +3561,18 @@ def api_login():
     if pilot in pilot_pws and pilot_pws[pilot]:
         if pw != str(pilot_pws[pilot]):
             return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
-    # Vérification intégrité Excel avant d'autoriser la connexion
-    _db_path_ck = cfg.get("db_path","")
+    # Vérification intégrité SQLite avant d'autoriser la connexion
+    _db_path_ck = _db_path_resolved()
     if _db_path_ck:
-        _excel_ok = False
-        _wb_ck = None
+        _db_ok = False
         try:
-            _wb_ck = load_workbook(_db_path_ck, read_only=True, data_only=True)
-            _excel_ok = "Declarations" in _wb_ck.sheetnames
-        except: _excel_ok = False
-        finally:
-            if _wb_ck is not None:
-                try: _wb_ck.close()
-                except: pass
-        if not _excel_ok:
+            if os.path.exists(_db_path_ck):
+                _ck_conn = sqlite3.connect(_db_path_ck, check_same_thread=False)
+                _ensure_db_schema(_ck_conn)
+                _db_ok = True
+                _ck_conn.close()
+        except: _db_ok = False
+        if not _db_ok:
             return jsonify({"ok":False,"error":"Enregistrement impossible, appeler le Bureau Méthode et écrire les déclarations sur un papier"}),503
     # Si un autre pilote est encore connecté → fermer son poste proprement avant de lancer le nouveau
     _prev_pilot = _S.get("pilot") or ""
@@ -5075,13 +5019,93 @@ def api_set_db():
     if not _check_pw(pw):
         return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
     path = data.get("path","").strip()
-    if not path or not os.path.exists(path):
+    resolved = _db_path_resolved(path)
+    if not resolved or not os.path.exists(resolved):
         return jsonify({"ok":False,"error":"Fichier introuvable"}),400
-    cfg["db_path"] = path
+    cfg["db_path"] = resolved
     save_cfg_data()
     threading.Thread(target=load_lists,daemon=True).start()
     threading.Thread(target=load_history,daemon=True).start()
     return jsonify({"ok":True})
+
+@flask_app.route('/api/migrate_excel', methods=['POST'])
+def api_migrate_excel():
+    """Migre un ancien fichier Excel (.xlsx) vers la base SQLite active."""
+    data = request.json or {}
+    pw = data.get("pw","")
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}),403
+    xlsx_path = data.get("xlsx_path","").strip()
+    if not xlsx_path or not os.path.exists(xlsx_path):
+        return jsonify({"ok":False,"error":"Fichier Excel introuvable"}),400
+    db_path = _db_path_resolved()
+    if not db_path:
+        return jsonify({"ok":False,"error":"Aucune base SQLite configurée"}),400
+    try:
+        from openpyxl import load_workbook as _lw
+        wb = _lw(xlsx_path, read_only=True, data_only=True)
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        _ensure_db_schema(conn)
+        n_decl = 0; n_postes = 0; n_listes = 0
+        # Migrate Declarations sheet
+        if "Declarations" in wb.sheetnames:
+            ws_d = wb["Declarations"]
+            for row in ws_d.iter_rows(min_row=2, values_only=True):
+                if all(v is None for v in row): continue
+                vals = list(row)[:44]
+                vals.extend([None] * (44 - len(vals)))
+                vals_t = tuple(str(v) if v is not None else None for v in vals)
+                conn.execute(f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})", vals_t)
+                n_decl += 1
+        # Migrate Postes sheet
+        if "Postes" in wb.sheetnames:
+            ws_p = wb["Postes"]
+            for row in ws_p.iter_rows(min_row=2, values_only=True):
+                if all(v is None for v in row): continue
+                vals = list(row)[:30]
+                vals.extend([None] * (30 - len(vals)))
+                vals_t = tuple(str(v) if v is not None else None for v in vals)
+                conn.execute(f"INSERT INTO postes ({_POSTES_COLS}) VALUES ({_POSTES_PLACEHOLDERS})", vals_t)
+                n_postes += 1
+        # Migrate Listes sheet
+        if "Listes" in wb.sheetnames:
+            ws_l = wb["Listes"]
+            _col_list_names = {
+                1: "pilotes", 2: None, 3: "copilotes", 4: "tailles",
+                5: "types_prod", 6: None, 7: None, 8: None, 9: None, 10: "fibres",
+                11: "arrets", 12: None, 13: "interposte",
+            }
+            col_data = {}
+            for row in ws_l.iter_rows(min_row=2, values_only=True):
+                for ci, cell_val in enumerate(row):
+                    if ci >= 15: break
+                    if cell_val is None: continue
+                    col_data.setdefault(ci, []).append(str(cell_val))
+            for ci, vals in col_data.items():
+                lname = _col_list_names.get(ci + 1)
+                if lname is None:
+                    hdr = None
+                    try:
+                        hdr_row = next(ws_l.iter_rows(min_row=1, max_row=1, values_only=True), None)
+                        if hdr_row and ci < len(hdr_row) and hdr_row[ci]:
+                            hdr = str(hdr_row[ci]).strip()
+                    except: pass
+                    if not hdr: continue
+                    lname = hdr.lower()
+                for pos, v in enumerate(vals, 1):
+                    conn.execute("INSERT OR REPLACE INTO listes (list_name, position, value1) VALUES (?,?,?)",
+                                 (lname, pos, v))
+                    n_listes += 1
+        try: wb.close()
+        except: pass
+        conn.commit()
+        conn.close()
+        threading.Thread(target=load_lists, daemon=True).start()
+        threading.Thread(target=load_history, daemon=True).start()
+        return jsonify({"ok":True,"decl":n_decl,"postes":n_postes,"listes":n_listes})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)}),500
 
 @flask_app.route('/api/toggle_hors_trs', methods=['POST'])
 def api_toggle_hors_trs():
@@ -5123,11 +5147,10 @@ def api_delete_row():
         return jsonify({"ok":False,"error":"Paramètre manquant"}),400
     # Suppression synchrone du cache pour éviter stale data
     global _decl_cache
-    # FIX 2: extraire infos avant suppression (pour recalc et ajustement row_num)
+    # FIX 2: extraire infos avant suppression
     _del_row_data = next((r for rn, r in _decl_cache if rn == row_num), None)
     _decl_cache = [(rn, row) for rn, row in _decl_cache if rn != row_num]
-    # FIX 2: ajuster row_num dans le cache (Excel décale toutes les lignes suivantes de -1)
-    _decl_cache = [(rn if rn < row_num else rn - 1, row) for rn, row in _decl_cache]
+    # Note: SQLite rowids sont stables — pas d'ajustement nécessaire (contrairement à Excel)
     # Si l'entrée était injectée dans tl_events (past_decl), la retirer aussi
     _del_type_str = str(_del_row_data[0] or "").strip().lower() if _del_row_data is not None else ""
     if _S.get("prod_active"):
@@ -5160,16 +5183,15 @@ def api_delete_row():
         save_session()
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                sheet = wb["Declarations"] if "Declarations" in wb.sheetnames else None
-                if sheet is None: return
-                sheet.delete_rows(row_num)
-                _safe_excel_save(wb,path)
-            threading.Thread(target=load_history,daemon=True).start()
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                c = conn.cursor()
+                c.execute("DELETE FROM declarations WHERE rowid=?", (row_num,))
+                _db_commit(conn)
+            threading.Thread(target=load_history, daemon=True).start()
         except: pass
-    threading.Thread(target=_bg,daemon=True).start()
+    threading.Thread(target=_bg, daemon=True).start()
     # FIX 3: recalcul automatique Postes si la ligne appartient à un poste terminé
     if _del_row_data is not None:
         _del_date = str(_del_row_data[39] if len(_del_row_data) > 39 else "").strip() or _row_date(_del_row_data[2])
@@ -5334,47 +5356,53 @@ def api_edit_row():
                 _maybe_recalc_postes_bg(_e_date, _e_pilot, _e_poste)
     def _bg():
         try:
-            with _excel_lock:
-                wb = _get_wb(path)
-                if wb is None: return
-                if "Declarations" not in wb.sheetnames: return
-                ws = wb["Declarations"]
+            with _db_lock:
+                conn = _get_conn(path)
+                if conn is None: return
+                c = conn.cursor()
+                # Apply the updates
                 for col_str, val in updates.items():
-                    try: ws.cell(row_num, int(col_str)).value = val
+                    try:
+                        ci = int(col_str)
+                        col_name = f"c{ci:02d}"
+                        c.execute(f"UPDATE declarations SET {col_name}=? WHERE rowid=?", (val, row_num))
                     except: pass
+                # Recalculate duration and production metrics from the updated row
                 try:
-                    row_type = str(ws.cell(row_num, 1).value or "").strip().lower()
-                    # Recalculer la durée pour TOUS les types (arrêts, pauses, prod…)
-                    debut_s = _hms_to_sec(str(ws.cell(row_num, 17).value or "00:00:00"))
-                    fin_s   = _norm_fin(debut_s, _hms_to_sec(str(ws.cell(row_num, 18).value or "00:00:00")))
-                    brut_s  = max(0, fin_s - debut_s)
-                    if brut_s > 0:
-                        ws.cell(row_num, 19).value = fmt(brut_s)
-                    # Recalcul equiv / cadence / TRS uniquement pour les lignes de production
-                    if row_type in ("production","prod",""):
-                        qte_fab_v = 0.0
-                        try: qte_fab_v = float(str(ws.cell(row_num, 20).value or 0).replace(",","."))
-                        except: pass
-                        taille_v = str(ws.cell(row_num, 8).value or "").strip()
-                        type_prod_v = str(ws.cell(row_num, 10).value or "").strip()
-                        new_equiv = calc_equiv(qte_fab_v, taille_v, type_prod_v)
-                        if new_equiv > 0:
-                            ws.cell(row_num, 22).value = new_equiv
-                        nb_pers_v = 1
-                        try: nb_pers_v = max(1, float(str(ws.cell(row_num, 7).value or 1).replace(",",".") or 1))
-                        except: pass
-                        of_hrs = brut_s / 3600 if brut_s > 0 else 0
-                        if of_hrs > 0 and new_equiv > 0:
-                            ws.cell(row_num, 23).value = round(new_equiv / of_hrs, 2)
-                            ws.cell(row_num, 24).value = round(new_equiv / (nb_pers_v * of_hrs), 2)
-                        pr = get_prod_ref()
-                        if pr > 0 and brut_s > 0 and new_equiv > 0:
-                            ws.cell(row_num, 25).value = str(round(new_equiv/(pr*brut_s/28800)*100,1))
+                    c.execute("SELECT c01, c07, c08, c10, c17, c18, c20 FROM declarations WHERE rowid=?", (row_num,))
+                    _upd = c.fetchone()
+                    if _upd:
+                        row_type = str(_upd[0] or "").strip().lower()
+                        debut_s = _hms_to_sec(str(_upd[4] or "00:00:00"))
+                        fin_s   = _norm_fin(debut_s, _hms_to_sec(str(_upd[5] or "00:00:00")))
+                        brut_s  = max(0, fin_s - debut_s)
+                        if brut_s > 0:
+                            c.execute("UPDATE declarations SET c19=? WHERE rowid=?", (fmt(brut_s), row_num))
+                        if row_type in ("production","prod",""):
+                            qte_fab_v = 0.0
+                            try: qte_fab_v = float(str(_upd[6] or 0).replace(",","."))
+                            except: pass
+                            taille_v = str(_upd[2] or "").strip()
+                            type_prod_v = str(_upd[3] or "").strip()
+                            new_equiv = calc_equiv(qte_fab_v, taille_v, type_prod_v)
+                            if new_equiv > 0:
+                                c.execute("UPDATE declarations SET c22=? WHERE rowid=?", (new_equiv, row_num))
+                            nb_pers_v = 1
+                            try: nb_pers_v = max(1, float(str(_upd[1] or 1).replace(",",".") or 1))
+                            except: pass
+                            of_hrs = brut_s / 3600 if brut_s > 0 else 0
+                            if of_hrs > 0 and new_equiv > 0:
+                                c.execute("UPDATE declarations SET c23=?, c24=? WHERE rowid=?",
+                                          (round(new_equiv / of_hrs, 2), round(new_equiv / (nb_pers_v * of_hrs), 2), row_num))
+                            pr = get_prod_ref()
+                            if pr > 0 and brut_s > 0 and new_equiv > 0:
+                                c.execute("UPDATE declarations SET c25=? WHERE rowid=?",
+                                          (str(round(new_equiv/(pr*brut_s/28800)*100,1)), row_num))
                 except: pass
-                _safe_excel_save(wb,path)
-            threading.Thread(target=load_history,daemon=True).start()
+                _db_commit(conn)
+            threading.Thread(target=load_history, daemon=True).start()
         except: pass
-    threading.Thread(target=_bg,daemon=True).start()
+    threading.Thread(target=_bg, daemon=True).start()
     return jsonify({"ok":True})
 
 @flask_app.route('/api/fin_poste_data')
@@ -6507,21 +6535,16 @@ def api_add_past_decl():
     def _write_bg():
         _path = cfg.get("db_path","")
         if not _path: return
-        for _attempt in range(5):
-            try:
-                with _excel_lock:
-                    _wb = _get_wb(_path)
-                    if _wb is None:
-                        time.sleep(2); continue
-                    _ws = _ensure_decl_sheet(_wb)
-                    _ws.append(row)
-                    _format_row(_ws, _ws.max_row)
-                    _safe_excel_save(_wb, _path)
-                return
-            except PermissionError:
-                time.sleep(2)
-            except:
-                return
+        try:
+            with _db_lock:
+                conn = _get_conn(_path)
+                if conn is None: return
+                _ensure_db_schema(conn)
+                _vals = _decl_row_to_tuple(row)
+                conn.execute(f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})", _vals)
+                _db_commit(conn)
+        except:
+            pass
     threading.Thread(target=_write_bg, daemon=True).start()
     # Ajout immédiat au cache en mémoire (pas de reload qui écraserait l'entrée)
     try:
@@ -6565,30 +6588,30 @@ def api_update_of_time():
             target_rn = rn
             break
     if target_rn is None:
-        # Fallback: search directly in Excel file (cache may not be updated yet after background write)
+        # Fallback: search directly in SQLite (cache may not be updated yet after background write)
         path = cfg.get("db_path","")
         if path:
             try:
-                with _excel_lock:
-                    wb = _get_wb(path)
-                    if wb is not None:
+                with _db_lock:
+                    conn = _get_conn(path)
+                    if conn is not None:
                         try:
-                            ws = wb["Declarations"] if "Declarations" in wb.sheetnames else wb.active
-                            for row in ws.iter_rows(min_row=2, values_only=False):
-                                rn_fb = row[0].row
-                                r_fb = tuple(c.value for c in row)
-                                if len(r_fb) < 18: continue
-                                rd = _row_date(r_fb[2])
+                            c = conn.cursor()
+                            c.execute("SELECT rowid, c01, c03, c05, c17 FROM declarations WHERE LOWER(c01) IN ('production','prod','')")
+                            for fb_row in c.fetchall():
+                                rn_fb, c01_fb, c03_fb, c05_fb, c17_fb = fb_row
+                                rd = _row_date(c03_fb)
                                 if rd not in (today, shift_date_str): continue
-                                if str(r_fb[4] or "") != pilot: continue
-                                if str(r_fb[0] or "").strip().lower() not in ("production","prod",""): continue
-                                row_of = str(r_fb[1] or "")
-                                row_debut = str(r_fb[16] or "")[:5]
+                                if str(c05_fb or "") != pilot: continue
+                                c.execute("SELECT c02 FROM declarations WHERE rowid=?", (rn_fb,))
+                                _r2 = c.fetchone()
+                                row_of = str(_r2[0] if _r2 else "") if _r2 else ""
+                                row_debut = str(c17_fb or "")[:5]
                                 if row_of == of_num and (not old_debut or row_debut == old_debut):
                                     target_rn = rn_fb
                                     break
                         finally:
-                            try: wb.close()
+                            try: conn.close()
                             except: pass
             except Exception as _e:
                 pass
@@ -6624,33 +6647,36 @@ def api_update_of_time():
                 if _cur_of_num == of_num and _cur_of_start_hm == old_debut:
                     _S["of_start"] = _S["of_start"].replace(hour=dh, minute=dm, second=0, microsecond=0)
             except: pass
-    # Update Excel in background + recalcul cols 22-25 (cadence/TRS changent avec la durée)
+    # Update SQLite in background + recalcul cols 22-25 (cadence/TRS changent avec la durée)
     path = cfg.get("db_path","")
     _upd_row_cached = next((r for rn, r in _decl_cache if rn == target_rn), None)
     if path:
         def _bg():
             try:
-                with _excel_lock:
-                    wb = _get_wb(path)
-                    if wb is None: return
-                    ws = wb["Declarations"] if "Declarations" in wb.sheetnames else wb.active
-                    ws.cell(target_rn, 17).value = new_debut_hms
-                    ws.cell(target_rn, 18).value = new_fin_hms
-                    ws.cell(target_rn, 19).value = dur_hms
+                with _db_lock:
+                    conn = _get_conn(path)
+                    if conn is None: return
+                    c = conn.cursor()
+                    c.execute("UPDATE declarations SET c17=?, c18=?, c19=? WHERE rowid=?",
+                              (new_debut_hms, new_fin_hms, dur_hms, target_rn))
                     # Recalcul cadence/TRS puisque la durée a changé
                     if dur_s2 > 0:
                         try:
-                            _eq = float(str(ws.cell(target_rn, 22).value or 0).replace(",",".") or 0)
-                            _np = max(1.0, float(str(ws.cell(target_rn, 7).value or 1).replace(",",".") or 1))
-                            _hrs = dur_s2 / 3600
-                            if _eq > 0 and _hrs > 0:
-                                ws.cell(target_rn, 23).value = round(_eq / _hrs, 2)
-                                ws.cell(target_rn, 24).value = round(_eq / (_np * _hrs), 2)
-                            _pr = get_prod_ref()
-                            if _pr > 0 and _eq > 0:
-                                ws.cell(target_rn, 25).value = str(round(_eq / (_pr * dur_s2 / 28800) * 100, 1))
+                            c.execute("SELECT c22, c06 FROM declarations WHERE rowid=?", (target_rn,))
+                            _r = c.fetchone()
+                            if _r:
+                                _eq = float(str(_r[0] or 0).replace(",",".") or 0)
+                                _np = max(1.0, float(str(_r[1] or 1).replace(",",".") or 1))
+                                _hrs = dur_s2 / 3600
+                                if _eq > 0 and _hrs > 0:
+                                    c.execute("UPDATE declarations SET c23=?, c24=? WHERE rowid=?",
+                                              (round(_eq / _hrs, 2), round(_eq / (_np * _hrs), 2), target_rn))
+                                _pr = get_prod_ref()
+                                if _pr > 0 and _eq > 0:
+                                    c.execute("UPDATE declarations SET c25=? WHERE rowid=?",
+                                              (str(round(_eq / (_pr * dur_s2 / 28800) * 100, 1)), target_rn))
                         except: pass
-                    _safe_excel_save(wb, path)
+                    _db_commit(conn)
             except: pass
         threading.Thread(target=_bg, daemon=True).start()
     # FIX 3 pour update_of_time: recalcul Postes si poste terminé
@@ -6687,32 +6713,35 @@ def _backfill_nb_pers_shift():
         shift_dates.add(_nxt)
     except: pass
     try:
-        with _excel_lock:
-            wb = _get_wb(path)
-            if wb is None: return
-            ws = _ensure_decl_sheet(wb)
+        with _db_lock:
+            conn = _get_conn(path)
+            if conn is None: return
+            c = conn.cursor()
+            c.execute("SELECT rowid, c05, c04, c40, c03, c17, c07 FROM declarations WHERE c05=? AND c04=?",
+                      (pilot, poste))
             rows_info = []
-            for excel_rn in range(2, ws.max_row + 1):
-                if str(ws.cell(excel_rn, 5).value or "").strip() != pilot: continue
-                if str(ws.cell(excel_rn, 4).value or "").strip() != poste: continue
-                _row_dt = str(ws.cell(excel_rn, 40).value or "").strip() or _row_date(ws.cell(excel_rn, 3).value)
+            for db_row in c.fetchall():
+                rn_db, _p5, _p4, _c40, _c03, _c17, _c07 = db_row
+                _row_dt = str(_c40 or "").strip() or _row_date(_c03)
                 if _row_dt not in shift_dates: continue
-                debut_s = _hms_to_sec(str(ws.cell(excel_rn, 17).value or "00:00:00"))
-                nb_val  = str(ws.cell(excel_rn, 7).value or "").strip()
-                rows_info.append((excel_rn, debut_s, nb_val))
-            if not rows_info: return
+                debut_s = _hms_to_sec(str(_c17 or "00:00:00"))
+                nb_val  = str(_c07 or "").strip()
+                rows_info.append((rn_db, debut_s, nb_val))
+            if not rows_info:
+                conn.close(); return
             rows_info.sort(key=lambda x: x[1])
             last_nb = ""
             to_fill = []
-            for excel_rn, debut_s, nb_val in rows_info:
+            for rn_db, debut_s, nb_val in rows_info:
                 if nb_val:
                     last_nb = nb_val
                 elif last_nb:
-                    to_fill.append((excel_rn, last_nb))
-            if not to_fill: return
-            for excel_rn, fill_val in to_fill:
-                ws.cell(excel_rn, 7).value = fill_val
-            _safe_excel_save(wb, path)
+                    to_fill.append((rn_db, last_nb))
+            if not to_fill:
+                conn.close(); return
+            for rn_db, fill_val in to_fill:
+                c.execute("UPDATE declarations SET c07=? WHERE rowid=?", (fill_val, rn_db))
+            _db_commit(conn)
         threading.Thread(target=load_history, daemon=True).start()
         print(f"[BACKFILL-NB-PERS] {len(to_fill)} ligne(s) mises à jour (carry-forward nb_pers)")
     except Exception as _e:
@@ -8328,13 +8357,21 @@ select{cursor:default}
         </div>
       </div>
       <div class="ss">
-        <h3>📂 Fichier Excel de données</h3>
-        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Chemin complet vers le fichier Excel (.xlsx) contenant les onglets Declarations et Listes.</div>
+        <h3>📂 Fichier de données (SQLite .db)</h3>
+        <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:8px">Chemin complet vers le fichier SQLite (.db) contenant les tables declarations, postes et listes. Un ancien fichier .xlsx sera automatiquement redirigé vers .db.</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
-          <input id="cfg-db-path" placeholder="C:\chemin\vers\fichier.xlsx" style="flex:1;min-width:200px;padding:7px 10px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+          <input id="cfg-db-path" placeholder="C:\chemin\vers\fichier.db" style="flex:1;min-width:200px;padding:7px 10px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
           <button class="btn btn-prim" onclick="setDbPath()">💾 Enregistrer</button>
         </div>
         <div id="cfg-db-status" style="font-size:calc(11px*var(--zf,1));color:var(--gray)"></div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+          <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-bottom:6px">Migration : importer les données d'un ancien fichier Excel (.xlsx) vers la base SQLite active.</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="migrate-xlsx-path" placeholder="C:\chemin\vers\ancien.xlsx" style="flex:1;min-width:200px;padding:7px 10px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))">
+            <button class="btn btn-sec" onclick="migrateExcel()">📥 Migrer depuis Excel</button>
+          </div>
+          <div id="migrate-status" style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-top:4px"></div>
+        </div>
       </div>
       <div class="ss">
         <h3>🔐 Mots de passe pilotes</h3>
@@ -14766,13 +14803,32 @@ async function setDbPath(){
   const r=await fetch('/api/set_db',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,path})});
   const d=r?await r.json():{};
   if(d&&d.ok){
-    if(st){st.textContent='✓ Fichier Excel configuré';st.style.color='var(--green)';}
-    toast('Fichier Excel enregistré','ok');
+    if(st){st.textContent='✓ Fichier SQLite configuré';st.style.color='var(--green)';}
+    toast('Fichier SQLite enregistré','ok');
     _settingsClearDirty('fichier excel');
     loadCfg();
   } else {
     if(st){st.textContent='✗ '+(d&&d.error||'Erreur — vérifiez le chemin');st.style.color='var(--red)';}
     toast(d&&d.error||'Chemin invalide','err');
+  }
+}
+
+async function migrateExcel(){
+  const xlsx=document.getElementById('migrate-xlsx-path').value.trim();
+  if(!xlsx){toast('Chemin du fichier Excel requis','err');return;}
+  const st=document.getElementById('migrate-status');
+  if(st){st.textContent='Migration en cours…';st.style.color='var(--amber)';}
+  const r=await fetch('/api/migrate_excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pw:_adminPw,xlsx_path:xlsx})});
+  const d=r?await r.json():{};
+  if(d&&d.ok){
+    const msg='✓ Migration terminée'+(d.decl?' — '+d.decl+' déclarations':'')+
+              (d.postes?' / '+d.postes+' postes':'')+
+              (d.listes?' / '+d.listes+' entrées listes':'');
+    if(st){st.textContent=msg;st.style.color='var(--green)';}
+    toast('Migration Excel → SQLite réussie','ok');
+  } else {
+    if(st){st.textContent='✗ '+(d&&d.error||'Erreur migration');st.style.color='var(--red)';}
+    toast(d&&d.error||'Erreur migration','err');
   }
 }
 
@@ -16151,30 +16207,34 @@ def _force_fin_poste_server(force=False):
                 dict(v, pilote=v.get("pilote", pilot), poste=v.get("poste", poste)),
                 tl_snap, of_start, pause_periods_snap
             )
-            # Écriture synchrone dans Excel avec fallback backup
+            # Écriture synchrone dans SQLite avec fallback backup
             _db_path = cfg.get("db_path","")
             _auto_written = False
-            if _db_path and os.path.exists(_db_path):
+            if _db_path:
                 try:
-                    with _excel_lock:
-                        _wb_auto = _get_wb(_db_path)
-                        if _wb_auto is not None:
-                            _ws_auto = _ensure_decl_sheet(_wb_auto)
-                            _ws_auto.append(prod_row_auto)
-                            _format_row(_ws_auto, _ws_auto.max_row)
+                    with _db_lock:
+                        _conn_auto = _get_conn(_db_path)
+                        if _conn_auto is not None:
+                            _ensure_db_schema(_conn_auto)
+                            _conn_auto.execute(
+                                f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})",
+                                _decl_row_to_tuple(prod_row_auto)
+                            )
                             for _er in evt_rows_auto:
-                                _ws_auto.append(_er)
-                                _format_row(_ws_auto, _ws_auto.max_row)
-                            _safe_excel_save(_wb_auto, _db_path)
+                                _conn_auto.execute(
+                                    f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})",
+                                    _decl_row_to_tuple(_er)
+                                )
+                            _db_commit(_conn_auto)
                             _auto_written = True
-                    print(f"[AUTO-FIN-POSTE] OF {v.get('of_num','')} fermé et écrit dans Excel (qte=0, heure fin={end_dt.strftime('%H:%M')})")
+                    print(f"[AUTO-FIN-POSTE] OF {v.get('of_num','')} fermé et écrit dans SQLite (qte=0, heure fin={end_dt.strftime('%H:%M')})")
                 except Exception as _e_write:
-                    print(f"[AUTO-FIN-POSTE] Erreur écriture Excel : {_e_write} — sauvegarde dans backup")
+                    print(f"[AUTO-FIN-POSTE] Erreur écriture SQLite : {_e_write} — sauvegarde dans backup")
                     _auto_written = False
             if not _auto_written:
-                # Excel inaccessible ou inexistant → backup (sera rejoué par _flush_backup)
+                # SQLite inaccessible ou inexistant → backup (sera rejoué par _flush_backup)
                 _append_to_backup(prod_row_auto, evt_rows_auto)
-                print(f"[AUTO-FIN-POSTE] OF mis en backup — sera écrit dès qu'Excel redevient accessible")
+                print(f"[AUTO-FIN-POSTE] OF mis en backup — sera écrit dès que SQLite redevient accessible")
         except Exception as e:
             print(f"[AUTO-FIN-POSTE] Erreur construction OF auto : {e}")
     load_history()
