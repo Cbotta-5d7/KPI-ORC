@@ -8565,8 +8565,6 @@ select{cursor:default}
         <button class="hf-btn" data-hf="pause" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #94a3b8;color:#94a3b8;background:none;cursor:pointer;font-weight:700;transition:all .15s">⏸ Pause</button>
         <button class="hf-btn" data-hf="reunion" onclick="toggleHistFilter(this)" style="font-size:calc(11px*var(--zf,1));padding:3px 9px;border-radius:12px;border:1.5px solid #8b5cf6;color:#8b5cf6;background:none;cursor:pointer;font-weight:700;transition:all .15s">👥 Réunion</button>
       </div>
-      <div style="width:1px;height:22px;background:var(--border);flex-shrink:0"></div>
-      <button onclick="exportHistory()" style="font-size:calc(11px*var(--zf,1));padding:5px 14px;background:#059669;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(5,150,105,.3)">⬇ Exporter les données</button>
     </div>
     <div style="flex:1;overflow-y:auto">
       <table class="ktbl"><thead><tr id="hist-hd"></tr></thead><tbody id="hist-bd"></tbody></table>
