@@ -4220,7 +4220,7 @@ def api_stop_degrade():
     # Col B vide : api_stop_degrade couvre la période hors OF (après le dernier OF)
     _row = [
         motif, "",
-        shift_dt.strftime("%d/%m/%Y"), poste, pilot,
+        start_dt_deg.strftime("%d/%m/%Y"), poste, pilot,
         (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
         str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
         start_dt_deg.strftime("%H:%M:%S"), end_dt_deg.strftime("%H:%M:%S"), fmt(dur_s),
@@ -4288,7 +4288,7 @@ def api_end_prod():
         if _dg_dur_of >= 1:
             _degrade_end_row = [
                 _dg_motif, _dg_of_num,
-                _sh_dt.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
+                _dg_of_start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
                 str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","",
                 _dg_of_start.strftime("%H:%M:%S"), _dg_of_end.strftime("%H:%M:%S"), fmt(_dg_dur_of),
