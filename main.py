@@ -4976,8 +4976,11 @@ def api_probleme_update():
     row_num = data.get("row_num")
     field = data.get("field","")
     value = data.get("value","")
+    pw = data.get("pw","")
     if row_num is None or field not in ("resolu","date_resolution","solution"):
         return jsonify({"ok":False,"error":"paramètres invalides"}), 400
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}), 403
     try:
         path = _db_path_resolved()
         if not path:
@@ -4987,6 +4990,30 @@ def api_probleme_update():
             conn.execute("PRAGMA journal_mode=WAL")
             _ensure_db_schema(conn)
             conn.cursor().execute(f"UPDATE problemes SET {field}=? WHERE row_num=?", (value, row_num))
+            conn.commit()
+            conn.close()
+        return jsonify({"ok":True})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)}), 500
+
+@flask_app.route('/api/probleme_delete', methods=['POST'])
+def api_probleme_delete():
+    data = request.json or {}
+    row_num = data.get("row_num")
+    pw = data.get("pw","")
+    if row_num is None:
+        return jsonify({"ok":False,"error":"row_num requis"}), 400
+    if not _check_pw(pw):
+        return jsonify({"ok":False,"error":"Mot de passe incorrect"}), 403
+    try:
+        path = _db_path_resolved()
+        if not path:
+            return jsonify({"ok":False,"error":"DB non trouvée"}), 500
+        with _db_lock:
+            conn = sqlite3.connect(path, check_same_thread=False, timeout=10)
+            conn.execute("PRAGMA journal_mode=WAL")
+            _ensure_db_schema(conn)
+            conn.cursor().execute("DELETE FROM problemes WHERE row_num=?", (row_num,))
             conn.commit()
             conn.close()
         return jsonify({"ok":True})
@@ -7688,7 +7715,7 @@ select{cursor:default}
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
-      <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🐛 Signaler problèmes logiciel</button>
+      <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🚨 Signaler problèmes logiciel</button>
       <button class="htab" id="ht-cdg" onclick="goTab('cdg')" style="display:none">📊 CDG</button>
     </div>
     <div id="hdr-right">
@@ -8647,7 +8674,7 @@ select{cursor:default}
   <!-- ════ PROBLÈMES ════ -->
   <div id="v-problemes" class="view" style="flex-direction:column;overflow:hidden">
     <div style="background:linear-gradient(180deg,#f8faff 0%,#fff 100%);border-bottom:2px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;box-shadow:0 2px 6px rgba(0,0,0,.04)">
-      <span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:var(--navy);letter-spacing:.3px">🐛 Problèmes logiciels signalés</span>
+      <span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:var(--navy);letter-spacing:.3px">🚨 Problèmes logiciels signalés</span>
       <button id="prob-add-btn" onclick="openProblemeModal()" style="margin-left:auto;background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">+ Signaler un problème</button>
     </div>
     <div style="overflow:auto;flex:1;padding:10px 14px">
@@ -8661,10 +8688,11 @@ select{cursor:default}
             <th style="padding:6px 8px;text-align:center;white-space:nowrap">Résolu</th>
             <th style="padding:6px 8px;text-align:left;white-space:nowrap">Date résolution</th>
             <th style="padding:6px 8px;text-align:left">Solution mise en place</th>
+            <th id="prob-th-actions" style="padding:6px 8px;text-align:center;white-space:nowrap"></th>
           </tr>
         </thead>
         <tbody id="prob-body">
-          <tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px">Chargement…</td></tr>
+          <tr><td colspan="8" style="text-align:center;color:var(--gray);padding:24px">Chargement…</td></tr>
         </tbody>
       </table>
     </div>
@@ -8673,7 +8701,7 @@ select{cursor:default}
   <!-- Modal signalement problème -->
   <div id="prob-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center">
     <div style="background:#fff;border-radius:12px;padding:24px;width:min(520px,92vw);box-shadow:0 8px 40px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:14px">
-      <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:var(--navy)">🐛 Signaler un problème logiciel</div>
+      <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:var(--navy)">🚨 Signaler un problème logiciel</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <div><div style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;margin-bottom:3px">Pilote</div>
           <input id="prob-pilote" readonly style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));background:#f8fafc;box-sizing:border-box"></div>
@@ -13944,9 +13972,12 @@ function cdgExport(){
 async function loadProblemes(){
   const bd=document.getElementById('prob-body');
   if(!bd) return;
+  const ro=!!window._probReadOnly;
+  const thAct=document.getElementById('prob-th-actions');
+  if(thAct) thAct.textContent=ro?'':'Actions';
   const rows=await apiFetch('/api/problemes').catch(()=>null)||[];
   if(!rows.length){
-    bd.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px">Aucun problème signalé</td></tr>';
+    bd.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--gray);padding:24px">Aucun problème signalé</td></tr>';
     return;
   }
   bd.innerHTML=rows.map(r=>{
@@ -13955,37 +13986,56 @@ async function loadProblemes(){
     const bgRow=resolu?'background:#f0fdf4':'';
     const dateRes=esc(r.date_resolution||'');
     const sol=esc(r.solution||'');
+    const chkCell=ro
+      ?`<input type="checkbox" ${chk} disabled style="width:16px;height:16px;accent-color:#16a34a;opacity:.6">`
+      :`<input type="checkbox" ${chk} style="width:16px;height:16px;cursor:pointer;accent-color:#16a34a" onchange="toggleProblemeResolu(${r.row_num},this)">`;
+    const solCell=ro
+      ?`<div style="padding:3px 6px;font-size:calc(10px*var(--zf,1));color:var(--gray);white-space:pre-wrap">${sol||'—'}</div>`
+      :`<div style="display:flex;gap:4px;align-items:flex-start"><textarea id="prob-sol-${r.row_num}" rows="2" style="flex:1;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(10px*var(--zf,1));resize:vertical;font-family:inherit" placeholder="Solution…">${sol}</textarea><button onclick="saveProblemeField(${r.row_num},'solution',document.getElementById('prob-sol-${r.row_num}').value)" style="flex-shrink:0;padding:2px 7px;border:1px solid #94a3b8;border-radius:4px;background:#f1f5f9;font-size:calc(10px*var(--zf,1));cursor:pointer" title="Sauvegarder">💾</button></div>`;
+    const actCell=ro?'':`<button onclick="deleteProbleme(${r.row_num})" style="padding:3px 10px;background:#fee2e2;border:1px solid #fca5a5;border-radius:5px;color:#dc2626;font-size:calc(10px*var(--zf,1));font-weight:700;cursor:pointer" title="Supprimer (MDP admin requis)">🗑 Supprimer</button>`;
     return `<tr style="border-bottom:1px solid var(--border);${bgRow}">
       <td style="padding:5px 8px;white-space:nowrap">${esc(r.date||'')}</td>
       <td style="padding:5px 8px;white-space:nowrap">${esc(r.heure||'')}</td>
       <td style="padding:5px 8px;white-space:nowrap;font-weight:600">${esc(r.pilote||'')}</td>
       <td style="padding:5px 8px;max-width:280px;white-space:pre-wrap;word-break:break-word">${esc(r.description||'')}</td>
-      <td style="padding:5px 8px;text-align:center">
-        <input type="checkbox" ${chk} style="width:16px;height:16px;cursor:pointer;accent-color:#16a34a" onchange="toggleProblemeResolu(${r.row_num},this)">
-      </td>
+      <td style="padding:5px 8px;text-align:center">${chkCell}</td>
       <td style="padding:5px 8px;white-space:nowrap;color:#16a34a;font-weight:600" id="prob-dres-${r.row_num}">${dateRes}</td>
-      <td style="padding:5px 8px;min-width:180px">
-        <textarea rows="2" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(10px*var(--zf,1));resize:vertical;font-family:inherit"
-          placeholder="Solution…"
-          onblur="saveProblemeField(${r.row_num},'solution',this.value)">${sol}</textarea>
-      </td>
+      <td style="padding:5px 8px;min-width:180px">${solCell}</td>
+      <td style="padding:5px 8px;text-align:center">${actCell}</td>
     </tr>`;
   }).join('');
 }
 
+function _probAskPw(){return prompt('Mot de passe administrateur :');}
+
 async function toggleProblemeResolu(rowNum,el){
+  const pw=_probAskPw();
+  if(!pw){el.checked=!el.checked;return;}
   const resolu=el.checked?1:0;
   const now=new Date();
   const dateRes=resolu?(String(now.getDate()).padStart(2,'0')+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+now.getFullYear()+' '+String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0')):'';
+  const r=await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'resolu',value:resolu,pw})}).then(x=>x.json()).catch(()=>({ok:false}));
+  if(!r.ok){toast(r.error||'Mot de passe incorrect','err');el.checked=!el.checked;return;}
   const el2=document.getElementById('prob-dres-'+rowNum);
   if(el2) el2.textContent=dateRes;
   const row=el.closest('tr');if(row)row.style.background=resolu?'#f0fdf4':'';
-  await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'resolu',value:resolu})}).catch(()=>{});
-  await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'date_resolution',value:dateRes})}).catch(()=>{});
+  await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'date_resolution',value:dateRes,pw})}).catch(()=>{});
 }
 
 async function saveProblemeField(rowNum,field,value){
-  await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field,value})}).catch(()=>{});
+  const pw=_probAskPw();
+  if(!pw) return;
+  const r=await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field,value,pw})}).then(x=>x.json()).catch(()=>({ok:false}));
+  if(r.ok) toast('Sauvegardé','ok'); else toast(r.error||'Mot de passe incorrect','err');
+}
+
+async function deleteProbleme(rowNum){
+  const pw=_probAskPw();
+  if(!pw) return;
+  if(!confirm('Supprimer définitivement ce problème ?')) return;
+  const r=await fetch('/api/probleme_delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,pw})}).then(x=>x.json()).catch(()=>({ok:false}));
+  if(r.ok){toast('Supprimé','ok');loadProblemes();}
+  else toast(r.error||'Mot de passe incorrect','err');
 }
 
 function openProblemeModal(){
@@ -16064,8 +16114,9 @@ def generate_dashboard_html():
             '      var el=document.querySelector(sel);if(el)el.style.display="none";\n'
             '    });\n'
             '    var cdgBtn=document.getElementById("ht-cdg");if(cdgBtn)cdgBtn.style.display="";\n'
-            '    var _probBtn=document.getElementById("ht-problemes");if(_probBtn)_probBtn.style.display="";\n'
+            '    var _probBtn=document.getElementById("ht-problemes");if(_probBtn){_probBtn.style.display="";var _tb=document.querySelector(".hdr-tabs");if(_tb){_tb.appendChild(_probBtn);_probBtn.style.marginLeft="auto";}}\n'
             '    var _addProbBtn=document.getElementById("prob-add-btn");if(_addProbBtn)_addProbBtn.style.display="none";\n'
+            '    window._probReadOnly=true;\n'
             '    if(typeof loadProblemes==="function") loadProblemes();\n'
             '    window.cdgExport=function(){\n'
             '      var rows=(window.DASH&&window.DASH.cdg_data)||[];\n'
