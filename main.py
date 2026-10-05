@@ -7683,11 +7683,6 @@ select{cursor:default}
       </div>
       <!-- POSTE ACTUEL encart principal -->
       <div style="order:4;flex:0 0 auto;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:6px 10px;display:flex;align-items:center;gap:10px">
-        <!-- Répartition temps (pie) — à GAUCHE -->
-        <div style="flex-shrink:0;text-align:center">
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Répartition</div>
-          <svg id="pie-poste-acc" viewBox="0 0 130 100" style="width:220px;height:170px;display:block;margin:0 auto"></svg>
-        </div>
         <!-- IDs cachés compat JS (gauge TRS supprimée) -->
         <div style="display:none"><svg><path id="gauge-poste-acc-arc"/><text id="gauge-poste-acc-pct"></text></svg><span id="gauge-poste-acc-lbl"></span></div>
         <!-- Stats — à droite -->
