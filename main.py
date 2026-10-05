@@ -12831,8 +12831,9 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     _row('Objectif éq',r.objectif!=null&&r.objectif>=0?String(r.objectif):'','#0369a1'),
     commentHtml3,
   ].join('');
-  // Col 3 : Événements
-  const col3Html=`${_sec('Événements ('+ofEvts.length+')')}${evtsHtml2}`;
+  // Col 3 : Durée OF + Événements
+  const _ofDurBlock=r.debut&&r.fin?`<div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:9px;padding:8px 12px;margin-bottom:10px"><div style="font-size:calc(9px*var(--zf,1));font-weight:800;color:#1d4ed8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Durée OF</div><div style="font-size:calc(22px*var(--zf,1));font-weight:900;color:#1e3a8a;line-height:1">${totalMin} <span style="font-size:calc(13px*var(--zf,1));font-weight:600;color:#374151">min</span></div><div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-top:3px">${esc(r.debut)} → ${esc(r.fin)}</div></div>`:'';
+  const col3Html=`${_ofDurBlock}${_sec('Événements ('+ofEvts.length+')')}${evtsHtml2}`;
 
   // ── KPI : Perte cadence + Réalisé vs Objectif ──
   const _equivNum=parseFloat(r.equiv||0)||0;
@@ -16135,11 +16136,20 @@ def generate_dashboard_html():
             '  var _dd=window._dashData?window._dashData(url):null;\n'
             '  return Promise.resolve({ok:true,json:function(){return Promise.resolve(_dd);}});\n'
             '};\n'
-            # Override showApp to redirect to history tab
+            # Override showApp to redirect to rapport poste (if sessions exist) or history
             'var _origShowApp=window.showApp;\n'
             'window.showApp=function(s){\n'
             '  if(typeof _origShowApp==="function")_origShowApp(s);\n'
-            '  setTimeout(function(){if(typeof goTab==="function")goTab("history");},50);\n'
+            '  setTimeout(function(){\n'
+            '    if(typeof goTab!=="function") return;\n'
+            '    var sessions=(window.DASH&&window.DASH.past_sessions)||[];\n'
+            '    if(sessions.length>0){\n'
+            '      goTab("rapports");\n'
+            '      setTimeout(function(){var first=document.querySelector(".rpt-item");if(first)first.click();},800);\n'
+            '    } else {\n'
+            '      goTab("history");\n'
+            '    }\n'
+            '  },50);\n'
             '};\n'
             # After full init: hide write-only elements, add compact CSS
             'document.addEventListener("DOMContentLoaded",function(){\n'
