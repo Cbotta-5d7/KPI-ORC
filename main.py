@@ -10164,7 +10164,7 @@ async function loadMainDecl() {
     const t=parseFloat(r.trs||0);
     const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.is_degrade?'<span class="row-tag tag-e" style="border-color:#ca8a04;color:#ca8a04">🟡 Dégradé</span>':(r.type&&r.type.toLowerCase().includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>'));
     const details=isProd?((r.taille||r.poids)?esc(r.taille||'')+((r.taille&&r.poids)?' / ':'')+esc(r.poids||''):''):esc(r.type||'');
-    const qty=isProd?esc(String(r.qte_fab||'')):'';
+    const qty=isProd?(r.qte_fab!=null&&r.qte_fab!==''?String(Math.round(parseFloat(r.qte_fab))):''):'';
     const dur=esc(r.duree||'');
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
     const cmt=esc(r.comment||'');
@@ -13319,8 +13319,8 @@ async function loadFPData(){
         <td>${esc(p.debut||'')}</td>
         <td>${esc(p.fin||'')}</td>
         <td>${esc(p.taille||'')}</td>
-        <td>${esc(String(p.qte_fab||0))}</td>
-        <td>${esc(String(p.equiv||''))}</td>
+        <td>${Math.round(parseFloat(p.qte_fab||0))}</td>
+        <td>${p.equiv!=null&&p.equiv!==''?Math.round(parseFloat(p.equiv)):''}</td>
         <td style="color:#0369a1;font-weight:700">${p.trs>0?Math.round(parseFloat(p.equiv||0)*100/p.trs):'—'}</td>
         <td class="${(p.trs||0)>=90?'tg':(p.trs||0)>=75?'tm':'tb'}">${fmtTRS(p.trs||0)}</td>
         <td>${esc(p.duree||'')}</td>
@@ -14132,7 +14132,7 @@ async function loadHist(){
     const t=parseFloat(r.trs||0);
     const tag=isProd?'<span class="row-tag tag-p">🏭 Prod</span>':(r.is_degrade?`<span class="row-tag tag-e" style="border-color:#ca8a04;color:#ca8a04">🟡 ${esc(r.type||'Dégradé')}</span>`:(rt.includes('nett')?'<span class="row-tag tag-n">🧹 Nett.</span>':rt.includes('pause')?'<span class="row-tag tag-n" style="border-color:#f59e0b;color:#f59e0b">⏸ Pause</span>':(rt.includes('réunion')||rt.includes('reunion'))?'<span class="row-tag tag-n" style="border-color:#8b5cf6;color:#8b5cf6">👥 Réunion</span>':'<span class="row-tag tag-e">⛔ Arrêt</span>'));
     const details=isProd?((r.taille||r.poids)?esc(r.taille||'')+((r.taille&&r.poids)?' / ':'')+esc(r.poids||''):''):esc(r.type||'');
-    const qty=isProd?esc(String(r.qte_fab||'')):'';
+    const qty=isProd?(r.qte_fab!=null&&r.qte_fab!==''?String(Math.round(parseFloat(r.qte_fab))):''):'';
     const dur=esc(r.duree||'');
     const info=isProd&&t>0?`<span class="${t>=90?'tg':t>=75?'tm':'tb'}">${fmtTRS(t)}</span>`:'—';
     const cmt=esc(r.comment||'');
@@ -14433,8 +14433,8 @@ async function calcPeriodReport(autoLoad,maxSessions){
       <td style="padding:4px 6px;text-align:center">${esc(r.taille||'—')}</td>
       <td style="padding:4px 6px">${esc(r.fibre)}</td>
       <td style="padding:4px 6px;text-align:center">${esc(r.debut)}→${esc(r.fin)}</td>
-      <td style="padding:4px 6px;text-align:right;font-weight:700">${esc(r.qte_fab)}</td>
-      <td style="padding:4px 6px;text-align:right">${esc(r.equiv)}</td>
+      <td style="padding:4px 6px;text-align:right;font-weight:700">${r.qte_fab!=null&&r.qte_fab!==''?Math.round(parseFloat(r.qte_fab)):''}</td>
+      <td style="padding:4px 6px;text-align:right">${r.equiv!=null&&r.equiv!==''?Math.round(parseFloat(r.equiv)):''}</td>
       <td style="padding:4px 6px;text-align:right;color:#0369a1;font-weight:700">${(r.objectif!=null&&r.objectif>=0)?r.objectif:'—'}</td>
       <td style="padding:4px 6px;text-align:right;font-weight:700;color:${r.trs&&parseFloat(r.trs)>=70?'#16a34a':r.trs&&parseFloat(r.trs)>=50?'#f59e0b':'#dc2626'}">${r.trs?parseFloat(r.trs).toFixed(1)+'%':'—'}</td>
       <td style="padding:4px 6px;text-align:right;color:${arretMin>0?'#dc2626':'#94a3b8'}">${arretMin>0?arretMin+' min':'—'}</td>
@@ -14865,8 +14865,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <td style="${td}">${esc(r.taille||'')} ${esc(r.type_prod||'')}</td>
       <td style="${td}">${kitDisp}</td>
       <td style="${td};color:#374151;font-weight:600">${esc(String(nbPers))}</td>
-      <td style="${td}">${esc(r.qte_fab||'')}</td>
-      <td style="${td};color:#0891b2;font-weight:700">${esc(r.equiv||'')}</td>
+      <td style="${td}">${r.qte_fab!=null&&r.qte_fab!==''?Math.round(parseFloat(r.qte_fab)):''}</td>
+      <td style="${td};color:#0891b2;font-weight:700">${r.equiv!=null&&r.equiv!==''?Math.round(parseFloat(r.equiv)):''}</td>
       <td style="${td};color:#0891b2;font-weight:700">${(r.objectif!=null&&r.objectif>=0)?r.objectif:'—'}</td>
       <td style="${td};font-weight:800;color:${tc}">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</td>
       <td style="${td};white-space:nowrap">${esc(r.debut||'')} → ${esc(r.fin||'')}</td>
@@ -14953,6 +14953,11 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const perteCadenceRaw=Math.round(d.perte_cadence_min||0);
   const perteCadenceHtml=perteCadenceRaw<0?`<span style="color:#16a34a;font-weight:800">${Math.abs(perteCadenceRaw)} min de gain</span>`:perteCadenceRaw>0?`<span style="color:#dc2626;font-weight:800">${perteCadenceRaw} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
   const degMin=(d.degrade_min!=null)?Math.round(d.degrade_min):Math.round((d.degrade_s||0)/60);
+  // Fix: quand fallback JS, soustraire les arrêts qui chevauchent des fenêtres dégradées (double-comptage)
+  const _rptDgMergedPie=[];
+  _rptDgEvts.slice().sort((a,b)=>a.s-b.s).forEach(function(iv){if(_rptDgMergedPie.length&&iv.s<=_rptDgMergedPie[_rptDgMergedPie.length-1].e)_rptDgMergedPie[_rptDgMergedPie.length-1].e=Math.max(_rptDgMergedPie[_rptDgMergedPie.length-1].e,iv.e);else _rptDgMergedPie.push({s:iv.s,e:iv.e});});
+  let _stopInDegMs=0;_allEvtIv.forEach(function(iv){_rptDgMergedPie.forEach(function(dg){_stopInDegMs+=Math.max(0,Math.min(iv.e,dg.e)-Math.max(iv.s,dg.s));});});
+  const degMinForPie=(d.degrade_min!=null)?degMin:Math.max(0,degMin-Math.round(_stopInDegMs/60000));
   const _cHRp=(v,r)=>!r?'#64748b':v/r>=0.88?'#16a34a':v/r>=0.70?'#f59e0b':'#dc2626';
   const _cLRp=(v,r)=>!r?'#64748b':v/r<=0.08?'#16a34a':v/r<=0.25?'#f59e0b':'#dc2626';
   const _colFonctRp=_cHRp(tempsFonctionnement,ouvertureMin);
@@ -15112,14 +15117,14 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const blokMinRp=_mergeRptMs(_blokIvsRp);
   const nblokMinRp=_mergeRptMs(_nblokIvsRp);
   drawPie('rpt-pie',[
-    {label:'Prod',value:Math.max(0,tempsFonctionnement-degMin),color:'#16a34a'},
-    {label:'Dégradé',value:degMin,color:'url(#pie-stripe-deg)'},
+    {label:'Prod',value:Math.max(0,tempsFonctionnement-degMinForPie),color:'#16a34a'},
+    {label:'Dégradé',value:degMinForPie,color:'url(#pie-stripe-deg)'},
     {label:'Arr bloquants',value:blokMinRp,color:'#dc2626'},
     {label:'Arr non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
   ],{fCenter:18,fSub:11,fLeg:14});
   drawPie('acc-rpt-pie',[
-    {label:'Prod',value:Math.max(0,tempsFonctionnement-degMin),color:'#16a34a'},
-    {label:'Dégradé',value:degMin,color:'url(#pie-stripe-deg)'},
+    {label:'Prod',value:Math.max(0,tempsFonctionnement-degMinForPie),color:'#16a34a'},
+    {label:'Dégradé',value:degMinForPie,color:'url(#pie-stripe-deg)'},
     {label:'Arr bloquants',value:blokMinRp,color:'#dc2626'},
     {label:'Arr non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
   ],{fCenter:18,fSub:11,fLeg:14});
@@ -15759,6 +15764,7 @@ def generate_dashboard_html():
         _cat_labels = {'ratt':'Rattrapage','pb':'PB technique','nettoyage':'Nettoyage','pause':'Pause','interposte':'Interposte','degrade':'Mode dégradé','org':'Organisation','manquants':'Manquants','autre':'Autre'}
         events_cfg = [{'label': e.get('label',''), 'key': e.get('key',''), 'cat': e.get('cat',''), 'cat_label': _cat_labels.get(e.get('cat',''), e.get('cat',''))} for e in _ev_cfg_raw]
         gen_at = _dt.datetime.now().strftime('%d/%m/%Y %H:%M')
+        gen_at_label = _dt.datetime.now().strftime('%d/%m/%Y à %Hh%M')
         # Données brutes Déclarations + Postes pour l'export historique
         _decl_rows_raw = []
         _postes_rows_raw = []
@@ -15964,8 +15970,8 @@ def generate_dashboard_html():
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.debut||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.fin||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+(blq==="OUI"&&(r.duree_min||0)>30?"<span style=\\"color:#dc2626;font-weight:700\\">"+esc2(r.duree||"")+"</span>":esc2(r.duree||""))+"</td>"\n'
-            '          +"<td style=\\"padding:5px 8px;text-align:right;white-space:nowrap\\">"+(ip?esc2(String(r.qte_fab||"")):"—")+"</td>"\n'
-            '          +"<td style=\\"padding:5px 8px;text-align:right;white-space:nowrap\\">"+(ip?esc2(String(r.equiv||"")):"—")+"</td>"\n'
+            '          +"<td style=\\"padding:5px 8px;text-align:right;white-space:nowrap\\">"+(ip?esc2(r.qte_fab!=null?String(Math.round(parseFloat(r.qte_fab))):\\"\\"):\\"—\\")+"</td>"\n'
+            '          +"<td style=\\"padding:5px 8px;text-align:right;white-space:nowrap\\">"+(ip?esc2(r.equiv!=null?String(Math.round(parseFloat(r.equiv))):\\"\\"):\\"—\\")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;text-align:center\\">"+esc2(r.nb_pers||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\\" title=\\""+esc2(cmt)+"\\">"+esc2(cmt)+"</td>"\n'
             '          +"</tr>";\n'
@@ -15994,6 +16000,13 @@ def generate_dashboard_html():
             '    var _an=' + _json.dumps(cfg.get("app_name","ORC1")) + ';\n'
             '    var _anEl=document.getElementById("hdr-app-name");if(_anEl)_anEl.textContent=_an;\n'
             '    var _anLg=document.getElementById("login-app-name");if(_anLg)_anLg.textContent=_an;\n'
+            '    (function(){\n'
+            '      var _hdr=document.getElementById("app-hdr");if(!_hdr)return;\n'
+            '      var _ts=document.createElement("div");\n'
+            '      _ts.style.cssText="margin-left:auto;color:rgba(255,255,255,.70);font-size:11px;font-weight:500;white-space:nowrap;padding:0 4px 6px 0;align-self:flex-end";\n'
+            '      _ts.textContent="Mis à jour le ' + gen_at_label + '";\n'
+            '      _hdr.appendChild(_ts);\n'
+            '    })();\n'
             '    var s=document.createElement("style");\n'
             '    s.textContent=[\n'
             '      "#rpt-left-kpi .fp-card{padding:3px 4px!important}",\n'
