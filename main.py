@@ -10509,6 +10509,7 @@ async function loadMainKPI() {
       if(dt) dt.textContent='';
     }
   }
+  _refreshAccPieOnly();
 }
 
 // ── Remplit le groupe "Arrêts prévus" dans la popup interposte ──
@@ -12038,6 +12039,42 @@ function _refreshAccRptPie(){
   const _n=new Date();
   const _dd=String(_n.getDate()).padStart(2,'0'),_mm=String(_n.getMonth()+1).padStart(2,'0'),_yy=_n.getFullYear();
   loadSessionReport(_dd+'/'+_mm+'/'+_yy, window.ST.pilot, window.ST.poste||'', null);
+}
+
+async function _refreshAccPieOnly(){
+  if(!window.ST||!window.ST.pilot) return;
+  const _n=new Date();
+  const _dd=String(_n.getDate()).padStart(2,'0'),_mm=String(_n.getMonth()+1).padStart(2,'0'),_yy=_n.getFullYear();
+  const _dateStr=_dd+'/'+_mm+'/'+_yy;
+  let d;
+  try{ d=await apiFetch('/api/session_report?date='+encodeURIComponent(_dateStr)+'&pilot='+encodeURIComponent(window.ST.pilot)+'&poste='+encodeURIComponent(window.ST.poste||'')); }
+  catch(e){ return; }
+  const _w=document.getElementById('acc-rpt-pie-wrap');
+  if(!d||!d.is_live){ if(_w) _w.style.display='none'; return; }
+  const _hms=hm=>{if(!hm)return 0;const[h,m,s]=(hm+':0:0').split(':').map(Number);return(h||0)*3600000+(m||0)*60000+(s||0)*1000;};
+  const _norm=(ds,fe)=>fe<ds?fe+86400000:fe;
+  const _allIv=(d.evt_rows||[]).filter(e=>!e.is_degrade).map(e=>({s:_hms(e.debut),e:_norm(_hms(e.debut),_hms(e.fin))})).filter(o=>o.e>o.s).sort((a,b)=>a.s-b.s);
+  const _dgIv=(d.evt_rows||[]).filter(e=>e.is_degrade).map(e=>({s:_hms(e.debut),e:_norm(_hms(e.debut),_hms(e.fin))})).filter(o=>o.e>o.s);
+  const _mg=[];_allIv.forEach(iv=>{if(_mg.length&&iv.s<=_mg[_mg.length-1].e)_mg[_mg.length-1].e=Math.max(_mg[_mg.length-1].e,iv.e);else _mg.push({s:iv.s,e:iv.e});});
+  const netStopMin=(d.arret_min!=null)?Math.round(d.arret_min):Math.round(_mg.reduce((a,o)=>a+(o.e-o.s),0)/60000);
+  const ouvertureMin=(d.ouverture_min!=null)?Math.round(d.ouverture_min):Math.round((d.model_dur_s||0)/60);
+  const tempsFonct=Math.max(0,ouvertureMin-netStopMin);
+  const degMin=(d.degrade_min!=null)?Math.round(d.degrade_min):Math.round((d.degrade_s||0)/60);
+  const _dgMg=[];_dgIv.slice().sort((a,b)=>a.s-b.s).forEach(iv=>{if(_dgMg.length&&iv.s<=_dgMg[_dgMg.length-1].e)_dgMg[_dgMg.length-1].e=Math.max(_dgMg[_dgMg.length-1].e,iv.e);else _dgMg.push({s:iv.s,e:iv.e});});
+  let _stopInDeg=0;_allIv.forEach(iv=>{_dgMg.forEach(dg=>{_stopInDeg+=Math.max(0,Math.min(iv.e,dg.e)-Math.max(iv.s,dg.s));});});
+  const degMinForPie=Math.max(0,degMin-Math.round(_stopInDeg/60000));
+  const _isPieBl=e=>e.bloquant||/pause|nettoyage|nett\b|r[eé]union|meeting/i.test(e.type||'');
+  const _blk=[],_nblk=[];
+  (d.evt_rows||[]).filter(e=>!e.is_degrade).forEach(e=>{const s=_hms(e.debut),en=_norm(s,_hms(e.fin));if(en<=s)return;if(_isPieBl(e))_blk.push({s,e:en});else _nblk.push({s,e:en});});
+  const _mrgMs=ivs=>{if(!ivs.length)return 0;ivs.sort((a,b)=>a.s-b.s);const mg=[];ivs.forEach(iv=>{if(mg.length&&iv.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,iv.e);else mg.push({s:iv.s,e:iv.e});});return Math.round(mg.reduce((a,iv)=>a+(iv.e-iv.s),0)/60000);};
+  const blokMin=_mrgMs(_blk),nblokMin=_mrgMs(_nblk);
+  if(_w) _w.style.display='flex';
+  drawPie('acc-rpt-pie',[
+    {label:'Prod',value:Math.max(0,tempsFonct-degMinForPie),color:'#16a34a'},
+    {label:'Dégradé',value:degMinForPie,color:'url(#pie-stripe-deg)'},
+    {label:'Arr bloquants',value:blokMin,color:'#dc2626'},
+    {label:'Arr non bloquants',value:nblokMin,color:'url(#pie-stripe)'}
+  ],{fCenter:18,fSub:11,fLeg:14});
 }
 
 // ── EDIT ROW (accueil) ──
