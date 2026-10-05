@@ -6724,10 +6724,12 @@ def api_add_stop_decl():
         copilote_v = str(data.get("copilote","") or (_S.get("form") or {}).get("copilote","") or "")
         of_num_v = str(data.get("of_num","") or (_S.get("form") or {}).get("of_num","") or "").strip()
         nb_pers_v = str(data.get("nb_pers","") or "").strip()
+        type_prod_v = str(data.get("type_prod","") or "").strip()
+        fibre_v = str(data.get("fibre","") or "").strip()
         row = [
             stop_type, of_num_v,
             start_dt.strftime("%d/%m/%Y"), poste, pilot,
-            copilote_v, nb_pers_v,"","","","","","","","",
+            copilote_v, nb_pers_v,"",type_prod_v,"","",fibre_v,"","","",
             "",                              # col P : vide pour les arrêts
             start_dt.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"), fmt(dur_s),
             "","","","","","","","","","","","","","","","",comment,"","","",
@@ -7686,7 +7688,7 @@ select{cursor:default}
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
-      <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🐛 Problèmes</button>
+      <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🐛 Signaler problèmes logiciel</button>
       <button class="htab" id="ht-cdg" onclick="goTab('cdg')" style="display:none">📊 CDG</button>
     </div>
     <div id="hdr-right">
@@ -7800,7 +7802,7 @@ select{cursor:default}
       </div>
 
       <!-- Répartition rapport poste (copie de rpt-pie) -->
-      <div style="order:5;flex:0 0 auto;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:6px 10px;display:flex;flex-direction:column;align-items:center">
+      <div id="acc-rpt-pie-wrap" style="order:5;flex:0 0 auto;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:6px 10px;display:none;flex-direction:column;align-items:center">
         <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Répartition poste</div>
         <svg id="acc-rpt-pie" style="width:200px;height:auto;display:block;margin:0 auto"></svg>
       </div>
@@ -12006,6 +12008,8 @@ async function refreshAccFpData(){
 }
 function _refreshAccRptPie(){
   if(!window.ST||!window.ST.pilot) return;
+  const _wrap=document.getElementById('acc-rpt-pie-wrap');
+  if(_wrap) _wrap.style.display='none';
   const _n=new Date();
   const _dd=String(_n.getDate()).padStart(2,'0'),_mm=String(_n.getMonth()+1).padStart(2,'0'),_yy=_n.getFullYear();
   loadSessionReport(_dd+'/'+_mm+'/'+_yy, window.ST.pilot, window.ST.poste||'', null);
@@ -13027,6 +13031,8 @@ function _showEcartModal(fpd){
     let html='';
     let gapIdx=0;
     const _ecartLastOf=(fpd.of_list&&fpd.of_list.length>0)?fpd.of_list[fpd.of_list.length-1].of||'':'';
+    const _ecartLastProd=(fpd.of_list&&fpd.of_list.length>0)?fpd.of_list[fpd.of_list.length-1].type_prod||'':'';
+    const _ecartLastFibre=(fpd.of_list&&fpd.of_list.length>0)?fpd.of_list[fpd.of_list.length-1].fibre||'':'';
     if(blocks.length===0){
       html='<div style="color:#94a3b8;font-size:calc(12px*var(--zf,1));padding:8px 0">Aucune déclaration pour ce poste.</div>';
     } else {
@@ -13048,6 +13054,10 @@ function _showEcartModal(fpd){
                 ${_buildEcartStopSelect(gi)}</div>
               <div style="width:90px"><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">OF</label>
                 <input type="text" id="ecart-gap-of-${gi}" value="${esc(_ecartLastOf)}" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:80px"></div>
+              <div style="min-width:100px;flex:1"><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">Produit</label>
+                <input type="text" id="ecart-gap-prod-${gi}" value="${esc(_ecartLastProd)}" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:100%"></div>
+              <div style="min-width:80px"><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">Fibre</label>
+                <input type="text" id="ecart-gap-fibre-${gi}" value="${esc(_ecartLastFibre)}" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:80px"></div>
               <div style="width:70px"><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">Nb pers</label>
                 <input type="number" id="ecart-gap-nbpers-${gi}" value="10" min="1" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:58px"></div>
               <button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:5px 12px;background:#dc2626;border-color:#dc2626" onclick="saveEcartGapStop(${gi})">✓ Déclarer</button>
@@ -13170,8 +13180,10 @@ async function saveEcartGapStop(gi){
     const _egDateIso=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso).toISOString().slice(0,10):'';
     const _egOf=((document.getElementById('ecart-gap-of-'+gi)||{}).value||'').trim();
     const _egNbPers=((document.getElementById('ecart-gap-nbpers-'+gi)||{}).value||'10').trim();
+    const _egProd=((document.getElementById('ecart-gap-prod-'+gi)||{}).value||'').trim();
+    const _egFibre=((document.getElementById('ecart-gap-fibre-'+gi)||{}).value||'').trim();
     const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,date_debut:_egDateIso,comment:'',copilote:window._loginCopilote||'',of_num:_egOf,nb_pers:_egNbPers})});
+      body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,date_debut:_egDateIso,comment:'',copilote:window._loginCopilote||'',of_num:_egOf,nb_pers:_egNbPers,type_prod:_egProd,fibre:_egFibre})});
     const d=r?await r.json():{};
     if(d.ok){
       toast(type+' ajouté','ok');
@@ -15321,12 +15333,16 @@ async function loadSessionReport(date,pilot,poste,itemId){
     {label:'Arr bloquants',value:blokMinRp,color:'#dc2626'},
     {label:'Arr non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
   ],{fCenter:18,fSub:11,fLeg:14});
-  drawPie('acc-rpt-pie',[
-    {label:'Prod',value:Math.max(0,tempsFonctionnement-degMinForPie),color:'#16a34a'},
-    {label:'Dégradé',value:degMinForPie,color:'url(#pie-stripe-deg)'},
-    {label:'Arr bloquants',value:blokMinRp,color:'#dc2626'},
-    {label:'Arr non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
-  ],{fCenter:18,fSub:11,fLeg:14});
+  if(d.is_live){
+    const _accWrap=document.getElementById('acc-rpt-pie-wrap');
+    if(_accWrap) _accWrap.style.display='flex';
+    drawPie('acc-rpt-pie',[
+      {label:'Prod',value:Math.max(0,tempsFonctionnement-degMinForPie),color:'#16a34a'},
+      {label:'Dégradé',value:degMinForPie,color:'url(#pie-stripe-deg)'},
+      {label:'Arr bloquants',value:blokMinRp,color:'#dc2626'},
+      {label:'Arr non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
+    ],{fCenter:18,fSub:11,fLeg:14});
+  }
 }
 
 async function doRecalcSession(date,pilot,poste){
