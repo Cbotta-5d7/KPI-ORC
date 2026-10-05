@@ -164,7 +164,7 @@ def _get_conn(path=None):
     if not path or not os.path.exists(path):
         return None
     try:
-        conn = sqlite3.connect(path, check_same_thread=False)
+        conn = sqlite3.connect(path, check_same_thread=False, timeout=10)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=OFF")
         return conn
@@ -3659,7 +3659,7 @@ def api_login():
         _db_ok = False
         try:
             if os.path.exists(_db_path_ck):
-                _ck_conn = sqlite3.connect(_db_path_ck, check_same_thread=False)
+                _ck_conn = sqlite3.connect(_db_path_ck, check_same_thread=False, timeout=10)
                 _ensure_db_schema(_ck_conn)
                 _db_ok = True
                 _ck_conn.close()
@@ -5277,7 +5277,7 @@ def api_migrate_excel():
     try:
         from openpyxl import load_workbook as _lw
         wb = _lw(xlsx_path, read_only=True, data_only=True)
-        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn = sqlite3.connect(db_path, check_same_thread=False, timeout=10)
         conn.execute("PRAGMA journal_mode=WAL")
         _ensure_db_schema(conn)
         n_decl = 0; n_postes = 0; n_listes = 0
@@ -15737,7 +15737,7 @@ def generate_dashboard_html():
             _db_path = _db_path_resolved()
             if _db_path and os.path.exists(_db_path):
                 with _db_lock:
-                    _raw_conn = sqlite3.connect(_db_path, check_same_thread=False)
+                    _raw_conn = sqlite3.connect(_db_path, check_same_thread=False, timeout=10)
                     _raw_conn.execute("PRAGMA journal_mode=WAL")
                     _rc = _raw_conn.cursor()
                     _rc.execute(f"SELECT {_DECL_COLS} FROM declarations ORDER BY rowid")
