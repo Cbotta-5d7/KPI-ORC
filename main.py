@@ -6442,7 +6442,7 @@ def api_session_report():
             try:
                 dur_s = _hms_to_sec(_brut_dur_str(r))
                 stop_s += dur_s
-                evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":_brut_dur_str(r),"comment":str(r[35] or ""),"is_degrade":False})
+                evt_rows.append({"type":str(r[0] or ""),"of":str(r[1] or ""),"taille":str(r[7] or ""),"type_prod":str(r[9] or ""),"debut":str(r[16] or "")[:5],"fin":str(r[17] or "")[:5],"duree":_brut_dur_str(r),"comment":str(r[35] or ""),"is_degrade":False,"bloquant":_get_ev_bloquant(str(r[0] or ""))})
             except: pass
     def _evt_sort_key(e):
         t = e.get('debut') or ''
@@ -11356,10 +11356,33 @@ function renderEPModal(d,f){
   document.getElementById('ep-title').textContent=`⏹ Fin d'OF/prod${ofNum?' — '+ofNum:''}`;
   // Graphs
   const _epDegS=d.degrade_s||0;
+  const _epTlEvts=d.tl_events||[];
+  const _epBlokIvs=[],_epNblokIvs=[];
+  _epTlEvts.forEach(function(e){
+    if(!e.start||!e.end||e.key==='prod'||(e.key||'').startsWith('_')) return;
+    const es=new Date(e.start).getTime(),ee=new Date(e.end).getTime();
+    if(ee<=es) return;
+    const kl=(e.key||'').toLowerCase();
+    const evCfg=(_evtsList||[]).find(function(x){return x.key===e.key;});
+    const isBlok=/pause|nettoyage|nett|r[eé]union|reunion|meeting/.test(kl)||(evCfg?!!evCfg.bloquant:false);
+    if(isBlok) _epBlokIvs.push({s:es,e:ee}); else _epNblokIvs.push({s:es,e:ee});
+  });
+  function _epMergeS(ivs){
+    if(!ivs.length) return 0;
+    ivs.sort(function(a,b){return a.s-b.s;});
+    const mg=[];
+    ivs.forEach(function(iv){if(mg.length&&iv.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,iv.e);else mg.push({s:iv.s,e:iv.e});});
+    return mg.reduce(function(a,iv){return a+(iv.e-iv.s);},0)/1000;
+  }
+  const _epBlokS=_epMergeS(_epBlokIvs);
+  const _epNblokS=_epMergeS(_epNblokIvs);
+  const _epTotS=(d.of_s_brut||d.of_s||0);
+  const _epProdS=Math.max(0,_epTotS-_epBlokS-_epNblokS-_epDegS);
   drawPie('ep-pie',[
-    {label:'Prod',value:Math.max(0,(d.prod_s||0)-_epDegS),color:'#16a34a'},
+    {label:'Prod',value:_epProdS,color:'#16a34a'},
     {label:'Dégradé',value:_epDegS,color:'#f59e0b'},
-    {label:'Arrêts',value:d.stop_s||0,color:'#dc2626'},
+    {label:'Arrêts bloquants',value:_epBlokS,color:'#dc2626'},
+    {label:'Arrêts non bloquants',value:_epNblokS,color:'url(#pie-stripe)'},
   ]);
   drawGauge('ep-gauge-arc','ep-gauge-pct',d.trs>=0?d.trs:0);
   const now=new Date();
@@ -11451,7 +11474,9 @@ function drawPie(svgId, segments, opts) {
   svg.setAttribute('viewBox',`0 0 160 ${totalH}`);
   svg.style.height='auto';
   if(total<=0){svg.innerHTML=`<text x="${cx}" y="${cy}" text-anchor="middle" font-size="${fCenter}" fill="#94a3b8">Pas de données</text>`;return;}
-  let html='',startAngle=-Math.PI/2;
+  const _hasStripe=segments.some(s=>s.color==='url(#pie-stripe)');
+  let html=_hasStripe?'<defs><pattern id="pie-stripe" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#f97316"/><rect width="3" height="6" fill="#dc2626"/></pattern></defs>':'';
+  let startAngle=-Math.PI/2;
   if(visSegs.length===1){
     html+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${visSegs[0].color}"/>`;
     html+=`<circle cx="${cx}" cy="${cy}" r="${ir}" fill="var(--card,#fff)"/>`;
@@ -15016,15 +15041,27 @@ async function loadSessionReport(date,pilot,poste,itemId){
       </div>
     </div>`;
   // Dessiner gauge et pie (éléments maintenant dans le DOM)
-  const _isPlannedRp=t=>/pause|nettoyage|nett\b|r[eé]union|meeting/i.test(t||'');
-  const _planStopMsRp=(d.evt_rows||[]).filter(e=>!e.is_degrade&&_isPlannedRp(e.type)).reduce((a,e)=>a+Math.max(0,_rptHmsMs(e.fin)-_rptHmsMs(e.debut)),0);
-  const planStopMinRp=Math.round(_planStopMsRp/60000);
-  const unplanStopMinRp=Math.max(0,netStopMin-planStopMinRp);
+  const _isPieBloquantRp=e=>e.bloquant||/pause|nettoyage|nett\b|r[eé]union|meeting/i.test(e.type||'');
+  const _blokIvsRp=[],_nblokIvsRp=[];
+  (d.evt_rows||[]).filter(e=>!e.is_degrade).forEach(function(e){
+    const s=_rptHmsMs(e.debut),en=_rptNormMs(s,_rptHmsMs(e.fin));
+    if(en<=s) return;
+    if(_isPieBloquantRp(e)) _blokIvsRp.push({s,e:en}); else _nblokIvsRp.push({s,e:en});
+  });
+  function _mergeRptMs(ivs){
+    if(!ivs.length) return 0;
+    ivs.sort(function(a,b){return a.s-b.s;});
+    const mg=[];
+    ivs.forEach(function(iv){if(mg.length&&iv.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,iv.e);else mg.push({s:iv.s,e:iv.e});});
+    return Math.round(mg.reduce(function(a,iv){return a+(iv.e-iv.s);},0)/60000);
+  }
+  const blokMinRp=_mergeRptMs(_blokIvsRp);
+  const nblokMinRp=_mergeRptMs(_nblokIvsRp);
   drawPie('rpt-pie',[
     {label:'Prod',value:Math.max(0,tempsFonctionnement-degMin),color:'#16a34a'},
     {label:'Dégradé',value:degMin,color:'#f59e0b'},
-    {label:'Arrêts bloquants',value:unplanStopMinRp,color:'#dc2626'},
-    {label:'Arrêts non bloquants',value:planStopMinRp,color:'#f97316'}
+    {label:'Arrêts bloquants',value:blokMinRp,color:'#dc2626'},
+    {label:'Arrêts non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
   ],{fCenter:18,fSub:11,fLeg:14});
 }
 
