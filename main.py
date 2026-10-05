@@ -11478,11 +11478,13 @@ function drawPie(svgId, segments, opts) {
   svg.setAttribute('viewBox',`0 0 160 ${totalH}`);
   svg.style.height='auto';
   if(total<=0){svg.innerHTML=`<text x="${cx}" y="${cy}" text-anchor="middle" font-size="${fCenter}" fill="#94a3b8">Pas de données</text>`;return;}
+  const _stripeId='pie-stripe-'+svgId;
   const _hasStripe=segments.some(s=>s.color==='url(#pie-stripe)');
-  let html=_hasStripe?'<defs><pattern id="pie-stripe" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#f97316"/><rect width="3" height="6" fill="#dc2626"/></pattern></defs>':'';
+  const _segCol=c=>c==='url(#pie-stripe)'?`url(#${_stripeId})`:c;
+  let html=_hasStripe?`<defs><pattern id="${_stripeId}" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect width="6" height="6" fill="#f97316"/><rect width="3" height="6" fill="#dc2626"/></pattern></defs>`:'';
   let startAngle=-Math.PI/2;
   if(visSegs.length===1){
-    html+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${visSegs[0].color}"/>`;
+    html+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${_segCol(visSegs[0].color)}"/>`;
     html+=`<circle cx="${cx}" cy="${cy}" r="${ir}" fill="var(--card,#fff)"/>`;
   } else {
     segments.forEach(seg=>{
@@ -11493,7 +11495,7 @@ function drawPie(svgId, segments, opts) {
       const x2=(cx+r*Math.cos(endAngle)).toFixed(2),y2=(cy+r*Math.sin(endAngle)).toFixed(2);
       const ix1=(cx+ir*Math.cos(startAngle)).toFixed(2),iy1=(cy+ir*Math.sin(startAngle)).toFixed(2);
       const ix2=(cx+ir*Math.cos(endAngle)).toFixed(2),iy2=(cy+ir*Math.sin(endAngle)).toFixed(2);
-      html+=`<path d="M${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} L${ix2},${iy2} A${ir},${ir} 0 ${large},0 ${ix1},${iy1} Z" fill="${seg.color}"/>`;
+      html+=`<path d="M${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} L${ix2},${iy2} A${ir},${ir} 0 ${large},0 ${ix1},${iy1} Z" fill="${_segCol(seg.color)}"/>`;
       startAngle=endAngle;
     });
   }
@@ -11504,7 +11506,7 @@ function drawPie(svgId, segments, opts) {
     visSegs.forEach((s,i)=>{
       const p=Math.round(s.value/total*100);
       const ly=legBase+i*legLineH;
-      html+=`<rect x="2" y="${ly}" width="8" height="8" fill="${s.color}" rx="1"/>`;
+      html+=`<rect x="2" y="${ly}" width="8" height="8" fill="${_segCol(s.color)}" rx="1"/>`;
       html+=`<text x="13" y="${ly+7}" font-size="${fLeg}" fill="#475569" font-weight="600">${esc(s.label)} ${p}%</text>`;
     });
   }
