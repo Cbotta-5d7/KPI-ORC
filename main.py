@@ -4891,6 +4891,7 @@ def api_events_list():
                 "comment": str(r[35] or ""),
                 "hors_trs": hors=="OUI",
                 "is_degrade": _is_degrade_type(type_str),
+                "bloquant": _get_ev_bloquant(type_str),
                 "shift_date":   str(r[39] if len(r)>39 else "").strip() or _row_date(r[2]),
             })
         except: pass
@@ -12505,18 +12506,30 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   const dS=hm2s2(r.debut),fS=hm2s2(r.fin);
   const fS2=fS<dS?fS+86400:fS;
   const totalMin=Math.max(1,Math.round((fS2-dS)/60));
-  // Calcul direct depuis ofEvts (fiable quelque soit le contexte d'appel)
-  let stopMin=0,degMin=0;
+  // Intervalles fusionnés par catégorie (évite le cumul si chevauchement)
+  const _dMs2=hm2ms(r.debut),_isNight2=hm2ms(r.fin)<_dMs2;
+  const _normOF=t=>(_isNight2&&t<_dMs2)?t+86400000:t;
+  function _mergeOfIvs(ivs){
+    if(!ivs.length) return 0;
+    ivs.sort((a,b)=>a.s-b.s);
+    const mg=[];
+    ivs.forEach(iv=>{if(mg.length&&iv.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,iv.e);else mg.push({s:iv.s,e:iv.e});});
+    return Math.round(mg.reduce((a,iv)=>a+(iv.e-iv.s),0)/60000);
+  }
+  const _isPieBlokOf=ev=>ev.bloquant||/pause|nettoyage|nett\b|r[eé]union|meeting/i.test(ev.type||'');
+  const _blokIvs2=[],_nblokIvs2=[],_degIvs2=[];
   ofEvts.forEach(ev=>{
-    const p=(ev.duree||'0:0:0').split(':').map(Number);
-    const m=Math.round((p[0]||0)*60+(p[1]||0)+(p[2]||0)/60);
-    if(ev.is_degrade) degMin+=m; else stopMin+=m;
+    const s=_normOF(hm2ms(ev.debut)),e=_normOF(hm2ms(ev.fin));
+    if(e<=s) return;
+    if(ev.is_degrade) _degIvs2.push({s,e});
+    else if(_isPieBlokOf(ev)) _blokIvs2.push({s,e});
+    else _nblokIvs2.push({s,e});
   });
-  const netMin=Math.max(0,totalMin-stopMin);
-  const planMin=Math.round((r.plan_stop_s||0)/60);
-  const unplanMin=Math.max(0,stopMin-planMin);
-  const prodMin=Math.max(0,netMin-degMin);
-  const slices=[{v:prodMin,c:'#16a34a',l:'Production'},{v:planMin,c:'#f97316',l:'Arrêts non bloquants'},{v:unplanMin,c:'#dc2626',l:'Arrêts bloquants'},{v:degMin,c:'#f59e0b',l:'Mode dégradé'}].filter(s=>s.v>0);
+  const degMin=_mergeOfIvs(_degIvs2);
+  const blokMin=_mergeOfIvs(_blokIvs2);
+  const nblokMin=_mergeOfIvs(_nblokIvs2);
+  const prodMin=Math.max(0,totalMin-degMin-blokMin-nblokMin);
+  const slices=[{v:prodMin,c:'#16a34a',l:'Production'},{v:nblokMin,c:'#f97316',l:'Arr non bloquants'},{v:blokMin,c:'#dc2626',l:'Arr bloquants'},{v:degMin,c:'#f59e0b',l:'Mode dégradé'}].filter(s=>s.v>0);
   const tot=slices.reduce((a,s)=>a+s.v,0)||1;
   let sA=-Math.PI/2,dpaths='';
   const visSlices=slices.filter(sl=>sl.v>0&&(sl.v/tot)*2*Math.PI>=0.001);
