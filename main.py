@@ -8991,7 +8991,7 @@ select{cursor:default}
 
 <!-- ════ MODAL: Déclarer un arrêt ════ -->
 <div class="overlay" id="m-stop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:700;align-items:center;justify-content:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)" onclick="if(event.target===this)closeM('m-stop')">
-  <div class="mbox" style="width:70%;max-width:70vw" onclick="event.stopPropagation()">
+  <div class="mbox" style="width:85%;max-width:85vw" onclick="event.stopPropagation()">
     <div class="mhdr red">
       <h2>⛔ Déclarer un arrêt</h2>
       <button style="background:none;border:none;cursor:pointer;color:#fff;font-size:calc(16px*var(--zf,1))" onclick="closeM('m-stop')">✕</button>
@@ -11132,7 +11132,7 @@ function rebuildStopGrids(){
     hdr.style.cssText=`font-size:calc(10px*var(--zf,1));font-weight:800;color:${col};text-transform:uppercase;letter-spacing:.07em;padding:4px 2px;border-bottom:2px solid ${col}40;margin-bottom:6px;${first?'':'margin-top:10px;'}`;
     hdr.textContent=label; g.appendChild(hdr); first=false;
     const grid=document.createElement('div');
-    grid.style.cssText='display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:4px';
+    grid.style.cssText='display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:4px';
     items.forEach(e=>{
       const [lt,md,dk]=_STOP_GRAD[e.cat]||_STOP_GRAD.autre;
       const b=document.createElement('button');
