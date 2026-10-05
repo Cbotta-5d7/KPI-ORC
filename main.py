@@ -14376,7 +14376,7 @@ async function loadHist(){
     const _dm=r=>{const p=(r.debut||'').split(':');let m=parseInt(p[0]||0)*60+parseInt(p[1]||0);if((r.poste||'').toLowerCase().includes('nuit')&&m<720)m+=1440;return m;};
     return _dm(b)-_dm(a);
   });
-  hd.innerHTML='<th style="width:75px">Type</th><th>OF</th><th>Produit</th><th>Détails</th><th>Fibre</th><th>Date réelle</th><th>Rattachement</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
+  hd.innerHTML='<th style="width:75px">Type</th><th>OF</th><th>Produit</th><th>Détails</th><th>Fibre</th><th>Date réelle</th><th>Poste</th><th>Pilote</th><th>Nb pers</th><th>Début</th><th>Fin</th><th>Durée</th><th>Qté</th><th>TRS/Info</th><th>Commentaire</th><th>Actions</th>';
   if(!allRows.length){bd.innerHTML='<tr><td colspan="16" style="text-align:center;color:var(--gray);padding:16px">Aucune donnée sur cette période</td></tr>';return;}
   window._rowMap=window._rowMap||{};
   window._histEvtsAll=evtsFiltered; // pour showHistRowDetail
@@ -14397,9 +14397,9 @@ async function loadHist(){
     const fbrH=r.fibre||'';const fbrShH=esc(fbrH.slice(0,9));
     const produitH=esc(r.type_prod||'');
     const nbPersH=esc(r.nb_pers||'');
-    const curShift=r.shift_date||r.date||'';
+    const curShift=r.rattachement||r.shift_date||r.date||'';
     if(curShift!==_lastShift){
-      const shiftLabel=esc(r.rattachement||curShift||'');
+      const shiftLabel=esc(r.rattachement||r.shift_date||r.date||'');
       _histHtml+=`<tr class="hist-sep-row" data-hftype="sep"><td colspan="16" style="background:linear-gradient(90deg,#e2e8f0 0%,#f1f5f9 100%);border-top:2px solid #94a3b8;border-bottom:1px solid #cbd5e1;padding:1px 10px;font-size:calc(8.5px*var(--zf,1));font-weight:700;color:#64748b;letter-spacing:.06em;user-select:none">▸ ${shiftLabel}</td></tr>`;
     }
     _lastShift=curShift;
@@ -14550,8 +14550,8 @@ async function calcPeriodReport(autoLoad,maxSessions){
     const yBase=padT+gH;
     const _trs70Y=padT+gH-Math.round(70/maxTrs*gH);
     const _trsLblY=Math.max(13,_trs70Y-4);
-    const trsTargetLine=`<line x1="0" y1="${_trs70Y}" x2="${svgW}" y2="${_trs70Y}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${_trsLblY}" text-anchor="start" font-size="12" fill="#16a34a" font-weight="700">Cible 70%</text>`;
-    const trsCibleLeg=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#16a34a;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible 70%</span>`;
+    const trsTargetLine=`<line x1="0" y1="${_trs70Y}" x2="${svgW}" y2="${_trs70Y}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${_trsLblY}" text-anchor="start" font-size="12" fill="#1e293b" font-weight="700">Cible 70%</text>`;
+    const trsCibleLeg=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#1e293b;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible 70%</span>`;
     chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">📈 TRS par équipe${trsCibleLeg}</div><div style="overflow-x:auto;display:flex;justify-content:center"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgBars}${trsTargetLine}${svgLabels}${svgL}</svg></div></div>`;
     // Version réduite pour screenshot (barres 80%)
     const WBs=Math.round(WB*0.8);
