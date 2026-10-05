@@ -8434,6 +8434,7 @@ select{cursor:default}
         <input type="date" id="rpt-to" onchange="loadRapports()" style="padding:3px 6px;border:none;border-radius:5px;font-size:calc(12px*var(--zf,1));color:#1e3a8a;font-weight:600;outline:none;background:transparent">
       </div>
       <div style="margin-left:auto;display:flex;gap:6px">
+        <button id="rpt-recalc-btn" style="display:none;background:#16a34a;color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;opacity:.9" title="Recalculer depuis les déclarations (admin)" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='.9'">📊 Recalculer</button>
         <button onclick="_rptSetLast7();loadRapports();" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(5,150,105,.35),inset 0 1px 0 rgba(255,255,255,.18)">7 derniers jours</button>
       </div>
     </div>
@@ -11381,8 +11382,8 @@ function renderEPModal(d,f){
   drawPie('ep-pie',[
     {label:'Prod',value:_epProdS,color:'#16a34a'},
     {label:'Dégradé',value:_epDegS,color:'#f59e0b'},
-    {label:'Arrêts bloquants',value:_epBlokS,color:'#dc2626'},
-    {label:'Arrêts non bloquants',value:_epNblokS,color:'url(#pie-stripe)'},
+    {label:'Arr bloquants',value:_epBlokS,color:'#dc2626'},
+    {label:'Arr non bloquants',value:_epNblokS,color:'url(#pie-stripe)'},
   ]);
   drawGauge('ep-gauge-arc','ep-gauge-pct',d.trs>=0?d.trs:0);
   const now=new Date();
@@ -14712,6 +14713,8 @@ async function loadRapports(defaultMode){
 async function loadSessionReport(date,pilot,poste,itemId){
   document.querySelectorAll('.rpt-item').forEach(el=>el.style.background='');
   const sel=document.getElementById(itemId);if(sel) sel.style.background='#eff6ff';
+  const _rcBtn=document.getElementById('rpt-recalc-btn');
+  if(_rcBtn){_rcBtn.style.display='none';_rcBtn.onclick=null;}
   const detailEl=document.getElementById('rpt-detail');
   if(!detailEl) return;
   detailEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--gray)">Chargement…</div>';
@@ -14719,6 +14722,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
   if(!d){detailEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur chargement</div>';return;}
   const trsS=d.trs_shift>=0?d.trs_shift:d.trs;
   const trsCol=trsS>=70?'#16a34a':trsS>=50?'#f59e0b':trsS>=0?'#dc2626':'#94a3b8';
+  if(_rcBtn&&!d.is_live){_rcBtn.style.display='';_rcBtn.onclick=function(){doRecalcSession(date,pilot,poste);};}
   const stopMin=Math.round((d.stop_s||0)/60);
   const prodMin=Math.round(Math.max(0,(d.tot_s||0)-(d.stop_s||0))/60);
   const totalMin=Math.round((d.tot_s||0)/60)+stopMin;
@@ -14934,7 +14938,6 @@ async function loadSessionReport(date,pilot,poste,itemId){
       <!-- Contenu KPI -->
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
       <div style="background:var(--navy);color:#fff;padding:10px 12px;flex-shrink:0;display:flex;align-items:flex-start;gap:8px">
-        ${!d.is_live?`<button onclick="doRecalcSession('${esc(date)}','${esc(pilot)}','${esc(poste)}')" title="Recalculer depuis les déclarations (admin)" style="flex-shrink:0;margin-top:3px;background:#16a34a;border:none;border-radius:5px;cursor:pointer;padding:4px 8px;font-size:calc(14px*var(--zf,1));color:#fff;font-weight:700;opacity:.9;line-height:1" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='.9'">📊</button>`:''}
         <div style="flex:1">
           <div style="font-size:calc(12px*var(--zf,1));font-weight:800;opacity:.9">${esc(poste)}${((d.model_debut||d.actual_debut)&&(d.model_fin||d.actual_fin))?' — '+(d.model_debut||d.actual_debut)+' → '+(d.model_fin||d.actual_fin):''}</div>
           <div style="font-size:calc(10px*var(--zf,1));opacity:.75;margin-top:2px">${esc(pilot)} · ${esc(date)}</div>
@@ -15060,8 +15063,8 @@ async function loadSessionReport(date,pilot,poste,itemId){
   drawPie('rpt-pie',[
     {label:'Prod',value:Math.max(0,tempsFonctionnement-degMin),color:'#16a34a'},
     {label:'Dégradé',value:degMin,color:'#f59e0b'},
-    {label:'Arrêts bloquants',value:blokMinRp,color:'#dc2626'},
-    {label:'Arrêts non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
+    {label:'Arr bloquants',value:blokMinRp,color:'#dc2626'},
+    {label:'Arr non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
   ],{fCenter:18,fSub:11,fLeg:14});
 }
 
