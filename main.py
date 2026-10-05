@@ -9162,6 +9162,7 @@ async function loadLists() {
   popSel('f-fibre', d.fibres||[]);
   popSel('f-copilote', d.copilotes||[]);
   popSel('ln-copilote', d.copilotes||[], true);
+  try{var _sc=localStorage.getItem('kpiorc_copilote');if(_sc){var _scEl=document.getElementById('ln-copilote');if(_scEl&&[..._scEl.options].some(o=>o.value===_sc))_scEl.value=_sc;}}catch(e){}
   popSel('er-taille', d.tailles||[]);
   popSel('er-typeprod', d.types_prod||[]);
   popSel('er-fibre', d.fibres||[]);
@@ -9291,6 +9292,7 @@ async function doLogin() {
       }
     }
     window._loginCopilote = (document.getElementById('ln-copilote')?.value)||'';
+    try{localStorage.setItem('kpiorc_copilote',window._loginCopilote);}catch(e){}
     const s = await apiFetch('/api/state');
     document.getElementById('v-login').classList.remove('on');
     showApp(s||{pilot,poste});
@@ -13875,15 +13877,19 @@ async function loadKPI(){
 
   // ── Donut Prod/Arrêts ──
   const _isPlannedKD=t=>/nettoyage|nett\b|r[eé]union|meeting|pause/i.test(t||'');
-  let _totalPlanMinKD=0;
+  function _mgSecKD(ivs){ivs.sort((a,b)=>a[0]-b[0]);const mg=[];ivs.forEach(([d,f])=>{if(mg.length&&d<=mg[mg.length-1][1])mg[mg.length-1][1]=Math.max(mg[mg.length-1][1],f);else mg.push([d,f]);});return mg.reduce((a,[d,f])=>a+(f-d),0);}
+  let _totalPlanMinKD=0,_totalUnplanMinKD=0;
   sessArr.forEach(s=>{
     const evtKey=s.pilot+'||'+s.date+'||'+s.poste;
-    evts.filter(e=>(e.pilote||'')+'||'+(e.date||'')+'||'+(e.poste||'')==evtKey&&!e.is_degrade&&_isPlannedKD(e.type)).forEach(e=>{
-      _totalPlanMinKD+=Math.max(0,pSec(e.fin||'0:0:0')-pSec(e.debut||'0:0:0'));
+    const _planIvsKD=[],_unplanIvsKD=[];
+    evts.filter(e=>(e.pilote||'')+'||'+(e.date||'')+'||'+(e.poste||'')==evtKey&&!e.is_degrade).forEach(e=>{
+      const d=pSec(e.debut||'0:0:0'),f=pSec(e.fin||'0:0:0');
+      if(f<=d) return;
+      if(_isPlannedKD(e.type)) _planIvsKD.push([d,f]); else _unplanIvsKD.push([d,f]);
     });
+    _totalPlanMinKD+=Math.round(_mgSecKD(_planIvsKD)/60);
+    _totalUnplanMinKD+=Math.round(_mgSecKD(_unplanIvsKD)/60);
   });
-  _totalPlanMinKD=Math.round(_totalPlanMinKD/60);
-  const _totalUnplanMinKD=Math.max(0,totalStopMin-_totalPlanMinKD);
   _kpiDrawDonut('kpi-donut','kpi-donut-legend',[
     {label:'Prod',v:totalProdS,col:'#16a34a'},
     {label:'Arrêts bloquants',v:_totalUnplanMinKD*60,col:'#dc2626'},
