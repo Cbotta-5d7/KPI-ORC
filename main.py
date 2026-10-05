@@ -12506,8 +12506,9 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   const dS=hm2s2(r.debut),fS=hm2s2(r.fin);
   const fS2=fS<dS?fS+86400:fS;
   const totalMin=Math.max(1,Math.round((fS2-dS)/60));
-  // Intervalles fusionnés par catégorie (évite le cumul si chevauchement)
-  const _dMs2=hm2ms(r.debut),_isNight2=hm2ms(r.fin)<_dMs2;
+  // Intervalles fusionnés par catégorie, bornés aux limites de l'OF
+  const _dMs2=hm2ms(r.debut),_fMs2raw=hm2ms(r.fin),_isNight2=_fMs2raw<_dMs2;
+  const _ofEndMs=_isNight2?_fMs2raw+86400000:_fMs2raw;
   const _normOF=t=>(_isNight2&&t<_dMs2)?t+86400000:t;
   function _mergeOfIvs(ivs){
     if(!ivs.length) return 0;
@@ -12519,7 +12520,9 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   const _isPieBlokOf=ev=>ev.bloquant||/pause|nettoyage|nett\b|r[eé]union|meeting/i.test(ev.type||'');
   const _blokIvs2=[],_nblokIvs2=[],_degIvs2=[];
   ofEvts.forEach(ev=>{
-    const s=_normOF(hm2ms(ev.debut)),e=_normOF(hm2ms(ev.fin));
+    if(!ev.fin) return;
+    let s=_normOF(hm2ms(ev.debut)),e=_normOF(hm2ms(ev.fin));
+    s=Math.max(s,_dMs2); e=Math.min(e,_ofEndMs);
     if(e<=s) return;
     if(ev.is_degrade) _degIvs2.push({s,e});
     else if(_isPieBlokOf(ev)) _blokIvs2.push({s,e});
@@ -12528,6 +12531,7 @@ function _renderAndOpenOfDetail(r, ofEvts) {
   const degMin=_mergeOfIvs(_degIvs2);
   const blokMin=_mergeOfIvs(_blokIvs2);
   const nblokMin=_mergeOfIvs(_nblokIvs2);
+  const planMin=Math.round((r.plan_stop_s||0)/60);
   const prodMin=Math.max(0,totalMin-degMin-blokMin-nblokMin);
   const slices=[{v:prodMin,c:'#16a34a',l:'Production'},{v:nblokMin,c:'#f97316',l:'Arr non bloquants'},{v:blokMin,c:'#dc2626',l:'Arr bloquants'},{v:degMin,c:'#f59e0b',l:'Mode dégradé'}].filter(s=>s.v>0);
   const tot=slices.reduce((a,s)=>a+s.v,0)||1;
