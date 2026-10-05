@@ -14957,7 +14957,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const _rptDgMergedPie=[];
   _rptDgEvts.slice().sort((a,b)=>a.s-b.s).forEach(function(iv){if(_rptDgMergedPie.length&&iv.s<=_rptDgMergedPie[_rptDgMergedPie.length-1].e)_rptDgMergedPie[_rptDgMergedPie.length-1].e=Math.max(_rptDgMergedPie[_rptDgMergedPie.length-1].e,iv.e);else _rptDgMergedPie.push({s:iv.s,e:iv.e});});
   let _stopInDegMs=0;_allEvtIv.forEach(function(iv){_rptDgMergedPie.forEach(function(dg){_stopInDegMs+=Math.max(0,Math.min(iv.e,dg.e)-Math.max(iv.s,dg.s));});});
-  const degMinForPie=(d.degrade_min!=null)?degMin:Math.max(0,degMin-Math.round(_stopInDegMs/60000));
+  const degMinForPie=Math.max(0,degMin-Math.round(_stopInDegMs/60000));
   const _cHRp=(v,r)=>!r?'#64748b':v/r>=0.88?'#16a34a':v/r>=0.70?'#f59e0b':'#dc2626';
   const _cLRp=(v,r)=>!r?'#64748b':v/r<=0.08?'#16a34a':v/r<=0.25?'#f59e0b':'#dc2626';
   const _colFonctRp=_cHRp(tempsFonctionnement,ouvertureMin);
@@ -15970,8 +15970,8 @@ def generate_dashboard_html():
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.debut||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+esc2(r.fin||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;white-space:nowrap\\">"+(blq==="OUI"&&(r.duree_min||0)>30?"<span style=\\"color:#dc2626;font-weight:700\\">"+esc2(r.duree||"")+"</span>":esc2(r.duree||""))+"</td>"\n'
-            '          +"<td style=\\"padding:5px 8px;text-align:right;white-space:nowrap\\">"+(ip?esc2(r.qte_fab!=null?String(Math.round(parseFloat(r.qte_fab))):\\"\\"):\\"—\\")+"</td>"\n'
-            '          +"<td style=\\"padding:5px 8px;text-align:right;white-space:nowrap\\">"+(ip?esc2(r.equiv!=null?String(Math.round(parseFloat(r.equiv))):\\"\\"):\\"—\\")+"</td>"\n'
+            '          +"<td style=\\"padding:5px 8px;text-align:right;white-space:nowrap\\">"+(ip?esc2(r.qte_fab!=null?String(Math.round(parseFloat(r.qte_fab))):""):"—")+"</td>"\n'
+            '          +"<td style=\\"padding:5px 8px;text-align:right;white-space:nowrap\\">"+(ip?esc2(r.equiv!=null?String(Math.round(parseFloat(r.equiv))):""):"—")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;text-align:center\\">"+esc2(r.nb_pers||"")+"</td>"\n'
             '          +"<td style=\\"padding:5px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\\" title=\\""+esc2(cmt)+"\\">"+esc2(cmt)+"</td>"\n'
             '          +"</tr>";\n'
