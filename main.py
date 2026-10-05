@@ -1538,12 +1538,12 @@ def write_excel_bg(prod_row, evt_rows):
     except: pass
     def _bg():
         global _write_pending, _write_failed
-        for _attempt in range(3):
+        while True:
             try:
                 with _db_lock:
                     conn = _get_conn(path)
                     if conn is None:
-                        time.sleep(2)
+                        time.sleep(5)
                         continue
                     _ensure_db_schema(conn)
                     c = conn.cursor()
@@ -1559,20 +1559,16 @@ def write_excel_bg(prod_row, evt_rows):
                     _write_pending = max(0, _write_pending - 1)
                     threading.Thread(target=load_history, daemon=True).start()
                     return  # succès
+            except sqlite3.OperationalError as _exc_bg:
+                print(f"[WRITE-BG] DB verrouillée, nouvel essai dans 5s : {_exc_bg}")
+                time.sleep(5)
             except Exception as _exc_bg:
-                print(f"[WRITE-BG] Erreur inattendue (tentative {_attempt+1}/3) : {_exc_bg}")
-                if _attempt == 2:
-                    _write_pending = max(0, _write_pending - 1)
-                    _append_to_backup(prod_row, evt_rows)
-                    try: os.remove(PENDING_FILE)
-                    except: pass
-                    return
-                time.sleep(2)
-        # Toujours bloqué après 3 tentatives → backup
-        _append_to_backup(prod_row, evt_rows)
-        try: os.remove(PENDING_FILE)
-        except: pass
-        _write_pending = max(0, _write_pending - 1)
+                print(f"[WRITE-BG] Erreur inattendue : {_exc_bg}")
+                _write_pending = max(0, _write_pending - 1)
+                _append_to_backup(prod_row, evt_rows)
+                try: os.remove(PENDING_FILE)
+                except: pass
+                return
     threading.Thread(target=_bg, daemon=True).start()
 
 def write_changement_of(start_dt, end_dt, label=None, comment=""):
@@ -1592,19 +1588,26 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
         "","","",shift_date_str,"","",
     ]
     def _bg():
-        try:
-            with _db_lock:
-                conn = _get_conn(path)
-                if conn is None: return
-                _ensure_db_schema(conn)
-                c = conn.cursor()
-                c.execute(f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})",
-                          _decl_row_to_tuple(row))
-                _db_commit(conn)
-            threading.Thread(target=load_history,daemon=True).start()
-        except Exception as _e_cof:
-            print(f"[CHANGEMENT-OF] Erreur écriture SQLite : {_e_cof} — backup")
-            _append_to_backup(row, [])
+        while True:
+            try:
+                with _db_lock:
+                    conn = _get_conn(path)
+                    if conn is None:
+                        time.sleep(5); continue
+                    _ensure_db_schema(conn)
+                    c = conn.cursor()
+                    c.execute(f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})",
+                              _decl_row_to_tuple(row))
+                    _db_commit(conn)
+                threading.Thread(target=load_history,daemon=True).start()
+                return
+            except sqlite3.OperationalError as _e_cof:
+                print(f"[CHANGEMENT-OF] DB verrouillée, nouvel essai dans 5s : {_e_cof}")
+                time.sleep(5)
+            except Exception as _e_cof:
+                print(f"[CHANGEMENT-OF] Erreur écriture SQLite : {_e_cof} — backup")
+                _append_to_backup(row, [])
+                return
     threading.Thread(target=_bg,daemon=True).start()
 
 POSTES_HEADERS = ["Date","Pilote","Co-Pilote","Poste","Nb OF","Prod Total (pièces)","Prod Totale (equiv)","TRS Poste %","Cadence (equiv/h)","Total Pauses (min)","Nettoyage (min)","Réunion (min)","Dépassement arrêts (min)","Nb chgt fibre","Commentaire","Début Poste","Fin Poste","Temps ouverture (min)","Temps utile (min)","Temps fonctionnement (min)","Temps en arrêt (min)","Réf cadence (pcs/min)","Perte cadence (min)","Temps dégradé (min)","Objectif éq","Budget pause (min)","Budget nett. court (min)","Budget nett. long (min)","Budget nett. très long (min)","Budget réunion (min)"]
@@ -1634,47 +1637,56 @@ def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
     path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     def _bg():
-        conn = None
-        try:
-            with _db_lock:
-                conn = _get_conn(path)
-                if conn is None: return
-                _ensure_db_schema(conn)
-                c = conn.cursor()
-                target_row = None
-                if debut_dt:
-                    c.execute("SELECT rowid, p05, p06, p16 FROM postes WHERE LOWER(p02)=? AND p04=?",
-                              (pilot.lower(), poste))
-                    for rr in c.fetchall():
-                        _rid, nb_of, prod, p16 = rr
-                        if nb_of or prod: continue  # ligne avec données réelles
-                        if p16 is not None:
-                            try:
-                                p_dt = datetime.datetime.fromisoformat(str(p16))
-                                if p_dt.date() == debut_dt.date():
-                                    target_row = _rid; break
-                            except: pass
-                if target_row:
-                    c.execute("UPDATE postes SET p16=?, p17=? WHERE rowid=?",
-                              (debut_dt.isoformat(), fin_dt.isoformat() if fin_dt else None, target_row))
-                    _db_commit(conn); conn = None
-                    _S["postes_row_num"] = target_row
-                else:
-                    c.execute("INSERT INTO postes (p01, p02, p04, p16, p17) VALUES (?,?,?,?,?)",
-                              (debut_dt.strftime("%d/%m/%Y") if debut_dt else "",
-                               pilot, poste,
-                               debut_dt.isoformat() if debut_dt else None,
-                               fin_dt.isoformat() if fin_dt else None))
-                    new_rowid = c.lastrowid
-                    _db_commit(conn); conn = None
-                    _S["postes_row_num"] = new_rowid
-        except Exception as _e:
-            _log_err(f"[LOGIN-ROW] pilot={pilot} poste={poste} debut={debut_dt} : {_e}")
-        finally:
-            if conn is not None:
-                try: conn.close()
-                except: pass
-        save_session()
+        while True:
+            conn = None
+            try:
+                with _db_lock:
+                    conn = _get_conn(path)
+                    if conn is None:
+                        time.sleep(5); continue
+                    _ensure_db_schema(conn)
+                    c = conn.cursor()
+                    target_row = None
+                    if debut_dt:
+                        c.execute("SELECT rowid, p05, p06, p16 FROM postes WHERE LOWER(p02)=? AND p04=?",
+                                  (pilot.lower(), poste))
+                        for rr in c.fetchall():
+                            _rid, nb_of, prod, p16 = rr
+                            if nb_of or prod: continue
+                            if p16 is not None:
+                                try:
+                                    p_dt = datetime.datetime.fromisoformat(str(p16))
+                                    if p_dt.date() == debut_dt.date():
+                                        target_row = _rid; break
+                                except: pass
+                    if target_row:
+                        c.execute("UPDATE postes SET p16=?, p17=? WHERE rowid=?",
+                                  (debut_dt.isoformat(), fin_dt.isoformat() if fin_dt else None, target_row))
+                        _db_commit(conn); conn = None
+                        _S["postes_row_num"] = target_row
+                    else:
+                        c.execute("INSERT INTO postes (p01, p02, p04, p16, p17) VALUES (?,?,?,?,?)",
+                                  (debut_dt.strftime("%d/%m/%Y") if debut_dt else "",
+                                   pilot, poste,
+                                   debut_dt.isoformat() if debut_dt else None,
+                                   fin_dt.isoformat() if fin_dt else None))
+                        new_rowid = c.lastrowid
+                        _db_commit(conn); conn = None
+                        _S["postes_row_num"] = new_rowid
+                save_session()
+                return
+            except sqlite3.OperationalError as _e:
+                print(f"[LOGIN-ROW] DB verrouillée, nouvel essai dans 5s : {_e}")
+                if conn is not None:
+                    try: conn.close()
+                    except: pass
+                time.sleep(5)
+            except Exception as _e:
+                _log_err(f"[LOGIN-ROW] pilot={pilot} poste={poste} debut={debut_dt} : {_e}")
+                if conn is not None:
+                    try: conn.close()
+                    except: pass
+                return
     threading.Thread(target=_bg, daemon=True).start()
 
 def find_postes_row_num(pilot, debut_dt):
@@ -1725,11 +1737,13 @@ def write_poste_row(data, row_num=None, sync=False):
     path = _db_path_resolved()
     if not path: return
     def _bg():
-        conn = None
-        try:
+        while True:
+          conn = None
+          try:
             with _db_lock:
                 conn = _get_conn(path)
-                if conn is None: return
+                if conn is None:
+                    time.sleep(5); continue
                 _ensure_db_schema(conn)
                 c = conn.cursor()
                 _bov = data.get("budget_overrides") or {}
@@ -1804,12 +1818,19 @@ def write_poste_row(data, row_num=None, sync=False):
                         _bov_get("meeting_tol_min"),
                     ))
                 _db_commit(conn); conn = None
-        except Exception as _wpr_e:
-            _log_err(f"[POSTES-WRITE] row={row_num} pilot={data.get('pilot','')} : {_wpr_e}")
-        finally:
+            return
+          except sqlite3.OperationalError as _wpr_e:
+            print(f"[POSTES-WRITE] DB verrouillée, nouvel essai dans 5s : {_wpr_e}")
             if conn is not None:
                 try: conn.close()
                 except: pass
+            time.sleep(5)
+          except Exception as _wpr_e:
+            _log_err(f"[POSTES-WRITE] row={row_num} pilot={data.get('pilot','')} : {_wpr_e}")
+            if conn is not None:
+                try: conn.close()
+                except: pass
+            return
     if sync:
         _bg()
     else:
