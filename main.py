@@ -14557,7 +14557,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
     const sd=d.sessions_detail;
     const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),100);
     const _vertA=sd.length>8;
-    const gH=91,padT=28,padL=70,padR=4,GP=5;
+    const gH=91,padT=28,padL=4,padR=4,GP=5;
     const CH=_vertA?padT+gH+150:padT+gH+60;const CHs=_vertA?padT+gH+150:padT+gH+74;_rjRowH=CH+40;
     const n=sd.length;
     const WB=Math.round(Math.max(26,Math.min(96,Math.floor((250-padL-padR-n*GP)/Math.max(n,3))))*1.2);
