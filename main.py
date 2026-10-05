@@ -8991,7 +8991,7 @@ select{cursor:default}
 
 <!-- ════ MODAL: Déclarer un arrêt ════ -->
 <div class="overlay" id="m-stop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:700;align-items:center;justify-content:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)" onclick="if(event.target===this)closeM('m-stop')">
-  <div class="mbox" style="width:85%;max-width:85vw" onclick="event.stopPropagation()">
+  <div class="mbox" style="width:90%;max-width:90vw" onclick="event.stopPropagation()">
     <div class="mhdr red">
       <h2>⛔ Déclarer un arrêt</h2>
       <button style="background:none;border:none;cursor:pointer;color:#fff;font-size:calc(16px*var(--zf,1))" onclick="closeM('m-stop')">✕</button>
@@ -10259,6 +10259,7 @@ function startTicker() {
 
 // ── MAIN VIEW ──
 async function loadMainDecl() {
+  _refreshAccPieOnly();
   const now=new Date();
   const dd=String(now.getDate()).padStart(2,'0'),mm=String(now.getMonth()+1).padStart(2,'0'),yyyy=now.getFullYear();
   const todayPfx=dd+'/'+mm;
@@ -11133,7 +11134,7 @@ function rebuildStopGrids(){
     hdr.style.cssText=`font-size:calc(10px*var(--zf,1));font-weight:800;color:${col};text-transform:uppercase;letter-spacing:.07em;padding:4px 2px;border-bottom:2px solid ${col}40;margin-bottom:6px;${first?'':'margin-top:10px;'}`;
     hdr.textContent=label; g.appendChild(hdr); first=false;
     const grid=document.createElement('div');
-    grid.style.cssText='display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:4px';
+    grid.style.cssText='display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:4px';
     items.forEach(e=>{
       const [lt,md,dk]=_STOP_GRAD[e.cat]||_STOP_GRAD.autre;
       const b=document.createElement('button');
@@ -14556,7 +14557,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
     const sd=d.sessions_detail;
     const maxTrs=Math.max(...sd.filter(s=>s.trs>=0).map(s=>s.trs),100);
     const _vertA=sd.length>8;
-    const gH=91,padT=28,padL=4,padR=4,GP=5;
+    const gH=91,padT=28,padL=70,padR=4,GP=5;
     const CH=_vertA?padT+gH+150:padT+gH+60;const CHs=_vertA?padT+gH+150:padT+gH+74;_rjRowH=CH+40;
     const n=sd.length;
     const WB=Math.round(Math.max(26,Math.min(96,Math.floor((250-padL-padR-n*GP)/Math.max(n,3))))*1.2);
@@ -14588,7 +14589,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
     const yBase=padT+gH;
     const _trs70Y=padT+gH-Math.round(70/maxTrs*gH);
     const _trsLblY=Math.max(13,_trs70Y-4);
-    const trsTargetLine=`<line x1="0" y1="${_trs70Y}" x2="${svgW}" y2="${_trs70Y}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${_trsLblY}" text-anchor="start" font-size="12" fill="#1e293b" font-weight="700">Cible 70%</text>`;
+    const trsTargetLine=`<line x1="0" y1="${_trs70Y}" x2="${svgW}" y2="${_trs70Y}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="${padL-4}" y="${_trsLblY}" text-anchor="end" font-size="12" fill="#1e293b" font-weight="700">Cible 70%</text>`;
     const trsCibleLeg=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#1e293b;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible 70%</span>`;
     chartTrsHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">📈 TRS par équipe${trsCibleLeg}</div><div style="overflow-x:auto;display:flex;justify-content:center"><svg width="${svgW}" height="${CH}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgW}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgBars}${trsTargetLine}${svgLabels}${svgL}</svg></div></div>`;
     // Version réduite pour screenshot (barres 80%)
@@ -14606,7 +14607,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
       else{svgLS+=`<text x="${cx}" y="${padT+gH+16}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;svgLS+=`<text x="${cx}" y="${padT+gH+28}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;svgLS+=`<text x="${cx}" y="${padT+gH+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;svgLS+=`<text x="${cx}" y="${padT+gH+54}" text-anchor="middle" font-size="11" font-weight="700" fill="#0369a1">${Math.round(s.equiv||0)} éq</text>`;}
     });
     const _trs70Ys=padT+gH-Math.round(70/maxTrs*gH);
-    const trsTargetLineS=`<line x1="0" y1="${_trs70Ys}" x2="${svgWs}" y2="${_trs70Ys}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${Math.max(13,_trs70Ys-4)}" text-anchor="start" font-size="11" fill="#16a34a" font-weight="700">Cible 70%</text>`;
+    const trsTargetLineS=`<line x1="0" y1="${_trs70Ys}" x2="${svgWs}" y2="${_trs70Ys}" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/>`;
     window._chartTrsHtmlSnap=`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">📈 TRS par équipe</div><div style="overflow-x:auto"><svg width="${svgWs}" height="${CHs}" style="display:block"><line x1="0" y1="${yBase}" x2="${svgWs}" y2="${yBase}" stroke="#e2e8f0" stroke-width="1"/>${svgBarsS}${trsTargetLineS}${svgLabelsS}${svgLS}</svg></div></div>`;
   }
   // ── Chart B : Cadence vs référence — barres verticales SVG ─────────────────
@@ -14645,8 +14646,8 @@ async function calcPeriodReport(autoLoad,maxSessions){
     });
     const yBase2=padT2+gH2;
     const _cadLblY=Math.max(13,tY-4);
-    const tLine=`<line x1="0" y1="${tY}" x2="${svgW2}" y2="${tY}" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${_cadLblY}" text-anchor="start" font-size="12" fill="#1d4ed8" font-weight="700">Cible ${_CAD_CIBLE}</text>`;
-    const legCad=`<span style="display:inline-flex;align-items:center;gap:4px;font-size:calc(10px*var(--zf,1));color:#1d4ed8;font-weight:600;margin-left:8px"><svg width="18" height="6" style="flex-shrink:0"><line x1="0" y1="3" x2="18" y2="3" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="5,3"/></svg>Cible ${_CAD_CIBLE} éq/h</span>`;
+    const tLine='';
+    const legCad='';
     chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence vs référence${legCad}</div><div style="overflow-x:auto;display:flex;justify-content:center"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2}${tLine}${svgLabels2}${svgL2}</svg></div></div>`;
     // Version réduite pour screenshot (barres 80%)
     const WB2s=Math.round(WB2*0.8);
@@ -14663,7 +14664,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
       if(_vertB){const yB=padT2+gH2+4;const _lbl2=esc((dp[0]||'')+'/'+(dp[1]||'')+(s.pilot?' '+s.pilot.slice(0,12):''));svgL2S+=`<text transform="rotate(-90,${cx2},${yB})" x="${cx2}" y="${yB}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${_lbl2}</text>`;}
       else{svgL2S+=`<text x="${cx2}" y="${padT2+gH2+16}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;svgL2S+=`<text x="${cx2}" y="${padT2+gH2+28}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;svgL2S+=`<text x="${cx2}" y="${padT2+gH2+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;}
     });
-    const tLineS=`<line x1="0" y1="${tY2s}" x2="${svgW2s}" y2="${tY2s}" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="6,3"/><text x="4" y="${Math.max(13,tY2s-4)}" text-anchor="start" font-size="11" fill="#1d4ed8" font-weight="700">Cible ${_CAD_CIBLE}</text>`;
+    const tLineS='';
     window._chartCadHtmlSnap=`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">⚡ Cadence vs référence</div><div style="overflow-x:auto"><svg width="${svgW2s}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2s}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2S}${tLineS}${svgLabels2S}${svgL2S}</svg></div></div>`;
   }
   // ── Pareto arrêts — barres horizontales ────────────────────────────────────
@@ -14818,10 +14819,10 @@ async function calcPeriodReport(autoLoad,maxSessions){
   }
   // Types de produits — agrégation par type_prod, somme des equiv
   const _tpMap={};
-  (d.sessions_detail||[]).forEach(s=>{(s.of_rows||[]).forEach(r=>{const t=(r.type_prod||'').trim()||'Inconnu';const eq=parseFloat(r.equiv||0)||0;if(!_tpMap[t])_tpMap[t]={label:t,equiv:0};_tpMap[t].equiv+=eq;});});
+  (d.sessions_detail||[]).forEach(s=>{(s.of_rows||[]).forEach(r=>{const t=(r.type_prod||'').trim()||'Inconnu';const eq=parseFloat(r.equiv||0)||0;const pc=parseFloat(r.qte_fab||0)||0;if(!_tpMap[t])_tpMap[t]={label:t,equiv:0,pcs:0};_tpMap[t].equiv+=eq;_tpMap[t].pcs+=pc;});});
   const _tpArr=Object.values(_tpMap).filter(x=>x.equiv>0).sort((a,b)=>b.equiv-a.equiv);
   const _tpColors=['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4','#84cc16','#f43f5e'];
-  const _mkTypePie=(items,r)=>{if(!items||!items.length)return '';const tot=items.reduce((a,x)=>a+x.equiv,0);if(!tot)return '';const cx=r+4,cy=r+4;let sA=-Math.PI/2,paths='';items.forEach((item,i)=>{const a=item.equiv/tot*2*Math.PI;if(a>=2*Math.PI-0.001){paths+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${_tpColors[i%_tpColors.length]}" opacity=".85"/>`;return;}const x1=cx+r*Math.cos(sA),y1=cy+r*Math.sin(sA);const x2=cx+r*Math.cos(sA+a),y2=cy+r*Math.sin(sA+a);paths+=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${a>Math.PI?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${_tpColors[i%_tpColors.length]}" opacity=".85"/>`;sA+=a;});const legHtml=items.map((item,i)=>`<div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:${_tpColors[i%_tpColors.length]};flex-shrink:0"></div><span style="font-size:calc(10px*var(--zf,1));white-space:nowrap">${esc(item.label)}: <b>${Math.round(item.equiv/tot*100)}%</b></span></div>`).join('');return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#374151;white-space:nowrap">Types de produits</div><svg viewBox="0 0 ${(r+4)*2} ${(r+4)*2}" style="width:${(r+4)*2}px;height:${(r+4)*2}px"><circle cx="${cx}" cy="${cy}" r="${r}" fill="#e2e8f0"/>${paths}</svg><div style="display:flex;flex-direction:column;gap:2px;align-self:flex-start">${legHtml}</div></div>`;};
+  const _mkTypePie=(items,r)=>{if(!items||!items.length)return '';const tot=items.reduce((a,x)=>a+x.equiv,0);if(!tot)return '';const cx=r+4,cy=r+4;let sA=-Math.PI/2,paths='';items.forEach((item,i)=>{const a=item.equiv/tot*2*Math.PI;if(a>=2*Math.PI-0.001){paths+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${_tpColors[i%_tpColors.length]}" opacity=".85"/>`;return;}const x1=cx+r*Math.cos(sA),y1=cy+r*Math.sin(sA);const x2=cx+r*Math.cos(sA+a),y2=cy+r*Math.sin(sA+a);paths+=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${a>Math.PI?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${_tpColors[i%_tpColors.length]}" opacity=".85"/>`;sA+=a;});const legHtml=items.map((item,i)=>`<div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:${_tpColors[i%_tpColors.length]};flex-shrink:0"></div><span style="font-size:calc(10px*var(--zf,1));white-space:nowrap">${esc(item.label)}: <b>${Math.round(item.equiv/tot*100)}% (${Math.round(item.pcs||0)} pcs)</b></span></div>`).join('');return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#374151;white-space:nowrap">Types de produits</div><svg viewBox="0 0 ${(r+4)*2} ${(r+4)*2}" style="width:${(r+4)*2}px;height:${(r+4)*2}px"><circle cx="${cx}" cy="${cy}" r="${r}" fill="#e2e8f0"/>${paths}</svg><div style="display:flex;flex-direction:column;gap:2px;align-self:flex-start">${legHtml}</div></div>`;};
   const _typeProdPieHtml=_mkTypePie(_tpArr,34);
   // Sauvegarde pour captureRapportJour()
   window._rjVars={d,trsCol,chartTrsHtml,chartCadHtml,paretoRjHtml,paretoDeghHtml,pieSmall,
