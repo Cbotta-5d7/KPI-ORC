@@ -7803,9 +7803,6 @@ select{cursor:default}
           <div style="height:12px;background:#e2e8f0;border-radius:6px;overflow:hidden"><div id="acc-prog-bar" style="height:100%;background:#0369a1;border-radius:6px;width:0%;transition:width .8s"></div></div>
           <div style="text-align:center;font-size:calc(13px*var(--zf,1));font-weight:800;color:#0369a1;margin-top:4px" id="acc-prog-pct">—</div>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:calc(10px*var(--zf,1));color:#64748b;border-top:1px solid var(--border,#e2e8f0);padding-top:5px">
-          <span>Production</span><span style="font-weight:800;color:#16a34a" id="acc-prog-pcs">—</span>
-        </div>
       </div>
       <!-- POSTE ACTUEL encart principal -->
       <div style="order:4;flex:0 0 auto;background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:6px 10px;display:flex;align-items:center;gap:10px">
@@ -16114,7 +16111,7 @@ def generate_dashboard_html():
             '      var el=document.querySelector(sel);if(el)el.style.display="none";\n'
             '    });\n'
             '    var cdgBtn=document.getElementById("ht-cdg");if(cdgBtn)cdgBtn.style.display="";\n'
-            '    var _probBtn=document.getElementById("ht-problemes");if(_probBtn){_probBtn.style.display="";var _tb=document.querySelector(".hdr-tabs");if(_tb){_tb.appendChild(_probBtn);_probBtn.style.marginLeft="auto";}}\n'
+            '    var _probBtn=document.getElementById("ht-problemes");if(_probBtn)_probBtn.style.display="";\n'
             '    var _addProbBtn=document.getElementById("prob-add-btn");if(_addProbBtn)_addProbBtn.style.display="none";\n'
             '    window._probReadOnly=true;\n'
             '    if(typeof loadProblemes==="function") loadProblemes();\n'
@@ -16296,6 +16293,7 @@ def generate_dashboard_html():
             '      _evolBtn.textContent="📈 Évolution perf.";\n'
             '      _evolBtn.onclick=function(){if(typeof goTab==="function")goTab("evol");};\n'
             '      _cdgBtn.parentNode.insertBefore(_evolBtn,_cdgBtn.nextSibling);\n'
+            '      if(_probBtn) _evolBtn.parentNode.insertBefore(_probBtn,_evolBtn.nextSibling);\n'
             # Inject view div
             '      var _vHist=document.getElementById("v-history");\n'
             '      if(!_vHist)return;\n'
