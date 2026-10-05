@@ -7686,7 +7686,7 @@ select{cursor:default}
         <!-- Répartition temps (pie) — à GAUCHE -->
         <div style="flex-shrink:0;text-align:center">
           <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Répartition</div>
-          <svg id="pie-poste-acc" viewBox="0 0 130 100" style="width:220px;height:170px;display:block;margin:0 auto"></svg>
+          <svg id="pie-poste-acc" style="width:200px;height:auto;display:block;margin:0 auto"></svg>
         </div>
         <!-- IDs cachés compat JS (gauge TRS supprimée) -->
         <div style="display:none"><svg><path id="gauge-poste-acc-arc"/><text id="gauge-poste-acc-pct"></text></svg><span id="gauge-poste-acc-lbl"></span></div>
@@ -10128,6 +10128,12 @@ async function loadMainDecl() {
   const inShiftEvts=_mDebS>0?_pilotEvts.filter(r=>_hms2s(r.fin||'')>=_mDebS||_hms2s(r.debut||'')>=_mDebS):_pilotEvts;
   window._lastMainRows=inShiftEvts; // pour checkMissingDecls()
   _todayStopAccum=inShiftEvts.reduce((a,r)=>a+_hms2s(r.duree||''),0);
+  {const _hmsMsA=hm=>{if(!hm)return 0;const p=(hm+':0:0').split(':').map(Number);return((p[0]||0)*3600+(p[1]||0)*60+(p[2]||0))*1000;};
+  const _isPBlkA=e=>e.bloquant||/pause|nettoyage|nett\b|r[eé]union|meeting/i.test(e.type||'');
+  const _bIvsA=[],_nIvsA=[];
+  inShiftEvts.forEach(e=>{if(!e.fin||e.is_degrade)return;let s=_hmsMsA(e.debut),en=_hmsMsA(e.fin);if(en<s)en+=86400000;if(en<=s)return;if(_isPBlkA(e))_bIvsA.push({s,e:en});else _nIvsA.push({s,e:en});});
+  const _mgA=ivs=>{if(!ivs.length)return 0;ivs.sort((a,b)=>a.s-b.s);const mg=[];ivs.forEach(iv=>{if(mg.length&&iv.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,iv.e);else mg.push({s:iv.s,e:iv.e});});return Math.round(mg.reduce((a,iv)=>a+(iv.e-iv.s),0)/60000);};
+  _todayBlokMinAccum=_mgA(_bIvsA);_todayNblokMinAccum=_mgA(_nIvsA);}
   // Heure de la dernière déclaration prod enregistrée (dans la fenêtre du poste)
   if(inShiftDecls.length){
     const lastFin=inShiftDecls.map(r=>r.fin||'').filter(Boolean).sort().pop();
@@ -11837,12 +11843,13 @@ function updateGauge(s){
   const postePieData=[
     {label:'Prod',value:Math.max(0,shiftProd-_accDegS),color:'#16a34a'},
     {label:'Dégradé',value:_accDegS,color:'#f59e0b'},
-    {label:'Arrêts',value:shiftStop,color:'#dc2626'}
+    {label:'Arr bloquants',value:_todayBlokMinAccum*60,color:'#dc2626'},
+    {label:'Arr non bloquants',value:_todayNblokMinAccum*60,color:'url(#pie-stripe)'},
   ];
-  drawPie('pie-poste-acc',postePieData,{fCenter:24,fSub:10,fLeg:0});
+  drawPie('pie-poste-acc',postePieData,{fCenter:18,fSub:11,fLeg:14});
 }
 // Accumulateurs poste (mis à jour à chaque loadMainDecl)
-let _todayEquivAccum=0, _todayStopAccum=0, _lastProdDeclTime=null, _shiftRefDt=null;
+let _todayEquivAccum=0, _todayStopAccum=0, _todayBlokMinAccum=0, _todayNblokMinAccum=0, _lastProdDeclTime=null, _shiftRefDt=null;
 let _accFpData=null;
 async function refreshAccFpData(){
   try { _accFpData=await apiFetch('/api/fin_poste_data'); } catch(e){}
