@@ -202,6 +202,16 @@ def _ensure_db_schema(conn):
         value3 TEXT,
         PRIMARY KEY (list_name, position)
     )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS problemes (
+        row_num INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT DEFAULT '',
+        heure TEXT DEFAULT '',
+        pilote TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        resolu INTEGER DEFAULT 0,
+        date_resolution TEXT DEFAULT '',
+        solution TEXT DEFAULT ''
+    )""")
     conn.commit()
 
 def _log_err(msg):
@@ -4918,6 +4928,71 @@ def api_events_list():
         except: pass
     return jsonify(list(reversed(rows)))
 
+@flask_app.route('/api/problemes', methods=['GET'])
+def api_problemes():
+    try:
+        path = _db_path_resolved()
+        if not path or not os.path.exists(path):
+            return jsonify([])
+        with _db_lock:
+            conn = sqlite3.connect(path, check_same_thread=False, timeout=10)
+            conn.execute("PRAGMA journal_mode=WAL")
+            _ensure_db_schema(conn)
+            c = conn.cursor()
+            c.execute("SELECT row_num,date,heure,pilote,description,resolu,date_resolution,solution FROM problemes ORDER BY row_num DESC")
+            rows = [{"row_num":r[0],"date":r[1],"heure":r[2],"pilote":r[3],"description":r[4],"resolu":r[5],"date_resolution":r[6],"solution":r[7]} for r in c.fetchall()]
+            conn.close()
+        return jsonify(rows)
+    except Exception:
+        return jsonify([])
+
+@flask_app.route('/api/probleme_add', methods=['POST'])
+def api_probleme_add():
+    data = request.json or {}
+    description = (data.get("description") or "").strip()
+    if not description:
+        return jsonify({"ok":False,"error":"description requise"}), 400
+    try:
+        path = _db_path_resolved()
+        if not path:
+            return jsonify({"ok":False,"error":"DB non trouvée"}), 500
+        with _db_lock:
+            conn = sqlite3.connect(path, check_same_thread=False, timeout=10)
+            conn.execute("PRAGMA journal_mode=WAL")
+            _ensure_db_schema(conn)
+            c = conn.cursor()
+            c.execute("INSERT INTO problemes (date,heure,pilote,description,resolu,date_resolution,solution) VALUES (?,?,?,?,0,'','')",
+                      (data.get("date",""), data.get("heure",""), data.get("pilote",""), description))
+            conn.commit()
+            row_num = c.lastrowid
+            conn.close()
+        return jsonify({"ok":True,"row_num":row_num})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)}), 500
+
+@flask_app.route('/api/probleme_update', methods=['POST'])
+def api_probleme_update():
+    data = request.json or {}
+    row_num = data.get("row_num")
+    field = data.get("field","")
+    value = data.get("value","")
+    if row_num is None or field not in ("resolu","date_resolution","solution"):
+        return jsonify({"ok":False,"error":"paramètres invalides"}), 400
+    try:
+        path = _db_path_resolved()
+        if not path:
+            return jsonify({"ok":False,"error":"DB non trouvée"}), 500
+        with _db_lock:
+            conn = sqlite3.connect(path, check_same_thread=False, timeout=10)
+            conn.execute("PRAGMA journal_mode=WAL")
+            _ensure_db_schema(conn)
+            conn.cursor().execute(f"UPDATE problemes SET {field}=? WHERE row_num=?", (value, row_num))
+            conn.commit()
+            conn.close()
+        return jsonify({"ok":True})
+    except Exception as e:
+        return jsonify({"ok":False,"error":str(e)}), 500
+
 @flask_app.route('/api/cdg_data')
 def api_cdg_data():
     date_from = request.args.get("from","")
@@ -7611,6 +7686,7 @@ select{cursor:default}
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
+      <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🐛 Problèmes</button>
       <button class="htab" id="ht-cdg" onclick="goTab('cdg')" style="display:none">📊 CDG</button>
     </div>
     <div id="hdr-right">
@@ -8562,6 +8638,54 @@ select{cursor:default}
         <thead id="cdg-hd" style="position:sticky;top:0;background:var(--card);z-index:2"></thead>
         <tbody id="cdg-bd"><tr><td colspan="14" style="text-align:center;color:var(--gray);padding:24px">Sélectionnez une période et cliquez sur Valider</td></tr></tbody>
       </table>
+    </div>
+  </div>
+
+
+  <!-- ════ PROBLÈMES ════ -->
+  <div id="v-problemes" class="view" style="flex-direction:column;overflow:hidden">
+    <div style="background:linear-gradient(180deg,#f8faff 0%,#fff 100%);border-bottom:2px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;box-shadow:0 2px 6px rgba(0,0,0,.04)">
+      <span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:var(--navy);letter-spacing:.3px">🐛 Problèmes logiciels signalés</span>
+      <button id="prob-add-btn" onclick="openProblemeModal()" style="margin-left:auto;background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">+ Signaler un problème</button>
+    </div>
+    <div style="overflow:auto;flex:1;padding:10px 14px">
+      <table id="prob-table" style="width:100%;border-collapse:collapse;font-size:calc(11px*var(--zf,1))">
+        <thead>
+          <tr style="background:#f1f5f9;font-size:calc(10px*var(--zf,1));text-transform:uppercase;color:#64748b;position:sticky;top:0;z-index:1">
+            <th style="padding:6px 8px;text-align:left;white-space:nowrap">Date</th>
+            <th style="padding:6px 8px;text-align:left;white-space:nowrap">Heure</th>
+            <th style="padding:6px 8px;text-align:left;white-space:nowrap">Pilote</th>
+            <th style="padding:6px 8px;text-align:left">Description</th>
+            <th style="padding:6px 8px;text-align:center;white-space:nowrap">Résolu</th>
+            <th style="padding:6px 8px;text-align:left;white-space:nowrap">Date résolution</th>
+            <th style="padding:6px 8px;text-align:left">Solution mise en place</th>
+          </tr>
+        </thead>
+        <tbody id="prob-body">
+          <tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px">Chargement…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal signalement problème -->
+  <div id="prob-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:12px;padding:24px;width:min(520px,92vw);box-shadow:0 8px 40px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:14px">
+      <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:var(--navy)">🐛 Signaler un problème logiciel</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div><div style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;margin-bottom:3px">Pilote</div>
+          <input id="prob-pilote" readonly style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));background:#f8fafc;box-sizing:border-box"></div>
+        <div><div style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;margin-bottom:3px">Date</div>
+          <input id="prob-date" readonly style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));background:#f8fafc;box-sizing:border-box"></div>
+        <div><div style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;margin-bottom:3px">Heure</div>
+          <input id="prob-heure" readonly style="width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));background:#f8fafc;box-sizing:border-box"></div>
+      </div>
+      <div><div style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;margin-bottom:3px">Description du problème *</div>
+        <textarea id="prob-desc" rows="5" placeholder="Décrivez le problème rencontré…" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));resize:vertical;box-sizing:border-box;font-family:inherit"></textarea></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="closeProblemeModal()" style="background:#f3f4f6;color:#374151;border:none;border-radius:6px;padding:8px 18px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer">Annuler</button>
+        <button onclick="submitProbleme()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">Envoyer</button>
+      </div>
     </div>
   </div>
 
@@ -9597,10 +9721,10 @@ function goTab(tab) {
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   document.querySelectorAll('.htab').forEach(t=>t.classList.remove('on'));
-  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports','rpt-jour':'v-rpt-jour',cdg:'v-cdg'};
+  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports','rpt-jour':'v-rpt-jour',cdg:'v-cdg',problemes:'v-problemes'};
   const el=document.getElementById(vm[tab]);
   if(el) el.classList.add('on');
-  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour',cdg:'ht-cdg'};
+  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour',cdg:'ht-cdg',problemes:'ht-problemes'};
   const ntEl=document.getElementById(nt[tab]);
   if(ntEl) ntEl.classList.add('on');
   if(tab!=='prod') _clearFieldHighlights();
@@ -9637,6 +9761,7 @@ function goTab(tab) {
       if(tab==='cdg') loadCdg();
     });
   } else if(_prevTab==='history') _resetHistFilters();
+  if(tab==='problemes') loadProblemes();
   if(tab==='settings') {
     _settingsUnlocked = false;
     document.getElementById('settings-lock').style.display = 'flex';
@@ -13803,6 +13928,80 @@ function cdgExport(){
   window.location.href=`/api/cdg_export?from=${from}&to=${to}`;
 }
 
+// ── PROBLÈMES ──
+async function loadProblemes(){
+  const bd=document.getElementById('prob-body');
+  if(!bd) return;
+  const rows=await apiFetch('/api/problemes').catch(()=>null)||[];
+  if(!rows.length){
+    bd.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--gray);padding:24px">Aucun problème signalé</td></tr>';
+    return;
+  }
+  bd.innerHTML=rows.map(r=>{
+    const resolu=r.resolu?1:0;
+    const chk=resolu?'checked':'';
+    const bgRow=resolu?'background:#f0fdf4':'';
+    const dateRes=esc(r.date_resolution||'');
+    const sol=esc(r.solution||'');
+    return `<tr style="border-bottom:1px solid var(--border);${bgRow}">
+      <td style="padding:5px 8px;white-space:nowrap">${esc(r.date||'')}</td>
+      <td style="padding:5px 8px;white-space:nowrap">${esc(r.heure||'')}</td>
+      <td style="padding:5px 8px;white-space:nowrap;font-weight:600">${esc(r.pilote||'')}</td>
+      <td style="padding:5px 8px;max-width:280px;white-space:pre-wrap;word-break:break-word">${esc(r.description||'')}</td>
+      <td style="padding:5px 8px;text-align:center">
+        <input type="checkbox" ${chk} style="width:16px;height:16px;cursor:pointer;accent-color:#16a34a" onchange="toggleProblemeResolu(${r.row_num},this)">
+      </td>
+      <td style="padding:5px 8px;white-space:nowrap;color:#16a34a;font-weight:600" id="prob-dres-${r.row_num}">${dateRes}</td>
+      <td style="padding:5px 8px;min-width:180px">
+        <textarea rows="2" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(10px*var(--zf,1));resize:vertical;font-family:inherit"
+          placeholder="Solution…"
+          onblur="saveProblemeField(${r.row_num},'solution',this.value)">${sol}</textarea>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function toggleProblemeResolu(rowNum,el){
+  const resolu=el.checked?1:0;
+  const now=new Date();
+  const dateRes=resolu?(String(now.getDate()).padStart(2,'0')+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+now.getFullYear()+' '+String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0')):'';
+  const el2=document.getElementById('prob-dres-'+rowNum);
+  if(el2) el2.textContent=dateRes;
+  const row=el.closest('tr');if(row)row.style.background=resolu?'#f0fdf4':'';
+  await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'resolu',value:resolu})}).catch(()=>{});
+  await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'date_resolution',value:dateRes})}).catch(()=>{});
+}
+
+async function saveProblemeField(rowNum,field,value){
+  await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field,value})}).catch(()=>{});
+}
+
+function openProblemeModal(){
+  const now=new Date();
+  const dateStr=String(now.getDate()).padStart(2,'0')+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+now.getFullYear();
+  const heureStr=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const el=document.getElementById('prob-pilote');if(el)el.value=ST&&ST.pilot?ST.pilot:'';
+  const ed=document.getElementById('prob-date');if(ed)ed.value=dateStr;
+  const eh=document.getElementById('prob-heure');if(eh)eh.value=heureStr;
+  const etx=document.getElementById('prob-desc');if(etx)etx.value='';
+  const modal=document.getElementById('prob-modal');if(modal)modal.style.display='flex';
+}
+
+function closeProblemeModal(){
+  const modal=document.getElementById('prob-modal');if(modal)modal.style.display='none';
+}
+
+async function submitProbleme(){
+  const pilote=document.getElementById('prob-pilote')?.value||'';
+  const date=document.getElementById('prob-date')?.value||'';
+  const heure=document.getElementById('prob-heure')?.value||'';
+  const desc=(document.getElementById('prob-desc')?.value||'').trim();
+  if(!desc){toast('Décrivez le problème','err');return;}
+  const r=await fetch('/api/probleme_add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pilote,date,heure,description:desc})}).then(r=>r.json()).catch(()=>({ok:false}));
+  if(r.ok){closeProblemeModal();toast('Problème signalé','ok');loadProblemes();}
+  else toast('Erreur enregistrement','err');
+}
+
 async function loadKPI(){
   // Préserver la position de scroll pour éviter l'effet de zoom lors du rechargement
   const _kpiView=document.getElementById('v-kpi');
@@ -15760,6 +15959,7 @@ def generate_dashboard_html():
             period_last31 = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=31))}&date_to={fmt(today)}&skip_current=1').get_json(force=True) or {}
             period_last6m = c.get(f'/api/period_report?date_from={fmt(today-_dt.timedelta(days=180))}&date_to={fmt(today)}&skip_current=1').get_json(force=True) or {}
             cdg_data = c.get('/api/cdg_data').get_json(force=True) or []
+            problems = c.get('/api/problemes').get_json(force=True) or []
         _ev_cfg_raw = get_events_list()
         _cat_labels = {'ratt':'Rattrapage','pb':'PB technique','nettoyage':'Nettoyage','pause':'Pause','interposte':'Interposte','degrade':'Mode dégradé','org':'Organisation','manquants':'Manquants','autre':'Autre'}
         events_cfg = [{'label': e.get('label',''), 'key': e.get('key',''), 'cat': e.get('cat',''), 'cat_label': _cat_labels.get(e.get('cat',''), e.get('cat',''))} for e in _ev_cfg_raw]
@@ -15786,7 +15986,7 @@ def generate_dashboard_html():
             'session_reports': session_reports,
             'period_last3': period_last3, 'period_last7': period_last7,
             'period_last31': period_last31, 'period_last6m': period_last6m,
-            'cdg_data': cdg_data, 'events_cfg': events_cfg,
+            'cdg_data': cdg_data, 'problems': problems, 'events_cfg': events_cfg,
             'generated_at': gen_at,
             'decl_rows': _decl_rows_raw, 'decl_headers': DECL_HEADERS,
             'postes_rows': _postes_rows_raw, 'postes_headers': POSTES_HEADERS
@@ -15823,6 +16023,7 @@ def generate_dashboard_html():
             '  }\n'
             '  if(url.indexOf("/api/reload_excel")!==-1)return {ok:true};\n'
             '  if(url.indexOf("/api/cdg_data")!==-1)return d.cdg_data||[];\n'
+            '  if(url.indexOf("/api/problemes")!==-1)return d.problems||[];\n'
             '  return null;\n'
             '};\n'
             # Override fetch: silently swallow all /api/ POST writes; return mock for GETs
@@ -15847,6 +16048,9 @@ def generate_dashboard_html():
             '      var el=document.querySelector(sel);if(el)el.style.display="none";\n'
             '    });\n'
             '    var cdgBtn=document.getElementById("ht-cdg");if(cdgBtn)cdgBtn.style.display="";\n'
+            '    var _probBtn=document.getElementById("ht-problemes");if(_probBtn)_probBtn.style.display="";\n'
+            '    var _addProbBtn=document.getElementById("prob-add-btn");if(_addProbBtn)_addProbBtn.style.display="none";\n'
+            '    if(typeof loadProblemes==="function") loadProblemes();\n'
             '    window.cdgExport=function(){\n'
             '      var rows=(window.DASH&&window.DASH.cdg_data)||[];\n'
             '      if(!rows.length){alert("Aucune donnée à exporter.");return;}\n'
