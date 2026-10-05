@@ -10591,7 +10591,6 @@ async function _doActualStartProd(){
     }
     toast(d.error||'Erreur','err');return;
   }
-  // Marquer immédiatement pour éviter que _checkFormAutoConfirm re-déclenche avant pollState
   if(window.ST) window.ST.prod_active=true;
   setToday();
   restoreFormFromStorage();
@@ -12417,15 +12416,6 @@ function _codeInputConfirm() {
     if(field){field.value=v;if(_isMain)scheduleAutoSave();field.blur();}
   }
   closeM('m-code-input');
-  if(_isMain)_checkFormAutoConfirm();
-}
-function _checkFormAutoConfirm(){
-  if(window.ST&&window.ST.prod_active) return;
-  const ofVal=(document.getElementById('f-of_num')||{}).value||'';
-  const cpVal=(document.getElementById('f-code_prod')||{}).value||'';
-  if(/^[0-9]{9}$/.test(ofVal)&&/^[0-9]{6}_[0-9]{3}$/.test(cpVal)){
-    setTimeout(doStartProd,500);
-  }
 }
 function _applyFormAndUpdateGauge(){
   if(!window.ST) return;
