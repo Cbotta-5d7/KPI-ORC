@@ -15085,15 +15085,18 @@ async function loadSessionReport(date,pilot,poste,itemId){
   }
   const blokMinRp=_mergeRptMs(_blokIvsRp);
   const nblokMinRp=_mergeRptMs(_nblokIvsRp);
-  const _rptPieSegs=[
+  drawPie('rpt-pie',[
     {label:'Prod',value:Math.max(0,tempsFonctionnement-degMin),color:'#16a34a'},
     {label:'Dégradé',value:degMin,color:'#f59e0b'},
     {label:'Arr bloquants',value:blokMinRp,color:'#dc2626'},
     {label:'Arr non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
-  ];
-  const _rptPieOpts={fCenter:18,fSub:11,fLeg:14};
-  drawPie('rpt-pie',_rptPieSegs,_rptPieOpts);
-  drawPie('acc-rpt-pie',_rptPieSegs,_rptPieOpts);
+  ],{fCenter:18,fSub:11,fLeg:14});
+  drawPie('acc-rpt-pie',[
+    {label:'Prod',value:Math.max(0,tempsFonctionnement-degMin),color:'#16a34a'},
+    {label:'Dégradé',value:degMin,color:'#f59e0b'},
+    {label:'Arr bloquants',value:blokMinRp,color:'#dc2626'},
+    {label:'Arr non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
+  ],{fCenter:18,fSub:11,fLeg:14});
 }
 
 async function doRecalcSession(date,pilot,poste){
