@@ -6420,7 +6420,8 @@ def api_period_report():
         agg_fonct   += fonct_min
         agg_stop    += net_stop_min
         agg_perte   += perte
-        agg_arret_prevu += (_xl.get('pause_min') or 0) + (_xl.get('nett_min') or 0) + (_xl.get('reunion_min') or 0)
+        _bov_xl_rj = _xl.get('budget_overrides') or {}
+        agg_arret_prevu += sum(float((_bov_xl_rj.get(bk) if _bov_xl_rj.get(bk) is not None else cfg.get(bk, 0)) or 0) for bk in _blab)
         agg_equiv   += s['tot_equiv']
         agg_pcs     += s['tot_pcs']
         agg_of_set.update(str(r[1] or '').strip() for r in s.get('prod_raws',[]) if str(r[1] or '').strip())
@@ -14527,8 +14528,6 @@ async function calcPeriodReport(autoLoad,maxSessions){
   if(!d||!d.ok){resultEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur ou aucune donnée</div>';return;}
   if(d.nb_sessions===0){resultEl.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">🔍</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Aucun poste trouvé pour cette période</div></div>';return;}
   const trsCol=d.trs_periode>=70?'#16a34a':d.trs_periode>=50?'#f59e0b':d.trs_periode>=0?'#dc2626':'#94a3b8';
-  const pertRaw=d.perte_cadence_min||0;
-  const pertHtml=pertRaw<0?`<span style="color:#16a34a;font-weight:900">${Math.abs(Math.round(pertRaw))} min de gain</span>`:pertRaw>0?`<span style="color:#dc2626;font-weight:900">${Math.round(pertRaw)} min de perte</span>`:`<span style="color:#64748b">0 min</span>`;
   const _ouv_rj=d.ouverture_min||0;
   const _cH=(v,r)=>!r?'#64748b':v/r>=0.88?'#16a34a':v/r>=0.70?'#f59e0b':'#dc2626';
   const _cL=(v,r)=>!r?'#64748b':v/r<=0.08?'#16a34a':v/r<=0.25?'#f59e0b':'#dc2626';
@@ -14537,7 +14536,6 @@ async function calcPeriodReport(autoLoad,maxSessions){
   const _impRj=Math.max(0,(d.net_stop_min||0)-(d.arret_prevu_min||0));
   const _colImpRj=_cL(_impRj,_ouv_rj);
   const _colDegRj=_cL(d.tot_degrade_min||0,_ouv_rj);
-  const _colPerteRj=pertRaw<=0?'#16a34a':_cL(pertRaw,_ouv_rj);
   const _objPcsRj=d.objectif_pcs||0;
   const _colPcsRj=!_objPcsRj?'#16a34a':((d.tot_pcs||0)/_objPcsRj>=0.95?'#16a34a':(d.tot_pcs||0)/_objPcsRj>=0.75?'#f59e0b':'#dc2626');
   const _objEquivRj=d.objectif_equiv||0;
@@ -14821,8 +14819,8 @@ async function calcPeriodReport(autoLoad,maxSessions){
   const _typeProdPieHtml=_mkTypePie(_tpArr,34);
   // Sauvegarde pour captureRapportJour()
   window._rjVars={d,trsCol,chartTrsHtml,chartCadHtml,paretoRjHtml,paretoDeghHtml,pieSmall,
-    _colPcsRj,_colEquivRj,_colCadRj,pertRaw,
-    _colFonctRj,_colArretRj,_colImpRj,_colDegRj,_colPerteRj,
+    _colPcsRj,_colEquivRj,_colCadRj,
+    _colFonctRj,_colArretRj,_colImpRj,_colDegRj,
     fonctMin,stopMin,_typeProdPieHtml};
   resultEl.innerHTML=`
     <div style="display:flex;gap:10px;height:100%;min-height:0">
@@ -14832,7 +14830,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colCadRj}">${d.cadence_h||0} <span style="font-weight:600;color:var(--gray)">Pcs/h</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100} pièces/min)</span></div></div>
-        ${[['Temps d\'ouverture',((d.ouverture_min||0)/60).toFixed(1)+'h','#64748b'],['Temps utile',((d.temps_utile_min||0)/60).toFixed(1)+'h','#64748b'],['Tps de fonctionnement',((d.temps_fonctionnement_min||0)/60).toFixed(1)+'h',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
+        ${[['Temps d\'ouverture',((d.ouverture_min||0)/60).toFixed(1)+'h','#64748b'],['Temps utile',((d.temps_utile_min||0)/60).toFixed(1)+'h','#64748b'],['Tps de fonctionnement',((d.temps_fonctionnement_min||0)/60).toFixed(1)+'h',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
       </div>
       <!-- Droite : graphiques+pareto côte à côte, tables -->
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
@@ -14886,8 +14884,8 @@ async function captureRapportJour(){
   if(!window.html2canvas){toast('html2canvas non disponible (connexion internet requise)','err');return;}
   toast('Capture en cours…','ok');
   const {d,trsCol,chartTrsHtml,chartCadHtml,paretoRjHtml,paretoDeghHtml,pieSmall,
-    _colPcsRj,_colEquivRj,_colCadRj,pertRaw,
-    _colFonctRj,_colArretRj,_colImpRj,_colDegRj,_colPerteRj,_typeProdPieHtml}=v;
+    _colPcsRj,_colEquivRj,_colCadRj,
+    _colFonctRj,_colArretRj,_colImpRj,_colDegRj,_typeProdPieHtml}=v;
   // Dates : depuis inputs si renseignés, sinon calculées depuis les sessions
   const _sdDates=(d.sessions_detail||[]).map(s=>s.date||'').filter(Boolean).sort((a,b)=>{const _p=x=>x.split('/');const _n=x=>(+_p(x)[2])*10000+(+_p(x)[1])*100+(+_p(x)[0]);return _n(a)-_n(b);});
   const _dmy2iso=s=>{const p=s.split('/');return p.length===3?p[2]+'-'+p[1]+'-'+p[0]:''};
@@ -14905,7 +14903,7 @@ async function captureRapportJour(){
   });
   const _titleL2=_posteLbls.length?_posteLbls.join(' · '):'';
   // Lignes stats capture — polices -20% (16→13px label, 17→14px valeur)
-  const _statsRows=[['Temps d\'ouverture',((d.ouverture_min||0)/60).toFixed(1)+'h','#64748b'],['Temps utile',((d.temps_utile_min||0)/60).toFixed(1)+'h','#64748b'],['Tps de fonctionnement',((d.temps_fonctionnement_min||0)/60).toFixed(1)+'h',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Perte cadence',pertRaw>0?Math.round(pertRaw)+' min de perte':pertRaw<0?Math.abs(Math.round(pertRaw))+' min de gain':'0 min',_colPerteRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:2px"><span style="font-size:13px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:14px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
+  const _statsRows=[['Temps d\'ouverture',((d.ouverture_min||0)/60).toFixed(1)+'h','#64748b'],['Temps utile',((d.temps_utile_min||0)/60).toFixed(1)+'h','#64748b'],['Tps de fonctionnement',((d.temps_fonctionnement_min||0)/60).toFixed(1)+'h',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:2px"><span style="font-size:13px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:14px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
   // Layout capture : 3 colonnes — col1 272px (-20%), col2 camembert+stats, col3 pareto 324px (+20%)
   const _capHtml=`<div style="display:flex;gap:14px;align-items:flex-start;font-family:Arial,sans-serif;zoom:0.94">
     <!-- Colonne 1 : cards pièces/equiv/cad, graphiques TRS+Cadence (272px) -->
