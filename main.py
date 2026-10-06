@@ -6314,14 +6314,10 @@ def api_period_report():
         )
         if _ev_key:
             sessions[_ev_key]['evt_rows'].append((rn, r))
-    # Exclure la session en cours si demandé (shift_debut_dt OU shift_start comme référence de date)
-    if request.args.get('skip_current') and _S.get('pilot'):
-        _cur_pilot_l = _S.get('pilot','').lower()
-        _ref_dt = _S.get('shift_debut_dt') or _S.get('shift_start')
-        if _ref_dt:
-            _cur_date_str = _ref_dt.strftime('%d/%m/%Y')
-            sessions = {k: v for k, v in sessions.items()
-                        if not (v.get('pilot','').lower() == _cur_pilot_l and v.get('date') == _cur_date_str)}
+    # Exclure tous les postes non clôturés (ouverture_min NULL = clôture pas encore écrite)
+    if request.args.get('skip_current'):
+        sessions = {k: v for k, v in sessions.items()
+                    if _pm_get(postes_map, v['pilot'].lower(), v['date'], v.get('poste', '')).get('ouverture_min') is not None}
     # Limiter aux N sessions les plus récentes si max_sessions > 0
     # On prend N+1 d'abord pour compenser un éventuel skip_current qui supprime la session active
     def _key_row(kv):
