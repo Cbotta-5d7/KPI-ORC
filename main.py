@@ -14628,7 +14628,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
       const v=s.cadence_h||0;
       const bh=Math.max(2,Math.round(v/maxCad*gH2));
       const by=padT2+gH2-bh;
-      const col=v<=0?'#94a3b8':v>=_CAD_CIBLE?'#16a34a':v>=_CAD_CIBLE*(50/70)?'#f59e0b':'#dc2626';
+      const col=v<=0?'#94a3b8':s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgBars2+=`<rect x="${x}" y="${by}" width="${WB2}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
       if(v>0){const _lb2=String(v);if(bh>=18){const _ty2=by+Math.min(bh-4,14);svgLabels2+=`<text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="13" font-weight="800" fill="white" style="text-shadow:0 1px 2px rgba(0,0,0,.3)">${_lb2}</text>`;}else{const _ty2=Math.max(by-3,14);const _lw2=_lb2.length*9+6;svgLabels2+=`<rect x="${cx2-_lw2/2}" y="${_ty2-13}" width="${_lw2}" height="16" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb2}</text>`;}}
       const dp=s.date.split('/');
@@ -14655,7 +14655,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
     sd2.forEach((s,i)=>{
       const x=padL2+i*(WB2s+GP2);const cx2=x+WB2s/2;
       const v=s.cadence_h||0;const bh=Math.max(2,Math.round(v/maxCad*gH2));const by=padT2+gH2-bh;
-      const col=v<=0?'#94a3b8':v>=_CAD_CIBLE?'#16a34a':v>=_CAD_CIBLE*(50/70)?'#f59e0b':'#dc2626';
+      const col=v<=0?'#94a3b8':s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgBars2S+=`<rect x="${x}" y="${by}" width="${WB2s}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
       if(v>0){const _lb2=String(v);if(bh>=18){const _ty2=by+Math.min(bh-4,14);svgLabels2S+=`<text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="11" font-weight="800" fill="white">${_lb2}</text>`;}else{const _ty2=Math.max(by-3,14);const _lw2=_lb2.length*8+6;svgLabels2S+=`<rect x="${cx2-_lw2/2}" y="${_ty2-13}" width="${_lw2}" height="16" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${_lb2}</text>`;}}
       const dp=s.date.split('/');
