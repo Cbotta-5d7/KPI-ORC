@@ -6426,7 +6426,17 @@ def api_period_report():
             elif _bk_nt == 'clean_long_min':
                 _nett_bk_rj = 'clean_long_min'
         _bkeys_rj = {'pause_min', 'meeting_tol_min', _nett_bk_rj}
-        agg_arret_prevu += sum(float((_bov_xl_rj.get(bk) if _bov_xl_rj.get(bk) is not None else cfg.get(bk, 0)) or 0) for bk in _bkeys_rj)
+        _cfg_bov_rj = {
+            'pause_min':       float(cfg.get('pause_min', cfg.get('pause_max_min', 0)) or 0),
+            'meeting_tol_min': float(cfg.get('meeting_tol_min', 0) or 0),
+            'clean_short_min': float(cfg.get('clean_short_min', 0) or 0),
+            'clean_long_min':  float(cfg.get('clean_long_min', 0) or 0),
+            'clean_grand_min': float(cfg.get('clean_grand_min', 0) or 0),
+        }
+        agg_arret_prevu += sum(
+            float(_bov_xl_rj.get(bk) or 0) or _cfg_bov_rj.get(bk, 0)
+            for bk in _bkeys_rj
+        )
         agg_equiv   += s['tot_equiv']
         agg_pcs     += s['tot_pcs']
         agg_of_set.update(str(r[1] or '').strip() for r in s.get('prod_raws',[]) if str(r[1] or '').strip())
