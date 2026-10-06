@@ -6351,7 +6351,15 @@ def api_period_report():
         # Merged degrade for evt_rows (still needed for perte/TRS fallback)
         _deg_s = _merged_degrade_s([re2 for _, re2 in s['evt_rows']])
         # Planned stops budget tracking (for budget_data display)
-        _bdata = {bk:{'budget_min':float(cfg.get(bk,0) or 0),'used_min':0.0} for bk in _blab}
+        _xl_bov_bd = _xl.get('budget_overrides') or {}
+        _cfg_bd = {
+            'pause_min':       float(cfg.get('pause_min', cfg.get('pause_max_min', 0)) or 0),
+            'meeting_tol_min': float(cfg.get('meeting_tol_min', 0) or 0),
+            'clean_short_min': float(cfg.get('clean_short_min', 0) or 0),
+            'clean_long_min':  float(cfg.get('clean_long_min', 0) or 0),
+            'clean_grand_min': float(cfg.get('clean_grand_min', 0) or 0),
+        }
+        _bdata = {bk:{'budget_min': float(_xl_bov_bd.get(bk) or 0) or _cfg_bd.get(bk, 0), 'used_min':0.0} for bk in _blab}
         for _, re3 in s['evt_rows']:
             _bk2 = _get_arret_budget_key(str(re3[0] or ''))
             if _bk2 and _bk2 in _bdata:
@@ -6393,7 +6401,7 @@ def api_period_report():
         depassement = sum(max(0.0, v['used_min'] - v['budget_min']) for v in _bdata.values())
         _xl_theorique = _xl.get('pcs_theorique') or _sum_exp_pr
         agg_sum_theorique += _xl_theorique
-        agg_depassement += (_xl.get('depassement_min') if _xl.get('depassement_min') is not None else depassement)
+        agg_depassement += depassement
         _pf = sorted(s.get('prod_rows', []), key=lambda x: x[0])
         nb_chg = sum(1 for i in range(1, len(_pf)) if _pf[i][1] and _pf[i-1][1] and _pf[i][1] != _pf[i-1][1])
         agg_fibre_chg += nb_chg
@@ -14845,7 +14853,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colCadRj}">${d.cadence_h||0} <span style="font-weight:600;color:var(--gray)">Pcs/h</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100} pièces/min)</span></div></div>
-        ${[['Temps d\'ouverture',((d.ouverture_min||0)/60).toFixed(1)+'h','#64748b'],['Temps utile',((d.temps_utile_min||0)/60).toFixed(1)+'h','#64748b'],['Tps de fonctionnement',((d.temps_fonctionnement_min||0)/60).toFixed(1)+'h',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
+        ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
       </div>
       <!-- Droite : graphiques+pareto côte à côte, tables -->
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">
@@ -14918,7 +14926,7 @@ async function captureRapportJour(){
   });
   const _titleL2=_posteLbls.length?_posteLbls.join(' · '):'';
   // Lignes stats capture — polices -20% (16→13px label, 17→14px valeur)
-  const _statsRows=[['Temps d\'ouverture',((d.ouverture_min||0)/60).toFixed(1)+'h','#64748b'],['Temps utile',((d.temps_utile_min||0)/60).toFixed(1)+'h','#64748b'],['Tps de fonctionnement',((d.temps_fonctionnement_min||0)/60).toFixed(1)+'h',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:2px"><span style="font-size:13px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:14px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
+  const _statsRows=[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,val,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:2px"><span style="font-size:13px;color:#64748b;font-family:Arial,sans-serif">${esc(String(l))}</span><span style="font-size:14px;font-weight:700;color:${c};font-family:Arial,sans-serif">${esc(String(val))}</span></div>`).join('');
   // Layout capture : 3 colonnes — col1 272px (-20%), col2 camembert+stats, col3 pareto 324px (+20%)
   const _capHtml=`<div style="display:flex;gap:14px;align-items:flex-start;font-family:Arial,sans-serif;zoom:0.94">
     <!-- Colonne 1 : cards pièces/equiv/cad, graphiques TRS+Cadence (272px) -->
@@ -16084,7 +16092,6 @@ def generate_dashboard_html():
         }, ensure_ascii=False, separators=(',', ':'))
         gen_at_escaped = gen_at.replace("'", "\\'")
         inject = (
-            '<meta http-equiv="refresh" content="900">\n'
             '<script>\nwindow.DASH=' + dash_json + ';\n'
             '(function(){\n'
             # Fake state: makes the app think a user is "logged in" (no prod active)
@@ -16825,7 +16832,7 @@ def generate_dashboard_html():
         _xlsx_js = _gzip.decompress(_b64.b64decode(_XLSX_JS_GZ_B64)).decode('utf-8')
         _xlsx_js_b64 = _b64.b64encode(_xlsx_js.encode('utf-8')).decode('ascii')
         xlsx_script = f'<script>eval(atob("{_xlsx_js_b64}"));</script>\n'
-        dashboard_html = HTML_TEMPLATE.replace('</head>', xlsx_script + '</head>').replace('</body>', inject + '</body>')
+        dashboard_html = HTML_TEMPLATE.replace('</head>', xlsx_script + '<meta http-equiv="refresh" content="900">\n</head>').replace('</body>', inject + '</body>')
         base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
         _an = cfg.get("app_name","ORC1")
         import re as _re
