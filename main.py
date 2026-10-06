@@ -6421,7 +6421,16 @@ def api_period_report():
         agg_stop    += net_stop_min
         agg_perte   += perte
         _bov_xl_rj = _xl.get('budget_overrides') or {}
-        agg_arret_prevu += sum(float((_bov_xl_rj.get(bk) if _bov_xl_rj.get(bk) is not None else cfg.get(bk, 0)) or 0) for bk in _blab)
+        _nett_bk_rj = 'clean_short_min'
+        for _, _re_nt in s.get('evt_rows', []):
+            _bk_nt = _get_arret_budget_key(str(_re_nt[0] or ''))
+            if _bk_nt == 'clean_grand_min':
+                _nett_bk_rj = 'clean_grand_min'
+                break
+            elif _bk_nt == 'clean_long_min':
+                _nett_bk_rj = 'clean_long_min'
+        _bkeys_rj = {'pause_min', 'meeting_tol_min', _nett_bk_rj}
+        agg_arret_prevu += sum(float((_bov_xl_rj.get(bk) if _bov_xl_rj.get(bk) is not None else cfg.get(bk, 0)) or 0) for bk in _bkeys_rj)
         agg_equiv   += s['tot_equiv']
         agg_pcs     += s['tot_pcs']
         agg_of_set.update(str(r[1] or '').strip() for r in s.get('prod_raws',[]) if str(r[1] or '').strip())
@@ -12005,7 +12014,7 @@ function updateGauge(s){
     _pOfEl.innerHTML=`<div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:var(--gray);margin-bottom:4px;text-align:center">Prod <span style="color:#16a34a">${_minP}min</span> · Arrêts <span style="color:#dc2626">${_minA}min</span></div><div style="height:20px;border-radius:5px;overflow:hidden;display:flex;width:100%"><div style="width:${_pctP}%;background:#16a34a;display:flex;align-items:center;justify-content:center;font-size:calc(10px*var(--zf,1));font-weight:800;color:#fff;white-space:nowrap;overflow:hidden">${_pctP>10?_pctP+'%':''}</div><div style="width:${_pctA}%;background:#dc2626;display:flex;align-items:center;justify-content:center;font-size:calc(10px*var(--zf,1));font-weight:800;color:#fff;white-space:nowrap;overflow:hidden">${_pctA>10?_pctA+'%':''}</div></div>`;
   }
   // For poste pie — compute from shift start
-  const shiftTotal=s.shift_start_iso?(Date.now()-new Date(s.shift_start_iso).getTime())/1000:0;
+  const shiftTotal=_shiftRefDt?Math.max(0,(Date.now()-_shiftRefDt.getTime())/1000):0;
   const shiftStop=_todayStopAccum||0;
   const shiftProd=Math.max(0,shiftTotal-shiftStop);
   let _accDegS=0;
