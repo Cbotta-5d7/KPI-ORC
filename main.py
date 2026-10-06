@@ -12064,17 +12064,11 @@ async function _refreshAccPieOnly(){
   const _dgMg=[];_dgIv.slice().sort((a,b)=>a.s-b.s).forEach(iv=>{if(_dgMg.length&&iv.s<=_dgMg[_dgMg.length-1].e)_dgMg[_dgMg.length-1].e=Math.max(_dgMg[_dgMg.length-1].e,iv.e);else _dgMg.push({s:iv.s,e:iv.e});});
   let _stopInDeg=0;_allIv.forEach(iv=>{_dgMg.forEach(dg=>{_stopInDeg+=Math.max(0,Math.min(iv.e,dg.e)-Math.max(iv.s,dg.s));});});
   const degMinForPie=Math.max(0,degMin-Math.round(_stopInDeg/60000));
-  const _isPieBl=e=>e.bloquant||/pause|nettoyage|nett\b|r[eé]union|meeting/i.test(e.type||'');
-  const _blk=[],_nblk=[];
-  (d.evt_rows||[]).filter(e=>!e.is_degrade).forEach(e=>{const s=_hms(e.debut),en=_norm(s,_hms(e.fin));if(en<=s)return;if(_isPieBl(e))_blk.push({s,e:en});else _nblk.push({s,e:en});});
-  const _mrgMs=ivs=>{if(!ivs.length)return 0;ivs.sort((a,b)=>a.s-b.s);const mg=[];ivs.forEach(iv=>{if(mg.length&&iv.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,iv.e);else mg.push({s:iv.s,e:iv.e});});return Math.round(mg.reduce((a,iv)=>a+(iv.e-iv.s),0)/60000);};
-  const blokMin=_mrgMs(_blk),nblokMin=_mrgMs(_nblk);
   if(_w) _w.style.display='flex';
   drawPie('acc-rpt-pie',[
     {label:'Prod',value:Math.max(0,tempsFonct-degMinForPie),color:'#16a34a'},
-    {label:'Dégradé',value:degMinForPie,color:'url(#pie-stripe-deg)'},
-    {label:'Arr bloquants',value:blokMin,color:'#dc2626'},
-    {label:'Arr non bloquants',value:nblokMin,color:'url(#pie-stripe)'}
+    {label:'Arrêts',value:netStopMin,color:'#dc2626'},
+    {label:'Mode dégradé',value:degMinForPie,color:'url(#pie-stripe-deg)'}
   ],{fCenter:18,fSub:11,fLeg:14});
 }
 
@@ -15398,37 +15392,18 @@ async function loadSessionReport(date,pilot,poste,itemId){
       </div>
     </div>`;
   // Dessiner gauge et pie (éléments maintenant dans le DOM)
-  const _isPieBloquantRp=e=>e.bloquant||/pause|nettoyage|nett\b|r[eé]union|meeting/i.test(e.type||'');
-  const _blokIvsRp=[],_nblokIvsRp=[];
-  (d.evt_rows||[]).filter(e=>!e.is_degrade).forEach(function(e){
-    const s=_rptHmsMs(e.debut),en=_rptNormMs(s,_rptHmsMs(e.fin));
-    if(en<=s) return;
-    if(_isPieBloquantRp(e)) _blokIvsRp.push({s,e:en}); else _nblokIvsRp.push({s,e:en});
-  });
-  function _mergeRptMs(ivs){
-    if(!ivs.length) return 0;
-    ivs.sort(function(a,b){return a.s-b.s;});
-    const mg=[];
-    ivs.forEach(function(iv){if(mg.length&&iv.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,iv.e);else mg.push({s:iv.s,e:iv.e});});
-    return Math.round(mg.reduce(function(a,iv){return a+(iv.e-iv.s);},0)/60000);
-  }
-  const blokMinRp=_mergeRptMs(_blokIvsRp);
-  const nblokMinRp=_mergeRptMs(_nblokIvsRp);
-  drawPie('rpt-pie',[
+  // 3 parts : Prod / Arrêts (tous types fusionnés) / Mode dégradé
+  // 100% = temps ouverture
+  const _pieSlices=[
     {label:'Prod',value:Math.max(0,tempsFonctionnement-degMinForPie),color:'#16a34a'},
-    {label:'Dégradé',value:degMinForPie,color:'url(#pie-stripe-deg)'},
-    {label:'Arr bloquants',value:blokMinRp,color:'#dc2626'},
-    {label:'Arr non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
-  ],{fCenter:18,fSub:11,fLeg:14});
+    {label:'Arrêts',value:netStopMin,color:'#dc2626'},
+    {label:'Mode dégradé',value:degMinForPie,color:'url(#pie-stripe-deg)'}
+  ];
+  drawPie('rpt-pie',_pieSlices,{fCenter:18,fSub:11,fLeg:14});
   if(d.is_live){
     const _accWrap=document.getElementById('acc-rpt-pie-wrap');
     if(_accWrap) _accWrap.style.display='flex';
-    drawPie('acc-rpt-pie',[
-      {label:'Prod',value:Math.max(0,tempsFonctionnement-degMinForPie),color:'#16a34a'},
-      {label:'Dégradé',value:degMinForPie,color:'url(#pie-stripe-deg)'},
-      {label:'Arr bloquants',value:blokMinRp,color:'#dc2626'},
-      {label:'Arr non bloquants',value:nblokMinRp,color:'url(#pie-stripe)'}
-    ],{fCenter:18,fSub:11,fLeg:14});
+    drawPie('acc-rpt-pie',_pieSlices,{fCenter:18,fSub:11,fLeg:14});
   }
 }
 
