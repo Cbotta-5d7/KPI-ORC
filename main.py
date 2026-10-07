@@ -14780,32 +14780,31 @@ async function calcPeriodReport(autoLoad,maxSessions){
   const stopMin=d.net_stop_min||0;
   const planStopMinRj=d.arret_prevu_min||0;
   const unplanStopMinRj=Math.max(0,stopMin-planStopMinRj);
-  const pieTotal=fonctMin+stopMin;
+  const degMinRj=d.tot_degrade_min||0;
+  const pieTotal=fonctMin+stopMin+degMinRj;
+  const _pieSlices=[{v:fonctMin,c:'#16a34a',l:'Temps de prod'},{v:stopMin,c:'#dc2626',l:'Temps d\'arrêt'},{v:degMinRj,c:'#f59e0b',l:'Temps en dégradé'}].filter(s=>s.v>0);
   let pieHtml='';
   if(pieTotal>0){
     const r=60,cx=65,cy=65;
-    const slices=[{v:fonctMin,c:'#16a34a',l:'Prod'},{v:unplanStopMinRj,c:'#dc2626',l:'Arrêts bloquants'},{v:planStopMinRj,c:'#f97316',l:'Arrêts non bloquants'}].filter(s=>s.v>0);
     let startA=-Math.PI/2,svgPaths='';
-    slices.forEach(sl=>{
+    _pieSlices.forEach(sl=>{
       const a=sl.v/pieTotal*2*Math.PI;
       const x1=cx+r*Math.cos(startA),y1=cy+r*Math.sin(startA);
       const x2=cx+r*Math.cos(startA+a),y2=cy+r*Math.sin(startA+a);
-      const lg=a>Math.PI?1:0;
-      svgPaths+=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${sl.c}" opacity=".85"/>`;
+      svgPaths+=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${a>Math.PI?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${sl.c}" opacity=".85"/>`;
       startA+=a;
     });
-    const legHtml=slices.map(sl=>`<div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1))"><div style="width:10px;height:10px;border-radius:2px;background:${sl.c};flex-shrink:0"></div>${sl.l}: <b>${Math.round(sl.v)} min</b></div>`).join('');
+    const legHtml=_pieSlices.map(sl=>`<div style="display:flex;align-items:center;gap:5px;font-size:calc(10px*var(--zf,1))"><div style="width:10px;height:10px;border-radius:2px;background:${sl.c};flex-shrink:0"></div>${sl.l}: <b>${Math.round(sl.v)} min</b></div>`).join('');
     pieHtml=`<div style="text-align:center">
       <svg viewBox="0 0 130 130" style="width:130px;height:130px;display:block;margin:0 auto"><circle cx="65" cy="65" r="60" fill="#e2e8f0"/>${svgPaths}</svg>
       <div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;align-items:center">${legHtml}</div>
     </div>`;
   }
-  // TRS par jour supprimé
   // Pie compact avec titre + légende
   let pieSmall='';
   if(pieTotal>0){
     const r=34,cx=38,cy=38;let sA=-Math.PI/2,paths='';
-    [{v:fonctMin,c:'#16a34a'},{v:unplanStopMinRj,c:'#dc2626'},{v:planStopMinRj,c:'#f97316'}].filter(s=>s.v>0).forEach(sl=>{
+    _pieSlices.forEach(sl=>{
       const a=sl.v/pieTotal*2*Math.PI;
       const x1=cx+r*Math.cos(sA),y1=cy+r*Math.sin(sA);
       const x2=cx+r*Math.cos(sA+a),y2=cy+r*Math.sin(sA+a);
@@ -14813,12 +14812,10 @@ async function calcPeriodReport(autoLoad,maxSessions){
       sA+=a;
     });
     pieSmall=`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0">
-      <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#374151;white-space:nowrap">Prod / Arrêts</div>
+      <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#374151;white-space:nowrap">Répartition du temps</div>
       <svg viewBox="0 0 76 76" style="width:74px;height:74px"><circle cx="38" cy="38" r="34" fill="#e2e8f0"/>${paths}</svg>
       <div style="font-size:calc(10px*var(--zf,1));display:flex;flex-direction:column;gap:2px;align-self:flex-start">
-        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#16a34a;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Prod : <b>${Math.round(fonctMin)} min</b></span></div>
-        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#dc2626;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Arrêt bloquant : <b>${Math.round(unplanStopMinRj)} min</b></span></div>
-        <div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:#f97316;flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">Arrêt non bloquant : <b>${Math.round(planStopMinRj)} min</b></span></div>
+        ${_pieSlices.map(sl=>`<div style="display:flex;align-items:center;gap:3px"><div style="width:9px;height:9px;border-radius:2px;background:${sl.c};flex-shrink:0"></div><span style="color:#374151;white-space:nowrap">${sl.l} : <b>${Math.round(sl.v)} min</b></span></div>`).join('')}
       </div>
     </div>`;
   }
