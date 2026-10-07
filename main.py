@@ -640,6 +640,7 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
     def _bg():
         try:
             n_updated = 0
+            n_prev = 0
             import time as _t; _t.sleep(1)
             with _db_lock:
                 conn = _get_conn(path)
@@ -647,14 +648,13 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                 _ensure_db_schema(conn)
                 c = conn.cursor()
                 # Fetch candidate rows from SQLite (non-prod, matching pilot+poste)
-                shift_dates_list = list(shift_dates)
-                placeholders = ",".join("?" * len(shift_dates_list))
                 c.execute(f"""SELECT rowid, c02, c01, c17, c18, c07, c08, c09, c10, c11, c12, c16, c40, c03
                               FROM declarations
                               WHERE c05=? AND c04=?
                               AND LOWER(c01) NOT IN ('production','prod','')""",
                           (pilot, poste))
                 rows_to_check = c.fetchall()
+                # === Pass 1 : remplir déclarations dans la plage de cet OF ===
                 for row in rows_to_check:
                     rid, _row_of, _rtype, deb_hms, fin_hms, nb_pers_v, taille_v, code_prod_v, type_prod_v, poids_v, fibre_v, kit_v, date_poste_v, date_cal_v = row
                     if _row_of and str(_row_of).strip() and str(_row_of).strip() != of_num:
@@ -691,12 +691,61 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                         c.execute(f"UPDATE declarations SET {set_clause} WHERE rowid=?",
                                   list(updates.values()) + [rid])
                         n_updated += 1
-                if n_updated:
+                # === Pass 2 : déclarations AVANT cet OF sans OF → OF précédent du pilote ===
+                # Chercher le dernier OF fait par ce pilote (hors OF courant)
+                c.execute("""SELECT c02, c07, c08, c09, c10, c11, c12, c16
+                             FROM declarations
+                             WHERE c05=? AND LOWER(c01) IN ('production','prod')
+                             AND c02 IS NOT NULL AND c02!='' AND c02!=?
+                             ORDER BY c03 DESC, rowid DESC""",
+                          (pilot, of_num))
+                _prev_prod = c.fetchone()
+                _prev_of_num = ""
+                if _prev_prod:
+                    _prev_of_num  = str(_prev_prod[0] or "").strip()
+                    _prev_nb      = str(_prev_prod[1] or "")
+                    _prev_taille  = str(_prev_prod[2] or "")
+                    _prev_code    = str(_prev_prod[3] or "")
+                    _prev_type    = str(_prev_prod[4] or "")
+                    _prev_poids   = str(_prev_prod[5] or "")
+                    _prev_fibre   = str(_prev_prod[6] or "")
+                    _prev_kit     = str(_prev_prod[7] or "")
+                    for row in rows_to_check:
+                        rid, _row_of, _rtype, deb_hms, fin_hms, nb_pers_v, taille_v, code_prod_v, type_prod_v, poids_v, fibre_v, kit_v, date_poste_v, date_cal_v = row
+                        if _row_of and str(_row_of).strip():
+                            continue  # déjà un OF
+                        _row_dt = str(date_poste_v or "").strip() or _row_date(date_cal_v)
+                        if _row_dt not in shift_dates:
+                            continue
+                        _db_s = _hms_to_sec(str(deb_hms or "00:00:00"))
+                        # Déclaration strictement avant le début de cet OF (fenêtre 6h max pour éviter wrap nuit)
+                        if not (_db_s < of_s and of_s - _db_s < 21600):
+                            continue
+                        updates2 = {"c02": _prev_of_num}
+                        if _prev_nb and not str(nb_pers_v or "").strip():
+                            updates2["c07"] = _prev_nb
+                        if _prev_taille and not str(taille_v or "").strip():
+                            updates2["c08"] = _prev_taille
+                        if _prev_code and not str(code_prod_v or "").strip():
+                            updates2["c09"] = _prev_code
+                        if _prev_type and not str(type_prod_v or "").strip():
+                            updates2["c10"] = _prev_type
+                        if _prev_poids and not str(poids_v or "").strip():
+                            updates2["c11"] = _prev_poids
+                        if _prev_fibre and not str(fibre_v or "").strip():
+                            updates2["c12"] = _prev_fibre
+                        if _prev_kit == "Oui":
+                            updates2["c16"] = "Oui"
+                        set_clause2 = ", ".join(f"{k}=?" for k in updates2)
+                        c.execute(f"UPDATE declarations SET {set_clause2} WHERE rowid=?",
+                                  list(updates2.values()) + [rid])
+                        n_prev += 1
+                if n_updated or n_prev:
                     _db_commit(conn)
                 else:
                     conn.close()
             load_history()
-            print(f"[BACKFILL-OF] {n_updated} ligne(s) mises à jour → OF={of_num}")
+            print(f"[BACKFILL-OF] {n_updated} ligne(s) OF={of_num} | {n_prev} antérieure(s) → OF précédent={(_prev_prod and _prev_of_num) or 'n/a'}")
         except Exception as _e:
             print(f"[BACKFILL-OF] Erreur : {_e}")
     import threading as _bt
