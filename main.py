@@ -11300,12 +11300,15 @@ const _EVT_CAT_COLOR={pb:'#ea580c',ratt:'#2563eb',nettoyage:'#16a34a',organisati
 function _renderEvtListHTML(){
   const c=document.getElementById('events-list-ui');if(!c) return;
   if(!_evtsEditing.length){c.innerHTML='<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:8px">Aucun arrêt configuré</div>';return;}
+  // Sort by category (stable: preserves internal order within each category)
+  const catOrd=e=>{ const i=_EVT_CAT_ORDER.indexOf(e.cat); return i<0?99:i; };
+  _evtsEditing.sort((a,b)=>catOrd(a)-catOrd(b));
   let html='';let lastCat=null;
   _evtsEditing.forEach((e,i)=>{
     const catColor=_EVT_CAT_COLOR[e.cat]||'#64748b';
     if(e.cat!==lastCat){
-      if(lastCat!==null) html+=`<div style="height:8px"></div>`;
-      html+=`<div style="font-size:calc(10px*var(--zf,1));font-weight:700;color:${catColor};text-transform:uppercase;letter-spacing:0.6px;padding:2px 4px;margin-bottom:4px;border-left:3px solid ${catColor};padding-left:7px">${_EVT_CAT_LBL[e.cat]||e.cat}</div>`;
+      if(lastCat!==null) html+=`<div style="height:6px"></div>`;
+      html+=`<div style="display:flex;align-items:center;gap:8px;background:${catColor};border-radius:7px;padding:6px 12px;margin-bottom:6px"><span style="font-size:calc(12px*var(--zf,1));font-weight:800;color:#fff;letter-spacing:.04em;text-transform:uppercase">${_EVT_CAT_LBL[e.cat]||e.cat}</span><span style="margin-left:auto;background:rgba(255,255,255,.22);color:#fff;font-size:calc(10px*var(--zf,1));font-weight:700;padding:1px 7px;border-radius:8px">${_evtsEditing.filter(x=>x.cat===e.cat).length}</span></div>`;
       lastCat=e.cat;
     }
     if(_evtEditIdx===i){
