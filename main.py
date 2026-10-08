@@ -4934,8 +4934,11 @@ def api_events_list():
     evt_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() not in ("production","prod","")]
     # With date range: scan all; without: limit to last 500
     scan_rows = evt_rows if (d_from_el or d_to_el) else evt_rows[-500:]
-    # Build lookup map from configured events_list: label.lower() → cat
-    _ev_cat_map = {e.get("label","").lower(): e.get("cat","organisation") for e in get_events_list() if e.get("label","")}
+    # Build authoritative maps from configured events_list (key is the ground truth)
+    _ev_cfg_list = get_events_list()
+    _ev_key_cat  = {e.get("key","").lower(): e.get("cat","organisation") for e in _ev_cfg_list if e.get("key","")}
+    _ev_lbl_cat  = {e.get("label","").lower(): e.get("cat","organisation") for e in _ev_cfg_list if e.get("label","")}
+    _STORED_PFXS = ("rattrapage: ","pb technique: ","nettoyage: ","pause: ","réunion: ","reunion: ","manquants: ","organisation: ","autre: ")
     for rn, r in scan_rows:
         try:
             if d_from_el or d_to_el:
@@ -4945,11 +4948,12 @@ def api_events_list():
             hors = str(r[36] if len(r)>36 else "").strip().upper()
             type_str = str(r[0] or "").strip()
             tl = type_str.lower()
-            # Detect stored "category: key" prefix format first
-            _PFX_MAP = {"manquants:":"manquants","organisation:":"organisation","rattrapage:":"ratt","pb technique:":"pb","nettoyage:":"nettoyage","pause:":"_pause","réunion:":"reunion","reunion:":"reunion","autre:":"autre"}
-            _pfx_cat = next((v for k,v in _PFX_MAP.items() if tl.startswith(k)), None)
-            if _pfx_cat is not None: cat = _pfx_cat
-            elif tl in _ev_cat_map: cat = _ev_cat_map[tl]
+            # Strip stored prefix ("manquants: key" → "key") then look up in config
+            tl_key = tl
+            for _pfx in _STORED_PFXS:
+                if tl.startswith(_pfx): tl_key = tl[len(_pfx):]; break
+            if tl_key in _ev_key_cat: cat = _ev_key_cat[tl_key]
+            elif tl in _ev_lbl_cat: cat = _ev_lbl_cat[tl]
             elif "nettoyage" in tl: cat = "nettoyage"
             elif tl == "pause": cat = "_pause"
             elif "rattrapage" in tl: cat = "ratt"
