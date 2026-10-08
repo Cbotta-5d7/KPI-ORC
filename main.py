@@ -15202,16 +15202,16 @@ async function loadLogistique(){
   const histParams=new URLSearchParams();
   if(fromVal) histParams.set('from',fromVal);
   if(toVal)   histParams.set('to',toVal);
-  const [histData,evtData,cfgData]=await Promise.all([
+  const [histData,evtData]=await Promise.all([
     apiFetch('/api/history?'+histParams.toString()),
-    apiFetch('/api/events_list?'+evtParams.toString()),
-    apiFetch('/api/events_cfg')
+    apiFetch('/api/events_list?'+evtParams.toString())
   ]);
   const prods=Array.isArray(histData)?histData:[];
   const evts=Array.isArray(evtData)?evtData:[];
-  // Build set of labels configured as cat='manquants' (source de vérité)
-  const _manqLabels=new Set(((cfgData&&cfgData.events)||[]).filter(e=>e.cat==='manquants').map(e=>(e.label||'').toLowerCase()));
-  const manqEvts=evts.filter(e=>_manqLabels.has((e.type||'').toLowerCase()));
+  // Labels configurés cat='manquants' : depuis window.DASH (dashboard) ou _evtsList (app live)
+  const _cfgEvts=(window.DASH&&window.DASH.events_cfg)||_evtsList||[];
+  const _manqLabels=new Set(_cfgEvts.filter(e=>e.cat==='manquants').map(e=>(e.label||'').toLowerCase()));
+  const manqEvts=_manqLabels.size>0 ? evts.filter(e=>_manqLabels.has((e.type||'').toLowerCase())) : evts.filter(e=>e.cat==='manquants');
   if(!manqEvts.length){
     _logiAllOfs=[];
     res.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(32px*var(--zf,1));margin-bottom:10px">✅</div><div style="font-size:calc(13px*var(--zf,1));font-weight:600">Aucun événement "Manquant" sur cette période</div></div>';
