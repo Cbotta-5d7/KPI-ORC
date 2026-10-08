@@ -15129,7 +15129,7 @@ function _logiRender(groups){
     sections[sections.length-1].cards.push(g);
   });
   const html=sections.map(sec=>{
-    const sep=`<div style="background:linear-gradient(90deg,#e2e8f0 0%,#f1f5f9 100%);border-top:2px solid #94a3b8;border-bottom:1px solid #cbd5e1;padding:4px 12px;font-size:calc(9px*var(--zf,1));font-weight:700;color:#1e3a8a;letter-spacing:.06em;margin:12px 0 8px;user-select:none">▸ ${sec.label}</div>`;
+    const sep=`<div style="background:linear-gradient(90deg,#1e3a8a 0%,#1d4ed8 100%);border-radius:8px;padding:10px 16px;margin:18px 0 10px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(30,58,138,.25);user-select:none"><span style="font-size:calc(16px*var(--zf,1))">📅</span><span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#fff;letter-spacing:.04em">${sec.label}</span><span style="margin-left:auto;background:rgba(255,255,255,.18);color:#fff;font-size:calc(10px*var(--zf,1));font-weight:700;padding:2px 8px;border-radius:10px">${sec.cards.length} OF</span></div>`;
     const cards=sec.cards.map(g=>{
       const r=g.prod;
       const kitStr=(r.kit||'').toLowerCase();
