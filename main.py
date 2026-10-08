@@ -4945,8 +4945,11 @@ def api_events_list():
             hors = str(r[36] if len(r)>36 else "").strip().upper()
             type_str = str(r[0] or "").strip()
             tl = type_str.lower()
-            # Use configured category first, fall back to heuristic
-            if tl in _ev_cat_map: cat = _ev_cat_map[tl]
+            # Detect stored "category: key" prefix format first
+            _PFX_MAP = {"manquants:":"manquants","organisation:":"organisation","rattrapage:":"ratt","pb technique:":"pb","nettoyage:":"nettoyage","pause:":"_pause","réunion:":"reunion","reunion:":"reunion","autre:":"autre"}
+            _pfx_cat = next((v for k,v in _PFX_MAP.items() if tl.startswith(k)), None)
+            if _pfx_cat is not None: cat = _pfx_cat
+            elif tl in _ev_cat_map: cat = _ev_cat_map[tl]
             elif "nettoyage" in tl: cat = "nettoyage"
             elif tl == "pause": cat = "_pause"
             elif "rattrapage" in tl: cat = "ratt"
