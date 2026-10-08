@@ -4934,6 +4934,8 @@ def api_events_list():
     evt_rows = [(rn,r) for rn,r in _decl_cache if str(r[0] or "").strip().lower() not in ("production","prod","")]
     # With date range: scan all; without: limit to last 500
     scan_rows = evt_rows if (d_from_el or d_to_el) else evt_rows[-500:]
+    # Build lookup map from configured events_list: label.lower() → cat
+    _ev_cat_map = {e.get("label","").lower(): e.get("cat","organisation") for e in get_events_list() if e.get("label","")}
     for rn, r in scan_rows:
         try:
             if d_from_el or d_to_el:
@@ -4943,7 +4945,9 @@ def api_events_list():
             hors = str(r[36] if len(r)>36 else "").strip().upper()
             type_str = str(r[0] or "").strip()
             tl = type_str.lower()
-            if "nettoyage" in tl: cat = "nettoyage"
+            # Use configured category first, fall back to heuristic
+            if tl in _ev_cat_map: cat = _ev_cat_map[tl]
+            elif "nettoyage" in tl: cat = "nettoyage"
             elif tl == "pause": cat = "_pause"
             elif "rattrapage" in tl: cat = "ratt"
             elif tl.startswith("pb") or "panne" in tl: cat = "pb"
@@ -7788,7 +7792,7 @@ select{cursor:default}
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
-      <button class="htab" id="ht-logistique" onclick="goTab('logistique')">🚚 Logistique</button>
+      <button class="htab" id="ht-logistique" onclick="goTab('logistique')" style="display:none">🚚 Logistique</button>
       <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🚨 Signaler problèmes logiciel</button>
       <button class="htab" id="ht-cdg" onclick="goTab('cdg')" style="display:none">📊 CDG</button>
     </div>
@@ -8791,7 +8795,7 @@ select{cursor:default}
   </div>
 
   <!-- ════ LOGISTIQUE ════ -->
-  <div id="v-logistique" class="view" style="flex-direction:column;overflow:hidden">
+  <div id="v-logistique" class="view" style="flex-direction:column;overflow:hidden;display:none">
     <div style="background:linear-gradient(180deg,#f0fdf4 0%,#fff 100%);border-bottom:2px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;box-shadow:0 2px 6px rgba(0,0,0,.04)">
       <span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:var(--navy);letter-spacing:.3px">🚚 Événements : Manquants</span>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto">
@@ -15112,49 +15116,65 @@ function _logiFilter(){
 }
 function _logiRender(groups){
   const total=groups.reduce((a,g)=>a+g.evts.length,0);
-  const cards=groups.map(g=>{
+  // Group cards by shift_date + poste
+  const sections=[];let lastKey=null;
+  groups.forEach(g=>{
     const r=g.prod;
-    const kitStr=(r.kit||'').toLowerCase();
-    const evtRows=g.evts.map(e=>`<tr style="border-top:1px solid #f3f0ff">
-      <td style="padding:5px 10px;color:#7c3aed;font-weight:600;font-size:calc(11px*var(--zf,1))">${esc(e.type||'')}</td>
-      <td style="padding:5px 10px;white-space:nowrap;font-size:calc(11px*var(--zf,1));color:#374151">${esc(e.debut||'—')} → ${esc(e.fin||'—')}</td>
-      <td style="padding:5px 10px;font-weight:700;color:#dc2626;white-space:nowrap;font-size:calc(11px*var(--zf,1))">${esc(e.duree||'—')}</td>
-      <td style="padding:5px 10px;font-size:calc(11px*var(--zf,1));color:#64748b;font-style:italic">${esc(e.comment||'—')}</td>
-    </tr>`).join('');
-    const noOf=g.of==='__sans_of__';
-    const n=g.evts.length;
-    return `<div style="background:var(--card-bg,#fff);border:1.5px solid #fca5a5;border-radius:10px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 5px rgba(220,38,38,.08)">
-      <div style="background:linear-gradient(90deg,#fff7ed,#fef9f5);border-bottom:1px solid #fde8d0;padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center">
-        <div style="flex:0 0 auto;min-width:160px">
-          <div style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#1d4ed8">${noOf?'<span style="color:#94a3b8;font-style:italic">Sans OF</span>':'🏭 OF '+esc(g.of)}</div>
-          <div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-top:2px">${esc(r.date||'')}${r.poste?' · '+esc(r.poste):''}${r.pilote?' · 👤 '+esc(r.pilote):''}</div>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px 14px;flex:1">
-          ${r.taille?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Taille</span> <b>${esc(r.taille)}</b></span>`:''}
-          ${r.type_prod?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Type</span> <b>${esc(r.type_prod)}</b></span>`:''}
-          ${r.code_prod?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Code</span> <b>${esc(r.code_prod)}</b></span>`:''}
-          ${r.fibre?`<span style="font-size:calc(11px*var(--zf,1));color:#6366f1"><span style="color:#94a3b8">Fibre</span> <b>${esc(r.fibre)}</b></span>`:''}
-          ${r.ref_taie?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Réf Taie</span> <b>${esc(r.ref_taie)}</b></span>`:''}
-          ${r.kit?`<span style="font-size:calc(11px*var(--zf,1));color:${kitStr==='oui'?'#16a34a':'#94a3b8'}"><span style="color:#94a3b8">Lots de 2</span> <b>${kitStr==='oui'?'✓ Oui':'Non'}</b></span>`:''}
-          ${(r.nb_taie2&&r.nb_taie2!=='0')?`<span style="font-size:calc(11px*var(--zf,1));color:#f59e0b"><span style="color:#94a3b8">Taie 2nd choix</span> <b>${esc(r.nb_taie2)}</b></span>`:''}
-        </div>
-        ${r.debut?`<div style="background:#f1f5f9;border-radius:6px;padding:4px 10px;font-size:calc(10px*var(--zf,1));color:#374151;white-space:nowrap"><b>OF</b> ${esc(r.debut)} → ${esc(r.fin)} · <b>${esc(r.duree||'?')}</b></div>`:''}
-        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:4px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;white-space:nowrap">${n} manquant${n>1?'s':''}</div>
-      </div>
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr style="background:#faf5ff;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#7c3aed">
-          <th style="padding:4px 10px;text-align:left;font-weight:700;white-space:nowrap">Type d\'arrêt</th>
-          <th style="padding:4px 10px;text-align:left;font-weight:700;white-space:nowrap">Plage horaire</th>
-          <th style="padding:4px 10px;text-align:left;font-weight:700;white-space:nowrap">Durée</th>
-          <th style="padding:4px 10px;text-align:left;font-weight:700">Commentaire pilote</th>
-        </tr></thead>
-        <tbody>${evtRows}</tbody>
-      </table>
-    </div>`;
+    const sk=(r.shift_date||r.date||'')+'||'+(r.poste||'');
+    if(sk!==lastKey){
+      const lbl=esc(r.rattachement||r.shift_date||r.date||'')+(r.poste?' — '+esc(r.poste):'');
+      sections.push({key:sk,label:lbl,cards:[]});
+      lastKey=sk;
+    }
+    sections[sections.length-1].cards.push(g);
   });
+  const html=sections.map(sec=>{
+    const sep=`<div style="background:linear-gradient(90deg,#e2e8f0 0%,#f1f5f9 100%);border-top:2px solid #94a3b8;border-bottom:1px solid #cbd5e1;padding:4px 12px;font-size:calc(9px*var(--zf,1));font-weight:700;color:#1e3a8a;letter-spacing:.06em;margin:12px 0 8px;user-select:none">▸ ${sec.label}</div>`;
+    const cards=sec.cards.map(g=>{
+      const r=g.prod;
+      const kitStr=(r.kit||'').toLowerCase();
+      const evtRows=g.evts.map(e=>`<tr style="border-top:1px solid #f3f0ff">
+        <td style="padding:5px 10px;color:#7c3aed;font-weight:600;font-size:calc(11px*var(--zf,1))">${esc(e.type||'')}</td>
+        <td style="padding:5px 10px;white-space:nowrap;font-size:calc(11px*var(--zf,1));color:#374151">${esc(e.debut||'—')} → ${esc(e.fin||'—')}</td>
+        <td style="padding:5px 10px;font-weight:700;color:#dc2626;white-space:nowrap;font-size:calc(11px*var(--zf,1))">${esc(e.duree||'—')}</td>
+        <td style="padding:5px 10px;font-size:calc(11px*var(--zf,1));color:#64748b;font-style:italic">${esc(e.comment||'—')}</td>
+      </tr>`).join('');
+      const noOf=g.of==='__sans_of__';
+      const n=g.evts.length;
+      return `<div style="background:var(--card-bg,#fff);border:1.5px solid #fca5a5;border-radius:10px;margin-bottom:10px;overflow:hidden;box-shadow:0 1px 5px rgba(220,38,38,.08)">
+        <div style="background:linear-gradient(90deg,#fff7ed,#fef9f5);border-bottom:1px solid #fde8d0;padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center">
+          <div style="flex:0 0 auto;min-width:160px">
+            <div style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#1d4ed8">${noOf?'<span style="color:#94a3b8;font-style:italic">Sans OF</span>':'🏭 OF '+esc(g.of)}</div>
+            <div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-top:2px">${r.pilote?'👤 '+esc(r.pilote):''}</div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px 14px;flex:1">
+            ${r.taille?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Taille</span> <b>${esc(r.taille)}</b></span>`:''}
+            ${r.type_prod?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Type</span> <b>${esc(r.type_prod)}</b></span>`:''}
+            ${r.code_prod?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Code</span> <b>${esc(r.code_prod)}</b></span>`:''}
+            ${r.fibre?`<span style="font-size:calc(11px*var(--zf,1));color:#6366f1"><span style="color:#94a3b8">Fibre</span> <b>${esc(r.fibre)}</b></span>`:''}
+            ${r.ref_taie?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Réf Taie</span> <b>${esc(r.ref_taie)}</b></span>`:''}
+            ${r.kit?`<span style="font-size:calc(11px*var(--zf,1));color:${kitStr==='oui'?'#16a34a':'#94a3b8'}"><span style="color:#94a3b8">Lots de 2</span> <b>${kitStr==='oui'?'✓ Oui':'Non'}</b></span>`:''}
+            ${(r.nb_taie2&&r.nb_taie2!=='0')?`<span style="font-size:calc(11px*var(--zf,1));color:#f59e0b"><span style="color:#94a3b8">Taie 2nd choix</span> <b>${esc(r.nb_taie2)}</b></span>`:''}
+          </div>
+          ${r.debut?`<div style="background:#f1f5f9;border-radius:6px;padding:4px 10px;font-size:calc(10px*var(--zf,1));color:#374151;white-space:nowrap"><b>OF</b> ${esc(r.debut)} → ${esc(r.fin)} · <b>${esc(r.duree||'?')}</b></div>`:''}
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:4px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;white-space:nowrap">${n} manquant${n>1?'s':''}</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#faf5ff;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#7c3aed">
+            <th style="padding:4px 10px;text-align:left;font-weight:700;white-space:nowrap">Type d\'arrêt</th>
+            <th style="padding:4px 10px;text-align:left;font-weight:700;white-space:nowrap">Plage horaire</th>
+            <th style="padding:4px 10px;text-align:left;font-weight:700;white-space:nowrap">Durée</th>
+            <th style="padding:4px 10px;text-align:left;font-weight:700">Commentaire pilote</th>
+          </tr></thead>
+          <tbody>${evtRows}</tbody>
+        </table>
+      </div>`;
+    }).join('');
+    return sep+cards;
+  }).join('');
   return `<div style="font-size:calc(11px*var(--zf,1));color:#64748b;margin-bottom:12px">
     <b>${groups.length}</b> OF concerné${groups.length>1?'s':''} · <b>${total}</b> événement${total>1?'s':''} manquant${total>1?'s':''}
-  </div>`+cards.join('');
+  </div>`+html;
 }
 async function loadLogistique(){
   const fi=document.getElementById('logi-from');
@@ -15178,7 +15198,7 @@ async function loadLogistique(){
   ]);
   const prods=Array.isArray(histData)?histData:[];
   const evts=Array.isArray(evtData)?evtData:[];
-  const manqEvts=evts.filter(e=>(e.type||'').toLowerCase().includes('manquant'));
+  const manqEvts=evts.filter(e=>e.cat==='manquants');
   if(!manqEvts.length){
     _logiAllOfs=[];
     res.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(32px*var(--zf,1));margin-bottom:10px">✅</div><div style="font-size:calc(13px*var(--zf,1));font-weight:600">Aucun événement "Manquant" sur cette période</div></div>';
@@ -16323,6 +16343,8 @@ def generate_dashboard_html():
             '      var el=document.querySelector(sel);if(el)el.style.display="none";\n'
             '    });\n'
             '    var cdgBtn=document.getElementById("ht-cdg");if(cdgBtn)cdgBtn.style.display="";\n'
+            '    var logiBtn=document.getElementById("ht-logistique");if(logiBtn)logiBtn.style.display="";\n'
+            '    var logiView=document.getElementById("v-logistique");if(logiView)logiView.style.display="";\n'
             '    var _probBtn=document.getElementById("ht-problemes");if(_probBtn)_probBtn.style.display="";\n'
             '    var _addProbBtn=document.getElementById("prob-add-btn");if(_addProbBtn)_addProbBtn.style.display="none";\n'
             '    window._probReadOnly=true;\n'
