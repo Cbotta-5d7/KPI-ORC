@@ -7788,6 +7788,7 @@ select{cursor:default}
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
+      <button class="htab" id="ht-logistique" onclick="goTab('logistique')">🚚 Logistique</button>
       <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🚨 Signaler problèmes logiciel</button>
       <button class="htab" id="ht-cdg" onclick="goTab('cdg')" style="display:none">📊 CDG</button>
     </div>
@@ -8786,6 +8787,24 @@ select{cursor:default}
         <button onclick="closeProblemeModal()" style="background:#f3f4f6;color:#374151;border:none;border-radius:6px;padding:8px 18px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer">Annuler</button>
         <button onclick="submitProbleme()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">Envoyer</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ════ LOGISTIQUE ════ -->
+  <div id="v-logistique" class="view" style="flex-direction:column;overflow:hidden">
+    <div style="background:linear-gradient(180deg,#f0fdf4 0%,#fff 100%);border-bottom:2px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;box-shadow:0 2px 6px rgba(0,0,0,.04)">
+      <span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:var(--navy);letter-spacing:.3px">🚚 Événements : Manquants</span>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto">
+        <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Du</label>
+        <input type="date" id="logi-from" style="padding:3px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));color:#1e3a8a;font-weight:600;outline:none" onchange="loadLogistique()">
+        <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Au</label>
+        <input type="date" id="logi-to" style="padding:3px 6px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));color:#1e3a8a;font-weight:600;outline:none" onchange="loadLogistique()">
+        <input id="logi-of" type="text" placeholder="🔍 N° OF…" style="padding:4px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:calc(12px*var(--zf,1));min-width:120px" oninput="_logiFilter()">
+        <input id="logi-type" type="text" placeholder="🔍 Détail arrêt…" style="padding:4px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:calc(12px*var(--zf,1));min-width:150px" oninput="_logiFilter()">
+      </div>
+    </div>
+    <div id="logi-result" style="overflow-y:auto;flex:1;padding:12px 14px">
+      <div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">🚚</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Chargement…</div></div>
     </div>
   </div>
 
@@ -9821,10 +9840,10 @@ function goTab(tab) {
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   document.querySelectorAll('.htab').forEach(t=>t.classList.remove('on'));
-  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports','rpt-jour':'v-rpt-jour',cdg:'v-cdg',problemes:'v-problemes'};
+  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports','rpt-jour':'v-rpt-jour',cdg:'v-cdg',problemes:'v-problemes',logistique:'v-logistique'};
   const el=document.getElementById(vm[tab]);
   if(el) el.classList.add('on');
-  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour',cdg:'ht-cdg',problemes:'ht-problemes'};
+  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour',cdg:'ht-cdg',problemes:'ht-problemes',logistique:'ht-logistique'};
   const ntEl=document.getElementById(nt[tab]);
   if(ntEl) ntEl.classList.add('on');
   if(tab!=='prod') _clearFieldHighlights();
@@ -9849,7 +9868,7 @@ function goTab(tab) {
   }
   if(tab==='finposte') loadFPData();
   // Vues données : recharge le cache Excel d'abord, puis affiche
-  const _dataViews=['history','rapports','rpt-jour','kpi','main','cdg'];
+  const _dataViews=['history','rapports','rpt-jour','kpi','main','cdg','logistique'];
   if(_dataViews.includes(tab)){
     if(tab!=='history'&&_prevTab==='history') _resetHistFilters();
     fetch('/api/reload_excel',{method:'POST'}).catch(()=>{}).finally(()=>{
@@ -9859,6 +9878,7 @@ function goTab(tab) {
       if(tab==='main'){loadMainDecl();refreshAccFpData();_refreshAccRptPie();}
       if(tab==='kpi') loadKPI();
       if(tab==='cdg') loadCdg();
+      if(tab==='logistique') loadLogistique();
     });
   } else if(_prevTab==='history') _resetHistFilters();
   if(tab==='problemes') loadProblemes();
@@ -15073,6 +15093,107 @@ function resetPeriodReport(){
   document.getElementById('rj-poste').value='';
   const r=document.getElementById('rj-result');
   if(r) r.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📅</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Sélectionnez une période puis cliquez sur Calculer</div></div>';
+}
+// ── LOGISTIQUE ──
+let _logiAllOfs=[];
+function _logiFilter(){
+  const ofS=(document.getElementById('logi-of')||{}).value||'';
+  const tyS=(document.getElementById('logi-type')||{}).value||'';
+  const res=document.getElementById('logi-result');
+  if(!res||!_logiAllOfs.length) return;
+  const ofSL=ofS.toLowerCase();const tySL=tyS.toLowerCase();
+  const visible=_logiAllOfs.filter(g=>{
+    if(ofSL&&!g.of.toLowerCase().includes(ofSL)) return false;
+    if(tySL&&!g.evts.some(e=>(e.type||'').toLowerCase().includes(tySL))) return false;
+    return true;
+  });
+  if(!visible.length){res.innerHTML='<div style="padding:40px;text-align:center;color:#94a3b8;font-size:calc(13px*var(--zf,1))">Aucun résultat pour ces filtres</div>';return;}
+  res.innerHTML=_logiRender(visible);
+}
+function _logiRender(groups){
+  const total=groups.reduce((a,g)=>a+g.evts.length,0);
+  const cards=groups.map(g=>{
+    const r=g.prod;
+    const kitStr=(r.kit||'').toLowerCase();
+    const evtRows=g.evts.map(e=>`<tr style="border-top:1px solid #f3f0ff">
+      <td style="padding:5px 10px;color:#7c3aed;font-weight:600;font-size:calc(11px*var(--zf,1))">${esc(e.type||'')}</td>
+      <td style="padding:5px 10px;white-space:nowrap;font-size:calc(11px*var(--zf,1));color:#374151">${esc(e.debut||'—')} → ${esc(e.fin||'—')}</td>
+      <td style="padding:5px 10px;font-weight:700;color:#dc2626;white-space:nowrap;font-size:calc(11px*var(--zf,1))">${esc(e.duree||'—')}</td>
+      <td style="padding:5px 10px;font-size:calc(11px*var(--zf,1));color:#64748b;font-style:italic">${esc(e.comment||'—')}</td>
+    </tr>`).join('');
+    const noOf=g.of==='__sans_of__';
+    const n=g.evts.length;
+    return `<div style="background:var(--card-bg,#fff);border:1.5px solid #fca5a5;border-radius:10px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 5px rgba(220,38,38,.08)">
+      <div style="background:linear-gradient(90deg,#fff7ed,#fef9f5);border-bottom:1px solid #fde8d0;padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center">
+        <div style="flex:0 0 auto;min-width:160px">
+          <div style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#1d4ed8">${noOf?'<span style="color:#94a3b8;font-style:italic">Sans OF</span>':'🏭 OF '+esc(g.of)}</div>
+          <div style="font-size:calc(10px*var(--zf,1));color:#64748b;margin-top:2px">${esc(r.date||'')}${r.poste?' · '+esc(r.poste):''}${r.pilote?' · 👤 '+esc(r.pilote):''}</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px 14px;flex:1">
+          ${r.taille?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Taille</span> <b>${esc(r.taille)}</b></span>`:''}
+          ${r.type_prod?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Type</span> <b>${esc(r.type_prod)}</b></span>`:''}
+          ${r.code_prod?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Code</span> <b>${esc(r.code_prod)}</b></span>`:''}
+          ${r.fibre?`<span style="font-size:calc(11px*var(--zf,1));color:#6366f1"><span style="color:#94a3b8">Fibre</span> <b>${esc(r.fibre)}</b></span>`:''}
+          ${r.ref_taie?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Réf Taie</span> <b>${esc(r.ref_taie)}</b></span>`:''}
+          ${r.kit?`<span style="font-size:calc(11px*var(--zf,1));color:${kitStr==='oui'?'#16a34a':'#94a3b8'}"><span style="color:#94a3b8">Lots de 2</span> <b>${kitStr==='oui'?'✓ Oui':'Non'}</b></span>`:''}
+          ${(r.nb_taie2&&r.nb_taie2!=='0')?`<span style="font-size:calc(11px*var(--zf,1));color:#f59e0b"><span style="color:#94a3b8">Taie 2nd choix</span> <b>${esc(r.nb_taie2)}</b></span>`:''}
+        </div>
+        ${r.debut?`<div style="background:#f1f5f9;border-radius:6px;padding:4px 10px;font-size:calc(10px*var(--zf,1));color:#374151;white-space:nowrap"><b>OF</b> ${esc(r.debut)} → ${esc(r.fin)} · <b>${esc(r.duree||'?')}</b></div>`:''}
+        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:4px 10px;font-size:calc(11px*var(--zf,1));font-weight:700;color:#dc2626;white-space:nowrap">${n} manquant${n>1?'s':''}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#faf5ff;font-size:calc(9px*var(--zf,1));text-transform:uppercase;color:#7c3aed">
+          <th style="padding:4px 10px;text-align:left;font-weight:700;white-space:nowrap">Type d\'arrêt</th>
+          <th style="padding:4px 10px;text-align:left;font-weight:700;white-space:nowrap">Plage horaire</th>
+          <th style="padding:4px 10px;text-align:left;font-weight:700;white-space:nowrap">Durée</th>
+          <th style="padding:4px 10px;text-align:left;font-weight:700">Commentaire pilote</th>
+        </tr></thead>
+        <tbody>${evtRows}</tbody>
+      </table>
+    </div>`;
+  });
+  return `<div style="font-size:calc(11px*var(--zf,1));color:#64748b;margin-bottom:12px">
+    <b>${groups.length}</b> OF concerné${groups.length>1?'s':''} · <b>${total}</b> événement${total>1?'s':''} manquant${total>1?'s':''}
+  </div>`+cards.join('');
+}
+async function loadLogistique(){
+  const fi=document.getElementById('logi-from');
+  const ti=document.getElementById('logi-to');
+  const res=document.getElementById('logi-result');
+  if(!res) return;
+  if(fi&&!fi.value){const d=new Date();d.setMonth(d.getMonth()-1);fi.value=d.toISOString().slice(0,10);}
+  if(ti&&!ti.value) ti.value=new Date().toISOString().slice(0,10);
+  const fromVal=fi?fi.value:'';
+  const toVal=ti?ti.value:'';
+  res.innerHTML='<div style="padding:40px;text-align:center;color:#94a3b8;font-size:calc(13px*var(--zf,1))">Chargement…</div>';
+  const evtParams=new URLSearchParams();
+  if(fromVal) evtParams.set('from',fromVal);
+  if(toVal)   evtParams.set('to',toVal);
+  const histParams=new URLSearchParams();
+  if(fromVal) histParams.set('from',fromVal);
+  if(toVal)   histParams.set('to',toVal);
+  const [histData,evtData]=await Promise.all([
+    apiFetch('/api/history?'+histParams.toString()),
+    apiFetch('/api/events_list?'+evtParams.toString())
+  ]);
+  const prods=Array.isArray(histData)?histData:[];
+  const evts=Array.isArray(evtData)?evtData:[];
+  const manqEvts=evts.filter(e=>(e.type||'').toLowerCase().includes('manquant'));
+  if(!manqEvts.length){
+    _logiAllOfs=[];
+    res.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(32px*var(--zf,1));margin-bottom:10px">✅</div><div style="font-size:calc(13px*var(--zf,1));font-weight:600">Aucun événement "Manquant" sur cette période</div></div>';
+    return;
+  }
+  const prodMap={};
+  prods.forEach(r=>{if(r.of) prodMap[r.of]=r;});
+  const ofEvtMap={};const ofOrder=[];
+  manqEvts.forEach(e=>{
+    const key=e.of||'__sans_of__';
+    if(!ofEvtMap[key]){ofEvtMap[key]=[];ofOrder.push(key);}
+    ofEvtMap[key].push(e);
+  });
+  _logiAllOfs=ofOrder.map(key=>({of:key,prod:prodMap[key]||{},evts:ofEvtMap[key]}));
+  _logiFilter();
 }
 function _rptSetLast7(){
   const today=new Date();
