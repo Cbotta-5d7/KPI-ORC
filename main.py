@@ -70,6 +70,7 @@ DECL_HEADERS = [
     "Duree Arrets","Duree Prod Pure","Date_poste",
     "","Degrade_min","Objectif éq",
     "Perte cadence OF (min)",
+    "Type d'arrêt",
 ]
 
 POSTES = ["Matin","Midi","Nuit","Jour"]
@@ -98,8 +99,8 @@ def get_events_list():
 _ARRETS_PREVUS_KEYS = ["clean_short_min","clean_long_min","clean_grand_min","meeting_tol_min","pause_min"]
 
 # ── SQLite helpers ─────────────────────────────────────────────────────────────
-_DECL_COLS = ",".join(f"c{i:02d}" for i in range(1, 45))
-_DECL_PLACEHOLDERS = ",".join("?" * 44)
+_DECL_COLS = ",".join(f"c{i:02d}" for i in range(1, 46))
+_DECL_PLACEHOLDERS = ",".join("?" * 45)
 _POSTES_COLS = ",".join(f"p{i:02d}" for i in range(1, 31))
 _POSTES_PLACEHOLDERS = ",".join("?" * 30)
 _db_views_ready = False
@@ -184,8 +185,14 @@ def _ensure_db_schema(conn):
     c = conn.cursor()
     c.execute(f"""CREATE TABLE IF NOT EXISTS declarations (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        {', '.join(f'c{i:02d} TEXT' for i in range(1, 45))}
+        {', '.join(f'c{i:02d} TEXT' for i in range(1, 46))}
     )""")
+    # Migration: add c45 to existing databases that were created before this column existed
+    try:
+        c.execute("ALTER TABLE declarations ADD COLUMN c45 TEXT DEFAULT ''")
+        conn.commit()
+    except Exception:
+        pass  # Column already exists
     c.execute(f"""CREATE TABLE IF NOT EXISTS postes (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
         p01 TEXT, p02 TEXT, p03 TEXT, p04 TEXT, p05 REAL, p06 REAL, p07 REAL,
@@ -247,9 +254,9 @@ def _ensure_db_views(conn):
         print(f"[DB-VIEWS] Erreur création vues : {_e}")
 
 def _decl_row_to_tuple(row):
-    """Converts a row list to a 44-element tuple for INSERT."""
-    vals = list(row)[:44]
-    vals.extend([None] * (44 - len(vals)))
+    """Converts a row list to a 45-element tuple for INSERT."""
+    vals = list(row)[:45]
+    vals.extend([None] * (45 - len(vals)))
     return tuple(str(v) if v is not None else None for v in vals)
 
 def write_events_to_excel(ev_list):
@@ -1415,14 +1422,14 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
     """Construit les lignes arrêts/pauses au format unifié (40 cols)."""
     rows = []
     kit_val = "Oui" if v.get("kit") else "Non"
-    def _base_row(type_decl, start, end, comment="", hors_trs=""):
+    def _base_row(type_decl, start, end, comment="", hors_trs="", cat=""):
         dur = max(0,(end-start).total_seconds())
         shift_dt = _S.get("shift_start") or start
         shift_date_str = shift_dt.strftime("%d/%m/%Y")
         # col 3 = date du début de poste (shift_date_str) : un arrêt après minuit
         # appartient toujours au poste commencé la veille
         return [
-            type_decl,                          # 0 Type
+            type_decl,                          # 0 Type (c01)
             v.get("of_num",""),                 # 1 OF
             start.strftime("%d/%m/%Y"),          # 2 Date réelle de la déclaration
             v.get("poste",""),                  # 3 Poste
@@ -1452,6 +1459,9 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
             shift_date_str,                     # 39 Date_poste
             "",                                 # 40 AO
             "",                                 # 41 Degrade_min AP
+            "",                                 # 42 Objectif éq (c43)
+            "",                                 # 43 Perte cadence OF (c44)
+            cat,                                # 44 Type d'arrêt (c45)
         ]
     for ev in tl_events:
         if ev.get("_past_decl"): continue  # already written to Excel by api_add_past_decl
@@ -1479,20 +1489,19 @@ def build_decl_rows(v, tl_events, of_start, pause_periods):
                    or ev["key"])
             label = lbl
         else:
-            cat_name = "Rattrapage" if ev["cat"]=="ratt" else "PB Technique"
-            # Prefer session label (human-readable), then EVENTS lookup, then key fallback
+            # ratt / pb — plain label, no prefix (category stored in c45)
             _ev_lbl = (ev.get("label","") or "").strip()
             lbl = (next((e[0] for e in EVENTS if e[1]==ev.get("key","")), None)
                    or (_ev_lbl if _ev_lbl and _ev_lbl != ev.get("key","") else None)
                    or ev.get("key",""))
-            label = f"{cat_name}: {lbl}"
-        rows.append(_base_row(label, start, end, ev.get("comment",""), "OUI" if ev.get("hors_trs") else ""))
+            label = lbl
+        rows.append(_base_row(label, start, end, ev.get("comment",""), "OUI" if ev.get("hors_trs") else "", cat=ev.get("cat","")))
     _written_pp = set(id(p) for p in _S.get("_written_pause_starts", []))
     _written_pp_starts = list(_S.get("_written_pause_starts", []))
     for ps, pe in pause_periods:
         if of_start and ps < of_start: continue
         if any(abs((ps - wps).total_seconds()) < 2 for wps in _written_pp_starts if wps): continue
-        rows.append(_base_row("Pause", ps, pe))
+        rows.append(_base_row("Pause", ps, pe, cat="_pause"))
     return rows
 
 def _append_to_backup(prod_row, evt_rows):
@@ -4481,6 +4490,7 @@ def api_end_prod():
         round(_deg_s / 60.0, 2),
         _objectif_pcs,
         round((_objectif_pcs - equiv) / (prod_ref / 480.0), 1) if prod_ref > 0 and isinstance(_objectif_pcs, (int, float)) and _objectif_pcs > 0 else "",
+        "",  # c45 Type d'arrêt (vide pour les lignes production)
     ]
     with _S_lock:
         evt_rows = build_decl_rows(
@@ -4948,18 +4958,23 @@ def api_events_list():
             hors = str(r[36] if len(r)>36 else "").strip().upper()
             type_str = str(r[0] or "").strip()
             tl = type_str.lower()
-            # Strip stored prefix ("manquants: key" → "key") then look up in config
-            tl_key = tl
-            for _pfx in _STORED_PFXS:
-                if tl.startswith(_pfx): tl_key = tl[len(_pfx):]; break
-            if tl_key in _ev_key_cat: cat = _ev_key_cat[tl_key]
-            elif tl in _ev_lbl_cat: cat = _ev_lbl_cat[tl]
-            elif "nettoyage" in tl: cat = "nettoyage"
-            elif tl == "pause": cat = "_pause"
-            elif "rattrapage" in tl: cat = "ratt"
-            elif tl.startswith("pb") or "panne" in tl: cat = "pb"
-            elif tl: cat = "organisation"
-            else: cat = "autre"
+            # c45 (index 44) stores the category directly for new records
+            c45_cat = str(r[44] if len(r)>44 else "").strip().lower()
+            if c45_cat:
+                cat = c45_cat
+            else:
+                # Fallback heuristics for old records without c45
+                tl_key = tl
+                for _pfx in _STORED_PFXS:
+                    if tl.startswith(_pfx): tl_key = tl[len(_pfx):]; break
+                if tl_key in _ev_key_cat: cat = _ev_key_cat[tl_key]
+                elif tl in _ev_lbl_cat: cat = _ev_lbl_cat[tl]
+                elif "nettoyage" in tl: cat = "nettoyage"
+                elif tl == "pause": cat = "_pause"
+                elif "rattrapage" in tl: cat = "ratt"
+                elif tl.startswith("pb") or "panne" in tl: cat = "pb"
+                elif tl: cat = "organisation"
+                else: cat = "autre"
             rows.append({
                 "row_num": rn,
                 "type": type_str,
@@ -5469,8 +5484,8 @@ def api_migrate_excel():
             ws_d = wb["Declarations"]
             for row in ws_d.iter_rows(min_row=2, values_only=True):
                 if all(v is None for v in row): continue
-                vals = list(row)[:44]
-                vals.extend([None] * (44 - len(vals)))
+                vals = list(row)[:45]
+                vals.extend([None] * (45 - len(vals)))
                 vals_t = tuple(str(v) if v is not None else None for v in vals)
                 conn.execute(f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})", vals_t)
                 n_decl += 1
@@ -10183,9 +10198,9 @@ function applyState(s) {
 function getEvtLabel(key) {
   // Priorité : liste dynamique, puis EVENTS statique
   const dynEv=_evtsList.find(e=>e.key===key);
-  if(dynEv) return (dynEv.cat==='ratt'?'Rattrapage: ':dynEv.cat==='pb'?'PB: ':'')+dynEv.label;
+  if(dynEv) return dynEv.label;
   const ev=EVENTS.find(e=>e[1]===key);
-  if(ev) return (ev[2]==='ratt'?'Rattrapage: ':ev[2]==='pb'?'PB: ':'')+ev[0];
+  if(ev) return ev[0];
   if(key==='nettoyage') return 'Nettoyage';
   // Fallback par mot-clé (clés non normalisées ou issues d'une ancienne version)
   const kl=(key||'').toLowerCase();
@@ -10212,7 +10227,7 @@ function tlEventsToDisplayFmt(tlEvts){
     else if(ev.cat==='reunion'||ev.key==='reunion') type='Réunion';
     else {
       const evDef=EVENTS.find(x=>x[1]===ev.key);
-      if(evDef) type=(ev.cat==='ratt'?'Rattrapage: ':ev.cat==='pb'?'PB: ':'')+evDef[0];
+      if(evDef) type=evDef[0];
       else type=getEvtLabel(ev.key)||ev.key;
     }
     return {type,cat:ev.cat||'autre',debut:toHMS(s),fin:e?toHMS(e):'',duree:dur>0?fmtDur(dur):'',comment:ev.comment||'',hors_trs:ev.hors_trs||false,_live:!ev.end,_past_decl:ev._past_decl||false,row_num:ev._row_num||null,start_iso:ev.start||null};
@@ -11264,7 +11279,7 @@ function buildStopGrids(){rebuildStopGrids();}
 function getEvtLabelDynamic(key){
   const ev=_evtsList.find(e=>e.key===key)||EVENTS.map(e=>({label:e[0],key:e[1],cat:e[2]})).find(e=>e.key===key);
   if(!ev) return key||'Arrêt';
-  return (ev.cat==='ratt'?'Rattrapage: ':ev.cat==='pb'?'PB: ':'')+ev.label;
+  return ev.label;
 }
 
 // ── EVENTS LIST UI (Settings) ──
@@ -15202,27 +15217,14 @@ async function loadLogistique(){
   const histParams=new URLSearchParams();
   if(fromVal) histParams.set('from',fromVal);
   if(toVal)   histParams.set('to',toVal);
-  const _hasDash=!!(window.DASH&&window.DASH.events_cfg);
-  const [histData,evtData,cfgResp]=await Promise.all([
+  const [histData,evtData]=await Promise.all([
     apiFetch('/api/history?'+histParams.toString()),
-    apiFetch('/api/events_list?'+evtParams.toString()),
-    _hasDash?Promise.resolve(null):apiFetch('/api/events_cfg')
+    apiFetch('/api/events_list?'+evtParams.toString())
   ]);
   const prods=Array.isArray(histData)?histData:[];
   const evts=Array.isArray(evtData)?evtData:[];
-  // Source de vérité : window.DASH.events_cfg (dashboard) ou fetch /api/events_cfg (app live)
-  const _cfgEvts=(window.DASH&&window.DASH.events_cfg)||(cfgResp&&cfgResp.events)||[];
-  // Normalise : supprime " (Arrêt prod)" pour tolérer les renommages historiques
-  const _normL=s=>(s||'').toLowerCase().replace(/\s*\(arr[eê]t\s*prod\)/i,'').trim();
-  const _manqNorm=new Set(_cfgEvts.filter(e=>e.cat==='manquants').map(e=>_normL(e.label)));
-  const _manqExact=new Set(_cfgEvts.filter(e=>e.cat==='manquants').map(e=>(e.label||'').toLowerCase()));
-  const manqEvts=_manqExact.size>0?evts.filter(e=>{
-    const t=(e.type||'').toLowerCase();const tn=_normL(e.type);
-    if(_manqExact.has(t)||_manqNorm.has(tn)) return true;
-    // label config est-il un préfixe du type stocké ? (ex: "Manquant housses" ⊂ "Manquant housses/encarts")
-    for(const ml of _manqNorm){if(ml.length>4&&tn.startsWith(ml)) return true;}
-    return false;
-  }):evts.filter(e=>e.cat==='manquants');
+  // c45 stocke la catégorie directement — filtre fiable sur cat==='manquants'
+  const manqEvts=evts.filter(e=>e.cat==='manquants');
   if(!manqEvts.length){
     _logiAllOfs=[];
     res.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(32px*var(--zf,1));margin-bottom:10px">✅</div><div style="font-size:calc(13px*var(--zf,1));font-weight:600">Aucun événement "Manquant" sur cette période</div></div>';
