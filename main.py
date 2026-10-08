@@ -15212,8 +15212,17 @@ async function loadLogistique(){
   const evts=Array.isArray(evtData)?evtData:[];
   // Source de vérité : window.DASH.events_cfg (dashboard) ou fetch /api/events_cfg (app live)
   const _cfgEvts=(window.DASH&&window.DASH.events_cfg)||(cfgResp&&cfgResp.events)||[];
-  const _manqLabels=new Set(_cfgEvts.filter(e=>e.cat==='manquants').map(e=>(e.label||'').toLowerCase()));
-  const manqEvts=_manqLabels.size>0?evts.filter(e=>_manqLabels.has((e.type||'').toLowerCase())):evts.filter(e=>e.cat==='manquants');
+  // Normalise : supprime " (Arrêt prod)" pour tolérer les renommages historiques
+  const _normL=s=>(s||'').toLowerCase().replace(/\s*\(arr[eê]t\s*prod\)/i,'').trim();
+  const _manqNorm=new Set(_cfgEvts.filter(e=>e.cat==='manquants').map(e=>_normL(e.label)));
+  const _manqExact=new Set(_cfgEvts.filter(e=>e.cat==='manquants').map(e=>(e.label||'').toLowerCase()));
+  const manqEvts=_manqExact.size>0?evts.filter(e=>{
+    const t=(e.type||'').toLowerCase();const tn=_normL(e.type);
+    if(_manqExact.has(t)||_manqNorm.has(tn)) return true;
+    // label config est-il un préfixe du type stocké ? (ex: "Manquant housses" ⊂ "Manquant housses/encarts")
+    for(const ml of _manqNorm){if(ml.length>4&&tn.startsWith(ml)) return true;}
+    return false;
+  }):evts.filter(e=>e.cat==='manquants');
   if(!manqEvts.length){
     _logiAllOfs=[];
     res.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(32px*var(--zf,1));margin-bottom:10px">✅</div><div style="font-size:calc(13px*var(--zf,1));font-weight:600">Aucun événement "Manquant" sur cette période</div></div>';
