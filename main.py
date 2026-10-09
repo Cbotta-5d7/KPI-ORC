@@ -10260,6 +10260,7 @@ function tlEventsToDisplayFmt(tlEvts){
 
 let _lastMainChipKeys='';
 function renderStopChipsMain(s) {
+  if(window._pendingStopKey) return;
   const cont=document.getElementById('stop-chips-main');
   const sb=document.getElementById('stop-bottom-main');
   if(!cont||!sb) return;
