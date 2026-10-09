@@ -6396,7 +6396,9 @@ def api_period_report():
     # Limiter aux N sessions les plus récentes si max_sessions > 0
     # On prend N+1 d'abord pour compenser un éventuel skip_current qui supprime la session active
     def _key_row(kv):
-        return _pm_get(postes_map, kv[1]['pilot'].lower(), kv[1]['date'], kv[1].get('poste','')).get('row_idx', 0)
+        _pm = _pm_get(postes_map, kv[1]['pilot'].lower(), kv[1]['date'], kv[1].get('poste',''))
+        _dt = _pm.get('deb_dt')
+        return _dt.timestamp() if _dt else float(_pm.get('row_idx', 0))
     if max_sessions > 0 and len(sessions) > max_sessions + 1:
         sessions = dict(sorted(sessions.items(), key=_key_row, reverse=True)[:max_sessions + 1])
     # Deuxième passe : re-limiter à exactement N après le skip_current
