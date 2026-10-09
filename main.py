@@ -4640,9 +4640,14 @@ def api_end_stop():
     data = request.json or {}
     key = data.get("key","")
     comment = data.get("comment","")
+    end_time_str = data.get("end_time","")
+    end_time_dt = None
+    if end_time_str:
+        try: end_time_dt = datetime.datetime.fromisoformat(str(end_time_str).replace("Z",""))
+        except: pass
     with _S_lock:
         t_stop(key)
-        tl_close(key,comment)
+        tl_close(key, comment, end_time=end_time_dt)
     # Écrire l'arrêt immédiatement dans l'Excel (pendant ET hors production)
     # Marquer l'événement _excel_written pour éviter le double-écrit lors de end_prod
     ev = next((e for e in reversed(_S["tl_events"]) if e.get("key")==key and e.get("end")), None)
@@ -11479,10 +11484,11 @@ function doEndStop(key) {
     fetch('/api/end_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(()=>{pollState();pollEvts();if(_curTab==='main')loadMainDecl();});
     return;
   }
-  // Show comment modal
+  // Show comment modal — capturer l'heure maintenant, avant que l'utilisateur tape
   document.getElementById('cmt-stop-key').value=k;
   document.getElementById('cmt-stop-lbl').textContent='Arrêt : '+getEvtLabel(k);
   document.getElementById('cmt-stop-text').value='';
+  window._pendingStopEndTime=new Date().toISOString();
   openM('m-stopcmt');
   setTimeout(()=>document.getElementById('cmt-stop-text').focus(),100);
 }
@@ -11506,7 +11512,7 @@ async function confirmEndStop() {
   await _flushFormNow();
   _lockActionBtns(5);
   try{
-    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,comment:cmt})});
+    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,comment:cmt,end_time:window._pendingStopEndTime||null})});
   }catch(e){
     toast('Erreur connexion','err');
     return;
