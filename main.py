@@ -9226,7 +9226,7 @@ select{cursor:default}
       <div class="fr"><label>Commentaire (optionnel)</label><textarea id="cmt-stop-text" style="height:70px;resize:none;width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:calc(13px*var(--zf,1))" placeholder="Description de l'arrêt…"></textarea></div>
     </div>
     <div class="mftr">
-      <button class="btn btn-sec" onclick="closeM('m-stopcmt')">Annuler</button>
+      <button class="btn btn-sec" onclick="cancelEndStop()">Annuler</button>
       <button class="btn btn-ok btn-lg" onclick="confirmEndStop()">✓ Confirmer fin d'arrêt</button>
     </div>
   </div>
@@ -10333,7 +10333,10 @@ function startTicker() {
     {const dt0=(Date.now()-_lastPoll)/1000;
     (ST.active_stops||[]).forEach(k=>{
       const cel=document.getElementById('main-chip-t-'+k);
-      if(cel&&ST.timers&&ST.timers[k]) cel.textContent=fmtDur2(ST.timers[k].elapsed+dt0);
+      if(cel&&ST.timers&&ST.timers[k]){
+        const frozen=window._pendingStopKey===k;
+        cel.textContent=fmtDur2(frozen?window._pendingStopElapsed:ST.timers[k].elapsed+dt0);
+      }
     });
     if(ST.is_paused){const cel=document.getElementById('main-chip-t-_pause');
       if(cel) cel.textContent=fmtDur2(_pauseStartMs>0?_pauseBaseS+(Date.now()-_pauseStartMs)/1000:_pauseBaseS);}
@@ -11484,11 +11487,14 @@ function doEndStop(key) {
     fetch('/api/end_nettoyage',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(()=>{pollState();pollEvts();if(_curTab==='main')loadMainDecl();});
     return;
   }
-  // Show comment modal — capturer l'heure maintenant, avant que l'utilisateur tape
+  // Show comment modal — capturer l'heure ET l'elapsed maintenant, figer le chrono visuellement
   document.getElementById('cmt-stop-key').value=k;
   document.getElementById('cmt-stop-lbl').textContent='Arrêt : '+getEvtLabel(k);
   document.getElementById('cmt-stop-text').value='';
-  window._pendingStopEndTime=new Date().toISOString();
+  // Heure locale (pas UTC) pour correspondre à datetime.now() côté serveur
+  const _n=new Date();window._pendingStopEndTime=new Date(_n.getTime()-_n.getTimezoneOffset()*60000).toISOString().slice(0,19);
+  window._pendingStopKey=k;
+  window._pendingStopElapsed=(ST.timers&&ST.timers[k])?ST.timers[k].elapsed+(Date.now()-_lastPoll)/1000:0;
   openM('m-stopcmt');
   setTimeout(()=>document.getElementById('cmt-stop-text').focus(),100);
 }
@@ -11505,14 +11511,21 @@ function _lockActionBtns(sec){
   setTimeout(()=>{_en(bs,_bsHtml);_en(bf,_bfHtml);},sec*1000);
 }
 
+function cancelEndStop(){
+  window._pendingStopKey=null;
+  window._pendingStopEndTime=null;
+  closeM('m-stopcmt');
+}
 async function confirmEndStop() {
   const k=document.getElementById('cmt-stop-key').value;
   const cmt=document.getElementById('cmt-stop-text').value.trim();
+  const endTime=window._pendingStopEndTime||null;
+  window._pendingStopKey=null;
   closeM('m-stopcmt');
   await _flushFormNow();
   _lockActionBtns(5);
   try{
-    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,comment:cmt,end_time:window._pendingStopEndTime||null})});
+    await fetch('/api/end_stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,comment:cmt,end_time:endTime})});
   }catch(e){
     toast('Erreur connexion','err');
     return;
