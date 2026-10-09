@@ -4646,7 +4646,7 @@ def api_end_stop():
         try: end_time_dt = datetime.datetime.fromisoformat(str(end_time_str).replace("Z",""))
         except: pass
     with _S_lock:
-        t_stop(key)
+        t_stop(key, end_time=end_time_dt)
         tl_close(key, comment, end_time=end_time_dt)
     # Écrire l'arrêt immédiatement dans l'Excel (pendant ET hors production)
     # Marquer l'événement _excel_written pour éviter le double-écrit lors de end_prod
