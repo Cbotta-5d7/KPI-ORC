@@ -1816,16 +1816,31 @@ def write_poste_row(data, row_num=None, sync=False):
                 c = conn.cursor()
                 _bov = data.get("budget_overrides") or {}
                 _bov_get = lambda k: float((_bov.get(k) if _bov.get(k) is not None else cfg.get(k,0)) or 0)
-                # Fallback: search by pilot+poste+date if row_num not provided
+                # Fallback: search by pilot+poste if row_num not provided
+                # Priorité : p16 (date début réelle, fiable même après minuit) > p01 (date affichée)
                 _rn = row_num
                 if not _rn:
                     _pilot_s = str(data.get("pilot","") or "").strip().lower()
                     _poste_s = str(data.get("poste","") or "").strip()
                     _date_s  = str(data.get("date","") or "").strip()
-                    c.execute("SELECT rowid FROM postes WHERE LOWER(p02)=? AND p04=? AND p01=? LIMIT 1",
-                              (_pilot_s, _poste_s, _date_s))
-                    r = c.fetchone()
-                    if r: _rn = r[0]
+                    _debut_iso = data.get("shift_debut_iso")
+                    if _debut_iso:
+                        try:
+                            _debut_date = datetime.datetime.fromisoformat(_debut_iso).date()
+                            c.execute("SELECT rowid, p16 FROM postes WHERE LOWER(p02)=? AND p04=?",
+                                      (_pilot_s, _poste_s))
+                            for _r16 in c.fetchall():
+                                if _r16[1]:
+                                    try:
+                                        if datetime.datetime.fromisoformat(str(_r16[1])).date() == _debut_date:
+                                            _rn = _r16[0]; break
+                                    except: pass
+                        except: pass
+                    if not _rn:
+                        c.execute("SELECT rowid FROM postes WHERE LOWER(p02)=? AND p04=? AND p01=? LIMIT 1",
+                                  (_pilot_s, _poste_s, _date_s))
+                        r = c.fetchone()
+                        if r: _rn = r[0]
                 if _rn:
                     # UPDATE — skip p16/p17 (managed by write_poste_login_row)
                     c.execute("""UPDATE postes SET
@@ -7213,6 +7228,8 @@ def api_save_poste():
         data["dur_poste_theorique_min"] = round(get_current_shift_duration_s() / 60, 1)
     # Écrire les KPI AVANT _backfill (qui lance load_history en thread, pouvant verrouiller le fichier)
     row_num = _S.get("postes_row_num") or find_postes_row_num(_S.get("pilot",""), _S.get("shift_debut_dt"))
+    _sdeb = _S.get("shift_debut_dt")
+    data["shift_debut_iso"] = _sdeb.isoformat() if _sdeb else None
     write_poste_row(data, row_num=row_num, sync=True)  # sync : garantit l'écriture avant api_logout
     _backfill_nb_pers_shift()
     return jsonify({"ok":True})
@@ -17304,6 +17321,7 @@ def _force_fin_poste_server(force=False):
             "cadence_ref_pcs_min": cadence_ref,"perte_cadence_min": perte_cadence_min,
             "degrade_min": round(_degrade_s/60,1),"pcs_theorique": pcs_theorique,
             "budget_overrides": _xl_bov or {},"dur_poste_theorique_min": ouverture_min,
+            "shift_debut_iso": _pdeb.isoformat() if _pdeb else None,
         }
         try:
             write_poste_row(recalc_data, row_num=row_num, sync=True)
