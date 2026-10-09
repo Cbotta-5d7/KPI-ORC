@@ -11496,6 +11496,9 @@ function doEndStop(key) {
   const _n=new Date();window._pendingStopEndTime=new Date(_n.getTime()-_n.getTimezoneOffset()*60000).toISOString().slice(0,19);
   window._pendingStopKey=k;
   window._pendingStopElapsed=(ST.timers&&ST.timers[k])?ST.timers[k].elapsed+(Date.now()-_lastPoll)/1000:0;
+  // Renommer l'ID → ticker et pollState ne peuvent plus trouver l'élément → chrono figé
+  const _chipEl=document.getElementById('main-chip-t-'+k);
+  if(_chipEl){_chipEl.textContent=fmtDur2(window._pendingStopElapsed);_chipEl.id='_frozen-chip-'+k;}
   openM('m-stopcmt');
   setTimeout(()=>document.getElementById('cmt-stop-text').focus(),100);
 }
@@ -11513,8 +11516,11 @@ function _lockActionBtns(sec){
 }
 
 function cancelEndStop(){
+  const kOld=window._pendingStopKey;
   window._pendingStopKey=null;
   window._pendingStopEndTime=null;
+  // Restaurer l'ID → le ticker reprend le chrono
+  if(kOld){const _el=document.getElementById('_frozen-chip-'+kOld);if(_el)_el.id='main-chip-t-'+kOld;}
   closeM('m-stopcmt');
 }
 async function confirmEndStop() {
