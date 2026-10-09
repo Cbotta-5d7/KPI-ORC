@@ -10273,8 +10273,9 @@ function renderStopChipsMain(s) {
   if(lblMain)lblMain.textContent='Déclarer un autre arrêt en même temps';
   const newKeys=stops.join(',')+(s.is_paused?'|pause':'');
   if(newKeys===_lastMainChipKeys){
-    // Même set de stops : mettre à jour seulement les timers
+    // Même set de stops : mettre à jour seulement les timers (sauf si modal ouvert → figé)
     stops.forEach(k=>{
+      if(window._pendingStopKey===k) return;
       const elap=s.timers&&s.timers[k]?s.timers[k].elapsed:0;
       const el=document.getElementById('main-chip-t-'+k);
       if(el) el.textContent=fmtDur2(elap);
