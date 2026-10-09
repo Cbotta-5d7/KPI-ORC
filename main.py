@@ -10303,6 +10303,7 @@ function renderStopChipsMain(s) {
 }
 
 function renderStopChips(s) {
+  if(window._pendingStopKey) return;
   const cont=document.getElementById('stop-chips');
   const sb=document.getElementById('stop-bottom');
   if(!cont||!sb) return;
@@ -10394,6 +10395,7 @@ function startTicker() {
     // Update stop chips timers
     if(ST.active_stops){
       ST.active_stops.forEach(k=>{
+        if(window._pendingStopKey===k) return;
         const cel=document.getElementById('chip-t-'+k);
         if(cel&&ST.timers&&ST.timers[k]) cel.textContent=fmtDur2(ST.timers[k].elapsed+dt);
       });
