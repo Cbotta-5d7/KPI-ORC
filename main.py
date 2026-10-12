@@ -15271,12 +15271,21 @@ function _logiRender(groups){
 }
 // ── COMOP ──
 async function loadComop(){
-  const t=new Date(),f=new Date(t);
-  f.setDate(t.getDate()-29);
   const fromEl=document.getElementById('comop-from');
   const toEl=document.getElementById('comop-to');
-  if(fromEl&&!fromEl.value) fromEl.value=f.toISOString().slice(0,10);
-  if(toEl&&!toEl.value) toEl.value=t.toISOString().slice(0,10);
+  if(fromEl&&!fromEl.value){
+    const t=new Date();
+    const dow=t.getDay()||7;
+    const prevMon=new Date(t);prevMon.setDate(t.getDate()-dow-6);
+    const prevFri=new Date(t);prevFri.setDate(t.getDate()-dow-2);
+    fromEl.value=prevMon.toISOString().slice(0,10);
+    if(toEl&&!toEl.value) toEl.value=prevFri.toISOString().slice(0,10);
+  } else if(toEl&&!toEl.value){
+    const t=new Date();
+    const dow=t.getDay()||7;
+    const prevFri=new Date(t);prevFri.setDate(t.getDate()-dow-2);
+    toEl.value=prevFri.toISOString().slice(0,10);
+  }
   const sessions=await apiFetch('/api/past_sessions');
   if(sessions){
     const pilots=[...new Set(sessions.map(s=>s.pilot).filter(Boolean))].sort();
