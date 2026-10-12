@@ -15558,7 +15558,7 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
   var targetLine=key==='trs'
     ?'<line x1="'+padL+'" y1="'+toY(70).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+toY(70).toFixed(1)+'" stroke="#16a34a" stroke-width="2" stroke-dasharray="8,4"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(toY(70)+6).toFixed(1)+'" font-size="18" fill="#16a34a" font-weight="700">70%</text>'
     :'';
-  var legend='<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span>'+(key==='trs'?' &nbsp;<svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/></svg> Objectif':'')+'</span>';
+  var legend=key==='trs'?'<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span> &nbsp;<svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/></svg> Objectif</span>':'';
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px">'
     +'<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;color:'+titleCol+'">'+title+legend+'</div>'
     +'<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">'
