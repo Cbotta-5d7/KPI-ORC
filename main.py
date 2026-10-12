@@ -15134,7 +15134,7 @@ async function captureRapportJour(){
   document.body.appendChild(_wrapper);
   await new Promise(r=>setTimeout(r,300));
   try{
-    const canvas=await window.html2canvas(_wrapper,{scale:0.98,useCORS:true,logging:false,backgroundColor:'#f8fafc',scrollX:0,scrollY:0,windowWidth:_wrapper.scrollWidth+40,windowHeight:_wrapper.scrollHeight+40});
+    const canvas=await window.html2canvas(_wrapper,{scale:2,useCORS:true,logging:false,backgroundColor:'#f8fafc',scrollX:0,scrollY:0,windowWidth:_wrapper.scrollWidth+40,windowHeight:_wrapper.scrollHeight+40});
     document.body.removeChild(_wrapper);
     await new Promise((res,rej)=>{
       canvas.toBlob(blob=>{
@@ -15459,7 +15459,7 @@ async function snapComop(){
   toast('Capture en cours…','ok');
   await new Promise(r=>setTimeout(r,300));
   try{
-    const canvas=await window.html2canvas(wrapper,{scale:0.98,useCORS:true,logging:false,backgroundColor:'#f8fafc',scrollX:0,scrollY:0,windowWidth:wrapper.scrollWidth+40,windowHeight:wrapper.scrollHeight+40});
+    const canvas=await window.html2canvas(wrapper,{scale:2,useCORS:true,logging:false,backgroundColor:'#f8fafc',scrollX:0,scrollY:0,windowWidth:wrapper.scrollWidth+40,windowHeight:wrapper.scrollHeight+40});
     document.body.removeChild(wrapper);
     await new Promise((res,rej)=>{
       canvas.toBlob(blob=>{
