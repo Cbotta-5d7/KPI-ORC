@@ -10407,7 +10407,7 @@ function renderStopChipsMain(s) {
       if(el) el.textContent=fmtDur2(cur);
     });
     if(s.is_paused){
-      const pe=(s.pause_total_s||0)+(s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0);
+      const pe=s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0;
       const el=document.getElementById('main-chip-t-_pause');
       if(el) el.textContent=fmtDur2(pe);
     }
@@ -10421,7 +10421,7 @@ function renderStopChipsMain(s) {
     html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="main-chip-t-${esc(k)}">${fmtDur2(cur)}</span><button class="btn-endstop" onclick="doEndStop('${esc(k)}')">✓ Terminer</button></div>`;
   });
   if(s.is_paused){
-    const pe=(s.pause_total_s||0)+(s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0);
+    const pe=s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0;
     html+=`<div class="stop-chip"><span class="chip-lbl">⏸ Pause</span><span class="chip-tim" id="main-chip-t-_pause">${fmtDur2(pe)}</span><button class="btn-endstop" onclick="doPause()">▶ Reprendre</button></div>`;
   }
   cont.innerHTML=html;
@@ -10447,7 +10447,7 @@ function renderStopChips(s) {
     html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="chip-t-${esc(k)}">${fmtDur2(cur)}</span><button class="btn-endstop" onclick="doEndStop('${esc(k)}')">✓ Terminer</button></div>`;
   });
   if(s.is_paused){
-    const pe=(s.pause_total_s||0)+(s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0);
+    const pe=s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0;
     html+=`<div class="stop-chip"><span class="chip-lbl">⏸ Pause</span><span class="chip-tim" id="chip-t-_pause">${fmtDur2(pe)}</span><button class="btn-endstop" onclick="doPause()">▶ Reprendre</button></div>`;
   }
   cont.innerHTML=html;
@@ -10467,7 +10467,7 @@ function startTicker() {
       }
     });
     if(ST.is_paused){const cel=document.getElementById('main-chip-t-_pause');
-      if(cel) cel.textContent=fmtDur2(_pauseStartMs>0?_pauseBaseS+(Date.now()-_pauseStartMs)/1000:_pauseBaseS);}
+      if(cel) cel.textContent=fmtDur2(_pauseStartMs>0?(Date.now()-_pauseStartMs)/1000:0);}
     }
     if(!ST.prod_active) return;
     const dt=(Date.now()-_lastPoll)/1000;
@@ -10527,7 +10527,7 @@ function startTicker() {
     }
     if(ST.is_paused){
       const cel=document.getElementById('chip-t-_pause');
-      if(cel) cel.textContent=fmtDur2(_pauseStartMs>0?_pauseBaseS+(Date.now()-_pauseStartMs)/1000:_pauseBaseS);
+      if(cel) cel.textContent=fmtDur2(_pauseStartMs>0?(Date.now()-_pauseStartMs)/1000:0);
     }
   },1000);
 }
