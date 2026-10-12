@@ -15332,14 +15332,17 @@ function _renderComop(d,from,to){
     ['Temps arrêts prévus',_hComop(d.arret_prevu_min||0),'#64748b'],
     ['Temps dégradé',_hComop(d.tot_degrade_min||0),'#f59e0b'],
     ['Postes',d.nb_sessions,'#64748b'],
-    ['Jours',d.nb_jours,'#64748b'],
+    ['Jours',nbJours,'#64748b'],
     ['OF traités',d.nb_of,'#64748b'],
     ['Nombre d\'OF moy par équipe',nbOfMoy,'#64748b'],
   ];
-  const sessions=(d.sessions_detail||[]).sort((a,b)=>{
-    const _dmy=s=>{try{const p=(s.date||'').split('/');return new Date(p[2]+'-'+p[1]+'-'+p[0]).getTime();}catch(e){return 0;}};
-    return _dmy(a)-_dmy(b);
-  });
+  const _dmy=s=>{try{const p=(s.date||'').split('/');return new Date(p[2]+'-'+p[1]+'-'+p[0]).getTime();}catch(e){return 0;}};
+  const _sdStr=s=>{try{const p=(s.date||'').split('/');return p[2]+'-'+p[1]+'-'+p[0];}catch(e){return '';}};
+  const sessions=(d.sessions_detail||[]).filter(s=>{
+    const sd=_sdStr(s);
+    return (!from||sd>=from)&&(!to||sd<=to);
+  }).sort((a,b)=>_dmy(a)-_dmy(b));
+  const nbJours=new Set(sessions.map(s=>s.date)).size;
   const trsChart=_comopLineChart('📈 Évolution TRS par production','#16a34a','trs',0,100,'%',180,sessions);
   const cadChart=_comopLineChart('🏎 Évolution Cadence par production','#0369a1','cadence_h',400,950,' pcs/h',160,sessions);
   const stopPareto=_comopPareto(d.stop_pareto||[],'#dc2626','🛑 Pareto arrêts non prévus');
