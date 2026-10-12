@@ -4710,11 +4710,11 @@ def _write_pause_row(_ps, _pe):
         _decl_cache.append((_nrn_p, tuple(_row_p) + ("",) * max(0, 40 - len(_row_p))))
     except: pass
 
-def _write_reunion_row(_start, _end):
+def _write_event_row(type_label, _start, _end):
     _sh = _S.get("shift_start") or _start
     _dur = max(0, (_end - _start).total_seconds())
     _row = [
-        "Réunion", (_S.get("form") or {}).get("of_num",""),
+        type_label, (_S.get("form") or {}).get("of_num",""),
         _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
         (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
         str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
@@ -4761,6 +4761,7 @@ def api_toggle_pause():
     if _nc:
         _ps, _pe = _nc
         _split = _ps + datetime.timedelta(minutes=15)
+        _evts = [e.get("label","") for e in get_events_list() if e.get("label","")]
         return jsonify({
             "ok": True, "paused": False, "needs_check": True,
             "pause_start": _ps.strftime("%H:%M"),
@@ -4768,6 +4769,7 @@ def api_toggle_pause():
             "split_at": _split.strftime("%H:%M"),
             "pause_start_iso": _ps.isoformat(),
             "pause_end_iso": _pe.isoformat(),
+            "events": _evts,
         })
     return jsonify({"ok":True,"paused":_S["is_paused"]})
 
@@ -4781,12 +4783,13 @@ def api_finalize_pause():
         _pe = datetime.datetime.fromisoformat(data["pause_end_iso"])
         if mode == "split":
             split_hm = data.get("split_at","")
+            overflow_type = data.get("overflow_type","") or "Réunion"
             sh, sm = int(split_hm.split(":")[0]), int(split_hm.split(":")[1])
             _split = _ps.replace(hour=sh, minute=sm, second=0, microsecond=0)
             if _split < _ps: _split += datetime.timedelta(days=1)
             if _split > _pe: _split = _pe
             if _split > _ps: _write_pause_row(_ps, _split)
-            if _split < _pe: _write_reunion_row(_split, _pe)
+            if _split < _pe: _write_event_row(overflow_type, _split, _pe)
         else:
             _write_pause_row(_ps, _pe)
         return jsonify({"ok": True})
@@ -8724,7 +8727,11 @@ select{cursor:default}
           </div>
         </div>
         <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 16px">
-          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">🗣 Réunion</div>
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">🗣 Type d'arrêt pour le dépassement</div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:calc(10px*var(--zf,1));color:#1e3a8a;font-weight:600;display:block;margin-bottom:3px">Type</label>
+            <select id="pr-overflow-type" style="padding:6px 10px;border:2px solid #bfdbfe;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:600;background:#f0f9ff;color:#1e3a8a;min-width:220px;cursor:pointer"></select>
+          </div>
           <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
             <div><label style="font-size:calc(10px*var(--zf,1));color:#1e3a8a;font-weight:600;display:block;margin-bottom:3px">Début</label>
               <input type="time" id="pr-reunion-debut" disabled style="padding:6px 10px;border:1.5px solid #bfdbfe;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:108px;background:#f0f9ff;color:#1e3a8a"></div>
@@ -11548,7 +11555,8 @@ function _prSyncReunionDebut(){
 async function _prFinalize(mode){
   closeM('m-pause-reunion');
   const splitAt=document.getElementById('pr-pause-fin').value;
-  try{await fetch('/api/finalize_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,split_at:splitAt,pause_start_iso:_prData.pause_start_iso,pause_end_iso:_prData.pause_end_iso})});}
+  const overflowType=document.getElementById('pr-overflow-type')?.value||'Réunion';
+  try{await fetch('/api/finalize_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,split_at:splitAt,overflow_type:overflowType,pause_start_iso:_prData.pause_start_iso,pause_end_iso:_prData.pause_end_iso})});}
   catch(e){toast('Erreur connexion serveur','err');return;}
   await pollState();
   if(_curTab==='main') loadMainDecl();
@@ -11567,6 +11575,13 @@ async function doPause(){
     document.getElementById('pr-pause-fin').value=data.split_at;
     document.getElementById('pr-reunion-debut').value=data.split_at;
     document.getElementById('pr-reunion-fin').value=data.pause_end;
+    const sel=document.getElementById('pr-overflow-type');
+    if(sel){
+      const evts=data.events||[];
+      sel.innerHTML=evts.map(e=>`<option value="${esc(e)}">${esc(e)}</option>`).join('');
+      const defIdx=evts.findIndex(e=>/r.union|meeting/i.test(e));
+      if(defIdx>=0) sel.selectedIndex=defIdx;
+    }
     openM('m-pause-reunion');
   }
   await pollState();
