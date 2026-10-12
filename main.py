@@ -15390,7 +15390,7 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
     var tickVal=yMin+(yMax-yMin)*ti/nTicks;
     var tickY=toY(tickVal);
     grid+='<line x1="'+padL+'" y1="'+tickY.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+tickY.toFixed(1)+'" stroke="#e2e8f0" stroke-width="1"/>';
-    grid+='<text x="'+(padL-4)+'" y="'+(tickY+5).toFixed(1)+'" text-anchor="end" font-size="16" fill="#94a3b8">'+Math.round(tickVal)+'</text>';
+    grid+='<text x="'+(padL-4)+'" y="'+(tickY+5).toFixed(1)+'" text-anchor="end" font-size="28" fill="#94a3b8">'+Math.round(tickVal)+'</text>';
   }
   // Path + dots + data labels above
   var path='',dots='',labels='';
@@ -15400,16 +15400,16 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
     var px=toX(pi),py=toY(ptVal);
     var col=pt.trs>=70?'#16a34a':pt.trs>=50?'#f59e0b':'#dc2626';
     path+=(pi===0?'M':'L')+px.toFixed(1)+','+py.toFixed(1);
-    dots+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="3.5" fill="'+col+'" opacity=".9"/>';
+    dots+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="5" fill="'+col+'" opacity=".9"/>';
     var lblTxt=key==='trs'?ptVal.toFixed(1):Math.round(ptVal);
-    labels+='<text x="'+px.toFixed(1)+'" y="'+(py-8).toFixed(1)+'" text-anchor="middle" font-size="11" fill="'+col+'" font-weight="600">'+lblTxt+'</text>';
+    labels+='<text x="'+px.toFixed(1)+'" y="'+(py-12).toFixed(1)+'" text-anchor="middle" font-size="22" fill="'+col+'" font-weight="600">'+lblTxt+'</text>';
   }
   var targetLine=key==='trs'
-    ?'<line x1="'+padL+'" y1="'+toY(70).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+toY(70).toFixed(1)+'" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="6,3"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(toY(70)+4).toFixed(1)+'" font-size="9" fill="#16a34a" font-weight="700">70%</text>'
+    ?'<line x1="'+padL+'" y1="'+toY(70).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+toY(70).toFixed(1)+'" stroke="#16a34a" stroke-width="2" stroke-dasharray="8,4"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(toY(70)+6).toFixed(1)+'" font-size="18" fill="#16a34a" font-weight="700">70%</text>'
     :'';
-  var legend='<span style="font-size:10px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:10px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span>'+(key==='trs'?' &nbsp;<svg width="18" height="6" style="display:inline"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="5,3"/></svg> Objectif':'')+'</span>';
+  var legend='<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span>'+(key==='trs'?' &nbsp;<svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/></svg> Objectif':'')+'</span>';
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px">'
-    +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;color:'+titleCol+'">'+title+legend+'</div>'
+    +'<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;color:'+titleCol+'">'+title+legend+'</div>'
     +'<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">'
     +grid+targetLine
     +'<path d="'+path+'" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>'
@@ -15417,25 +15417,25 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
     +'</svg></div>';
 }
 function _comopPareto(items,col,title){
-  if(!items||!items.length) return `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;color:${col}">${title}</div><div style="color:var(--gray);font-size:12px">Aucun événement</div>`;
+  if(!items||!items.length) return `<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;color:${col}">${title}</div><div style="color:var(--gray);font-size:13px">Aucun événement</div>`;
   const mx=items[0].min,tot=items.reduce((a,e)=>a+e.min,0);
   const hFmt=m=>{const h=Math.floor(m/60);const mn=Math.round(m%60);return h>0?(mn>0?h+'h'+String(mn).padStart(2,'0'):h+'h'):mn+'min';};
   const rows=items.slice(0,8).map(e=>{
     const pct=Math.round(e.min/mx*80),pctTot=tot>0?Math.round(e.min/tot*100):0;
-    return `<div style="margin-bottom:5px">
-      <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
-        <div style="width:7px;height:7px;border-radius:2px;background:${col};flex-shrink:0"></div>
-        <span style="font-size:10px;word-break:break-word;line-height:1.2"><b>${e.count}×</b> : ${esc(e.type)}</span>
+    return `<div style="margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+        <div style="width:9px;height:9px;border-radius:2px;background:${col};flex-shrink:0"></div>
+        <span style="font-size:13px;word-break:break-word;line-height:1.3"><b>${e.count}×</b> : ${esc(e.type)}</span>
       </div>
-      <div style="display:flex;align-items:center;gap:4px">
-        <div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:5px">
+        <div style="flex:1;background:#f1f5f9;border-radius:3px;height:9px;position:relative;overflow:hidden">
           <div style="width:${pct}%;background:${col};opacity:.8;height:100%;border-radius:3px;position:absolute;top:0;left:0"></div>
         </div>
-        <span style="flex-shrink:0;font-size:9px;color:#6b7280;white-space:nowrap">${pctTot}% · ${hFmt(e.min)}</span>
+        <span style="flex-shrink:0;font-size:12px;color:#6b7280;white-space:nowrap">${pctTot}% · ${hFmt(e.min)}</span>
       </div>
     </div>`;
   }).join('');
-  return `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;color:${col}">${title}</div>${rows}`;
+  return `<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;color:${col}">${title}</div>${rows}`;
 }
 async function snapComop(){
   if(!window.html2canvas){toast('html2canvas non disponible (connexion internet requise)','err');return;}
