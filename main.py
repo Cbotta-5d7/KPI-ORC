@@ -8728,6 +8728,7 @@ select{cursor:default}
             <div style="font-size:20px;color:#92400e;padding-bottom:4px">→</div>
             <div><label style="font-size:calc(10px*var(--zf,1));color:#78350f;font-weight:600;display:block;margin-bottom:3px">Fin <span style="font-weight:400;opacity:.7">(= début réunion)</span></label>
               <input type="time" id="pr-pause-fin" oninput="_prSyncReunionDebut()" style="padding:6px 10px;border:2px solid #f59e0b;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:108px;background:#fffbeb;color:#92400e"></div>
+            <div style="align-self:flex-end;padding-bottom:6px"><span id="pr-pause-dur" style="font-size:calc(12px*var(--zf,1));font-weight:700;color:#92400e;background:#fef9c3;border:1px solid #fcd34d;border-radius:6px;padding:4px 10px;white-space:nowrap">– min</span></div>
           </div>
         </div>
         <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 16px">
@@ -8742,6 +8743,7 @@ select{cursor:default}
             <div style="font-size:20px;color:#1e3a8a;padding-bottom:4px">→</div>
             <div><label style="font-size:calc(10px*var(--zf,1));color:#1e3a8a;font-weight:600;display:block;margin-bottom:3px">Fin</label>
               <input type="time" id="pr-reunion-fin" disabled style="padding:6px 10px;border:1.5px solid #bfdbfe;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:108px;background:#f0f9ff;color:#1e3a8a"></div>
+            <div style="align-self:flex-end;padding-bottom:6px"><span id="pr-reunion-dur" style="font-size:calc(12px*var(--zf,1));font-weight:700;color:#1e3a8a;background:#dbeafe;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;white-space:nowrap">– min</span></div>
           </div>
         </div>
       </div>
@@ -11552,8 +11554,27 @@ async function saveEvtList(){
 function openStopModal(){openM('m-stop');}
 
 var _prData={};
+function _prCalcDurMin(t1Id,t2Id){
+  const v1=document.getElementById(t1Id)?.value;
+  const v2=document.getElementById(t2Id)?.value;
+  if(!v1||!v2) return null;
+  const [h1,m1]=v1.split(':').map(Number);
+  const [h2,m2]=v2.split(':').map(Number);
+  let d=(h2*60+m2)-(h1*60+m1);
+  if(d<0) d+=1440;
+  return d;
+}
+function _prUpdateDurs(){
+  const pd=_prCalcDurMin('pr-pause-debut','pr-pause-fin');
+  const rd=_prCalcDurMin('pr-reunion-debut','pr-reunion-fin');
+  const pdEl=document.getElementById('pr-pause-dur');
+  const rdEl=document.getElementById('pr-reunion-dur');
+  if(pdEl) pdEl.textContent=pd!==null?pd+' min':'– min';
+  if(rdEl) rdEl.textContent=rd!==null?rd+' min':'– min';
+}
 function _prSyncReunionDebut(){
   document.getElementById('pr-reunion-debut').value=document.getElementById('pr-pause-fin').value;
+  _prUpdateDurs();
 }
 async function _prFinalize(mode){
   closeM('m-pause-reunion');
@@ -11585,6 +11606,7 @@ async function doPause(){
       const defIdx=evts.findIndex(e=>/r.union|meeting/i.test(e));
       if(defIdx>=0) sel.selectedIndex=defIdx;
     }
+    _prUpdateDurs();
     openM('m-pause-reunion');
   }
   await pollState();
