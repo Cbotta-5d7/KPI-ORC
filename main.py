@@ -4761,7 +4761,9 @@ def api_toggle_pause():
     if _nc:
         _ps, _pe = _nc
         _split = _ps + datetime.timedelta(minutes=15)
-        _evts = [e.get("label","") for e in get_events_list() if e.get("label","")]
+        _arrets_prevus_labels = ["Réunion", "Nettoyage court", "Nettoyage long", "Nettoyage très long"]
+        _evts_all = [e.get("label","") for e in get_events_list() if e.get("label","")]
+        _evts = _arrets_prevus_labels + [l for l in _evts_all if l not in _arrets_prevus_labels]
         return jsonify({
             "ok": True, "paused": False, "needs_check": True,
             "pause_start": _ps.strftime("%H:%M"),
