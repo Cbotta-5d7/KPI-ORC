@@ -15434,32 +15434,38 @@ function _comopPareto(items,col,title){
 async function snapComop(){
   if(!window.html2canvas){toast('html2canvas non disponible (connexion internet requise)','err');return;}
   const ld=window._comopLastData;
-  if(!ld){toast('Veuillez d\'abord calculer le rapport','err');return;}
+  if(!ld){toast('Calculez d\'abord un rapport','err');return;}
   const {d,from,to}=ld;
   const fmtD=s=>{try{const p=s.split('-');return p[2]+'/'+p[1]+'/'+p[0];}catch(e){return s;}};
   const fromLbl=from?fmtD(from):'…';
   const toLbl=to?fmtD(to):'…';
-  const headerHtml=`<div style="background:#1e3a5f;color:#fff;padding:14px 22px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:20px">
-    <div>
-      <div style="font-size:22px;font-weight:700;letter-spacing:.3px">Rapport — Oreillers cardés 1 du ${fromLbl} au ${toLbl}</div>
-      <div style="font-size:14px;font-weight:400;opacity:.85;margin-top:4px">${d.nb_jours} jour${d.nb_jours>1?'s':''} · ${d.nb_sessions} poste${d.nb_sessions>1?'s':''}</div>
-    </div>
-  </div>`;
   const snapContent=document.getElementById('comop-snap-content');
   if(!snapContent){toast('Contenu introuvable','err');return;}
   const wrapper=document.createElement('div');
   wrapper.style.cssText='position:fixed;left:-9999px;top:0;background:#f8fafc;font-family:Arial,sans-serif';
-  wrapper.innerHTML=headerHtml+snapContent.outerHTML;
+  wrapper.innerHTML=`<div style="background:#1e3a5f;color:#fff;padding:14px 22px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:20px">
+    <div>
+      <div style="font-size:22px;font-weight:700;letter-spacing:.3px">Rapport — Oreillers cardés 1 du ${fromLbl} au ${toLbl}</div>
+      <div style="font-size:14px;font-weight:400;opacity:.85;margin-top:4px">${d.nb_jours} jour${d.nb_jours>1?'s':''} · ${d.nb_sessions} poste${d.nb_sessions>1?'s':''}</div>
+    </div>
+  </div>`+snapContent.outerHTML;
   document.body.appendChild(wrapper);
   toast('Capture en cours…','ok');
+  await new Promise(r=>setTimeout(r,300));
   try{
-    const canvas=await html2canvas(wrapper,{scale:2,useCORS:true,backgroundColor:'#f8fafc'});
-    const link=document.createElement('a');
-    link.download='COMOP_'+(from||'?')+'_'+(to||'?')+'.png';
-    link.href=canvas.toDataURL('image/png');
-    link.click();
-  }catch(e){toast('Erreur screenshot: '+e.message,'err');}
-  finally{document.body.removeChild(wrapper);}
+    const canvas=await window.html2canvas(wrapper,{scale:0.98,useCORS:true,logging:false,backgroundColor:'#f8fafc',scrollX:0,scrollY:0,windowWidth:wrapper.scrollWidth+40,windowHeight:wrapper.scrollHeight+40});
+    document.body.removeChild(wrapper);
+    await new Promise((res,rej)=>{
+      canvas.toBlob(blob=>{
+        if(!blob){rej(new Error('toBlob failed'));return;}
+        navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(res).catch(rej);
+      },'image/png');
+    });
+    toast('Image copiée dans le presse-papier — collez dans votre mail (Ctrl+V)','ok');
+  }catch(e){
+    try{document.body.removeChild(wrapper);}catch(_){}
+    toast('Erreur capture : '+(e.message||String(e)),'err');
+  }
 }
 
 async function loadLogistique(){
