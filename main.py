@@ -10322,9 +10322,9 @@ function applyState(s) {
   window._lastBudgetState=s.budget_state||null;
   // Pause button text + blink
   const pbtn=document.getElementById('btn-pause');
-  if(pbtn){pbtn.innerHTML=s.is_paused?'<span class="act-icon">▶</span>Reprendre':'<span class="act-icon">☕</span>Pause';pbtn.style.animation=s.is_paused?'blink .85s step-start infinite':'none';}
+  if(pbtn){pbtn.innerHTML=s.is_paused?'<span class="act-icon">▶</span><span>Pause en cours,<br>reprendre</span>':'<span class="act-icon">☕</span><span>Pause</span>';pbtn.style.animation=s.is_paused?'blink .85s step-start infinite':'none';}
   const pbtnAcc=document.getElementById('btn-pause-acc');
-  if(pbtnAcc){pbtnAcc.style.animation=s.is_paused?'blink .85s step-start infinite':'none';}
+  if(pbtnAcc){pbtnAcc.innerHTML=s.is_paused?'<span class="act-icon">▶</span><span>Pause en cours,<br>reprendre</span>':'<span class="act-icon">☕</span><span>Pause</span>';pbtnAcc.style.animation=s.is_paused?'blink .85s step-start infinite':'none';}
   // Réunion button text + blink (Prod en cours + Accueil)
   const rbtn=document.getElementById('btn-reunion');
   if(rbtn){rbtn.innerHTML=s.reunion_active?'<span class="act-icon">✓</span>Fin réunion':'<span class="act-icon">🗣️</span>Réunion';rbtn.style.animation=s.reunion_active?'blink .85s step-start infinite':'none';}
