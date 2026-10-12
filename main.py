@@ -4691,8 +4691,46 @@ def api_end_stop():
         except: pass
     return jsonify({"ok":True})
 
+def _write_pause_row(_ps, _pe):
+    _sh = _S.get("shift_start") or _ps
+    _pause_dur = max(0, (_pe - _ps).total_seconds())
+    _row_p = [
+        "Pause", (_S.get("form") or {}).get("of_num", ""),
+        _ps.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
+        (_S.get("form") or {}).get("copilote",""),
+        str((_S.get("form") or {}).get("nb_pers","") or ""),
+        str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+        _ps.strftime("%H:%M:%S"), _pe.strftime("%H:%M:%S"), fmt(_pause_dur),
+        "","","","","","","","","","","","","","","","","","","","",
+        _sh.strftime("%d/%m/%Y"),
+    ]
+    write_excel_bg([], [_row_p])
+    try:
+        _nrn_p = max((rn for rn, _ in _decl_cache), default=1) + 1
+        _decl_cache.append((_nrn_p, tuple(_row_p) + ("",) * max(0, 40 - len(_row_p))))
+    except: pass
+
+def _write_reunion_row(_start, _end):
+    _sh = _S.get("shift_start") or _start
+    _dur = max(0, (_end - _start).total_seconds())
+    _row = [
+        "Réunion", (_S.get("form") or {}).get("of_num",""),
+        _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
+        (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
+        str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+        _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
+        "","","","","","","","","","","","","","","","","","","","",
+        _sh.strftime("%d/%m/%Y"),
+    ]
+    write_excel_bg([], [_row])
+    try:
+        _nrn_r = max((rn for rn, _ in _decl_cache), default=1) + 1
+        _decl_cache.append((_nrn_r, tuple(_row) + ("",) * max(0, 40 - len(_row))))
+    except: pass
+
 def _toggle_pause_internal():
     _pause_to_write = None
+    _needs_check = None
     with _S_lock:
         now = datetime.datetime.now()
         if not _S["is_paused"]:
@@ -4705,35 +4743,55 @@ def _toggle_pause_internal():
                 _S["pause_total_s"] += dur
                 _S["pause_periods"].append((_ps, now))
                 _S.setdefault("_written_pause_starts", []).append(_ps)
-                _pause_to_write = (_ps, now)
+                if dur > 16 * 60:
+                    _needs_check = (_ps, now)
+                else:
+                    _pause_to_write = (_ps, now)
             _S["is_paused"] = False
             _S["pause_start"] = None
     save_session()
     if _pause_to_write:
-        _ps, _pe = _pause_to_write
-        _sh = _S.get("shift_start") or _ps
-        _pause_dur = max(0, (_pe - _ps).total_seconds())
-        _row_p = [
-            "Pause", (_S.get("form") or {}).get("of_num", ""),
-            _ps.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
-            (_S.get("form") or {}).get("copilote",""),
-            str((_S.get("form") or {}).get("nb_pers","") or ""),
-            str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
-            _ps.strftime("%H:%M:%S"), _pe.strftime("%H:%M:%S"), fmt(_pause_dur),
-            "","","","","","","","","","","","","","","","","","","","",
-            _sh.strftime("%d/%m/%Y"),
-        ]
-        write_excel_bg([], [_row_p])
-        try:
-            _nrn_p = max((rn for rn, _ in _decl_cache), default=1) + 1
-            _decl_cache.append((_nrn_p, tuple(_row_p) + ("",) * max(0, 40 - len(_row_p))))
-        except: pass
+        _write_pause_row(*_pause_to_write)
+    return _needs_check
 
 @flask_app.route('/api/toggle_pause', methods=['POST'])
 @require_pilot
 def api_toggle_pause():
-    _toggle_pause_internal()
+    _nc = _toggle_pause_internal()
+    if _nc:
+        _ps, _pe = _nc
+        _split = _ps + datetime.timedelta(minutes=15)
+        return jsonify({
+            "ok": True, "paused": False, "needs_check": True,
+            "pause_start": _ps.strftime("%H:%M"),
+            "pause_end": _pe.strftime("%H:%M"),
+            "split_at": _split.strftime("%H:%M"),
+            "pause_start_iso": _ps.isoformat(),
+            "pause_end_iso": _pe.isoformat(),
+        })
     return jsonify({"ok":True,"paused":_S["is_paused"]})
+
+@flask_app.route('/api/finalize_pause', methods=['POST'])
+@require_pilot
+def api_finalize_pause():
+    data = request.json or {}
+    mode = data.get("mode","full")
+    try:
+        _ps = datetime.datetime.fromisoformat(data["pause_start_iso"])
+        _pe = datetime.datetime.fromisoformat(data["pause_end_iso"])
+        if mode == "split":
+            split_hm = data.get("split_at","")
+            sh, sm = int(split_hm.split(":")[0]), int(split_hm.split(":")[1])
+            _split = _ps.replace(hour=sh, minute=sm, second=0, microsecond=0)
+            if _split < _ps: _split += datetime.timedelta(days=1)
+            if _split > _pe: _split = _pe
+            if _split > _ps: _write_pause_row(_ps, _split)
+            if _split < _pe: _write_reunion_row(_split, _pe)
+        else:
+            _write_pause_row(_ps, _pe)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
 
 @flask_app.route('/api/toggle_reunion', methods=['POST'])
 @require_pilot
@@ -8645,6 +8703,43 @@ select{cursor:default}
     </div>
   </div>
 
+  <!-- ════ MODAL PAUSE → RÉUNION ════ -->
+  <div id="m-pause-reunion" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;align-items:center;justify-content:center">
+    <div style="width:min(560px,96vw);background:var(--card);border-radius:14px;border-top:4px solid #f59e0b;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.45)">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1">
+          <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:#92400e">☕ Pause dépassée — Réunion enchaînée ?</div>
+          <div style="font-size:calc(12px*var(--zf,1));color:#78350f;margin-top:3px">La pause a dépassé 15 min. Ajustez les plages si besoin puis validez.</div>
+        </div>
+      </div>
+      <div style="padding:18px 20px;display:flex;flex-direction:column;gap:14px">
+        <div style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 16px">
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">☕ Pause</div>
+          <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+            <div><label style="font-size:calc(10px*var(--zf,1));color:#78350f;font-weight:600;display:block;margin-bottom:3px">Début</label>
+              <input type="time" id="pr-pause-debut" readonly style="padding:6px 10px;border:1.5px solid #fcd34d;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:108px;background:#fffbeb;color:#92400e"></div>
+            <div style="font-size:20px;color:#92400e;padding-bottom:4px">→</div>
+            <div><label style="font-size:calc(10px*var(--zf,1));color:#78350f;font-weight:600;display:block;margin-bottom:3px">Fin <span style="font-weight:400;opacity:.7">(= début réunion)</span></label>
+              <input type="time" id="pr-pause-fin" oninput="_prSyncReunionDebut()" style="padding:6px 10px;border:2px solid #f59e0b;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:108px;background:#fffbeb;color:#92400e"></div>
+          </div>
+        </div>
+        <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:12px 16px">
+          <div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">🗣 Réunion</div>
+          <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+            <div><label style="font-size:calc(10px*var(--zf,1));color:#1e3a8a;font-weight:600;display:block;margin-bottom:3px">Début</label>
+              <input type="time" id="pr-reunion-debut" disabled style="padding:6px 10px;border:1.5px solid #bfdbfe;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:108px;background:#f0f9ff;color:#1e3a8a"></div>
+            <div style="font-size:20px;color:#1e3a8a;padding-bottom:4px">→</div>
+            <div><label style="font-size:calc(10px*var(--zf,1));color:#1e3a8a;font-weight:600;display:block;margin-bottom:3px">Fin</label>
+              <input type="time" id="pr-reunion-fin" disabled style="padding:6px 10px;border:1.5px solid #bfdbfe;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700;width:108px;background:#f0f9ff;color:#1e3a8a"></div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn btn-ghost" style="font-size:calc(12px*var(--zf,1))" onclick="_prFinalize('full')">Non — tout déclarer en Pause</button>
+        <button class="btn btn-prim" style="font-size:calc(13px*var(--zf,1));padding:8px 22px;background:#16a34a;border-color:#16a34a" onclick="_prFinalize('split')">✓ Oui — Pause + Réunion</button>
+      </div>
+    </div>
+  </div>
 
 <!-- Modal saisie code formaté (DDDDDD_DDD) -->
 <div id="m-code-input" class="modal" style="position:fixed;inset:0;z-index:9999;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);background:rgba(0,0,0,0.75);align-items:center;justify-content:center" onclick="if(event.target===this)closeM('m-code-input')">
@@ -11446,13 +11541,34 @@ async function saveEvtList(){
 
 function openStopModal(){openM('m-stop');}
 
+var _prData={};
+function _prSyncReunionDebut(){
+  document.getElementById('pr-reunion-debut').value=document.getElementById('pr-pause-fin').value;
+}
+async function _prFinalize(mode){
+  closeM('m-pause-reunion');
+  const splitAt=document.getElementById('pr-pause-fin').value;
+  try{await fetch('/api/finalize_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode,split_at:splitAt,pause_start_iso:_prData.pause_start_iso,pause_end_iso:_prData.pause_end_iso})});}
+  catch(e){toast('Erreur connexion serveur','err');return;}
+  await pollState();
+  if(_curTab==='main') loadMainDecl();
+}
 async function doPause(){
   // Désactiver tous les boutons pause pendant le traitement (empêche le double-clic)
   const _pbtns=document.querySelectorAll('#btn-pause,#btn-pause-acc,[onclick*="doPause"]');
   _pbtns.forEach(b=>{b.disabled=true;});
   await _flushFormNow();
-  try{await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});}
+  let data={};
+  try{const r=await fetch('/api/toggle_pause',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});data=await r.json();}
   catch(e){toast('Erreur connexion serveur','err');_pbtns.forEach(b=>{b.disabled=false;});return;}
+  if(data.needs_check){
+    _prData={pause_start_iso:data.pause_start_iso,pause_end_iso:data.pause_end_iso};
+    document.getElementById('pr-pause-debut').value=data.pause_start;
+    document.getElementById('pr-pause-fin').value=data.split_at;
+    document.getElementById('pr-reunion-debut').value=data.split_at;
+    document.getElementById('pr-reunion-fin').value=data.pause_end;
+    openM('m-pause-reunion');
+  }
   await pollState();
   if(_curTab==='main') loadMainDecl();
   _pbtns.forEach(b=>{b.disabled=false;});
