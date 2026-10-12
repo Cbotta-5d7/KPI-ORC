@@ -6601,7 +6601,7 @@ def api_period_report():
             agg_obj_pcs += _session_obj
         _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or "")),"real_date":str(re2[2] or "") if len(re2)>2 else ""} for _rn2, re2 in s.get('evt_rows',[])]
         agg_degrade_min += (_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s / 60.0)
-        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd,'_deb_dt':_pdeb})
+        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'pcs':round(s['tot_pcs']),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd,'_deb_dt':_pdeb})
     _trs_denom = agg_obj_equiv if agg_obj_equiv > 0 else (agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected)
     trs_periode = round(agg_equiv/_trs_denom*100,1) if _trs_denom>0 and agg_equiv>0 else -1.0
     def _sort_dmy(d):
@@ -7838,6 +7838,7 @@ select{cursor:default}
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
+      <button class="htab" id="ht-comop" onclick="goTab('comop')">📊 COMOP</button>
       <button class="htab" id="ht-logistique" onclick="goTab('logistique')" style="display:none">🚚 Logistique</button>
       <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🚨 Signaler problèmes logiciel</button>
       <button class="htab" id="ht-cdg" onclick="goTab('cdg')" style="display:none">📊 CDG</button>
@@ -8838,6 +8839,24 @@ select{cursor:default}
         <button onclick="submitProbleme()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">Envoyer</button>
       </div>
     </div>
+  </div>
+
+  <!-- ════ COMOP ════ -->
+  <div id="v-comop" class="view" style="flex-direction:column;overflow:hidden;display:none">
+    <div id="comop-filterbar" style="background:linear-gradient(180deg,#f0f4ff 0%,#fff 100%);border-bottom:2px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;box-shadow:0 2px 6px rgba(0,0,0,.04)">
+      <span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:var(--navy);letter-spacing:.3px">📊 COMOP</span>
+      <label style="font-size:calc(12px*var(--zf,1));color:var(--gray)">De</label>
+      <input type="date" id="comop-from" style="font-size:calc(12px*var(--zf,1));border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:4px;padding:4px 8px">
+      <label style="font-size:calc(12px*var(--zf,1));color:var(--gray)">À</label>
+      <input type="date" id="comop-to" style="font-size:calc(12px*var(--zf,1));border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:4px;padding:4px 8px">
+      <label style="font-size:calc(12px*var(--zf,1));color:var(--gray)">Pilote</label>
+      <select id="comop-pilot" style="font-size:calc(12px*var(--zf,1));border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:4px;padding:4px 8px"><option value="">Tous</option></select>
+      <label style="font-size:calc(12px*var(--zf,1));color:var(--gray)">Poste</label>
+      <select id="comop-poste" style="font-size:calc(12px*var(--zf,1));border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:4px;padding:4px 8px"><option value="">Tous</option></select>
+      <button onclick="calcComop()" style="font-size:calc(12px*var(--zf,1));font-weight:700;padding:5px 14px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer">Actualiser</button>
+      <button onclick="snapComop()" style="font-size:calc(12px*var(--zf,1));font-weight:700;padding:5px 14px;background:#f59e0b;color:#1e293b;border:none;border-radius:4px;cursor:pointer">📷 Screenshot</button>
+    </div>
+    <div id="comop-result" style="flex:1;overflow-y:auto;padding:14px"></div>
   </div>
 
   <!-- ════ LOGISTIQUE ════ -->
@@ -9890,10 +9909,10 @@ function goTab(tab) {
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   document.querySelectorAll('.htab').forEach(t=>t.classList.remove('on'));
-  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports','rpt-jour':'v-rpt-jour',cdg:'v-cdg',problemes:'v-problemes',logistique:'v-logistique'};
+  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports','rpt-jour':'v-rpt-jour',comop:'v-comop',cdg:'v-cdg',problemes:'v-problemes',logistique:'v-logistique'};
   const el=document.getElementById(vm[tab]);
   if(el) el.classList.add('on');
-  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour',cdg:'ht-cdg',problemes:'ht-problemes',logistique:'ht-logistique'};
+  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour',comop:'ht-comop',cdg:'ht-cdg',problemes:'ht-problemes',logistique:'ht-logistique'};
   const ntEl=document.getElementById(nt[tab]);
   if(ntEl) ntEl.classList.add('on');
   if(tab!=='prod') _clearFieldHighlights();
@@ -9918,13 +9937,14 @@ function goTab(tab) {
   }
   if(tab==='finposte') loadFPData();
   // Vues données : recharge le cache Excel d'abord, puis affiche
-  const _dataViews=['history','rapports','rpt-jour','kpi','main','cdg','logistique'];
+  const _dataViews=['history','rapports','rpt-jour','comop','kpi','main','cdg','logistique'];
   if(_dataViews.includes(tab)){
     if(tab!=='history'&&_prevTab==='history') _resetHistFilters();
     fetch('/api/reload_excel',{method:'POST'}).catch(()=>{}).finally(()=>{
       if(tab==='history') loadHist();
       if(tab==='rapports'){loadRapports(true);rptBackToList();}
       if(tab==='rpt-jour') loadRptJour();
+      if(tab==='comop') loadComop();
       if(tab==='main'){loadMainDecl();refreshAccFpData();_refreshAccRptPie();}
       if(tab==='kpi') loadKPI();
       if(tab==='cdg') loadCdg();
@@ -15249,6 +15269,199 @@ function _logiRender(groups){
     <b>${groups.length}</b> OF concerné${groups.length>1?'s':''} · <b>${total}</b> événement${total>1?'s':''} manquant${total>1?'s':''}
   </div>`+html;
 }
+// ── COMOP ──
+async function loadComop(){
+  const t=new Date(),f=new Date(t);
+  f.setDate(t.getDate()-29);
+  const fromEl=document.getElementById('comop-from');
+  const toEl=document.getElementById('comop-to');
+  if(fromEl&&!fromEl.value) fromEl.value=f.toISOString().slice(0,10);
+  if(toEl&&!toEl.value) toEl.value=t.toISOString().slice(0,10);
+  const sessions=await apiFetch('/api/past_sessions');
+  if(sessions){
+    const pilots=[...new Set(sessions.map(s=>s.pilot).filter(Boolean))].sort();
+    const postes=[...new Set(sessions.map(s=>s.poste).filter(Boolean))].sort();
+    const pSel=document.getElementById('comop-pilot');
+    const qSel=document.getElementById('comop-poste');
+    if(pSel) pSel.innerHTML='<option value="">Tous</option>'+pilots.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
+    if(qSel) qSel.innerHTML='<option value="">Tous</option>'+postes.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  }
+  calcComop();
+}
+async function calcComop(){
+  const from=document.getElementById('comop-from')?.value||'';
+  const to=document.getElementById('comop-to')?.value||'';
+  const pilot=document.getElementById('comop-pilot')?.value||'';
+  const poste=document.getElementById('comop-poste')?.value||'';
+  const res=document.getElementById('comop-result');
+  if(!res) return;
+  res.innerHTML='<div style="padding:40px;text-align:center;color:var(--gray)">Calcul en cours…</div>';
+  let url='/api/period_report?skip_current=1&';
+  if(from) url+='date_from='+encodeURIComponent(from)+'&';
+  if(to)   url+='date_to='+encodeURIComponent(to)+'&';
+  if(pilot) url+='pilot='+encodeURIComponent(pilot)+'&';
+  if(poste) url+='poste='+encodeURIComponent(poste)+'&';
+  const d=await apiFetch(url);
+  if(!d||!d.ok){res.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur ou aucune donnée</div>';return;}
+  if(!d.nb_sessions){res.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:40px;margin-bottom:12px">🔍</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Aucun poste trouvé pour cette période</div></div>';return;}
+  window._comopLastData={d,from,to};
+  res.innerHTML=_renderComop(d,from,to);
+}
+function _hComop(m){return Math.round(m/60)+' h';}
+function _renderComop(d,from,to){
+  const trsCol=d.trs_periode>=70?'#16a34a':d.trs_periode>=50?'#f59e0b':'#dc2626';
+  const ouv=d.ouverture_min||0;
+  const stop=d.net_stop_min||0;
+  const imprev=Math.max(0,stop-(d.arret_prevu_min||0));
+  const nbOfMoy=d.nb_sessions>0?(d.nb_of/3).toFixed(1):'–';
+  const statsRows=[
+    ['Temps d\'ouverture',_hComop(ouv),'#64748b'],
+    ['Temps utile',_hComop(d.temps_utile_min||0),'#64748b'],
+    ['Tps de fonctionnement',_hComop(d.temps_fonctionnement_min||0),'#16a34a'],
+    ['Temps d\'arrêt',_hComop(stop),'#dc2626'],
+    ['Temps d\'arrêt imprévu',_hComop(imprev),'#dc2626'],
+    ['Temps arrêts prévus',_hComop(d.arret_prevu_min||0),'#64748b'],
+    ['Temps dégradé',_hComop(d.tot_degrade_min||0),'#f59e0b'],
+    ['Postes',d.nb_sessions,'#64748b'],
+    ['Jours',d.nb_jours,'#64748b'],
+    ['OF traités',d.nb_of,'#64748b'],
+    ['Nombre d\'OF moy par équipe',nbOfMoy,'#64748b'],
+  ];
+  const sessions=(d.sessions_detail||[]).sort((a,b)=>{
+    const _dmy=s=>{try{const p=(s.date||'').split('/');return new Date(p[2]+'-'+p[1]+'-'+p[0]).getTime();}catch(e){return 0;}};
+    return _dmy(a)-_dmy(b);
+  });
+  const trsChart=_comopLineChart('📈 Évolution TRS par production','#16a34a','trs',0,100,'%',180,sessions);
+  const cadChart=_comopLineChart('🏎 Évolution Cadence par production','#0369a1','cadence_h',400,950,' pcs/h',160,sessions);
+  const stopPareto=_comopPareto(d.stop_pareto||[],'#dc2626','🛑 Pareto arrêts non prévus');
+  const degPareto=_comopPareto(d.degrade_pareto||[],'#f59e0b','⚠️ Pareto modes dégradés');
+  return `<div id="comop-snap-content" style="background:var(--bg)">
+    <div style="display:flex;gap:14px;padding:14px;align-items:flex-start;min-width:0">
+      <div style="width:240px;flex-shrink:0;display:flex;flex-direction:column;gap:6px">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:15px;font-weight:800;color:${trsCol}">${d.trs_periode.toFixed(1)}<span style="font-size:13px">%</span> <span style="font-weight:600;color:var(--text);font-size:13px">TRS de la période</span></div></div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:15px;font-weight:800;color:#16a34a">${Math.round(d.tot_pcs).toLocaleString('fr-FR')} <span style="font-weight:600;color:var(--text);font-size:13px">Pièces</span></div></div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:15px;font-weight:800;color:#0369a1">${Math.round(d.tot_equiv).toLocaleString('fr-FR')} <span style="font-weight:600;color:var(--text);font-size:13px">Equiv</span></div></div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 12px"><div style="font-size:15px;font-weight:800;color:#0369a1">${d.cadence_h} <span style="font-weight:600;color:var(--text);font-size:13px">Pcs/h</span> <span style="font-size:12px;font-weight:600;color:#94a3b8">(ref 720)</span></div></div>
+        ${statsRows.map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 10px;background:var(--card);border:1px solid var(--border);border-radius:4px"><span style="font-size:13px;color:var(--gray)">${esc(l)}</span><span style="font-size:14px;font-weight:700;color:${c}">${esc(String(v))}</span></div>`).join('')}
+      </div>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">
+        ${trsChart}
+        ${cadChart}
+        <div style="display:flex;gap:10px">
+          <div style="flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 10px">${stopPareto}</div>
+          <div style="flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 10px">${degPareto}</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
+  const W=1250,padL=50,padR=28,padT=14,padB=62;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  const pts=sessions.length>15
+    ?Object.values(sessions.reduce((m,s)=>{
+        if(!m[s.date])m[s.date]={date:s.date,_ss:[]};
+        m[s.date]._ss.push(s);return m;
+      },{})).map(g=>{
+        const totalPcs=g._ss.reduce((a,s)=>a+(s.pcs||0),0);
+        const openH=g._ss.length*8;
+        const cadMoy=g._ss.length>0?Math.round(g._ss.reduce((a,s)=>a+(s.cadence_h||0),0)/g._ss.length):0;
+        return {date:g.date,pcs:totalPcs,equiv:g._ss.reduce((a,s)=>a+(s.equiv||0),0),
+          trs:openH>0?Math.round(totalPcs/(720*openH)*100*10)/10:-1,cadence_h:cadMoy};
+      })
+    :sessions;
+  const n=pts.length;
+  if(!n) return `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;color:var(--gray);text-align:center">Pas de données</div>`;
+  const toX=i=>padL+i/Math.max(n-1,1)*gW;
+  const toY=v=>padT+gH*(1-(v-yMin)/(yMax-yMin||1));
+  let grid='';
+  for(let t=0;t<=5;t++){
+    const v=yMin+(yMax-yMin)*t/5;
+    const y=toY(v);
+    grid+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1"/>`;
+    grid+=`<text x="${padL-3}" y="${(y+5).toFixed(1)}" text-anchor="end" font-size="16" fill="#94a3b8">${Math.round(v)}${unit.trim()}</text>`;
+  }
+  let path='',dots='';
+  pts.forEach((s,i)=>{
+    const v=key==='trs'?s.trs:s.cadence_h;
+    const x=toX(i),y=toY(v);
+    const col=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':'#dc2626';
+    path+=i===0?`M${x.toFixed(1)},${y.toFixed(1)}`:`L${x.toFixed(1)},${y.toFixed(1)}`;
+    dots+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${col}" opacity=".9"/>`;
+  });
+  let xLabels='';
+  pts.forEach((s,i)=>{
+    const dp=s.date.split('/');
+    const lbl=`${dp[0]}/${dp[1]}`;
+    const x=toX(i),yB=H-padB;
+    xLabels+=`<line x1="${x.toFixed(1)}" y1="${yB.toFixed(1)}" x2="${x.toFixed(1)}" y2="${(yB+3).toFixed(1)}" stroke="#cbd5e1" stroke-width="1"/>`;
+    xLabels+=`<text transform="rotate(-45,${x.toFixed(1)},${(yB+3).toFixed(1)})" x="${x.toFixed(1)}" y="${(yB+3).toFixed(1)}" text-anchor="end" font-size="14" fill="#64748b">${lbl}</text>`;
+  });
+  const targetLine=key==='trs'
+    ?`<line x1="${padL}" y1="${toY(70).toFixed(1)}" x2="${W-padR}" y2="${toY(70).toFixed(1)}" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="6,3"/>
+      <text x="${(W-padR+2).toFixed(1)}" y="${(toY(70)+4).toFixed(1)}" font-size="9" fill="#16a34a" font-weight="700">70%</text>`:'';
+  const legend=`<span style="font-size:10px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:10px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span>${key==='trs'?' &nbsp;<svg width="18" height="6" style="display:inline"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="5,3"/></svg> Objectif':''}</span>`;
+  return `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;color:${titleCol}">${title}${legend}</div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">
+      ${grid}${targetLine}
+      <path d="${path}" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
+      ${dots}${xLabels}
+    </svg>
+  </div>`;
+}
+function _comopPareto(items,col,title){
+  if(!items||!items.length) return `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;color:${col}">${title}</div><div style="color:var(--gray);font-size:12px">Aucun événement</div>`;
+  const mx=items[0].min,tot=items.reduce((a,e)=>a+e.min,0);
+  const hFmt=m=>{const h=Math.floor(m/60);const mn=Math.round(m%60);return h>0?(mn>0?h+'h'+String(mn).padStart(2,'0'):h+'h'):mn+'min';};
+  const rows=items.slice(0,8).map(e=>{
+    const pct=Math.round(e.min/mx*80),pctTot=tot>0?Math.round(e.min/tot*100):0;
+    return `<div style="margin-bottom:5px">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+        <div style="width:7px;height:7px;border-radius:2px;background:${col};flex-shrink:0"></div>
+        <span style="font-size:10px;word-break:break-word;line-height:1.2"><b>${e.count}×</b> : ${esc(e.type)}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px">
+        <div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden">
+          <div style="width:${pct}%;background:${col};opacity:.8;height:100%;border-radius:3px;position:absolute;top:0;left:0"></div>
+        </div>
+        <span style="flex-shrink:0;font-size:9px;color:#6b7280;white-space:nowrap">${pctTot}% · ${hFmt(e.min)}</span>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;color:${col}">${title}</div>${rows}`;
+}
+async function snapComop(){
+  if(!window.html2canvas){toast('html2canvas non disponible (connexion internet requise)','err');return;}
+  const ld=window._comopLastData;
+  if(!ld){toast('Veuillez d\'abord calculer le rapport','err');return;}
+  const {d,from,to}=ld;
+  const fmtD=s=>{try{const p=s.split('-');return p[2]+'/'+p[1]+'/'+p[0];}catch(e){return s;}};
+  const fromLbl=from?fmtD(from):'…';
+  const toLbl=to?fmtD(to):'…';
+  const headerHtml=`<div style="background:#1e3a5f;color:#fff;padding:14px 22px;font-family:Arial,sans-serif;display:flex;align-items:center;gap:20px">
+    <div>
+      <div style="font-size:22px;font-weight:700;letter-spacing:.3px">Rapport — Oreillers cardés 1 du ${fromLbl} au ${toLbl}</div>
+      <div style="font-size:14px;font-weight:400;opacity:.85;margin-top:4px">${d.nb_jours} jour${d.nb_jours>1?'s':''} · ${d.nb_sessions} poste${d.nb_sessions>1?'s':''}</div>
+    </div>
+  </div>`;
+  const snapContent=document.getElementById('comop-snap-content');
+  if(!snapContent){toast('Contenu introuvable','err');return;}
+  const wrapper=document.createElement('div');
+  wrapper.style.cssText='position:fixed;left:-9999px;top:0;background:#f8fafc;font-family:Arial,sans-serif';
+  wrapper.innerHTML=headerHtml+snapContent.outerHTML;
+  document.body.appendChild(wrapper);
+  toast('Capture en cours…','ok');
+  try{
+    const canvas=await html2canvas(wrapper,{scale:2,useCORS:true,backgroundColor:'#f8fafc'});
+    const link=document.createElement('a');
+    link.download='COMOP_'+(from||'?')+'_'+(to||'?')+'.png';
+    link.href=canvas.toDataURL('image/png');
+    link.click();
+  }catch(e){toast('Erreur screenshot: '+e.message,'err');}
+  finally{document.body.removeChild(wrapper);}
+}
+
 async function loadLogistique(){
   const fi=document.getElementById('logi-from');
   const ti=document.getElementById('logi-to');
