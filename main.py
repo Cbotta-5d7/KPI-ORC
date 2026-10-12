@@ -8842,7 +8842,7 @@ select{cursor:default}
   </div>
 
   <!-- ════ COMOP ════ -->
-  <div id="v-comop" class="view" style="flex-direction:column;overflow:hidden;display:none">
+  <div id="v-comop" class="view" style="flex-direction:column;overflow:hidden">
     <div id="comop-filterbar" style="background:linear-gradient(180deg,#f0f4ff 0%,#fff 100%);border-bottom:2px solid var(--border);padding:8px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;box-shadow:0 2px 6px rgba(0,0,0,.04)">
       <span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:var(--navy);letter-spacing:.3px">📊 COMOP</span>
       <label style="font-size:calc(12px*var(--zf,1));color:var(--gray)">De</label>
