@@ -2072,7 +2072,8 @@ def _state_json():
         el = t["elapsed"]
         if t["running"] and t["start"]:
             el += (datetime.datetime.now()-t["start"]).total_seconds()
-        timers_out[k] = {"elapsed":round(el,1),"running":t["running"]}
+        cur = (datetime.datetime.now()-t["start"]).total_seconds() if t["running"] and t["start"] else 0
+        timers_out[k] = {"elapsed":round(el,1),"running":t["running"],"current_s":round(cur,1)}
     return {
         "pilot": _S["pilot"],
         "poste": _S["poste"],
@@ -10401,9 +10402,9 @@ function renderStopChipsMain(s) {
     // Même set de stops : mettre à jour seulement les timers (sauf si modal ouvert → figé)
     stops.forEach(k=>{
       if(window._pendingStopKey===k) return;
-      const elap=s.timers&&s.timers[k]?s.timers[k].elapsed:0;
+      const cur=s.timers&&s.timers[k]?s.timers[k].current_s:0;
       const el=document.getElementById('main-chip-t-'+k);
-      if(el) el.textContent=fmtDur2(elap);
+      if(el) el.textContent=fmtDur2(cur);
     });
     if(s.is_paused){
       const pe=(s.pause_total_s||0)+(s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0);
@@ -10416,8 +10417,8 @@ function renderStopChipsMain(s) {
   let html='';
   stops.forEach(k=>{
     const lbl=getEvtLabel(k);
-    const elap=s.timers&&s.timers[k]?s.timers[k].elapsed:0;
-    html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="main-chip-t-${esc(k)}">${fmtDur2(elap)}</span><button class="btn-endstop" onclick="doEndStop('${esc(k)}')">✓ Terminer</button></div>`;
+    const cur=s.timers&&s.timers[k]?s.timers[k].current_s:0;
+    html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="main-chip-t-${esc(k)}">${fmtDur2(cur)}</span><button class="btn-endstop" onclick="doEndStop('${esc(k)}')">✓ Terminer</button></div>`;
   });
   if(s.is_paused){
     const pe=(s.pause_total_s||0)+(s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0);
@@ -10442,8 +10443,8 @@ function renderStopChips(s) {
   let html='';
   stops.forEach(k=>{
     const lbl=getEvtLabel(k);
-    const elap=s.timers&&s.timers[k]?s.timers[k].elapsed:0;
-    html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="chip-t-${esc(k)}">${fmtDur2(elap)}</span><button class="btn-endstop" onclick="doEndStop('${esc(k)}')">✓ Terminer</button></div>`;
+    const cur=s.timers&&s.timers[k]?s.timers[k].current_s:0;
+    html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="chip-t-${esc(k)}">${fmtDur2(cur)}</span><button class="btn-endstop" onclick="doEndStop('${esc(k)}')">✓ Terminer</button></div>`;
   });
   if(s.is_paused){
     const pe=(s.pause_total_s||0)+(s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0);
@@ -10462,7 +10463,7 @@ function startTicker() {
       const cel=document.getElementById('main-chip-t-'+k);
       if(cel&&ST.timers&&ST.timers[k]){
         const frozen=window._pendingStopKey===k;
-        cel.textContent=fmtDur2(frozen?window._pendingStopElapsed:ST.timers[k].elapsed+dt0);
+        cel.textContent=fmtDur2(frozen?window._pendingStopElapsed:(ST.timers[k].current_s||0)+dt0);
       }
     });
     if(ST.is_paused){const cel=document.getElementById('main-chip-t-_pause');
@@ -10521,7 +10522,7 @@ function startTicker() {
       ST.active_stops.forEach(k=>{
         if(window._pendingStopKey===k) return;
         const cel=document.getElementById('chip-t-'+k);
-        if(cel&&ST.timers&&ST.timers[k]) cel.textContent=fmtDur2(ST.timers[k].elapsed+dt);
+        if(cel&&ST.timers&&ST.timers[k]) cel.textContent=fmtDur2((ST.timers[k].current_s||0)+dt);
       });
     }
     if(ST.is_paused){
