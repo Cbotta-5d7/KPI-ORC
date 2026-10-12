@@ -15390,7 +15390,7 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
     var tickVal=yMin+(yMax-yMin)*ti/nTicks;
     var tickY=toY(tickVal);
     grid+='<line x1="'+padL+'" y1="'+tickY.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+tickY.toFixed(1)+'" stroke="#e2e8f0" stroke-width="1"/>';
-    grid+='<text x="'+(padL-4)+'" y="'+(tickY+5).toFixed(1)+'" text-anchor="end" font-size="28" fill="#94a3b8">'+Math.round(tickVal)+'</text>';
+    grid+='<text x="'+(padL-4)+'" y="'+(tickY+5).toFixed(1)+'" text-anchor="end" font-size="16" fill="#94a3b8">'+Math.round(tickVal)+'</text>';
   }
   // Path + dots + data labels above
   var path='',dots='',labels='';
