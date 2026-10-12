@@ -15575,7 +15575,7 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
     path+=(pi===0?'M':'L')+px.toFixed(1)+','+py.toFixed(1);
     dots+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="5" fill="'+col+'" opacity=".9"/>';
     var lblTxt=key==='trs'?ptVal.toFixed(1):Math.round(ptVal);
-    labels+='<text x="'+px.toFixed(1)+'" y="'+(py-12).toFixed(1)+'" text-anchor="middle" font-size="22" fill="'+col+'" font-weight="600">'+lblTxt+'</text>';
+    labels+='<text x="'+px.toFixed(1)+'" y="'+(py-8).toFixed(1)+'" text-anchor="middle" font-size="11" fill="'+col+'" font-weight="600">'+lblTxt+'</text>';
   }
   var targetLine=key==='trs'
     ?'<line x1="'+padL+'" y1="'+toY(70).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+toY(70).toFixed(1)+'" stroke="#16a34a" stroke-width="2" stroke-dasharray="8,4"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(toY(70)+6).toFixed(1)+'" font-size="18" fill="#16a34a" font-weight="700">70%</text>'
