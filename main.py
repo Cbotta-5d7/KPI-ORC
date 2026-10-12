@@ -15454,6 +15454,13 @@ function _renderComop(d,from,to){
   const stop=d.net_stop_min||0;
   const imprev=Math.max(0,stop-(d.arret_prevu_min||0));
   const nbOfMoy=d.nb_sessions>0?(d.nb_of/d.nb_sessions).toFixed(1):'–';
+  const _dmy=s=>{try{const p=(s.date||'').split('/');return new Date(p[2]+'-'+p[1]+'-'+p[0]).getTime();}catch(e){return 0;}};
+  const _sdStr=s=>{try{const p=(s.date||'').split('/');return p[2]+'-'+p[1]+'-'+p[0];}catch(e){return '';}};
+  const sessions=(d.sessions_detail||[]).filter(s=>{
+    const sd=_sdStr(s);
+    return (!from||sd>=from)&&(!to||sd<=to);
+  }).sort((a,b)=>_dmy(a)-_dmy(b));
+  const nbJours=new Set(sessions.map(s=>s.date)).size;
   const statsRows=[
     ['Temps d\'ouverture',_hComop(ouv),'#64748b'],
     ['Temps utile',_hComop(d.temps_utile_min||0),'#64748b'],
@@ -15467,13 +15474,6 @@ function _renderComop(d,from,to){
     ['OF traités',d.nb_of,'#64748b'],
     ['Nombre d\'OF moy par équipe',nbOfMoy,'#64748b'],
   ];
-  const _dmy=s=>{try{const p=(s.date||'').split('/');return new Date(p[2]+'-'+p[1]+'-'+p[0]).getTime();}catch(e){return 0;}};
-  const _sdStr=s=>{try{const p=(s.date||'').split('/');return p[2]+'-'+p[1]+'-'+p[0];}catch(e){return '';}};
-  const sessions=(d.sessions_detail||[]).filter(s=>{
-    const sd=_sdStr(s);
-    return (!from||sd>=from)&&(!to||sd<=to);
-  }).sort((a,b)=>_dmy(a)-_dmy(b));
-  const nbJours=new Set(sessions.map(s=>s.date)).size;
   const trsChart=_comopLineChart('📈 Évolution TRS par production','#16a34a','trs',0,100,'%',180,sessions);
   const cadChart=_comopLineChart('🏎 Évolution Cadence par production','#0369a1','cadence_h',400,950,' pcs/h',160,sessions);
   const stopPareto=_comopPareto(d.stop_pareto||[],'#dc2626','🛑 Pareto arrêts non prévus');
