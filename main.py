@@ -6146,6 +6146,7 @@ def api_fin_poste_data():
         "nb_fibre_chg": nb_fibre_chg_fp,
         "decl_list": decl_list,
         "overlap_ofs": overlap_ofs,
+        "copilote": (_S.get("form") or {}).get("copilote",""),
     })
 
 @flask_app.route('/api/history_today')
@@ -8834,7 +8835,6 @@ select{cursor:default}
       <button id="rj-capture-btn" onclick="captureRapportJour()" title="Copier le rapport en image — à coller dans un mail" style="display:none;align-items:center;justify-content:center;background:#fff;border:2px solid #c7d2fe;border-radius:12px;padding:8px 10px;font-size:calc(18px*var(--zf,1));cursor:pointer;color:#1e3a8a;box-shadow:0 2px 12px rgba(99,102,241,.18);white-space:nowrap" onmouseover="this.style.boxShadow='0 4px 18px rgba(99,102,241,.32)';this.style.borderColor='#818cf8'" onmouseout="this.style.boxShadow='0 2px 12px rgba(99,102,241,.18)';this.style.borderColor='#c7d2fe'">📷</button>
       <div style="margin-left:auto;display:flex;gap:6px">
         <button onclick="rjLast3()" style="background:linear-gradient(180deg,#0ea5e9,#0369a1);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(3,105,161,.35),inset 0 1px 0 rgba(255,255,255,.18)">3 derniers postes</button>
-        <button onclick="rjLast4()" style="background:linear-gradient(180deg,#38bdf8,#0284c7);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(2,132,199,.35),inset 0 1px 0 rgba(255,255,255,.18)">4 derniers postes</button>
         <button onclick="rjLast7Days()" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(5,150,105,.35),inset 0 1px 0 rgba(255,255,255,.18)">7 derniers jours</button>
       </div>
     </div>
@@ -8956,7 +8956,7 @@ select{cursor:default}
       <label style="font-size:calc(12px*var(--zf,1));color:var(--gray)">Poste</label>
       <select id="comop-poste" style="font-size:calc(12px*var(--zf,1));border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:4px;padding:4px 8px"><option value="">Tous</option></select>
       <button onclick="calcComop()" style="font-size:calc(12px*var(--zf,1));font-weight:700;padding:5px 14px;background:#3b82f6;color:#fff;border:none;border-radius:4px;cursor:pointer">Actualiser</button>
-      <button onclick="snapComop()" style="font-size:calc(12px*var(--zf,1));font-weight:700;padding:5px 14px;background:#f59e0b;color:#1e293b;border:none;border-radius:4px;cursor:pointer">📷 Screenshot</button>
+      <button onclick="snapComop()" title="Copier le rapport en image — à coller dans un mail" style="display:flex;align-items:center;justify-content:center;background:#fff;border:2px solid #c7d2fe;border-radius:12px;padding:8px 10px;font-size:calc(18px*var(--zf,1));cursor:pointer;color:#1e3a8a;box-shadow:0 2px 12px rgba(99,102,241,.18);white-space:nowrap" onmouseover="this.style.boxShadow='0 4px 18px rgba(99,102,241,.32)';this.style.borderColor='#818cf8'" onmouseout="this.style.boxShadow='0 2px 12px rgba(99,102,241,.18)';this.style.borderColor='#c7d2fe'">📷</button>
     </div>
     <div id="comop-result" style="flex:1;overflow-y:auto;padding:14px"></div>
   </div>
@@ -13367,7 +13367,12 @@ function _showEcartModal(fpd){
   const hasOverlaps=overlaps.length>0;
   // Subtitle
   const subEl=document.getElementById('ecart-subtitle');
-  if(subEl) subEl.textContent=(modelDebut&&modelFin)?'Plage du poste : '+modelDebut+' → '+modelFin+' ('+model_min+' min)':'';
+  if(subEl){
+    const copilote=fpd.copilote||'';
+    const plage=(modelDebut&&modelFin)?'Plage du poste : '+modelDebut+' → '+modelFin+' ('+model_min+' min)':'';
+    const copiStr=copilote?'<span style="margin-left:10px;background:#eff6ff;color:#1e40af;border-radius:4px;padding:1px 7px;font-weight:700">👤 Co-pilote : '+esc(copilote)+'</span>':'';
+    subEl.innerHTML=esc(plage)+copiStr;
+  }
   // Guide banner
   const guidEl=document.getElementById('ecart-guide');
   if(guidEl){
