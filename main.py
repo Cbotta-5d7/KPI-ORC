@@ -15520,6 +15520,15 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
     :sessions;
   const n=pts.length;
   if(!n) return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;color:var(--gray);text-align:center">Pas de données</div>';
+  // Recalculate yMin/yMax from actual data so no point falls outside the axis
+  const _vals=pts.map(p=>p[key]??0).filter(v=>v>0);
+  if(_vals.length){
+    const _dataMin=Math.min(..._vals);
+    const _dataMax=Math.max(..._vals);
+    const _range=_dataMax-_dataMin||1;
+    yMin=Math.max(0,Math.floor((_dataMin-_range*0.1)/10)*10);
+    yMax=Math.ceil((_dataMax+_range*0.1)/10)*10;
+  }
   const toX=function(i){return padL+i/Math.max(n-1,1)*gW;};
   const toY=function(val){return padT+gH*(1-(val-yMin)/(yMax-yMin||1));};
   // Y-axis grid
