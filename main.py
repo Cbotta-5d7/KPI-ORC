@@ -15322,7 +15322,7 @@ function _renderComop(d,from,to){
   const ouv=d.ouverture_min||0;
   const stop=d.net_stop_min||0;
   const imprev=Math.max(0,stop-(d.arret_prevu_min||0));
-  const nbOfMoy=d.nb_sessions>0?(d.nb_of/3).toFixed(1):'–';
+  const nbOfMoy=d.nb_sessions>0?(d.nb_of/d.nb_sessions).toFixed(1):'–';
   const statsRows=[
     ['Temps d\'ouverture',_hComop(ouv),'#64748b'],
     ['Temps utile',_hComop(d.temps_utile_min||0),'#64748b'],
