@@ -7838,7 +7838,7 @@ select{cursor:default}
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
-      <button class="htab" id="ht-comop" onclick="goTab('comop')">📊 COMOP</button>
+      <button class="htab" id="ht-comop" onclick="goTab('comop')" style="display:none">📊 COMOP</button>
       <button class="htab" id="ht-logistique" onclick="goTab('logistique')" style="display:none">🚚 Logistique</button>
       <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🚨 Signaler problèmes logiciel</button>
       <button class="htab" id="ht-cdg" onclick="goTab('cdg')" style="display:none">📊 CDG</button>
@@ -15356,59 +15356,56 @@ function _renderComop(d,from,to){
   </div>`;
 }
 function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
-  const W=1250,padL=50,padR=28,padT=14,padB=62;
+  const W=1250,padL=56,padR=28,padT=30,padB=10;
   const gW=W-padL-padR,gH=H-padT-padB;
   const pts=sessions.length>15
     ?Object.values(sessions.reduce((m,s)=>{
         if(!m[s.date])m[s.date]={date:s.date,_ss:[]};
         m[s.date]._ss.push(s);return m;
       },{})).map(g=>{
-        const totalPcs=g._ss.reduce((a,s)=>a+(s.pcs||0),0);
+        const totalPcs=g._ss.reduce((a,ss)=>a+(ss.pcs||0),0);
         const openH=g._ss.length*8;
-        const cadMoy=g._ss.length>0?Math.round(g._ss.reduce((a,s)=>a+(s.cadence_h||0),0)/g._ss.length):0;
-        return {date:g.date,pcs:totalPcs,equiv:g._ss.reduce((a,s)=>a+(s.equiv||0),0),
+        const cadMoy=g._ss.length>0?Math.round(g._ss.reduce((a,ss)=>a+(ss.cadence_h||0),0)/g._ss.length):0;
+        return {date:g.date,pcs:totalPcs,equiv:g._ss.reduce((a,ss)=>a+(ss.equiv||0),0),
           trs:openH>0?Math.round(totalPcs/(720*openH)*100*10)/10:-1,cadence_h:cadMoy};
       })
     :sessions;
   const n=pts.length;
-  if(!n) return `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;color:var(--gray);text-align:center">Pas de données</div>`;
-  const toX=i=>padL+i/Math.max(n-1,1)*gW;
-  const toY=v=>padT+gH*(1-(v-yMin)/(yMax-yMin||1));
-  let grid='';
-  for(let t=0;t<=5;t++){
-    const v=yMin+(yMax-yMin)*t/5;
-    const y=toY(v);
-    grid+=`<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1"/>`;
-    grid+=`<text x="${padL-3}" y="${(y+5).toFixed(1)}" text-anchor="end" font-size="16" fill="#94a3b8">${Math.round(v)}${unit.trim()}</text>`;
+  if(!n) return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;color:var(--gray);text-align:center">Pas de données</div>';
+  const toX=function(i){return padL+i/Math.max(n-1,1)*gW;};
+  const toY=function(val){return padT+gH*(1-(val-yMin)/(yMax-yMin||1));};
+  // Y-axis grid
+  var grid='';
+  var nTicks=5;
+  for(var ti=0;ti<=nTicks;ti++){
+    var tickVal=yMin+(yMax-yMin)*ti/nTicks;
+    var tickY=toY(tickVal);
+    grid+='<line x1="'+padL+'" y1="'+tickY.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+tickY.toFixed(1)+'" stroke="#e2e8f0" stroke-width="1"/>';
+    grid+='<text x="'+(padL-4)+'" y="'+(tickY+5).toFixed(1)+'" text-anchor="end" font-size="16" fill="#94a3b8">'+Math.round(tickVal)+'</text>';
   }
-  let path='',dots='';
-  pts.forEach((s,i)=>{
-    const v=key==='trs'?s.trs:s.cadence_h;
-    const x=toX(i),y=toY(v);
-    const col=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':'#dc2626';
-    path+=i===0?`M${x.toFixed(1)},${y.toFixed(1)}`:`L${x.toFixed(1)},${y.toFixed(1)}`;
-    dots+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${col}" opacity=".9"/>`;
-  });
-  let xLabels='';
-  pts.forEach((s,i)=>{
-    const dp=s.date.split('/');
-    const lbl=`${dp[0]}/${dp[1]}`;
-    const x=toX(i),yB=H-padB;
-    xLabels+=`<line x1="${x.toFixed(1)}" y1="${yB.toFixed(1)}" x2="${x.toFixed(1)}" y2="${(yB+3).toFixed(1)}" stroke="#cbd5e1" stroke-width="1"/>`;
-    xLabels+=`<text transform="rotate(-45,${x.toFixed(1)},${(yB+3).toFixed(1)})" x="${x.toFixed(1)}" y="${(yB+3).toFixed(1)}" text-anchor="end" font-size="14" fill="#64748b">${lbl}</text>`;
-  });
-  const targetLine=key==='trs'
-    ?`<line x1="${padL}" y1="${toY(70).toFixed(1)}" x2="${W-padR}" y2="${toY(70).toFixed(1)}" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="6,3"/>
-      <text x="${(W-padR+2).toFixed(1)}" y="${(toY(70)+4).toFixed(1)}" font-size="9" fill="#16a34a" font-weight="700">70%</text>`:'';
-  const legend=`<span style="font-size:10px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:10px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span>${key==='trs'?' &nbsp;<svg width="18" height="6" style="display:inline"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="5,3"/></svg> Objectif':''}</span>`;
-  return `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;color:${titleCol}">${title}${legend}</div>
-    <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">
-      ${grid}${targetLine}
-      <path d="${path}" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
-      ${dots}${xLabels}
-    </svg>
-  </div>`;
+  // Path + dots + data labels above
+  var path='',dots='',labels='';
+  for(var pi=0;pi<pts.length;pi++){
+    var pt=pts[pi];
+    var ptVal=key==='trs'?pt.trs:pt.cadence_h;
+    var px=toX(pi),py=toY(ptVal);
+    var col=pt.trs>=70?'#16a34a':pt.trs>=50?'#f59e0b':'#dc2626';
+    path+=(pi===0?'M':'L')+px.toFixed(1)+','+py.toFixed(1);
+    dots+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="3.5" fill="'+col+'" opacity=".9"/>';
+    var lblTxt=key==='trs'?ptVal.toFixed(1):Math.round(ptVal);
+    labels+='<text x="'+px.toFixed(1)+'" y="'+(py-8).toFixed(1)+'" text-anchor="middle" font-size="11" fill="'+col+'" font-weight="600">'+lblTxt+'</text>';
+  }
+  var targetLine=key==='trs'
+    ?'<line x1="'+padL+'" y1="'+toY(70).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+toY(70).toFixed(1)+'" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="6,3"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(toY(70)+4).toFixed(1)+'" font-size="9" fill="#16a34a" font-weight="700">70%</text>'
+    :'';
+  var legend='<span style="font-size:10px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:10px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span>'+(key==='trs'?' &nbsp;<svg width="18" height="6" style="display:inline"><line x1="0" y1="3" x2="18" y2="3" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="5,3"/></svg> Objectif':'')+'</span>';
+  return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px">'
+    +'<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;color:'+titleCol+'">'+title+legend+'</div>'
+    +'<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">'
+    +grid+targetLine
+    +'<path d="'+path+'" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>'
+    +dots+labels
+    +'</svg></div>';
 }
 function _comopPareto(items,col,title){
   if(!items||!items.length) return `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;color:${col}">${title}</div><div style="color:var(--gray);font-size:12px">Aucun événement</div>`;
@@ -16636,6 +16633,7 @@ def generate_dashboard_html():
             '      var el=document.querySelector(sel);if(el)el.style.display="none";\n'
             '    });\n'
             '    var cdgBtn=document.getElementById("ht-cdg");if(cdgBtn)cdgBtn.style.display="";\n'
+            '    var comopBtn=document.getElementById("ht-comop");if(comopBtn)comopBtn.style.display="";\n'
             '    var logiBtn=document.getElementById("ht-logistique");if(logiBtn)logiBtn.style.display="";\n'
             '    var logiView=document.getElementById("v-logistique");if(logiView)logiView.style.display="";\n'
             '    var _probBtn=document.getElementById("ht-problemes");if(_probBtn)_probBtn.style.display="";\n'
