@@ -13331,7 +13331,7 @@ async function addMissingDecl(rowId, label){
   const debut=document.getElementById(rowId+'-debut')?.value;
   const fin=document.getElementById(rowId+'-fin')?.value;
   if(!debut||!fin){toast('Remplissez les heures','warn');return;}
-  const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:label,debut_hms:debut,fin_hms:fin,comment:''})});
+  const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:label,debut_hms:debut,fin_hms:fin,comment:'',copilote:window._loginCopilote||''})});
   const d=r?await r.json():{};
   if(d.ok){
     const ok=document.getElementById(rowId+'-ok');if(ok) ok.style.display='';
