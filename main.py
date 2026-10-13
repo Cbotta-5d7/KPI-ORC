@@ -4663,9 +4663,10 @@ def api_end_stop():
         elif _cat=="autre":
             _lbl = key
         elif _cat in ("pb","ratt"):
-            _cat_n = "Rattrapage" if _cat=="ratt" else "PB Technique"
-            _evlbl = next((e[0] for e in EVENTS if e[1]==key), key)
-            _lbl = f"{_cat_n}: {_evlbl}"
+            _dyn_evts = get_events_list()
+            _lbl = (next((e["label"] for e in _dyn_evts if isinstance(e,dict) and e.get("key")==key), None)
+                    or next((e[0] for e in EVENTS if e[1]==key), None)
+                    or key)
         else:
             # organisation, manquants, interposte ou toute autre catégorie dynamique
             _dyn_evts = get_events_list()
