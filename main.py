@@ -6667,7 +6667,7 @@ def api_period_report():
             agg_obj_pcs += _session_obj
         _evt_rows_sd = [{"type":str(re2[0] or ""),"of":str(re2[1] or ""),"debut":str(re2[16] or "")[:5],"fin":str(re2[17] or "")[:5],"duree":str(re2[18] or ""),"comment":str(re2[35] or ""),"is_degrade":_is_degrade_type(str(re2[0] or "")),"real_date":str(re2[2] or "") if len(re2)>2 else ""} for _rn2, re2 in s.get('evt_rows',[])]
         agg_degrade_min += (_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s / 60.0)
-        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'pcs':round(s['tot_pcs']),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd,'_deb_dt':_pdeb})
+        sessions_detail.append({'date':s['date'],'pilot':s['pilot'],'poste':s['poste'],'trs':_trs_s,'cadence_h':_cad_s,'equiv':round(s['tot_equiv'],1),'pcs':round(s['tot_pcs']),'degrade_min':round(_xl.get('degrade_min') if _xl.get('degrade_min') is not None else _deg_s/60.0, 1),'of_rows':_of_rows_sd,'evt_rows':_evt_rows_sd,'_deb_dt':_pdeb,'ouv_min':round(ouv_min,1),'utile_min':round(utile_min,1),'fonct_min':round(fonct_min,1),'net_stop_min':round(net_stop_min,1),'arret_prevu_min':round(arrets_prevu,1),'sum_expected':round(_sum_exp_pr,4)})
     _trs_denom = agg_obj_equiv if agg_obj_equiv > 0 else (agg_sum_theorique if agg_sum_theorique > 0 else agg_sum_expected)
     trs_periode = round(agg_equiv/_trs_denom*100,1) if _trs_denom>0 and agg_equiv>0 else -1.0
     def _sort_dmy(d):
@@ -16772,13 +16772,34 @@ def generate_dashboard_html():
             '  if(url.indexOf("/api/period_report")!==-1){\n'
             '    try{var pu=new URL(url,location.href).searchParams;\n'
             '    var ms=pu.get("max_sessions"),sk=pu.get("skip_current");\n'
-            '    if(ms==="3"&&sk==="1")return d.period_last3||{};\n'
+            '    var fpilot=pu.get("pilot")||"",fposte=pu.get("poste")||"";\n'
+            '    var bucket;\n'
+            '    if(ms&&sk==="1"&&!fpilot&&!fposte){return ms==="3"?d.period_last3||{}:d.period_last6m||{};}\n'
             '    var df=pu.get("date_from")||"",dt2=pu.get("date_to")||"";\n'
-            '    if(!df)return d.period_last3||{};\n'
-            '    var daysMs=(new Date(dt2)-new Date(df))/86400000;\n'
-            '    if(daysMs<=8)return d.period_last7||{};\n'
-            '    if(daysMs<=32)return d.period_last31||{};\n'
-            '    return d.period_last6m||{};}catch(e){return {};}\n'
+            '    if(!df&&!fpilot&&!fposte)return d.period_last3||{};\n'
+            '    if(!df){bucket=d.period_last6m||{};}\n'
+            '    else{var daysMs=(new Date(dt2)-new Date(df))/86400000;\n'
+            '    if(daysMs<=8)bucket=d.period_last7||{};\n'
+            '    else if(daysMs<=32)bucket=d.period_last31||{};\n'
+            '    else bucket=d.period_last6m||{};}\n'
+            '    if(!fpilot&&!fposte)return bucket;\n'
+            '    var fsd=(bucket.sessions_detail||[]).filter(function(s){return(!fpilot||s.pilot===fpilot)&&(!fposte||s.poste===fposte);});\n'
+            '    var r=Object.assign({},bucket,{sessions_detail:fsd});\n'
+            '    if(!fsd.length){r.nb_sessions=0;return r;}\n'
+            '    r.nb_sessions=fsd.length;\n'
+            '    r.tot_pcs=fsd.reduce(function(a,s){return a+(s.pcs||0);},0);\n'
+            '    r.tot_equiv=Math.round(fsd.reduce(function(a,s){return a+(s.equiv||0);},0)*10)/10;\n'
+            '    r.nb_of=fsd.reduce(function(a,s){return a+(s.of_rows||[]).length;},0);\n'
+            '    r.ouverture_min=Math.round(fsd.reduce(function(a,s){return a+(s.ouv_min||0);},0)*10)/10;\n'
+            '    r.temps_utile_min=Math.round(fsd.reduce(function(a,s){return a+(s.utile_min||0);},0)*10)/10;\n'
+            '    r.temps_fonctionnement_min=Math.round(fsd.reduce(function(a,s){return a+(s.fonct_min||0);},0)*10)/10;\n'
+            '    r.net_stop_min=Math.round(fsd.reduce(function(a,s){return a+(s.net_stop_min||0);},0)*10)/10;\n'
+            '    r.arret_prevu_min=Math.round(fsd.reduce(function(a,s){return a+(s.arret_prevu_min||0);},0)*10)/10;\n'
+            '    r.tot_degrade_min=Math.round(fsd.reduce(function(a,s){return a+(s.degrade_min||0);},0)*10)/10;\n'
+            '    var _sumExp=fsd.reduce(function(a,s){return a+(s.sum_expected||0);},0);\n'
+            '    r.trs_periode=_sumExp>0?Math.round(r.tot_equiv/_sumExp*1000)/10:-1;\n'
+            '    r.cadence_h=r.temps_utile_min>0?Math.round(r.tot_equiv/r.temps_utile_min*60):0;\n'
+            '    return r;}catch(e){return {};}\n'
             '  }\n'
             '  if(url.indexOf("/api/reload_excel")!==-1)return {ok:true};\n'
             '  if(url.indexOf("/api/cdg_data")!==-1)return d.cdg_data||[];\n'
