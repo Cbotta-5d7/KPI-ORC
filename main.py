@@ -17512,6 +17512,7 @@ def generate_dashboard_html():
             '});\n'
             # ── OF EN COURS : affichage live dans rapport poste ──
             '(function(){\n'
+            '  var _serverBase="http://127.0.0.1:5001";\n'
             '  var _liveState=null,_curSession=null;\n'
             '  var _origLSR=window.loadSessionReport;\n'
             '  if(typeof _origLSR!=="function")return;\n'
@@ -17568,7 +17569,7 @@ def generate_dashboard_html():
             '    if(!document.getElementById("_encours-kf")){var _ks=document.createElement("style");_ks.id="_encours-kf";_ks.textContent="@keyframes _enCoursAnim{0%,100%{opacity:1}50%{opacity:.35}}";document.head.appendChild(_ks);}\n'
             '  }\n'
             '  function _pollState(){\n'
-            '    _origFetch("/api/state").then(function(r){return r.json();}).then(function(st){_liveState=st;_applyEnCours();}).catch(function(){_liveState=null;_applyEnCours();});\n'
+            '    _origFetch(_serverBase+"/api/state").then(function(r){return r.json();}).then(function(st){_liveState=st;_applyEnCours();}).catch(function(){_liveState=null;_applyEnCours();});\n'
             '  }\n'
             '  setTimeout(function(){_pollState();setInterval(_pollState,5000);},1500);\n'
             '})();\n'
