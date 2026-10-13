@@ -915,6 +915,7 @@ def _compute_budget_state_now():
     # 2. OF en cours : tl_events (terminés et actifs)
     for ev in _S.get("tl_events", []):
         if not ev.get("start"): continue
+        if ev.get("_excel_written"): continue  # déjà compté via _decl_cache (step 1)
         pl = _planned_lbl_from_tl(ev)
         if pl:
             end = ev.get("end") or datetime.datetime.now()
@@ -4793,7 +4794,12 @@ def api_finalize_pause():
             if _split < _ps: _split += datetime.timedelta(days=1)
             if _split > _pe: _split = _pe
             if _split > _ps: _write_pause_row(_ps, _split)
-            if _split < _pe: _write_event_row(overflow_type, _split, _pe)
+            if _split < _pe:
+                _write_event_row(overflow_type, _split, _pe)
+                overflow_s = (_pe - _split).total_seconds()
+                with _S_lock:
+                    _S["pause_total_s"] = max(0.0, _S.get("pause_total_s", 0.0) - overflow_s)
+                save_session()
         else:
             _write_pause_row(_ps, _pe)
         return jsonify({"ok": True})
@@ -12776,7 +12782,8 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
     const x1=toX(t1),x2=toX(t2||tE);
     if(x2<=x1) return;
     const cat=ev.cat||'autre';
-    const fillCol=ev.is_degrade?`url(#${_dpId})`:(STOP_COL[cat]||'#94a3b8');
+    if(ev.is_degrade) return;  // dégradé dans la petite barre dessous uniquement
+    const fillCol=STOP_COL[cat]||'#94a3b8';
     html+=`<rect x="${x1}" y="${Y}" width="${x2-x1}" height="${H2}" fill="${fillCol}" rx="2" opacity=".85"/>`;
   });
   // Current live stop
@@ -12789,9 +12796,16 @@ function drawTLFromISO(svgId,evts,startIso,endIso,prodOfList){
   // Dégradé — bande séparée sous la barre principale (ne chevauche pas les arrêts)
   const _DY=Y+H2+2,_DH=8;
   const _ofStartMsTL=ST.of_start_iso?new Date(ST.of_start_iso).getTime():tS;
-  const _hasDeg=(window._degradePeriodsIso||[]).some(p=>p.start&&p.end)||(window._degradeActive&&ST.degrade_start_iso&&ST.prod_active);
+  const _histDegEvts=(evts||[]).filter(e=>e.is_degrade&&e.debut&&e.fin);
+  const _hasDeg=_histDegEvts.length>0||(window._degradePeriodsIso||[]).some(p=>p.start&&p.end)||(window._degradeActive&&ST.degrade_start_iso&&ST.prod_active);
   if(_hasDeg){
     html+=`<rect x="0" y="${_DY}" width="${W}" height="${_DH}" fill="#e2e8f0" rx="2"/>`;
+    _histDegEvts.forEach(function(ev){
+      const t1=parseHMStoT(ev.debut,ev.date),t2=parseHMStoT(ev.fin,ev.date);
+      if(!t1||!t2||t2<=t1) return;
+      const x1=toX(t1),x2=toX(t2);
+      if(x2>x1) html+=`<rect x="${x1}" y="${_DY}" width="${x2-x1}" height="${_DH}" fill="url(#${_dpId})" rx="2"/>`;
+    });
     (window._degradePeriodsIso||[]).forEach(function(p){
       if(!p.start||!p.end) return;
       const _d0=Math.max(new Date(p.start).getTime(),_ofStartMsTL);
