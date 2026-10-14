@@ -1640,7 +1640,7 @@ def write_excel_bg(prod_row, evt_rows):
                 return
     threading.Thread(target=_bg, daemon=True).start()
 
-def write_changement_of(start_dt, end_dt, label=None, comment=""):
+def write_changement_of(start_dt, end_dt, label=None, comment="", copilote=""):
     path = _db_path_resolved()
     if not path or not os.path.exists(path): return
     pilot = _S.get("last_of_pilot") or _S.get("pilot") or ""
@@ -1651,7 +1651,7 @@ def write_changement_of(start_dt, end_dt, label=None, comment=""):
     shift_date_str = shift_dt.strftime("%d/%m/%Y")
     row = [
         row_type,"",start_dt.strftime("%d/%m/%Y"),
-        _S.get("poste",""),pilot,"","","","","","","","","","","",
+        _S.get("poste",""),pilot,copilote,"","","","","","","","","","",
         start_dt.strftime("%H:%M:%S"),end_dt.strftime("%H:%M:%S"),fmt(dur_s),
         "","","","","","","","","","","","","","","","",comment,
         "","","",shift_date_str,"","",
@@ -4210,6 +4210,7 @@ def api_inter_of_confirm():
     _S["inter_of_s"] = float(data.get("inter_of_s",0))
     label = data.get("label","")
     comment = data.get("comment","")
+    copilote = str(data.get("copilote","") or "").strip()
     debut_hms = data.get("debut_hms","")
     fin_hms = data.get("fin_hms","")
     start_dt = _S["last_of_end"]
@@ -4230,7 +4231,7 @@ def api_inter_of_confirm():
     if start_dt is None:
         start_dt = _S.get("shift_debut_dt")
     if _S["inter_of_s"] >= 60 and start_dt and end_dt:
-        write_changement_of(start_dt, end_dt, label=label or None, comment=comment)
+        write_changement_of(start_dt, end_dt, label=label or None, comment=comment, copilote=copilote)
         # Mise à jour synchrone du cache pour éviter le race-condition fin-de-poste
         # (write_changement_of écrit en background → _decl_cache pas encore rafraîchi)
         global _decl_cache
@@ -4240,7 +4241,7 @@ def api_inter_of_confirm():
         _cache_row = [
             label or "Changement d'OF", "", start_dt.strftime("%d/%m/%Y"),
             _S.get("poste",""), _S.get("pilot",""),
-            "","","","","","","","","","","",
+            copilote,"","","","","","","","","","",
             start_dt.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"), fmt(_dur2_s),
             "","","","","","","","","","","","","","","","",comment,
             "","",_sd2,
@@ -11222,7 +11223,7 @@ async function confirmPsAsStop(){
   const g=_pendingGaps[_pendingGapIdx]||{};
   closeM('m-preshift');
   await fetch('/api/inter_of_confirm',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({inter_of_s:gapS,label:lbl,comment:'',debut_hms:g.debut||'',fin_hms:g.fin||''})});
+    body:JSON.stringify({inter_of_s:gapS,label:lbl,comment:'',debut_hms:g.debut||'',fin_hms:g.fin||'',copilote:window._loginCopilote||(document.getElementById('f-copilote')||{}).value||''})});
   await pollState();
   await pollEvts();
   loadMainDecl();
