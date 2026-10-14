@@ -8121,8 +8121,8 @@ select{cursor:default}
           <!-- Zone Production -->
           <div class="fzone zp">
             <h4>🏭 Production</h4>
-            <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="0" oninput="scheduleAutoSave();_applyFormAndUpdateGauge()" onclick="openCodeInput('qte_fab','Qté Fabriquée','num',5)"></div>
-            <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="0" oninput="scheduleAutoSave();_applyFormAndUpdateGauge()" onclick="openCodeInput('qte_emb','Qté Emballée','num',5)"></div>
+            <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="" oninput="scheduleAutoSave();_applyFormAndUpdateGauge()" onclick="openCodeInput('qte_fab','Qté Fabriquée','num',5)"></div>
+            <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="" oninput="scheduleAutoSave();_applyFormAndUpdateGauge()" onclick="openCodeInput('qte_emb','Qté Emballée','num',5)"></div>
             <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
@@ -12984,7 +12984,7 @@ function _codeInputConfirm() {
   const _isMain=!_codeInputFullId;
   if(_csFormat==='num'){
     const numVal=parseInt(_csNumBuf,10);
-    if(!_csNumBuf||isNaN(numVal)||numVal<=0){toast('Valeur requise','err');return;}
+    if(!_csNumBuf||isNaN(numVal)){toast('Valeur requise','err');return;}
     const field=_getField();
     if(field){field.value=numVal;if(_isMain)scheduleAutoSave();}
     closeM('m-code-input');
