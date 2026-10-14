@@ -13259,7 +13259,7 @@ function showOfDetail(ri) {
   function _hm2s(hm) { if(!hm) return 0; const p=(hm+':0:0').split(':').map(Number); return(p[0]||0)*3600+(p[1]||0)*60+(p[2]||0); }
   const debS = _hm2s(r.debut), finS = _hm2s(r.fin)||86400;
   const _nightOf=(finS>0&&finS<debS);
-  const ofEvts = evtRows.filter(e => { const t = _hm2s(e.debut); return _nightOf?(t>=debS||t<=finS):(t>=debS&&t<=finS); });
+  const ofEvts = evtRows.filter(e => { const ts=_hm2s(e.debut);let te=e.fin?_hm2s(e.fin):0;if(te>0&&te<ts)te+=86400;if(!te)te=ts+3600;if(_nightOf){const adjF=finS+86400;return ts<adjF&&te>debS;}return ts<=finS&&te>=debS; });
   _renderAndOpenOfDetail(r, ofEvts);
 }
 
