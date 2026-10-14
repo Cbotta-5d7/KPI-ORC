@@ -17525,9 +17525,21 @@ def generate_dashboard_html():
             '  },500);\n'
             '});\n'
             # ── OF EN COURS : affichage dans rapport poste (une seule récupération au chargement) ──
-            '(function(){\n'
-            '  var _serverBase="http://127.0.0.1:5001";\n'
-            '  var _liveState=null;\n'
+            + (lambda: (
+                lambda _baked: (
+                    '(function(){\n'
+                    '  var _serverBase="http://127.0.0.1:5001";\n'
+                    '  var _liveState=' + _baked + ';\n'
+                ))(
+                _json.dumps({
+                    "prod_active": True,
+                    "form": _S.get("form") or {},
+                    "of_start_iso": _S["of_start"].isoformat() if _S.get("of_start") else None,
+                    "of_elapsed_s": (datetime.datetime.now() - _S["of_start"]).total_seconds() if _S.get("of_start") else 0,
+                    "pilot": _S.get("pilot",""),
+                    "poste": _S.get("poste",""),
+                }) if _S.get("prod_active") else "null"
+            ))() +
             '  var _origLSR=window.loadSessionReport;\n'
             '  if(typeof _origLSR!=="function")return;\n'
             '  window.loadSessionReport=async function(date,pilot,poste,itemId){\n'
