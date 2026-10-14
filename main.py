@@ -16952,7 +16952,7 @@ def generate_dashboard_html():
             '          ws["!cols"]=headers.map(function(h){return{wch:Math.max(12,String(h||"").length+2)};});\n'
             '          ws["!freeze"]={xSplit:0,ySplit:1};\n'
             '          for(var ci=0;ci<headers.length;ci++){var ca=XLSX.utils.encode_cell({r:0,c:ci});if(ws[ca])ws[ca].s=hdrS;}\n'
-            '          if(zfmt){for(var ri=1;ri<=rows.length;ri++){Object.keys(zfmt).forEach(function(ci){var ca=XLSX.utils.encode_cell({r:ri,c:+ci});if(ws[ca]&&ws[ca].t==="n"){ws[ca].s=Object.assign({},ws[ca].s||{},{numFmt:zfmt[ci]});}});}}\n'
+            '          for(var ri=1;ri<=rows.length;ri++){for(var ci=0;ci<headers.length;ci++){var ca=XLSX.utils.encode_cell({r:ri,c:ci});if(ws[ca]){var cs={font:{sz:10},border:bdr};if(zfmt&&zfmt[ci]&&ws[ca].t==="n")cs.numFmt=zfmt[ci];ws[ca].s=cs;}}}\n'
             '          return ws;\n'
             '        }\n'
             '        var wb=XLSX.utils.book_new();\n'
