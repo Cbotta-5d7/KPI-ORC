@@ -5820,9 +5820,11 @@ def api_edit_row():
                 _ds_ck = _hms_to_sec(str(_r_ck[16] or "00:00:00"))
                 _fs_ck = _norm_fin(_ds_ck, _hms_to_sec(str(_r_ck[17] or "00:00:00")))
                 if _fs_ck <= _ds_ck: continue
-                # Test dans les deux référentiels pour gérer les postes de nuit (chevauchement minuit)
-                _ov = (_new_deb_s < _fs_ck and _new_fin_s > _ds_ck) or \
-                      (_new_deb_s + 86400 < _fs_ck and _new_fin_s + 86400 > _ds_ck)
+                # Test dans les deux référentiels pour gérer les postes de nuit (tolérance 2min)
+                _TOL = 120
+                _ov1 = min(_new_fin_s, _fs_ck) - max(_new_deb_s, _ds_ck)
+                _ov2 = min(_new_fin_s + 86400, _fs_ck) - max(_new_deb_s + 86400, _ds_ck)
+                _ov = _ov1 > _TOL or _ov2 > _TOL
                 if _ov:
                     _of_ck = str(_r_ck[1] or "OF inconnu")
                     _h_d_ck = str(_r_ck[16] or "")[:5]
