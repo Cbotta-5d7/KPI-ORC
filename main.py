@@ -8866,9 +8866,9 @@ select{cursor:default}
       <span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:var(--navy);letter-spacing:.3px">🕘 Historique</span>
       <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1.5px solid #c7d2fe;border-radius:10px;padding:4px 10px;box-shadow:0 1px 4px rgba(99,102,241,.12)">
         <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#4338ca;text-transform:uppercase">📆 Du</span>
-        <input type="date" id="hist-from" style="padding:3px 6px;border:none;border-radius:5px;font-size:calc(12px*var(--zf,1));color:#1e3a8a;font-weight:600;outline:none;background:transparent">
+        <input type="date" id="hist-from" onchange="loadHist()" style="padding:3px 6px;border:none;border-radius:5px;font-size:calc(12px*var(--zf,1));color:#1e3a8a;font-weight:600;outline:none;background:transparent">
         <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#4338ca;text-transform:uppercase">au</span>
-        <input type="date" id="hist-to" style="padding:3px 6px;border:none;border-radius:5px;font-size:calc(12px*var(--zf,1));color:#1e3a8a;font-weight:600;outline:none;background:transparent">
+        <input type="date" id="hist-to" onchange="loadHist()" style="padding:3px 6px;border:none;border-radius:5px;font-size:calc(12px*var(--zf,1));color:#1e3a8a;font-weight:600;outline:none;background:transparent">
       </div>
       <button class="btn btn-primary" onclick="loadHist()" style="padding:5px 14px;font-size:calc(12px*var(--zf,1));background:linear-gradient(180deg,#2d3480,#1a1f5e);border:none;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(26,31,94,.35),inset 0 1px 0 rgba(255,255,255,.18)">Charger</button>
       <div style="width:1px;height:22px;background:var(--border);flex-shrink:0"></div>
@@ -16777,7 +16777,7 @@ def generate_dashboard_html():
             'window.apiFetch=async function(url,opts){\n'
             '  var d=window.DASH||{};\n'
             '  if(url.indexOf("/api/state")!==-1)return _DASH_STATE;\n'
-            '  if(url.indexOf("/api/history")!==-1)return d.history||[];\n'
+            '  if(url.indexOf("/api/history")!==-1){try{var _hp=new URL(url,location.href).searchParams;var _hf=_hp.get("from")||"",_ht=_hp.get("to")||"";if(!_hf&&!_ht)return d.history||[];function _dmyIso(s){var p=String(s||"").split("/");return p.length===3?p[2]+"-"+p[1]+"-"+p[0]:String(s||"");}return(d.history||[]).filter(function(r){var dd=_dmyIso(r.shift_date||r.date);return(!_hf||dd>=_hf)&&(!_ht||dd<=_ht);});}catch(e){return d.history||[];}}\n'
             '  if(url.indexOf("/api/events_list")!==-1)return d.events_list||[];\n'
             '  if(url.indexOf("/api/past_sessions")!==-1)return d.past_sessions||[];\n'
             '  if(url.indexOf("/api/session_report")!==-1){\n'
@@ -16912,21 +16912,14 @@ def generate_dashboard_html():
             '      var from=fromEl?fromEl.value:"";\n'
             '      var to=toEl?toEl.value:"";\n'
             '      function _toIso(s){var p=String(s||"").split("/");return p.length===3?p[2]+"-"+p[1]+"-"+p[0]:String(s||"");}\n'
-            '      var _domRows=document.querySelectorAll("#hist-bd tr[data-hftype]:not([data-hftype=\'sep\'])");\n'
-            '      if(_domRows.length>0){\n'
-            '        var _vis=new Set();var _di=0;\n'
-            '        _domRows.forEach(function(tr){if(tr.style.display!=="none")_vis.add(_di);_di++;});\n'
-            '        rowsD=rowsD.filter(function(r,i){\n'
-            '          if(!_vis.has(i)) return false;\n'
-            '          if(from||to){var d=_toIso(r[2]);if(from&&d<from)return false;if(to&&d>to)return false;}\n'
-            '          return true;\n'
-            '        });\n'
-            '      } else if(from||to){\n'
-            '        rowsD=rowsD.filter(function(r){var d=_toIso(r[2]);if(from&&d<from)return false;if(to&&d>to)return false;return true;});\n'
-            '      }\n'
             '      if(from||to){\n'
+            '        rowsD=rowsD.filter(function(r){var d=_toIso(r[2]);if(from&&d<from)return false;if(to&&d>to)return false;return true;});\n'
             '        rowsP=rowsP.filter(function(r){var d=_toIso(r[0]);if(from&&d<from)return false;if(to&&d>to)return false;return true;});\n'
             '      }\n'
+            '      var _sq=(document.getElementById("hist-search")||{}).value||"";\n'
+            '      if(_sq){var _sql=_sq.toLowerCase();rowsD=rowsD.filter(function(r){return String(r[1]||"").toLowerCase().indexOf(_sql)!==-1;});}\n'
+            '      var _ac=[];document.querySelectorAll(".hf-btn").forEach(function(b){if(b.style.background&&b.style.background!=="none")_ac.push(b.dataset.hf);});\n'
+            '      if(_ac.length>0&&_ac.indexOf("production")===-1){rowsD=[];}\n'
             '      if(!rowsD.length&&!rowsP.length){alert("Aucune donnée à exporter.");return;}\n'
             '      function doExpH(XLSX){\n'
             '        var thin={style:"thin",color:{rgb:"CCCCCC"}};\n'
