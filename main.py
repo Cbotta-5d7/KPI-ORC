@@ -7050,8 +7050,8 @@ def api_add_past_decl():
                 if _fin_ov_dt <= _debut_ov_dt: _fin_ov_dt += datetime.timedelta(days=1)
             except Exception: continue
             if _fin_ov_dt <= _debut_ov_dt: continue
-            # Chevauchement si les intervalles se recoupent
-            if debut_dt < _fin_ov_dt and fin_dt > _debut_ov_dt:
+            # Chevauchement si les intervalles se recoupent (tolérance 2min)
+            if (min(fin_dt, _fin_ov_dt) - max(debut_dt, _debut_ov_dt)).total_seconds() > 120:
                 _of_ov = str(_r_ov[1] or "OF inconnu")
                 _h_deb_ov = str(_r_ov[16] or "")[:5]
                 _h_fin_ov = str(_r_ov[17] or "")[:5]
