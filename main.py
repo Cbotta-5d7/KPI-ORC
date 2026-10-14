@@ -14817,7 +14817,7 @@ async function loadHist(){
     </tr>`;
   });
   bd.innerHTML=_histHtml;
-  _applyHistFilter();
+  filterHistBySearch(); // applique recherche OF + filtre type chips
 }
 
 // ── RAPPORTS DES POSTES ──
@@ -16868,7 +16868,7 @@ def generate_dashboard_html():
             '      var rows=(_cfrom||_cto)?_allCdg.filter(function(r){var d=_cdgIso(r.date);if(_cfrom&&d<_cfrom)return false;if(_cto&&d>_cto)return false;return true;}):_allCdg;\n'
             '      if(!rows.length){alert("Aucune donnée à exporter.");return;}\n'
             '      function doExport(XLSX){\n'
-            '        function _D(s){var p=String(s||"").split("/");if(p.length===3&&p[2]){var d=new Date(+p[2],+p[1]-1,+p[0]);if(!isNaN(d))return d;}return String(s||"");}\n'
+            '        function _D(s){var p=String(s||"").split("/");if(p.length===3&&p[2]){var ms=new Date(+p[2],+p[1]-1,+p[0]).getTime()-new Date(1899,11,30).getTime();var sr=Math.round(ms/86400000);if(!isNaN(sr)&&sr>0)return sr;}return String(s||"");}\n'
             '        function _T(s){var p=String(s||"").split(":");if(p.length<2||!s)return "";return(+p[0]*3600+(+p[1]||0)*60+(+(p[2]||0)))/86400;}\n'
             '        function _N(s){var v=parseFloat(String(s||"").replace(",","."));return isNaN(v)?"":v;}\n'
             '        var hdrs=["Type","Désignation","Arrêts bloquant ?","OF","Pilote","Co-pilote","Poste","Date réelle","Date du poste de rattachement","Début","Fin","Durée","Qté prod.","Qté équiv.","Nb pers","Commentaire"];\n'
@@ -16890,7 +16890,7 @@ def generate_dashboard_html():
             '          var ip=rows[ri].is_prod;\n'
             '          for(var ci=0;ci<hdrs.length;ci++){\n'
             '            var ca2=XLSX.utils.encode_cell({r:ri+1,c:ci});\n'
-            '            if(ws[ca2]){ws[ca2].s={font:{color:ci===0?{rgb:ip?"1D4ED8":"B45309"}:{rgb:"111111"},sz:10},fill:ip?pFill:aFill,border:bdr};if(_zfmt[ci])ws[ca2].z=_zfmt[ci];}\n'
+            '            if(ws[ca2]){var _cs={font:{color:ci===0?{rgb:ip?"1D4ED8":"B45309"}:{rgb:"111111"},sz:10},fill:ip?pFill:aFill,border:bdr};if(_zfmt[ci])_cs.numFmt=_zfmt[ci];ws[ca2].s=_cs;}\n'
             '          }\n'
             '          if(!ip&&rows[ri].bloquant==="OUI"&&(rows[ri].duree_min||0)>30){\n'
             '            var durC=XLSX.utils.encode_cell({r:ri+1,c:11});\n'
@@ -16926,7 +16926,7 @@ def generate_dashboard_html():
             '      if(_ac.length>0&&_ac.indexOf("production")===-1){rowsD=[];}\n'
             '      if(!rowsD.length&&!rowsP.length){alert("Aucune donnée à exporter.");return;}\n'
             '      function doExpH(XLSX){\n'
-            '        function _D(s){var p=String(s||"").split("/");if(p.length===3&&p[2]){var d=new Date(+p[2],+p[1]-1,+p[0]);if(!isNaN(d))return d;}return String(s||"");}\n'
+            '        function _D(s){var p=String(s||"").split("/");if(p.length===3&&p[2]){var ms=new Date(+p[2],+p[1]-1,+p[0]).getTime()-new Date(1899,11,30).getTime();var sr=Math.round(ms/86400000);if(!isNaN(sr)&&sr>0)return sr;}return String(s||"");}\n'
             '        function _T(s){var p=String(s||"").split(":");if(p.length<2||!s)return "";return(+p[0]*3600+(+p[1]||0)*60+(+(p[2]||0)))/86400;}\n'
             '        function _Nv(s){var v=parseFloat(String(s||"").replace(",","."));return isNaN(v)?String(s||""):v;}\n'
             '        var _dZ={2:"DD/MM/YYYY",16:"HH:MM",17:"HH:MM",18:"[H]:MM:SS",37:"[H]:MM:SS",38:"[H]:MM:SS",39:"DD/MM/YYYY"};\n'
