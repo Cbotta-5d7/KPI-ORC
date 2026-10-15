@@ -15069,7 +15069,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
           <div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden">
             <div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div>
           </div>
-          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m</span>
+          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}min</span>
         </div>
       </div>`;
     }).join('');
@@ -15089,7 +15089,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
           <div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden">
             <div style="width:${pct}%;background:#f59e0b;height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div>
           </div>
-          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}m</span>
+          <span style="flex-shrink:0;font-size:calc(9px*var(--zf,1));color:#6b7280;white-space:nowrap">${pctTot}% · ${Math.round(e.min)}min</span>
         </div>
       </div>`;
     }).join('');
@@ -15221,7 +15221,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
         <div class="fp-card" style="padding:8px 12px;text-align:center"><div style="font-size:calc(36px*var(--zf,1));font-weight:900;color:${trsCol};line-height:1">${d.trs_periode>=0?d.trs_periode.toFixed(1)+'%':'—'}</div><div style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:600;margin-top:3px">TRS période · ${d.nb_jours}j · ${d.nb_sessions} postes · ${d.nb_of} OF</div></div>
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:var(--gray)">Pièces</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
         <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:var(--gray)">Equiv</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
-        <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colCadRj}">${d.cadence_h||0} <span style="font-weight:600;color:var(--gray)">Pcs/h</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100} pièces/min)</span></div></div>
+        <div class="fp-card" style="padding:7px 12px"><div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:${_colCadRj}">${d.cadence_h||0} <span style="font-weight:600;color:var(--gray)">Pcs/h</span> <span style="font-size:calc(11px*var(--zf,1));font-weight:600;color:#94a3b8">(Obj ${Math.round((d.cadence_ref_pcs_min||0)*60)} Pcs/h)</span></div></div>
         ${[['Temps d\'ouverture',Math.round(d.ouverture_min||0)+' min','#64748b'],['Temps utile',Math.round(d.temps_utile_min||0)+' min','#64748b'],['Tps de fonctionnement',Math.round(d.temps_fonctionnement_min||0)+' min',_colFonctRj],['Temps d\'arrêt',Math.round(d.net_stop_min||0)+' min',_colArretRj],['Temps d\'arrêt imprévu',Math.max(0,Math.round((d.net_stop_min||0)-(d.arret_prevu_min||0)))+' min',_colImpRj],['Temps arrêts prévus',Math.round(d.arret_prevu_min||0)+' min','#64748b'],['Dépass. arrêts prévu',(d.depassement_min||0)>0?Math.round(d.depassement_min)+' min':'✓ OK',(d.depassement_min||0)>0?'#dc2626':'#16a34a'],['Temps dégradé',Math.round(d.tot_degrade_min||0)+' min',_colDegRj],['Postes',d.nb_sessions,'#64748b'],['Nombre d\'OF',d.nb_of,'#64748b'],['Nombre de chgt fibre',d.nb_fibre_chg||0,'#64748b']].map(([l,v,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:4px"><span style="font-size:calc(11px*var(--zf,1));color:#64748b">${l}</span><span style="font-size:calc(12px*var(--zf,1));font-weight:700;color:${c}">${v}</span></div>`).join('')}
       </div>
       <!-- Droite : graphiques+pareto côte à côte, tables -->
@@ -15302,7 +15302,7 @@ async function captureRapportJour(){
     <div style="width:272px;flex-shrink:0;display:flex;flex-direction:column;gap:5px">
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colPcsRj}">${Math.round(d.tot_pcs||0)} <span style="font-weight:600;color:#374151">Pièces</span> <span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_pcs||0)>0?Math.round(d.objectif_pcs):'—'})</span></div></div>
       <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colEquivRj}">${Math.round(d.tot_equiv||0)} <span style="font-weight:600;color:#374151">Equiv</span> <span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj ${(d.objectif_equiv||0)>0?Math.round(d.objectif_equiv):'—'})</span></div></div>
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:18px;font-weight:800;color:${_colCadRj}">${d.cadence_h||0} <span style="font-weight:600;color:#374151">Pcs/h</span> <span style="font-size:14px;font-weight:600;color:#94a3b8">(ref : ${Math.round((d.cadence_ref_pcs_min||0)*100)/100} pièces/min)</span></div></div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:18px;font-weight:800;color:${_colCadRj}">${d.cadence_h||0} <span style="font-weight:600;color:#374151">Pcs/h</span> <span style="font-size:14px;font-weight:600;color:#94a3b8">(Obj ${Math.round((d.cadence_ref_pcs_min||0)*60)} Pcs/h)</span></div></div>
       ${window._chartTrsHtmlSnap||chartTrsHtml}
       ${window._chartCadHtmlSnap||chartCadHtml}
     </div>
