@@ -7049,7 +7049,7 @@ def api_add_past_decl():
             return jsonify({"ok":False,"error":f"Motif dégradé inconnu : {stop_type}"}),400
         row = [
             stop_type, (_S.get("form") or {}).get("of_num",""), date_str, poste, pilot,
-            (_S.get("form") or {}).get("copilote",""),
+            str(data.get("copilote","") or (_S.get("form") or {}).get("copilote","") or ""),
             str((_S.get("form") or {}).get("nb_pers","") or ""),
             "","","","","","","","","",
             debut_dt.strftime("%H:%M:%S"), fin_dt.strftime("%H:%M:%S"), fmt(dur_s),
@@ -13636,7 +13636,7 @@ async function saveEcartGapStop(gi){
     const _egProd=((document.getElementById('ecart-gap-prod-'+gi)||{}).value||'').trim();
     const _egFibre=((document.getElementById('ecart-gap-fibre-'+gi)||{}).value||'').trim();
     const r=await fetch('/api/add_stop_decl',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,date_debut:_egDateIso,comment:'',copilote:window._loginCopilote||'',of_num:_egOf,nb_pers:_egNbPers,type_prod:_egProd,fibre:_egFibre})});
+      body:JSON.stringify({type,debut_hms:debut,fin_hms:fin,date_debut:_egDateIso,comment:'',copilote:window._loginCopilote||(document.getElementById('f-copilote')||{}).value||'',of_num:_egOf,nb_pers:_egNbPers,type_prod:_egProd,fibre:_egFibre})});
     const d=r?await r.json():{};
     if(d.ok){
       toast(type+' ajouté','ok');
@@ -16676,7 +16676,7 @@ async function submitPastDecl(){
   const _pdSessParts=_pdSession.split('||');
   const _pdPilot=_pdSessParts[1]||'';
   const _pdPoste=_pdSessParts[2]||'';
-  let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin,session_key:_pdSession,pilot:_pdPilot,poste:_pdPoste};
+  let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin,session_key:_pdSession,pilot:_pdPilot,poste:_pdPoste,copilote:(document.getElementById('pd-copilote')||{}).value||''};
   if(_pdType==='prod'){
     const of_num=(document.getElementById('pd-of')||{}).value||'';
     const code=(document.getElementById('pd-code')||{}).value||'';
