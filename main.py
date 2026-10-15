@@ -14958,10 +14958,10 @@ async function calcPeriodReport(autoLoad,maxSessions){
       const by=padT+gH-bh;
       const col=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgBars+=`<rect x="${x}" y="${by}" width="${WB}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(s.trs>=0){const _lb=s.trs.toFixed(0)+'%';if(bh>=18){const _ty=by+Math.min(bh-4,14);svgLabels+=`<text x="${cx}" y="${_ty}" text-anchor="middle" font-size="13" font-weight="800" fill="white" style="text-shadow:0 1px 2px rgba(0,0,0,.3)">${_lb}</text>`;}else{const _ty=Math.max(by-3,14);const _lw=_lb.length*8+6;svgLabels+=`<rect x="${cx-_lw/2}" y="${_ty-12}" width="${_lw}" height="15" fill="white" rx="2" opacity=".9"/><text x="${cx}" y="${_ty}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb}</text>`;}}
+      if(s.trs>=0){const _lb=s.trs.toFixed(0)+'%';if(bh>=18){const _ty=by+Math.min(bh-4,14);svgLabels+=`<text x="${cx}" y="${_ty}" text-anchor="middle" font-size="13" font-weight="800" fill="#111827">${_lb}</text>`;}else{const _ty=Math.max(by-3,14);const _lw=_lb.length*8+6;svgLabels+=`<rect x="${cx-_lw/2}" y="${_ty-12}" width="${_lw}" height="15" fill="white" rx="2" opacity=".9"/><text x="${cx}" y="${_ty}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb}</text>`;}}
       // Vignette pièces en bas du baton
       const _totPc=(s.of_rows||[]).reduce((a,r)=>a+(+r.qte_fab||0),0);
-      if(_totPc>0&&bh>=22){const _pcLbl=String(_totPc);const _pcY=padT+gH-5;svgLabels+=`<text x="${cx}" y="${_pcY}" text-anchor="middle" font-size="11" font-weight="700" fill="white" opacity=".9">${_pcLbl} pcs</text>`;}
+      if(_totPc>0&&bh>=22){const _pcLbl=String(_totPc);const _pcY=padT+gH-5;svgLabels+=`<text x="${cx}" y="${_pcY}" text-anchor="middle" font-size="11" font-weight="700" fill="#111827" opacity=".9">${_pcLbl} pcs</text>`;}
       const dp=s.date.split('/');
       if(_vertA){
         const yA=padT+gH+4;
@@ -14988,7 +14988,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
       const trs=s.trs>=0?s.trs:0;const bh=Math.max(2,Math.round(trs/maxTrs*gH));const by=padT+gH-bh;
       const col=s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgBarsS+=`<rect x="${x}" y="${by}" width="${WBs}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(s.trs>=0){const _lb=s.trs.toFixed(0)+'%';if(bh>=18){const _ty=by+Math.min(bh-4,14);svgLabelsS+=`<text x="${cx}" y="${_ty}" text-anchor="middle" font-size="22" font-weight="800" fill="white">${_lb}</text>`;}else{const _ty=Math.max(by-3,14);const _lw=_lb.length*7+6;svgLabelsS+=`<rect x="${cx-_lw/2}" y="${_ty-12}" width="${_lw}" height="15" fill="white" rx="2" opacity=".9"/><text x="${cx}" y="${_ty}" text-anchor="middle" font-size="22" font-weight="700" fill="${col}">${_lb}</text>`;}}
+      if(s.trs>=0){const _lb=s.trs.toFixed(0)+'%';if(bh>=18){const _ty=by+Math.min(bh-4,14);svgLabelsS+=`<text x="${cx}" y="${_ty}" text-anchor="middle" font-size="22" font-weight="800" fill="#111827">${_lb}</text>`;}else{const _ty=Math.max(by-3,14);const _lw=_lb.length*7+6;svgLabelsS+=`<rect x="${cx-_lw/2}" y="${_ty-12}" width="${_lw}" height="15" fill="white" rx="2" opacity=".9"/><text x="${cx}" y="${_ty}" text-anchor="middle" font-size="22" font-weight="700" fill="${col}">${_lb}</text>`;}}
       const dp=s.date.split('/');
       if(_vertA){const yA=padT+gH+4;const _lbl=esc((dp[0]||'')+'/'+(dp[1]||'')+(s.pilot?' '+s.pilot.slice(0,12):''));svgLS+=`<text transform="rotate(-90,${cx},${yA})" x="${cx}" y="${yA}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${_lbl}</text>`;}
       else{svgLS+=`<text x="${cx}" y="${padT+gH+16}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;svgLS+=`<text x="${cx}" y="${padT+gH+28}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;svgLS+=`<text x="${cx}" y="${padT+gH+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;svgLS+=`<text x="${cx}" y="${padT+gH+54}" text-anchor="middle" font-size="11" font-weight="700" fill="#0369a1">${Math.round(s.equiv||0)} éq</text>`;}
@@ -15020,7 +15020,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
       const by=padT2+gH2-bh;
       const col=v<=0?'#94a3b8':s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgBars2+=`<rect x="${x}" y="${by}" width="${WB2}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(v>0){const _lb2=String(v);if(bh>=18){const _ty2=by+Math.min(bh-4,14);svgLabels2+=`<text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="13" font-weight="800" fill="white" style="text-shadow:0 1px 2px rgba(0,0,0,.3)">${_lb2}</text>`;}else{const _ty2=Math.max(by-3,14);const _lw2=_lb2.length*9+6;svgLabels2+=`<rect x="${cx2-_lw2/2}" y="${_ty2-13}" width="${_lw2}" height="16" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb2}</text>`;}}
+      if(v>0){const _lb2=String(v);if(bh>=18){const _ty2=by+Math.min(bh-4,14);svgLabels2+=`<text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="13" font-weight="800" fill="#111827">${_lb2}</text>`;}else{const _ty2=Math.max(by-3,14);const _lw2=_lb2.length*9+6;svgLabels2+=`<rect x="${cx2-_lw2/2}" y="${_ty2-13}" width="${_lw2}" height="16" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="13" font-weight="700" fill="${col}">${_lb2}</text>`;}}
       const dp=s.date.split('/');
       if(_vertB){
         const yB=padT2+gH2+4;
@@ -15036,7 +15036,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
     const _cadLblY=Math.max(13,tY-4);
     const tLine='';
     const legCad='';
-    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence vs référence${legCad}</div><div style="overflow-x:auto;display:flex;justify-content:center"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2}${tLine}${svgLabels2}${svgL2}</svg></div></div>`;
+    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence par équipe${legCad}</div><div style="overflow-x:auto;display:flex;justify-content:center"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2}${tLine}${svgLabels2}${svgL2}</svg></div></div>`;
     // Version réduite pour screenshot (barres 80%)
     const WB2s=Math.round(WB2*0.8);
     const svgW2s=Math.max(200,n2*(WB2s+GP2)+padL2+padR2);
@@ -15047,13 +15047,13 @@ async function calcPeriodReport(autoLoad,maxSessions){
       const v=s.cadence_h||0;const bh=Math.max(2,Math.round(v/maxCad*gH2));const by=padT2+gH2-bh;
       const col=v<=0?'#94a3b8':s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8';
       svgBars2S+=`<rect x="${x}" y="${by}" width="${WB2s}" height="${bh}" fill="${col}" opacity=".85" rx="2"/>`;
-      if(v>0){const _lb2=String(v);if(bh>=18){const _ty2=by+Math.min(bh-4,14);svgLabels2S+=`<text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="22" font-weight="800" fill="white">${_lb2}</text>`;}else{const _ty2=Math.max(by-3,14);const _lw2=_lb2.length*8+6;svgLabels2S+=`<rect x="${cx2-_lw2/2}" y="${_ty2-13}" width="${_lw2}" height="16" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="22" font-weight="700" fill="${col}">${_lb2}</text>`;}}
+      if(v>0){const _lb2=String(v);if(bh>=18){const _ty2=by+Math.min(bh-4,14);svgLabels2S+=`<text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="22" font-weight="800" fill="#111827">${_lb2}</text>`;}else{const _ty2=Math.max(by-3,14);const _lw2=_lb2.length*8+6;svgLabels2S+=`<rect x="${cx2-_lw2/2}" y="${_ty2-13}" width="${_lw2}" height="16" fill="white" rx="2" opacity=".9"/><text x="${cx2}" y="${_ty2}" text-anchor="middle" font-size="22" font-weight="700" fill="${col}">${_lb2}</text>`;}}
       const dp=s.date.split('/');
       if(_vertB){const yB=padT2+gH2+4;const _lbl2=esc((dp[0]||'')+'/'+(dp[1]||'')+(s.pilot?' '+s.pilot.slice(0,12):''));svgL2S+=`<text transform="rotate(-90,${cx2},${yB})" x="${cx2}" y="${yB}" text-anchor="end" font-size="11" font-weight="600" fill="#374151">${_lbl2}</text>`;}
       else{svgL2S+=`<text x="${cx2}" y="${padT2+gH2+16}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;svgL2S+=`<text x="${cx2}" y="${padT2+gH2+28}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;svgL2S+=`<text x="${cx2}" y="${padT2+gH2+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;}
     });
     const tLineS='';
-    window._chartCadHtmlSnap=`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">⚡ Cadence vs référence</div><div style="overflow-x:auto"><svg width="${svgW2s}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2s}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2S}${tLineS}${svgLabels2S}${svgL2S}</svg></div></div>`;
+    window._chartCadHtmlSnap=`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">⚡ Cadence par équipe</div><div style="overflow-x:auto"><svg width="${svgW2s}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2s}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2S}${tLineS}${svgLabels2S}${svgL2S}</svg></div></div>`;
   }
   // ── Pareto arrêts — barres horizontales ────────────────────────────────────
   let paretoRjHtml='';
