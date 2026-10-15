@@ -6983,34 +6983,56 @@ def api_add_past_decl():
     poste = str(data.get("poste","")).strip() or _S.get("poste","")
     if not pilot: return jsonify({"ok":False,"error":"Non connecté"}),400
     now = datetime.datetime.now()
-    date_debut_str = str(data.get("date_debut","")).strip()  # format YYYY-MM-DD
+    session_key    = str(data.get("session_key","")).strip()
+    date_debut_str = str(data.get("date_debut","")).strip()  # backward compat (format YYYY-MM-DD)
     date_fin_str   = str(data.get("date_fin","")).strip()
+    # Parse session_key → canonical shift date + pilot + poste override
+    shift_date_str_key = ""
+    if session_key and "||" in session_key:
+        _sk = session_key.split("||", 2)
+        shift_date_str_key = _sk[0]
+        if len(_sk) > 1 and _sk[1]: pilot = _sk[1]
+        if len(_sk) > 2 and _sk[2]: poste = _sk[2]
     try:
         dh,dm = [int(x) for x in debut_hms.split(":")[:2]]
         fh,fm = [int(x) for x in fin_hms.split(":")[:2]]
-        base_debut = datetime.datetime.strptime(date_debut_str, "%Y-%m-%d") if date_debut_str else now
-        base_fin   = datetime.datetime.strptime(date_fin_str,   "%Y-%m-%d") if date_fin_str   else now
-        debut_dt = base_debut.replace(hour=dh, minute=dm, second=0, microsecond=0)
-        fin_dt   = base_fin.replace(hour=fh,   minute=fm, second=0, microsecond=0)
+        if shift_date_str_key:
+            _pm_r = _pm_get(load_postes_shift_map(), pilot.lower(), shift_date_str_key, poste)
+            _sdeb_r = _pm_r.get('deb_dt') if _pm_r else None
+            if _sdeb_r:
+                debut_dt = _sdeb_r.replace(hour=dh, minute=dm, second=0, microsecond=0)
+                if debut_dt < _sdeb_r: debut_dt += datetime.timedelta(days=1)
+                fin_dt = _sdeb_r.replace(hour=fh, minute=fm, second=0, microsecond=0)
+                if fin_dt < _sdeb_r: fin_dt += datetime.timedelta(days=1)
+            else:
+                _base_r = datetime.datetime.strptime(shift_date_str_key, "%d/%m/%Y")
+                debut_dt = _base_r.replace(hour=dh, minute=dm, second=0, microsecond=0)
+                fin_dt   = _base_r.replace(hour=fh, minute=fm, second=0, microsecond=0)
+        elif date_debut_str:
+            base_debut = datetime.datetime.strptime(date_debut_str, "%Y-%m-%d")
+            base_fin   = datetime.datetime.strptime(date_fin_str, "%Y-%m-%d") if date_fin_str else base_debut
+            debut_dt = base_debut.replace(hour=dh, minute=dm, second=0, microsecond=0)
+            fin_dt   = base_fin.replace(hour=fh,   minute=fm, second=0, microsecond=0)
+        else:
+            debut_dt = now.replace(hour=dh, minute=dm, second=0, microsecond=0)
+            fin_dt   = now.replace(hour=fh, minute=fm, second=0, microsecond=0)
         if fin_dt <= debut_dt: fin_dt += datetime.timedelta(days=1)
         dur_s = max(0, (fin_dt - debut_dt).total_seconds())
     except Exception as e:
         return jsonify({"ok":False,"error":str(e)}),400
-    # Vérification dans la plage du poste uniquement si pas de date explicite (déclaration d'aujourd'hui)
-    _explicit_date = bool(date_debut_str)
-    if not _explicit_date:
+    # Vérification de plage uniquement pour les déclarations du poste en cours (pas de session_key)
+    if not session_key and not date_debut_str:
         sd = _S.get("shift_debut_dt"); sf = _S.get("shift_fin_dt")
         if sd and debut_dt < sd:
             return jsonify({"ok":False,"error":f"Avant le début du poste ({sd.strftime('%H:%M')})"}),400
         if sf and fin_dt > sf:
             return jsonify({"ok":False,"error":f"Après la fin du poste ({sf.strftime('%H:%M')})"}),400
-    shift_dt = _S.get("shift_start") or now
-    # Toujours utiliser la date du début du poste comme index (y compris pour réguls poste de nuit)
-    # Si date explicite fournie (conciliation fin de poste), utiliser base_debut plutôt que now
-    # (shift_start peut être None après fermeture du poste → évite d'attribuer au lendemain)
-    if _explicit_date:
-        shift_date_str = base_debut.strftime("%d/%m/%Y")
+    if shift_date_str_key:
+        shift_date_str = shift_date_str_key
+    elif date_debut_str:
+        shift_date_str = debut_dt.strftime("%d/%m/%Y")
     else:
+        shift_dt = _S.get("shift_start") or now
         shift_date_str = shift_dt.strftime("%d/%m/%Y")
     date_str = debut_dt.strftime("%d/%m/%Y")
     if decl_type in ("arret", "degrade"):
@@ -8379,21 +8401,15 @@ select{cursor:default}
   <div id="m-past-decl" class="overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:700;align-items:center;justify-content:center">
     <div class="card" style="width:min(720px,98vw);max-height:92vh;overflow-y:auto;padding:18px 20px;background:#fff;border-radius:12px;border-top:4px solid #7c3aed">
       <div style="font-size:calc(14px*var(--zf,1));font-weight:800;color:var(--navy);margin-bottom:12px">📝 Déclaration antérieure</div>
-      <!-- Pilote / Poste / Co-Pilote -->
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:8px">
-        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Pilote</label>
-          <select id="pd-pilot" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"><option value="">— Choisir —</option></select></div>
-        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Poste</label>
-          <select id="pd-poste" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"><option value="">— Choisir —</option></select></div>
-        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Co-Pilote</label>
-          <select id="pd-copilote" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"><option value="">--</option></select></div>
+      <!-- Session -->
+      <div style="margin-bottom:8px">
+        <label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Poste</label>
+        <select id="pd-session" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"><option value="">— Choisir un poste —</option></select>
       </div>
-      <!-- Plage date -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
-        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Date début</label>
-          <input type="date" id="pd-date-debut" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"></div>
-        <div><label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Date fin</label>
-          <input type="date" id="pd-date-fin" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"></div>
+      <!-- Co-Pilote -->
+      <div style="margin-bottom:8px">
+        <label style="font-size:calc(10px*var(--zf,1));font-weight:700;color:var(--gray);display:block;margin-bottom:3px">Co-Pilote</label>
+        <select id="pd-copilote" style="width:100%;padding:6px 8px;border:1.5px solid #c4b5fd;border-radius:6px;font-size:calc(13px*var(--zf,1));font-weight:700"><option value="">--</option></select>
       </div>
       <!-- Plage horaire -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
@@ -16528,50 +16544,49 @@ async function openPastDecl(type){
   const pad=n=>String(n).padStart(2,'0');
   if(shiftDebut){document.getElementById('pd-debut').value=pad(shiftDebut.getHours())+':'+pad(shiftDebut.getMinutes());}
   if(shiftFin){document.getElementById('pd-fin').value=pad(shiftFin.getHours())+':'+pad(shiftFin.getMinutes());}
-  // Pré-remplir les dates depuis le début de poste
-  const _shiftBase=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso):new Date();
-  const _shiftDateIso=_shiftBase.toISOString().slice(0,10);
-  document.getElementById('pd-date-debut').value=_shiftDateIso;
-  document.getElementById('pd-date-fin').value=_shiftDateIso;
   // Copier les options depuis les selects du formulaire principal (toujours à jour)
   function _copyOpts(srcId,dstId){const src=document.getElementById(srcId);const dst=document.getElementById(dstId);if(!src||!dst)return;while(dst.options.length>1)dst.remove(1);Array.from(src.options).slice(1).forEach(o=>{const n=document.createElement('option');n.value=o.value;n.textContent=o.text;dst.appendChild(n);});}
   _copyOpts('f-type_prod','pd-type-prod');_copyOpts('f-taille','pd-taille');_copyOpts('f-fibre','pd-fibre');
-  // Co-Pilote (top section) — pré-remplir depuis le login
+  // Co-Pilote — pré-remplir depuis le login
   _copyOpts('f-copilote','pd-copilote');
   if(window._loginCopilote){const el=document.getElementById('pd-copilote');if(el&&!el.value)el.value=window._loginCopilote;}
-  // Pilote : depuis les sessions passées + session en cours
-  const pdPilotSel=document.getElementById('pd-pilot');
-  if(pdPilotSel){
+  // Session dropdown : session en cours en tête + sessions passées
+  const pdSessSel=document.getElementById('pd-session');
+  if(pdSessSel){
+    pdSessSel.innerHTML='<option value="">— Choisir un poste —</option>';
     try{
-      const _sessP=await apiFetch('/api/past_sessions');
-      const _allPilots=[...new Set((_sessP||[]).map(s=>s.pilot).filter(Boolean))].sort();
-      pdPilotSel.innerHTML='<option value="">— Choisir —</option>';
-      _allPilots.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;pdPilotSel.appendChild(o);});
-      const curP=ST&&ST.pilot?ST.pilot:'';
-      if(curP){
-        if(!Array.from(pdPilotSel.options).some(o=>o.value===curP)){const o=document.createElement('option');o.value=curP;o.textContent=curP;pdPilotSel.insertBefore(o,pdPilotSel.options[1]);}
-        pdPilotSel.value=curP;
+      const _allSess=await apiFetch('/api/past_sessions');
+      const _liveP=ST&&ST.pilot?ST.pilot:'';
+      const _livePoste=ST&&ST.poste?ST.poste:'';
+      const _liveDt=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso):null;
+      const _liveDate=_liveDt?String(_liveDt.getDate()).padStart(2,'0')+'/'+String(_liveDt.getMonth()+1).padStart(2,'0')+'/'+_liveDt.getFullYear():'';
+      const _liveKey=_liveDate&&_liveP&&_livePoste?_liveDate+'||'+_liveP+'||'+_livePoste:'';
+      if(_liveKey){
+        const o=document.createElement('option');
+        o.value=_liveKey;
+        o.textContent='▶ Poste actuel : '+_liveDate+' '+_livePoste+' — '+_liveP;
+        pdSessSel.appendChild(o);
       }
+      (_allSess||[]).forEach(s=>{
+        if(!s.date||!s.pilot||!s.poste) return;
+        const k=s.date+'||'+s.pilot+'||'+s.poste;
+        if(k===_liveKey) return;
+        const o=document.createElement('option');
+        o.value=k;
+        o.textContent=s.date+' '+s.poste+' — '+s.pilot;
+        pdSessSel.appendChild(o);
+      });
+      if(_liveKey) pdSessSel.value=_liveKey;
     }catch(e){
-      const curP=ST&&ST.pilot?ST.pilot:'';
-      pdPilotSel.innerHTML='<option value="">— Choisir —</option>';
-      if(curP){const o=document.createElement('option');o.value=curP;o.textContent=curP;pdPilotSel.appendChild(o);pdPilotSel.value=curP;}
-    }
-  }
-  // Poste : depuis les sessions passées
-  const pdPosteSel=document.getElementById('pd-poste');
-  if(pdPosteSel){
-    try{
-      const sessions=await apiFetch('/api/past_sessions');
-      const postes=[...new Set((sessions||[]).map(s=>s.poste).filter(Boolean))].sort();
-      pdPosteSel.innerHTML='<option value="">— Choisir —</option>';
-      postes.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;pdPosteSel.appendChild(o);});
-      const curPoste=ST&&ST.poste?ST.poste:'';
-      if(curPoste){
-        if(!Array.from(pdPosteSel.options).some(o=>o.value===curPoste)){const o=document.createElement('option');o.value=curPoste;o.textContent=curPoste;pdPosteSel.insertBefore(o,pdPosteSel.options[1]);}
-        pdPosteSel.value=curPoste;
+      const _liveP=ST&&ST.pilot?ST.pilot:'';
+      const _livePoste=ST&&ST.poste?ST.poste:'';
+      const _liveDt=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso):null;
+      const _liveDate=_liveDt?String(_liveDt.getDate()).padStart(2,'0')+'/'+String(_liveDt.getMonth()+1).padStart(2,'0')+'/'+_liveDt.getFullYear():'';
+      if(_liveDate&&_liveP&&_livePoste){
+        const k=_liveDate+'||'+_liveP+'||'+_livePoste;
+        const o=document.createElement('option');o.value=k;o.textContent='▶ Poste actuel : '+_liveDate+' '+_livePoste+' — '+_liveP;pdSessSel.appendChild(o);pdSessSel.value=k;
       }
-    }catch(e){pdPosteSel.innerHTML='<option value="">— Choisir —</option>';const curPoste=ST&&ST.poste?ST.poste:'';if(curPoste){const o=document.createElement('option');o.value=curPoste;o.textContent=curPoste;pdPosteSel.appendChild(o);pdPosteSel.value=curPoste;}}
+    }
   }
   // Peupler le select arrêt
   const stopSel=document.getElementById('pd-stop-type');
@@ -16617,29 +16632,14 @@ function pdSwitchType(t){
 async function submitPastDecl(){
   const debut=(document.getElementById('pd-debut')||{}).value||'';
   const fin=(document.getElementById('pd-fin')||{}).value||'';
-  const dateDebut=(document.getElementById('pd-date-debut')||{}).value||'';
-  let dateFin=(document.getElementById('pd-date-fin')||{}).value||'';
-  const _pdPilot=(document.getElementById('pd-pilot')||{}).value||'';
-  const _pdPoste=(document.getElementById('pd-poste')||{}).value||'';
+  const _pdSession=(document.getElementById('pd-session')||{}).value||'';
   if(!debut||!fin){bigErr('Renseigner l\'heure de début et l\'heure de fin.','Champs manquants');return;}
-  // Vérification nuit EN PREMIER — avant toute auto-correction
-  if(_isNuitPoste(_pdPoste)&&dateDebut&&dateFin&&dateDebut===dateFin&&debut>fin){
-    const _action=await _showNuitWarn();
-    if(_action==='cancel') return;
-    if(_action==='fix'){
-      const _df=new Date(dateFin+'T00:00:00');_df.setDate(_df.getDate()+1);
-      dateFin=_df.toISOString().slice(0,10);
-      const _elDf=document.getElementById('pd-date-fin');if(_elDf)_elDf.value=dateFin;
-    }
-  } else if(dateDebut&&dateFin&&dateDebut===dateFin&&debut>fin){
-    // Auto-correction silencieuse pour les postes non-nuit
-    const _df=new Date(dateFin+'T00:00:00');_df.setDate(_df.getDate()+1);
-    dateFin=_df.toISOString().slice(0,10);
-    const _elDf=document.getElementById('pd-date-fin');if(_elDf)_elDf.value=dateFin;
-  }
+  if(!_pdSession){bigErr('Choisir un poste.','Champs manquants');return;}
   if(debut===fin){bigErr('L\'heure de fin est identique à l\'heure de début.','Erreur de saisie');return;}
-  if(dateDebut&&dateFin&&dateDebut>dateFin){bigErr('La date de fin doit être après la date de début.','Erreur de saisie');return;}
-  let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin,date_debut:dateDebut,date_fin:dateFin,pilot:_pdPilot,poste:_pdPoste};
+  const _pdSessParts=_pdSession.split('||');
+  const _pdPilot=_pdSessParts[1]||'';
+  const _pdPoste=_pdSessParts[2]||'';
+  let body={decl_type:_pdType,debut_hms:debut,fin_hms:fin,session_key:_pdSession,pilot:_pdPilot,poste:_pdPoste};
   if(_pdType==='prod'){
     const of_num=(document.getElementById('pd-of')||{}).value||'';
     const code=(document.getElementById('pd-code')||{}).value||'';
