@@ -17577,13 +17577,15 @@ def generate_dashboard_html():
                     "of_elapsed_s": (datetime.datetime.now() - _S["of_start"]).total_seconds() if _S.get("of_start") else 0,
                     "pilot": _S.get("pilot",""),
                     "poste": _S.get("poste",""),
+                    "shift_date": (_S.get("shift_start") or datetime.datetime.now()).strftime("%d/%m/%Y"),
                 }) if _S.get("prod_active") else "null"
             ))() +
             '  var _origLSR=window.loadSessionReport;\n'
             '  if(typeof _origLSR!=="function")return;\n'
-            '  var _lastLSRPoste=null,_lastLSRPilot=null;\n'
+            '  var _activeKey=(_liveState&&_liveState.prod_active&&_liveState.shift_date)?_liveState.shift_date+"||"+(_liveState.pilot||"")+"||"+(_liveState.poste||""):null;\n'
+            '  var _lastLSRKey=null;\n'
             '  window.loadSessionReport=async function(date,pilot,poste,itemId){\n'
-            '    _lastLSRPoste=poste||null;_lastLSRPilot=pilot||null;\n'
+            '    _lastLSRKey=String(date||"")+"||"+String(pilot||"")+"||"+String(poste||"");\n'
             '    var r=await _origLSR.apply(this,arguments);\n'
             '    _applyEnCours();\n'
             '    return r;\n'
@@ -17604,8 +17606,7 @@ def generate_dashboard_html():
             '    var old=det.querySelector("[data-encours]");if(old)old.remove();\n'
             '    var st=_liveState;\n'
             '    if(!st||!st.prod_active)return;\n'
-            '    if(_lastLSRPoste!==null&&st.poste&&_lastLSRPoste!==st.poste)return;\n'
-            '    if(_lastLSRPilot!==null&&st.pilot&&_lastLSRPilot!==st.pilot)return;\n'
+            '    if(_activeKey&&_lastLSRKey&&_lastLSRKey!==_activeKey)return;\n'
             '    var f=st.form||{};\n'
             '    var ofNum=f.of_num||"—";\n'
             '    var taille=((f.taille||"")+" "+(f.type_prod||"")).trim();\n'
