@@ -16826,7 +16826,31 @@ def generate_dashboard_html():
             'cdg_data': cdg_data, 'problems': problems, 'events_cfg': events_cfg,
             'generated_at': gen_at,
             'decl_rows': _decl_rows_raw, 'decl_headers': DECL_HEADERS,
-            'postes_rows': _postes_rows_raw, 'postes_headers': POSTES_HEADERS
+            'postes_rows': _postes_rows_raw, 'postes_headers': POSTES_HEADERS,
+            'config': {
+                'prod_ref': cfg.get('prod_ref', 0),
+                'pause_max_min': cfg.get('pause_max_min', 20),
+                'clean_short_min': cfg.get('clean_short_min', 0),
+                'clean_long_min': cfg.get('clean_long_min', 0),
+                'clean_grand_min': cfg.get('clean_grand_min', 0),
+                'meeting_tol_min': cfg.get('meeting_tol_min', 0),
+                'pause_min': cfg.get('pause_min', 0),
+                'db_path': cfg.get('db_path', ''),
+                'db_name': os.path.basename(cfg.get('db_path', '')) if cfg.get('db_path') else '',
+                'modeles_horaires': _apply_model_overrides(cfg.get('modeles_horaires', [])),
+                'modeles_horaires_base': cfg.get('modeles_horaires', []),
+                'pilot_passwords': {},
+                'degrade_motifs': cfg.get('degrade_motifs', []),
+                'pers_pct_map': {str(k): round(v*100, 1) for k, v in _pers_pct_map.items()},
+                'app_name': cfg.get('app_name', 'PRODUCTION ORC1'),
+                'arrets_prevus': {
+                    'clean_short_min': cfg.get('clean_short_min', 0),
+                    'clean_long_min': cfg.get('clean_long_min', 0),
+                    'clean_grand_min': cfg.get('clean_grand_min', 0),
+                    'meeting_tol_min': cfg.get('meeting_tol_min', 0),
+                    'pause_min': cfg.get('pause_min', 0),
+                },
+            }
         }, ensure_ascii=False, separators=(',', ':'))
         gen_at_escaped = gen_at.replace("'", "\\'")
         inject = (
@@ -16839,6 +16863,7 @@ def generate_dashboard_html():
             '  var d=window.DASH||{};\n'
             '  if(url.indexOf("/api/state")!==-1)return _DASH_STATE;\n'
             '  if(url.indexOf("/api/history")!==-1){try{var _hp=new URL(url,location.href).searchParams;var _hf=_hp.get("from")||"",_ht=_hp.get("to")||"";if(!_hf&&!_ht)return d.history||[];function _dmyIso(s){var p=String(s||"").split("/");return p.length===3?p[2]+"-"+p[1]+"-"+p[0]:String(s||"");}return(d.history||[]).filter(function(r){var dd=_dmyIso(r.shift_date||r.date);return(!_hf||dd>=_hf)&&(!_ht||dd<=_ht);});}catch(e){return d.history||[];}}\n'
+            '  if(url.indexOf("/api/config")!==-1)return Object.assign({},d.config||{});\n'
             '  if(url.indexOf("/api/events_list")!==-1)return d.events_list||[];\n'
             '  if(url.indexOf("/api/past_sessions")!==-1)return d.past_sessions||[];\n'
             '  if(url.indexOf("/api/session_report")!==-1){\n'
@@ -16910,9 +16935,34 @@ def generate_dashboard_html():
             # After full init: hide write-only elements, add compact CSS
             'document.addEventListener("DOMContentLoaded",function(){\n'
             '  setTimeout(function(){\n'
-            '    ["#ht-prod","#ht-main","#ht-cfg","#zoom-btn","#rj-period-banner"].forEach(function(sel){\n'
+            '    ["#ht-prod","#ht-main","#zoom-btn","#rj-period-banner"].forEach(function(sel){\n'
             '      var el=document.querySelector(sel);if(el)el.style.display="none";\n'
             '    });\n'
+            '    // Bouton Réglages visible en lecture seule\n'
+            '    var _cfgBtn2=document.getElementById("ht-cfg");if(_cfgBtn2){_cfgBtn2.style.display="";_cfgBtn2.title="Paramètres (lecture seule)";}\n'
+            '    // CSS : cacher crayons historique + rendre settings read-only\n'
+            '    var _roSt=document.createElement("style");\n'
+            '    _roSt.textContent=".btn-edit{display:none!important}#v-settings button{display:none!important}#v-settings input,#v-settings select,#v-settings textarea{pointer-events:none!important;background:#f8fafc!important;cursor:default!important;opacity:.85!important}";\n'
+            '    document.head.appendChild(_roSt);\n'
+            '    // Banner LECTURE SEULE dans v-settings-content\n'
+            '    var _vsCont=document.getElementById("v-settings-content");\n'
+            '    if(_vsCont&&!_vsCont.querySelector(".dash-ro-banner")){\n'
+            '      var _roBan=document.createElement("div");\n'
+            '      _roBan.className="dash-ro-banner";\n'
+            '      _roBan.style.cssText="background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;padding:10px 16px;margin:10px 10px 0;font-size:13px;font-weight:700;color:#92400e;text-align:center";\n'
+            '      _roBan.textContent="🔒 LECTURE SEULE — Paramètres du logiciel (aucune modification possible)";\n'
+            '      _vsCont.insertBefore(_roBan,_vsCont.firstChild);\n'
+            '    }\n'
+            '    // Override goTab pour auto-déverrouiller les paramètres\n'
+            '    var _origGoTab2=window.goTab;\n'
+            '    if(typeof _origGoTab2==="function"){window.goTab=function(tab){\n'
+            '      _origGoTab2.call(this,tab);\n'
+            '      if(tab==="settings"){setTimeout(function(){\n'
+            '        var _lk=document.getElementById("settings-lock");if(_lk)_lk.style.display="none";\n'
+            '        var _sc=document.getElementById("v-settings-content");if(_sc)_sc.style.display="block";\n'
+            '        if(typeof loadCfg==="function")loadCfg();\n'
+            '      },30);}\n'
+            '    };}\n'
             '    var cdgBtn=document.getElementById("ht-cdg");if(cdgBtn)cdgBtn.style.display="";\n'
             '    var comopBtn=document.getElementById("ht-comop");if(comopBtn)comopBtn.style.display="";\n'
             '    var logiBtn=document.getElementById("ht-logistique");if(logiBtn)logiBtn.style.display="";\n'
