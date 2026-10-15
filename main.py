@@ -16539,16 +16539,23 @@ async function openPastDecl(type){
   // Co-Pilote (top section) — pré-remplir depuis le login
   _copyOpts('f-copilote','pd-copilote');
   if(window._loginCopilote){const el=document.getElementById('pd-copilote');if(el&&!el.value)el.value=window._loginCopilote;}
-  // Pilote : depuis la liste copilote + session en cours
+  // Pilote : depuis les sessions passées + session en cours
   const pdPilotSel=document.getElementById('pd-pilot');
   if(pdPilotSel){
-    const srcCp=document.getElementById('f-copilote');
-    pdPilotSel.innerHTML='<option value="">— Choisir —</option>';
-    if(srcCp)Array.from(srcCp.options).slice(1).forEach(o=>{const n=document.createElement('option');n.value=o.value;n.textContent=o.text;pdPilotSel.appendChild(n);});
-    const curP=ST&&ST.pilot?ST.pilot:'';
-    if(curP){
-      if(!Array.from(pdPilotSel.options).some(o=>o.value===curP)){const o=document.createElement('option');o.value=curP;o.textContent=curP;pdPilotSel.insertBefore(o,pdPilotSel.options[1]);}
-      pdPilotSel.value=curP;
+    try{
+      const _sessP=await apiFetch('/api/past_sessions');
+      const _allPilots=[...new Set((_sessP||[]).map(s=>s.pilot).filter(Boolean))].sort();
+      pdPilotSel.innerHTML='<option value="">— Choisir —</option>';
+      _allPilots.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;pdPilotSel.appendChild(o);});
+      const curP=ST&&ST.pilot?ST.pilot:'';
+      if(curP){
+        if(!Array.from(pdPilotSel.options).some(o=>o.value===curP)){const o=document.createElement('option');o.value=curP;o.textContent=curP;pdPilotSel.insertBefore(o,pdPilotSel.options[1]);}
+        pdPilotSel.value=curP;
+      }
+    }catch(e){
+      const curP=ST&&ST.pilot?ST.pilot:'';
+      pdPilotSel.innerHTML='<option value="">— Choisir —</option>';
+      if(curP){const o=document.createElement('option');o.value=curP;o.textContent=curP;pdPilotSel.appendChild(o);pdPilotSel.value=curP;}
     }
   }
   // Poste : depuis les sessions passées
