@@ -3779,6 +3779,7 @@ def api_login():
         _force_fin_poste_server(force=True)
     _S["pilot"] = pilot
     _S["poste"] = poste
+    _S["copilote"] = str(data.get("copilote","")).strip()
     _S["of_count_shift"] = 0
     _S["last_of_end"] = None
     _S["last_of_pilot"] = ""
@@ -6949,7 +6950,7 @@ def api_add_stop_decl():
         dur_s = max(0, (end_dt - start_dt).total_seconds())
         shift_dt2 = _S.get("shift_start") or now
         shift_date2 = shift_dt2.strftime("%d/%m/%Y")
-        copilote_v = str(data.get("copilote","") or (_S.get("form") or {}).get("copilote","") or "")
+        copilote_v = str(data.get("copilote","") or (_S.get("form") or {}).get("copilote","") or _S.get("copilote","") or "")
         of_num_v = str(data.get("of_num","") or (_S.get("form") or {}).get("of_num","") or "").strip()
         nb_pers_v = str(data.get("nb_pers","") or "").strip()
         type_prod_v = str(data.get("type_prod","") or "").strip()
@@ -9738,7 +9739,7 @@ async function doLogin() {
   document.getElementById('ln-err').textContent = '';
   if (!pilot) { document.getElementById('ln-err').textContent='Choisir un pilote'; return; }
   if (!poste) { document.getElementById('ln-err').textContent='Choisir un modèle horaire'; return; }
-  const r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pilot,poste,pw})});
+  const r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pilot,poste,pw,copilote:(document.getElementById('ln-copilote')?.value)||''})});
   if (!r) return;
   const d = await r.json();
   if (d.ok) {
