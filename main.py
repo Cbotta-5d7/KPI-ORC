@@ -6306,7 +6306,7 @@ def api_past_sessions():
         row_type = str(r[0] or "").strip().lower()
         key = f"{date_str}||{pilot}||{poste}"
         if key not in sessions:
-            sessions[key] = {"date":date_str,"pilot":pilot,"poste":poste,"nb_of":0,"tot_equiv":0.0,"max_fin_s":0.0,"max_rn":0,"prod_raws":[]}
+            sessions[key] = {"date":date_str,"pilot":pilot,"poste":poste,"nb_of":0,"tot_equiv":0.0,"max_fin_s":0.0,"max_rn":0,"prod_raws":[],"copilote":""}
         if rn > sessions[key]["max_rn"]: sessions[key]["max_rn"] = rn
         if row_type in ("production","prod",""):
             try:
@@ -6316,6 +6316,8 @@ def api_past_sessions():
                 sessions[key]["tot_equiv"] += eq
                 sessions[key]["prod_raws"].append(r)
                 if fin_s > sessions[key]["max_fin_s"]: sessions[key]["max_fin_s"] = fin_s
+                cop = str(r[5] or "").strip()
+                if cop and not sessions[key]["copilote"]: sessions[key]["copilote"] = cop
             except: pass
     # Also gather stop events per session for planned deduction
     session_evts = {}
@@ -6401,7 +6403,10 @@ def api_past_sessions():
         if not _pm_get(postes_map, s["pilot"].lower(), s["date"], s.get("poste","")):
             continue
         _is_live_ps = bool(_live_key and key == _live_key)
-        result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs,"is_live":_is_live_ps,"_rn":s["max_rn"]})
+        _pm_ps2 = _pm_get(postes_map, s["pilot"].lower(), s["date"], s.get("poste",""))
+        _deb_hm = _pm_ps2['deb_dt'].strftime("%H:%M") if _pm_ps2 and _pm_ps2.get('deb_dt') else ""
+        _fin_hm = _pm_ps2['fin_dt'].strftime("%H:%M") if _pm_ps2 and _pm_ps2.get('fin_dt') else ""
+        result.append({"date":s["date"],"pilot":s["pilot"],"poste":s["poste"],"nb_of":s["nb_of"],"tot_equiv":round(s["tot_equiv"],1),"trs":trs,"is_live":_is_live_ps,"_rn":s["max_rn"],"shift_debut_hm":_deb_hm,"shift_fin_hm":_fin_hm,"copilote":s.get("copilote","")})
     def _date_sort_key(x):
         d = x["date"]
         try:
@@ -16554,17 +16559,43 @@ async function openPastDecl(type){
   const pdSessSel=document.getElementById('pd-session');
   if(pdSessSel){
     pdSessSel.innerHTML='<option value="">— Choisir un poste —</option>';
+    const _pad2=n=>String(n).padStart(2,'0');
+    const _fmtDt=dt=>dt?_pad2(dt.getDate())+'/'+_pad2(dt.getMonth()+1)+'/'+dt.getFullYear():'';
+    const _fmtHM=dt=>dt?_pad2(dt.getHours())+':'+_pad2(dt.getMinutes()):'';
+    function _pdSessOnChange(){
+      const opt=pdSessSel.options[pdSessSel.selectedIndex];
+      if(!opt||!opt.value) return;
+      const debHM=opt.dataset.debutHm||'';
+      const finHM=opt.dataset.finHm||'';
+      const cop=opt.dataset.copilote||'';
+      if(debHM){const el=document.getElementById('pd-debut');if(el)el.value=debHM;}
+      if(finHM){const el=document.getElementById('pd-fin');if(el)el.value=finHM;}
+      const copEl=document.getElementById('pd-copilote');
+      if(copEl&&cop){
+        // Cherche l'option existante ou crée-en une
+        const existing=Array.from(copEl.options).find(o=>o.value===cop);
+        if(existing){copEl.value=cop;}
+        else{const o=document.createElement('option');o.value=cop;o.textContent=cop;copEl.appendChild(o);copEl.value=cop;}
+      }
+    }
+    pdSessSel.onchange=_pdSessOnChange;
     try{
       const _allSess=await apiFetch('/api/past_sessions');
       const _liveP=ST&&ST.pilot?ST.pilot:'';
       const _livePoste=ST&&ST.poste?ST.poste:'';
       const _liveDt=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso):null;
-      const _liveDate=_liveDt?String(_liveDt.getDate()).padStart(2,'0')+'/'+String(_liveDt.getMonth()+1).padStart(2,'0')+'/'+_liveDt.getFullYear():'';
+      const _liveFinDt=ST&&ST.shift_fin_iso?new Date(ST.shift_fin_iso):null;
+      const _liveDate=_fmtDt(_liveDt);
       const _liveKey=_liveDate&&_liveP&&_livePoste?_liveDate+'||'+_liveP+'||'+_livePoste:'';
+      // Trouver la session en cours dans _allSess pour récupérer copilote
+      const _liveSessData=(_allSess||[]).find(s=>s.date===_liveDate&&s.pilot===_liveP&&s.poste===_livePoste);
       if(_liveKey){
         const o=document.createElement('option');
         o.value=_liveKey;
         o.textContent='▶ Poste actuel : '+_liveDate+' '+_livePoste+' — '+_liveP;
+        o.dataset.debutHm=_fmtHM(_liveDt);
+        o.dataset.finHm=_fmtHM(_liveFinDt);
+        o.dataset.copilote=(_liveSessData&&_liveSessData.copilote)||'';
         pdSessSel.appendChild(o);
       }
       (_allSess||[]).forEach(s=>{
@@ -16574,17 +16605,23 @@ async function openPastDecl(type){
         const o=document.createElement('option');
         o.value=k;
         o.textContent=s.date+' '+s.poste+' — '+s.pilot;
+        o.dataset.debutHm=s.shift_debut_hm||'';
+        o.dataset.finHm=s.shift_fin_hm||'';
+        o.dataset.copilote=s.copilote||'';
         pdSessSel.appendChild(o);
       });
-      if(_liveKey) pdSessSel.value=_liveKey;
+      if(_liveKey){pdSessSel.value=_liveKey;_pdSessOnChange();}
     }catch(e){
       const _liveP=ST&&ST.pilot?ST.pilot:'';
       const _livePoste=ST&&ST.poste?ST.poste:'';
       const _liveDt=ST&&ST.shift_debut_iso?new Date(ST.shift_debut_iso):null;
-      const _liveDate=_liveDt?String(_liveDt.getDate()).padStart(2,'0')+'/'+String(_liveDt.getMonth()+1).padStart(2,'0')+'/'+_liveDt.getFullYear():'';
+      const _liveFinDt=ST&&ST.shift_fin_iso?new Date(ST.shift_fin_iso):null;
+      const _liveDate=_fmtDt(_liveDt);
       if(_liveDate&&_liveP&&_livePoste){
         const k=_liveDate+'||'+_liveP+'||'+_livePoste;
-        const o=document.createElement('option');o.value=k;o.textContent='▶ Poste actuel : '+_liveDate+' '+_livePoste+' — '+_liveP;pdSessSel.appendChild(o);pdSessSel.value=k;
+        const o=document.createElement('option');o.value=k;o.textContent='▶ Poste actuel : '+_liveDate+' '+_livePoste+' — '+_liveP;
+        o.dataset.debutHm=_fmtHM(_liveDt);o.dataset.finHm=_fmtHM(_liveFinDt);o.dataset.copilote='';
+        pdSessSel.appendChild(o);pdSessSel.value=k;_pdSessOnChange();
       }
     }
   }
@@ -16673,6 +16710,16 @@ async function submitPastDecl(){
     toast('Déclaration ajoutée','ok');
     await pollState();
     refreshAccFpData();
+    // Rafraîchir le rapport poste concerné s'il est affiché (sauf poste en cours)
+    try{
+      const _sk2=_pdSession.split('||');
+      const _rDate=_sk2[0]||'';const _rPilot=_sk2[1]||'';const _rPoste=_sk2[2]||'';
+      const _rKey=_rDate+'||'+_rPilot+'||'+_rPoste;
+      const _isLiveSess=(typeof _activeKey!=='undefined'&&_activeKey&&_rKey===_activeKey);
+      if(!_isLiveSess&&typeof _lastLSRKey!=='undefined'&&_lastLSRKey&&_lastLSRKey===_rKey&&_rDate&&_rPilot&&_rPoste){
+        await loadSessionReport(_rDate,_rPilot,_rPoste);
+      }
+    }catch(_e2){}
   } else {
     bigErr(d.error||'Erreur inconnue','Erreur déclaration');
   }
