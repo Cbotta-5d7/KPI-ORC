@@ -7006,7 +7006,12 @@ def api_add_past_decl():
             return jsonify({"ok":False,"error":f"Après la fin du poste ({sf.strftime('%H:%M')})"}),400
     shift_dt = _S.get("shift_start") or now
     # Toujours utiliser la date du début du poste comme index (y compris pour réguls poste de nuit)
-    shift_date_str = shift_dt.strftime("%d/%m/%Y")
+    # Si date explicite fournie (conciliation fin de poste), utiliser base_debut plutôt que now
+    # (shift_start peut être None après fermeture du poste → évite d'attribuer au lendemain)
+    if _explicit_date:
+        shift_date_str = base_debut.strftime("%d/%m/%Y")
+    else:
+        shift_date_str = shift_dt.strftime("%d/%m/%Y")
     date_str = debut_dt.strftime("%d/%m/%Y")
     if decl_type in ("arret", "degrade"):
         stop_type = str(data.get("type","")).strip()
