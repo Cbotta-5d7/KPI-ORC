@@ -15649,17 +15649,17 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions,cadRefVal)
     targetLine='<line x1="'+padL+'" y1="'+toY(70).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+toY(70).toFixed(1)+'" stroke="#16a34a" stroke-width="2" stroke-dasharray="8,4"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(toY(70)+6).toFixed(1)+'" font-size="18" fill="#16a34a" font-weight="700">70%</text>';
   } else if(cadRefVal>0){
     var ty70=toY(cadRefVal);
-    targetLine='<line x1="'+padL+'" y1="'+ty70.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+ty70.toFixed(1)+'" stroke="#0369a1" stroke-width="2" stroke-dasharray="8,4"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(ty70+6).toFixed(1)+'" font-size="18" fill="#0369a1" font-weight="700">70%</text>';
+    targetLine='<line x1="'+padL+'" y1="'+ty70.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+ty70.toFixed(1)+'" stroke="#16a34a" stroke-width="2" stroke-dasharray="8,4"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(ty70+6).toFixed(1)+'" font-size="18" fill="#16a34a" font-weight="700">70%</text>';
   }
   var legend=key==='trs'
     ?'<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span> &nbsp;<svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/></svg> Objectif</span>'
-    :cadRefVal>0?'<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px"><svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#0369a1" stroke-width="2" stroke-dasharray="6,3"/></svg> 70% objectif</span>'
+    :cadRefVal>0?'<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px"><svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/></svg> 70% objectif</span>'
     :'';
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px">'
     +'<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;color:'+titleCol+'">'+title+legend+'</div>'
     +'<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">'
     +grid+targetLine
-    +'<path d="'+path+'" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>'
+    +'<path d="'+path+'" fill="none" stroke="#64748b" stroke-width="2.5"/>'
     +dots+labels
     +'</svg></div>';
 }
