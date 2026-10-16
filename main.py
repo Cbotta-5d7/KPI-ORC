@@ -385,6 +385,7 @@ _write_failed = False  # True si un write a définitivement échoué (timeout 15
 _backup_lock = threading.Lock()
 _backup_pending = 0  # nombre de déclarations en attente dans le fichier backup
 _hist_loading = 0   # nombre de load_history() en cours (overlay côté UI)
+_hist_loading_lock = threading.Lock()  # protège _hist_loading contre les accès concurrents
 cfg = {}
 
 flask_app = Flask(__name__)
@@ -1381,12 +1382,12 @@ def load_history():
     global _decl_cache, _excel_busy, _hist_loading
     path = _db_path_resolved()
     if not path or not os.path.exists(path): return
-    _hist_loading += 1
+    with _hist_loading_lock: _hist_loading += 1
     conn = None
     try:
         conn = _get_conn(path)
         if conn is None:
-            _hist_loading = max(0, _hist_loading - 1)
+            with _hist_loading_lock: _hist_loading = max(0, _hist_loading - 1)
             return
         _ensure_db_schema(conn)
         _ensure_db_views(conn)
@@ -1402,10 +1403,10 @@ def load_history():
                 _new_cache.append((rowid, vals + [None]*5))
         with _cache_lock:
             _decl_cache = _new_cache
-        _hist_loading = max(0, _hist_loading - 1)
+        with _hist_loading_lock: _hist_loading = max(0, _hist_loading - 1)
     except Exception as _e_lh:
         _excel_busy = False
-        _hist_loading = max(0, _hist_loading - 1)
+        with _hist_loading_lock: _hist_loading = max(0, _hist_loading - 1)
     finally:
         if conn is not None:
             try: conn.close()
@@ -1624,9 +1625,10 @@ def write_excel_bg(prod_row, evt_rows):
             try:
                 with _db_lock:
                     conn = _get_conn(path)
-                    if conn is None:
-                        time.sleep(5)
-                        continue
+                if conn is None:
+                    time.sleep(5)
+                    continue
+                with _db_lock:
                     _ensure_db_schema(conn)
                     c = conn.cursor()
                     if prod_row:
@@ -1674,8 +1676,9 @@ def write_changement_of(start_dt, end_dt, label=None, comment="", copilote=""):
             try:
                 with _db_lock:
                     conn = _get_conn(path)
-                    if conn is None:
-                        time.sleep(5); continue
+                if conn is None:
+                    time.sleep(5); continue
+                with _db_lock:
                     _ensure_db_schema(conn)
                     c = conn.cursor()
                     c.execute(f"INSERT INTO declarations ({_DECL_COLS}) VALUES ({_DECL_PLACEHOLDERS})",
@@ -1724,8 +1727,9 @@ def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
             try:
                 with _db_lock:
                     conn = _get_conn(path)
-                    if conn is None:
-                        time.sleep(5); continue
+                if conn is None:
+                    time.sleep(5); continue
+                with _db_lock:
                     _ensure_db_schema(conn)
                     c = conn.cursor()
                     target_row = None
@@ -1745,7 +1749,7 @@ def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
                         c.execute("UPDATE postes SET p16=?, p17=? WHERE rowid=?",
                                   (debut_dt.isoformat(), fin_dt.isoformat() if fin_dt else None, target_row))
                         _db_commit(conn); conn = None
-                        _S["postes_row_num"] = target_row
+                        with _S_lock: _S["postes_row_num"] = target_row
                     else:
                         c.execute("INSERT INTO postes (p01, p02, p04, p16, p17) VALUES (?,?,?,?,?)",
                                   (debut_dt.strftime("%d/%m/%Y") if debut_dt else "",
@@ -1754,7 +1758,7 @@ def write_poste_login_row(pilot, poste, debut_dt, fin_dt):
                                    fin_dt.isoformat() if fin_dt else None))
                         new_rowid = c.lastrowid
                         _db_commit(conn); conn = None
-                        _S["postes_row_num"] = new_rowid
+                        with _S_lock: _S["postes_row_num"] = new_rowid
                 save_session()
                 return
             except sqlite3.OperationalError as _e:
@@ -1824,8 +1828,9 @@ def write_poste_row(data, row_num=None, sync=False):
           try:
             with _db_lock:
                 conn = _get_conn(path)
-                if conn is None:
-                    time.sleep(5); continue
+            if conn is None:
+                time.sleep(5); continue
+            with _db_lock:
                 _ensure_db_schema(conn)
                 c = conn.cursor()
                 _bov = data.get("budget_overrides") or {}
@@ -4046,7 +4051,7 @@ def api_update_shift_horaires():
     def _bg():
         rn = row_num_snap or find_postes_row_num(pilot_snap, old_debut)
         if rn and not row_num_snap:
-            _S["postes_row_num"] = rn
+            with _S_lock: _S["postes_row_num"] = rn
         update_poste_horaires(rn, debut_dt, fin_dt)
     threading.Thread(target=_bg, daemon=True).start()
     dur_s = (fin_dt - debut_dt).total_seconds()
@@ -4701,8 +4706,9 @@ def api_end_stop():
         ]
         write_excel_bg([], [_row])
         try:
-            _nrn = max((rn for rn,_ in _decl_cache), default=1)+1
-            _decl_cache.append((_nrn, tuple(_row)+('',)*max(0,40-len(_row))))
+            with _cache_lock:
+                _nrn = max((rn for rn,_ in _decl_cache), default=1)+1
+                _decl_cache.append((_nrn, tuple(_row)+('',)*max(0,40-len(_row))))
             # Stocker le numéro de ligne dans tl_events pour permettre l'édition ultérieure
             with _S_lock:
                 ev["_row_num"] = _nrn
@@ -4853,8 +4859,9 @@ def api_toggle_reunion():
             ]
             write_excel_bg([], [_row])
             try:
-                _nrn_r = max((rn for rn, _ in _decl_cache), default=1) + 1
-                _decl_cache.append((_nrn_r, tuple(_row) + ("",) * max(0, 40 - len(_row))))
+                with _cache_lock:
+                    _nrn_r = max((rn for rn, _ in _decl_cache), default=1) + 1
+                    _decl_cache.append((_nrn_r, tuple(_row) + ("",) * max(0, 40 - len(_row))))
                 with _S_lock:
                     ev["_row_num"] = _nrn_r
             except: pass
@@ -4904,8 +4911,9 @@ def api_end_nettoyage():
         ]
         write_excel_bg([], [_row])
         try:
-            _nrn = max((rn for rn, _ in _decl_cache), default=1) + 1
-            _decl_cache.append((_nrn, tuple(_row) + ("",) * max(0, 40 - len(_row))))
+            with _cache_lock:
+                _nrn = max((rn for rn, _ in _decl_cache), default=1) + 1
+                _decl_cache.append((_nrn, tuple(_row) + ("",) * max(0, 40 - len(_row))))
             with _S_lock:
                 ev["_row_num"] = _nrn
         except: pass
@@ -7149,9 +7157,10 @@ def api_add_past_decl():
     threading.Thread(target=_write_bg, daemon=True).start()
     # Ajout immédiat au cache en mémoire (pas de reload qui écraserait l'entrée)
     try:
-        next_rn = max((rn for rn,_ in _decl_cache), default=1) + 1
-        padded = tuple(row) + ('',) * max(0, 40 - len(row))
-        _decl_cache.append((next_rn, padded))
+        with _cache_lock:
+            next_rn = max((rn for rn,_ in _decl_cache), default=1) + 1
+            padded = tuple(row) + ('',) * max(0, 40 - len(row))
+            _decl_cache.append((next_rn, padded))
     except: pass
     return jsonify({"ok":True})
 
@@ -18131,7 +18140,7 @@ def main():
         from threading import Thread
 
         def run_flask():
-            flask_app.run(host="127.0.0.1", port=5001, debug=False, use_reloader=False)
+            flask_app.run(host="127.0.0.1", port=5001, debug=False, use_reloader=False, threaded=True)
 
         t = Thread(target=run_flask, daemon=True)
         t.start()
