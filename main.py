@@ -15607,9 +15607,9 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions,cadRefVal)
     },{})).map(g=>{
       const totalPcs=g._ss.reduce((a,ss)=>a+(ss.pcs||0),0);
       const openH=g._ss.length*8;
-      const cadMoy=g._ss.length>0?Math.round(g._ss.reduce((a,ss)=>a+(ss.cadence_h||0),0)/g._ss.length):0;
       return {date:g.date,pcs:totalPcs,equiv:g._ss.reduce((a,ss)=>a+(ss.equiv||0),0),
-        trs:openH>0?Math.round(totalPcs/(720*openH)*100*10)/10:-1,cadence_h:cadMoy};
+        trs:openH>0?Math.round(totalPcs/(720*openH)*100*10)/10:-1,
+        cadence_h:openH>0?Math.round(totalPcs/openH):0};
     }).sort((a,b)=>{try{const pa=a.date.split('/'),pb=b.date.split('/');return new Date(pa[2]+'-'+pa[1]+'-'+pa[0])-new Date(pb[2]+'-'+pb[1]+'-'+pb[0]);}catch(e){return 0;}});
   const n=pts.length;
   if(!n) return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;color:var(--gray);text-align:center">Pas de données</div>';
