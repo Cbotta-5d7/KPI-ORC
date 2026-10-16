@@ -5052,8 +5052,9 @@ def api_events_list():
             type_str = str(r[0] or "").strip()
             tl = type_str.lower()
             # c45 (index 44) stores the category directly for new records
-            c45_cat = str(r[44] if len(r)>44 else "").strip().lower()
-            if c45_cat:
+            c45_raw = r[44] if len(r)>44 else None
+            c45_cat = str(c45_raw).strip().lower() if c45_raw is not None else ""
+            if c45_cat and c45_cat != "none":
                 cat = c45_cat
             else:
                 # Fallback heuristics for old records without c45
