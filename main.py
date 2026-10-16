@@ -15573,7 +15573,7 @@ function _renderComop(d,from,to){
     ['Nombre d\'OF moy par équipe',nbOfMoy,'#64748b'],
   ];
   const trsChart=_comopLineChart('📈 Évolution TRS par production','#16a34a','trs',0,100,'%',180,sessions);
-  const cadChart=_comopLineChart('🏎 Évolution Cadence par production','#0369a1','cadence_h',400,950,' pcs/h',160,sessions);
+  const cadChart=_comopLineChart('🏎 Évolution Cadence par production   - Or/heure','#0369a1','cadence_h',400,950,' pcs/h',160,sessions,(d.cadence_ref_pcs_min||0)*60*0.7);
   const stopPareto=_comopPareto(d.stop_pareto||[],'#dc2626','🛑 Pareto arrêts non prévus');
   const degPareto=_comopPareto(d.degrade_pareto||[],'#f59e0b','⚠️ Pareto modes dégradés');
   return `<div id="comop-snap-content" style="background:var(--bg)">
@@ -15596,7 +15596,7 @@ function _renderComop(d,from,to){
     </div>
   </div>`;
 }
-function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
+function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions,cadRefVal){
   const W=1250,padL=56,padR=28,padT=30,padB=10;
   const gW=W-padL-padR,gH=H-padT-padB;
   const pts=Object.values(sessions.reduce((m,s)=>{
@@ -15640,12 +15640,19 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
     path+=(pi===0?'M':'L')+px.toFixed(1)+','+py.toFixed(1);
     dots+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="5" fill="'+col+'" opacity=".9"/>';
     var lblTxt=key==='trs'?ptVal.toFixed(1):Math.round(ptVal);
-    labels+='<text x="'+px.toFixed(1)+'" y="'+(py-8).toFixed(1)+'" text-anchor="middle" font-size="11" fill="'+col+'" font-weight="600">'+lblTxt+'</text>';
+    labels+='<text x="'+px.toFixed(1)+'" y="'+(py-10).toFixed(1)+'" text-anchor="middle" font-size="22" fill="'+col+'" font-weight="700">'+lblTxt+'</text>';
   }
-  var targetLine=key==='trs'
-    ?'<line x1="'+padL+'" y1="'+toY(70).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+toY(70).toFixed(1)+'" stroke="#16a34a" stroke-width="2" stroke-dasharray="8,4"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(toY(70)+6).toFixed(1)+'" font-size="18" fill="#16a34a" font-weight="700">70%</text>'
+  var targetLine='';
+  if(key==='trs'){
+    targetLine='<line x1="'+padL+'" y1="'+toY(70).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+toY(70).toFixed(1)+'" stroke="#16a34a" stroke-width="2" stroke-dasharray="8,4"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(toY(70)+6).toFixed(1)+'" font-size="18" fill="#16a34a" font-weight="700">70%</text>';
+  } else if(cadRefVal>0){
+    var ty70=toY(cadRefVal);
+    targetLine='<line x1="'+padL+'" y1="'+ty70.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+ty70.toFixed(1)+'" stroke="#0369a1" stroke-width="2" stroke-dasharray="8,4"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(ty70+6).toFixed(1)+'" font-size="18" fill="#0369a1" font-weight="700">70%</text>';
+  }
+  var legend=key==='trs'
+    ?'<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span> &nbsp;<svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/></svg> Objectif</span>'
+    :cadRefVal>0?'<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px"><svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#0369a1" stroke-width="2" stroke-dasharray="6,3"/></svg> 70% objectif</span>'
     :'';
-  var legend=key==='trs'?'<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span> &nbsp;<svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/></svg> Objectif</span>':'';
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px">'
     +'<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;color:'+titleCol+'">'+title+legend+'</div>'
     +'<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">'
@@ -15692,7 +15699,7 @@ async function snapComop(){
       <div style="font-size:22px;font-weight:700;letter-spacing:.3px">Rapport — Oreillers cardés 1 du ${fromLbl} au ${toLbl}</div>
       <div style="font-size:14px;font-weight:400;opacity:.85;margin-top:4px">${d.nb_jours} jour${d.nb_jours>1?'s':''} · ${d.nb_sessions} poste${d.nb_sessions>1?'s':''}</div>
     </div>
-  </div>`+snapContent.outerHTML;
+  </div>`+snapContent.outerHTML.replace(/font-size="22"/g,'font-size="33"');
   document.body.appendChild(wrapper);
   toast('Capture en cours…','ok');
   await new Promise(r=>setTimeout(r,300));
