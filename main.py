@@ -193,6 +193,12 @@ def _ensure_db_schema(conn):
         conn.commit()
     except Exception:
         pass  # Column already exists
+    # Migration: normalize old c16 "Oui" → "Lot de 2"
+    try:
+        c.execute("UPDATE declarations SET c16='Lot de 2' WHERE c16='Oui' OR c16='oui'")
+        conn.commit()
+    except Exception:
+        pass
     c.execute(f"""CREATE TABLE IF NOT EXISTS postes (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
         p01 TEXT, p02 TEXT, p03 TEXT, p04 TEXT, p05 REAL, p06 REAL, p07 REAL,
@@ -643,7 +649,7 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
     _bf_type_prod = str(_fd.get("type_prod","") or "")
     _bf_poids     = str(_fd.get("poids","") or "")
     _bf_fibre     = str(_fd.get("fibre","") or "")
-    _bf_kit       = "Oui" if _fd.get("kit") else ""
+    _bf_kit       = _kit_db_val(_fd.get("kit",""))
     def _bg():
         try:
             n_updated = 0
@@ -692,7 +698,7 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                     if _bf_fibre and not str(fibre_v or "").strip():
                         updates["c12"] = _bf_fibre
                     if _bf_kit:
-                        updates["c16"] = "Oui"
+                        updates["c16"] = _bf_kit
                     if updates:
                         set_clause = ", ".join(f"{k}=?" for k in updates)
                         c.execute(f"UPDATE declarations SET {set_clause} WHERE rowid=?",
@@ -741,8 +747,8 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                             updates2["c11"] = _prev_poids
                         if _prev_fibre and not str(fibre_v or "").strip():
                             updates2["c12"] = _prev_fibre
-                        if _prev_kit == "Oui":
-                            updates2["c16"] = "Oui"
+                        if _prev_kit:
+                            updates2["c16"] = _prev_kit
                         set_clause2 = ", ".join(f"{k}=?" for k in updates2)
                         c.execute(f"UPDATE declarations SET {set_clause2} WHERE rowid=?",
                                   list(updates2.values()) + [rid])
@@ -1419,10 +1425,17 @@ def calc_equiv(qte, taille, type_prod):
 
 # ── (Legacy Excel helpers removed — now using SQLite via _get_conn/_db_commit) ──
 
+def _kit_db_val(raw):
+    """Map any kit input (lot2/lot4/oui/Oui/'') to the canonical DB string."""
+    k = str(raw or "").strip().lower()
+    if k in ("lot de 2", "lot2", "oui"): return "Lot de 2"
+    if k in ("lot de 4", "lot4"): return "Lot de 4"
+    return ""
+
 def build_decl_rows(v, tl_events, of_start, pause_periods):
     """Construit les lignes arrêts/pauses au format unifié (40 cols)."""
     rows = []
-    kit_val = "Oui" if v.get("kit") else "Non"
+    kit_val = _kit_db_val(v.get("kit",""))
     def _base_row(type_decl, start, end, comment="", hors_trs="", cat=""):
         dur = max(0,(end-start).total_seconds())
         shift_dt = _S.get("shift_start") or start
@@ -4480,7 +4493,7 @@ def api_end_prod():
         v.get("of_taie",""),
         v.get("traca",""),
         v.get("ref_taie",""),
-        "Oui" if v.get("kit") else "Non",
+        _kit_db_val(v.get("kit","")),
         _S["of_start"].strftime("%H:%M:%S"),
         end_dt.strftime("%H:%M:%S"),
         fmt(of_s_brut),
@@ -4681,7 +4694,7 @@ def api_end_stop():
             _lbl, (_S.get("form") or {}).get("of_num",""),
             _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-            str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","",_kit_db_val((_S.get("form") or {}).get("kit","")),
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",comment,"","","",
             _sh.strftime("%d/%m/%Y"),
@@ -4704,7 +4717,7 @@ def _write_pause_row(_ps, _pe):
         _ps.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
         (_S.get("form") or {}).get("copilote",""),
         str((_S.get("form") or {}).get("nb_pers","") or ""),
-        str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+        str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","",_kit_db_val((_S.get("form") or {}).get("kit","")),
         _ps.strftime("%H:%M:%S"), _pe.strftime("%H:%M:%S"), fmt(_pause_dur),
         "","","","","","","","","","","","","","","","","","","","",
         _sh.strftime("%d/%m/%Y"),
@@ -4722,7 +4735,7 @@ def _write_event_row(type_label, _start, _end):
         type_label, (_S.get("form") or {}).get("of_num",""),
         _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
         (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-        str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+        str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","",_kit_db_val((_S.get("form") or {}).get("kit","")),
         _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
         "","","","","","","","","","","","","","","","","","","","",
         _sh.strftime("%d/%m/%Y"),
@@ -4833,7 +4846,7 @@ def api_toggle_reunion():
                 "Réunion", (_S.get("form") or {}).get("of_num",""),
                 _start.strftime("%d/%m/%Y"), _S.get("poste",""), _S.get("pilot",""),
                 (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-                str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+                str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","",_kit_db_val((_S.get("form") or {}).get("kit","")),
                 _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
                 "","","","","","","","","","","","","","","","","","","","",
                 _sh.strftime("%d/%m/%Y"),
@@ -4884,7 +4897,7 @@ def api_end_nettoyage():
             _lbl, (_S.get("form") or {}).get("of_num", ""),
             _sh.strftime("%d/%m/%Y"), _S.get("poste", ""), _S.get("pilot", ""),
             (_S.get("form") or {}).get("copilote",""),str((_S.get("form") or {}).get("nb_pers","") or ""),
-            str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","","Oui" if (_S.get("form") or {}).get("kit") else "Non",
+            str((_S.get("form") or {}).get("taille","") or ""),str((_S.get("form") or {}).get("code_prod","") or ""),str((_S.get("form") or {}).get("type_prod","") or ""),str((_S.get("form") or {}).get("poids","") or ""),str((_S.get("form") or {}).get("fibre","") or ""),"","","",_kit_db_val((_S.get("form") or {}).get("kit","")),
             _start.strftime("%H:%M:%S"), _end.strftime("%H:%M:%S"), fmt(_dur),
             "","","","","","","","","","","","","","","","",data.get("comment",""),"","","",
             _sh.strftime("%d/%m/%Y"),
@@ -7109,7 +7122,7 @@ def api_add_past_decl():
             v.get("copilote",""), v.get("nb_pers",""), v.get("taille",""),
             v.get("code_prod",""), v.get("type_prod",""), v.get("poids",""), v.get("fibre",""),
             v.get("of_taie",""), v.get("traca",""), v.get("ref_taie",""),
-            "Oui" if v.get("kit") else "Non",
+            _kit_db_val(v.get("kit","")),
             debut_dt.strftime("%H:%M:%S"), fin_dt.strftime("%H:%M:%S"), fmt(dur_s),
             qte_fab, _n(v.get("qte_emb",0)), equiv, c1, c2, trs_str,
             _n(v.get("qte_init_taie",0)), _n(v.get("nb_taie2_choix",0)), _n(v.get("nb_def_cout",0)),
@@ -8158,7 +8171,7 @@ select{cursor:default}
             <h4>🏭 Production</h4>
             <div class="fr big"><label>Qté Fabriquée *</label><input id="f-qte_fab" type="number" min="0" placeholder="" oninput="scheduleAutoSave();_applyFormAndUpdateGauge()" onclick="openCodeInput('qte_fab','Qté Fabriquée','num',5)"></div>
             <div class="fr big"><label>Qté Emballée</label><input id="f-qte_emb" type="number" min="0" placeholder="" oninput="scheduleAutoSave();_applyFormAndUpdateGauge()" onclick="openCodeInput('qte_emb','Qté Emballée','num',5)"></div>
-            <div class="fr"><label>Lots de 2</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="oui">Oui</option></select></div>
+            <div class="fr"><label>Lot ?</label><select id="f-kit" onchange="scheduleAutoSave()"><option value="">Non</option><option value="Lot de 2">Lot de 2</option><option value="Lot de 4">Lot de 4</option></select></div>
             <div class="fr"><label>Poids Garnissage (g)</label><input id="f-poids" type="number" min="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
@@ -8438,8 +8451,8 @@ select{cursor:default}
             <select id="pd-type-prod" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Taille *</label>
             <select id="pd-taille" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">— Choisir —</option></select></div>
-          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Lot de 2</label>
-            <select id="pd-kit" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">Non</option><option value="oui">Oui</option></select></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Lot ?</label>
+            <select id="pd-kit" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">Non</option><option value="Lot de 2">Lot de 2</option><option value="Lot de 4">Lot de 4</option></select></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Nb personnes *</label>
@@ -8552,8 +8565,8 @@ select{cursor:default}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Co-Pilote</label>
             <select id="ofpf-copilote" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">--</option></select></div>
-          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Lot de 2</label>
-            <select id="ofpf-kit" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">Non</option><option value="oui">Oui</option></select></div>
+          <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Lot ?</label>
+            <select id="ofpf-kit" style="width:100%;padding:5px 8px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1))"><option value="">Non</option><option value="Lot de 2">Lot de 2</option><option value="Lot de 4">Lot de 4</option></select></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div><label style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;display:block;margin-bottom:2px">Poids garnissage *</label>
@@ -9426,7 +9439,7 @@ select{cursor:default}
           <div class="fr"><label>OF Taie</label><input id="er-oftaie"></div>
           <div class="fr"><label>Traca Fibre</label><input type="text" id="er-traca" placeholder="n° de lot(s), séparés par ;"></div>
           <div class="fr"><label>Réf Taie</label><input id="er-reftaie" onfocus="openCodeInputFull('er-reftaie','Code Taie')" style="cursor:pointer"></div>
-          <div class="fr"><label>Lots de 2</label><select id="er-kit"><option value="">Non</option><option value="oui">Oui</option></select></div>
+          <div class="fr"><label>Lot ?</label><select id="er-kit"><option value="">Non</option><option value="Lot de 2">Lot de 2</option><option value="Lot de 4">Lot de 4</option></select></div>
           <div class="fr"><label>Qté Init Taie</label><input type="number" id="er-qteinit"></div>
           <div class="fr"><label>Nb Taie 2nd Choix</label><input type="number" id="er-nbtaie2"></div>
           <div class="fr"><label>Nb Défaut Couture</label><input type="number" id="er-nbdef"></div>
@@ -13204,7 +13217,7 @@ function _renderAndOpenOfDetail(r, ofEvts) {
     _sec('Identité'),
     _row('OF',r.of,'#1e3a8a'),_row('Pilote',r.pilote,'#374151'),_row('Co-Pilote',r.copilote,'#374151'),_row('Nb Personnes',r.nb_pers,'#374151'),
     _sec('Produit'),
-    _row('Taille',r.taille,'#374151'),_row('Type produit',r.type_prod,'#374151'),_row('Code produit',r.code_prod,'#374151'),_row('Fibre',r.fibre,'#6366f1'),_row('Poids garnissage (g)',r.poids,'#374151'),_row('Lots de 2',kitStr==='oui'?'✓ Oui':'Non',kitStr==='oui'?'#16a34a':'#94a3b8'),
+    _row('Taille',r.taille,'#374151'),_row('Type produit',r.type_prod,'#374151'),_row('Code produit',r.code_prod,'#374151'),_row('Fibre',r.fibre,'#6366f1'),_row('Poids garnissage (g)',r.poids,'#374151'),_row('Lot ?',(kitStr==='lot de 2'||kitStr==='oui')?'Lot de 2':kitStr==='lot de 4'?'Lot de 4':'Non',(kitStr==='lot de 2'||kitStr==='oui')?'#16a34a':kitStr==='lot de 4'?'#2563eb':'#94a3b8'),
     _sec('Qualité'),
     _row('Réf Taie',r.ref_taie,'#374151'),_row('Nb Taie 2nd choix',r.nb_taie2,'#f59e0b'),_row('Nb défauts couture',r.nb_def_cout,'#dc2626'),_row('Mq Taie',r.mq_taie,'#dc2626'),_row('Mq Housse/Encart',r.mq_housse,'#dc2626'),_row('Nb PP cousue',r.nb_pp,'#374151'),
   ].join('');
@@ -15453,7 +15466,7 @@ function _logiRender(groups){
             ${r.code_prod?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Code</span> <b>${esc(r.code_prod)}</b></span>`:''}
             ${r.fibre?`<span style="font-size:calc(11px*var(--zf,1));color:#6366f1"><span style="color:#94a3b8">Fibre</span> <b>${esc(r.fibre)}</b></span>`:''}
             ${r.ref_taie?`<span style="font-size:calc(11px*var(--zf,1))"><span style="color:#94a3b8">Réf Taie</span> <b>${esc(r.ref_taie)}</b></span>`:''}
-            ${r.kit?`<span style="font-size:calc(11px*var(--zf,1));color:${kitStr==='oui'?'#16a34a':'#94a3b8'}"><span style="color:#94a3b8">Lots de 2</span> <b>${kitStr==='oui'?'✓ Oui':'Non'}</b></span>`:''}
+            ${r.kit?`<span style="font-size:calc(11px*var(--zf,1));color:${(kitStr==='lot de 2'||kitStr==='oui')?'#16a34a':kitStr==='lot de 4'?'#2563eb':'#94a3b8'}"><span style="color:#94a3b8">Lot</span> <b>${(kitStr==='lot de 2'||kitStr==='oui')?'Lot de 2':kitStr==='lot de 4'?'Lot de 4':'Non'}</b></span>`:''}
             ${(r.nb_taie2&&r.nb_taie2!=='0')?`<span style="font-size:calc(11px*var(--zf,1));color:#f59e0b"><span style="color:#94a3b8">Taie 2nd choix</span> <b>${esc(r.nb_taie2)}</b></span>`:''}
           </div>
           ${r.debut?`<div style="background:#f1f5f9;border-radius:6px;padding:4px 10px;font-size:calc(10px*var(--zf,1));color:#374151;white-space:nowrap"><b>OF</b> ${esc(r.debut)} → ${esc(r.fin)} · <b>${esc(r.duree||'?')}</b></div>`:''}
@@ -15868,7 +15881,7 @@ async function loadSessionReport(date,pilot,poste,itemId){
   const prodsHtml=(d.prod_rows||[]).map((r,ri)=>{
     const tc=r.trs>=70?'#16a34a':r.trs>=50?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
     const kitStr=(r.kit||'').toLowerCase();
-    const kitDisp=kitStr==='oui'?'<span style="color:#16a34a;font-weight:800">✓</span>':'';
+    const kitDisp=(kitStr==='lot de 2'||kitStr==='oui')?'<span style="color:#16a34a;font-weight:800">Lot 2</span>':kitStr==='lot de 4'?'<span style="color:#2563eb;font-weight:800">Lot 4</span>':'';
     const {netMin,stopMin}=_rptNetProd(r.debut,r.fin);
     const degMinOf=_rptDegMin(r.debut,r.fin);
     const ofDurMin=r.debut&&r.fin?(()=>{const dMs=_rptHmsMs(r.debut),fMs=_rptNormMs(dMs,_rptHmsMs(r.fin));return fMs>dMs?Math.round((fMs-dMs)/60000):0;})():0;
@@ -17862,7 +17875,7 @@ def _force_fin_poste_server(force=False):
                 v.get("of_taie",""),
                 v.get("traca",""),
                 v.get("ref_taie",""),
-                "Oui" if v.get("kit") else "Non",
+                _kit_db_val(v.get("kit","")),
                 of_start.strftime("%H:%M:%S"),
                 end_dt.strftime("%H:%M:%S"),
                 fmt(of_s_brut),
