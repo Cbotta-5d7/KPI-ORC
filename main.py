@@ -9936,6 +9936,8 @@ function showApp(s) {
   if(mpb) mpb.style.display=s.prod_active?'flex':'none';
   setToday();
   restoreFormFromStorage();
+  // Fallback serveur si localStorage vide (ex: nouvel EXE)
+  if(s.form&&Object.keys(s.form).length){const _fof=document.getElementById('f-of_num');if(!_fof||!_fof.value)fillFormFromState(s.form);}
   pollState();
   pollEvts();
   loadCfg();
