@@ -15638,7 +15638,7 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions,cadRefVal)
     var pt=pts[pi];
     var ptVal=key==='trs'?pt.trs:pt.cadence_h;
     var px=toX(pi),py=toY(ptVal);
-    var col=pt.trs>=70?'#16a34a':pt.trs>=50?'#f59e0b':'#dc2626';
+    var col=key==='trs'?(pt.trs>=70?'#16a34a':pt.trs>=50?'#f59e0b':'#dc2626'):(cadRefVal>0?(pt.cadence_h>=cadRefVal*0.7?'#16a34a':pt.cadence_h>=cadRefVal*0.5?'#f59e0b':'#dc2626'):'#16a34a');
     path+=(pi===0?'M':'L')+px.toFixed(1)+','+py.toFixed(1);
     dots+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="5" fill="'+col+'" opacity=".9"/>';
     var lblTxt=key==='trs'?ptVal.toFixed(1):Math.round(ptVal);
@@ -15665,7 +15665,7 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions,cadRefVal)
 function _comopPareto(items,col,title){
   if(!items||!items.length) return `<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;color:${col}">${title}</div><div style="color:var(--gray);font-size:13px">Aucun événement</div>`;
   const mx=items[0].min,tot=items.reduce((a,e)=>a+e.min,0);
-  const hFmt=m=>{const h=Math.floor(m/60);const mn=Math.round(m%60);return h>0?(mn>0?h+'h'+String(mn).padStart(2,'0'):h+'h'):mn+'min';};
+  const hFmt=m=>{const tot=Math.round(m);const h=Math.floor(tot/60);const mn=tot%60;return h>0?(mn>0?h+'h'+String(mn).padStart(2,'0')+'min':h+'h'):mn+'min';};
   const rows=items.slice(0,8).map(e=>{
     const pct=Math.round(e.min/mx*80),pctTot=tot>0?Math.round(e.min/tot*100):0;
     return `<div style="margin-bottom:6px">
