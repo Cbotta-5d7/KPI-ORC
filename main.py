@@ -15576,27 +15576,24 @@ function _renderComop(d,from,to){
 function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions){
   const W=1250,padL=56,padR=28,padT=30,padB=10;
   const gW=W-padL-padR,gH=H-padT-padB;
-  const pts=sessions.length>15
-    ?Object.values(sessions.reduce((m,s)=>{
-        if(!m[s.date])m[s.date]={date:s.date,_ss:[]};
-        m[s.date]._ss.push(s);return m;
-      },{})).map(g=>{
-        const totalPcs=g._ss.reduce((a,ss)=>a+(ss.pcs||0),0);
-        const openH=g._ss.length*8;
-        const cadMoy=g._ss.length>0?Math.round(g._ss.reduce((a,ss)=>a+(ss.cadence_h||0),0)/g._ss.length):0;
-        return {date:g.date,pcs:totalPcs,equiv:g._ss.reduce((a,ss)=>a+(ss.equiv||0),0),
-          trs:openH>0?Math.round(totalPcs/(720*openH)*100*10)/10:-1,cadence_h:cadMoy};
-      })
-    :sessions;
+  const pts=Object.values(sessions.reduce((m,s)=>{
+      if(!m[s.date])m[s.date]={date:s.date,_ss:[]};
+      m[s.date]._ss.push(s);return m;
+    },{})).map(g=>{
+      const totalPcs=g._ss.reduce((a,ss)=>a+(ss.pcs||0),0);
+      const openH=g._ss.length*8;
+      const cadMoy=g._ss.length>0?Math.round(g._ss.reduce((a,ss)=>a+(ss.cadence_h||0),0)/g._ss.length):0;
+      return {date:g.date,pcs:totalPcs,equiv:g._ss.reduce((a,ss)=>a+(ss.equiv||0),0),
+        trs:openH>0?Math.round(totalPcs/(720*openH)*100*10)/10:-1,cadence_h:cadMoy};
+    }).sort((a,b)=>{try{const pa=a.date.split('/'),pb=b.date.split('/');return new Date(pa[2]+'-'+pa[1]+'-'+pa[0])-new Date(pb[2]+'-'+pb[1]+'-'+pb[0]);}catch(e){return 0;}});
   const n=pts.length;
   if(!n) return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;color:var(--gray);text-align:center">Pas de données</div>';
   // Recalculate yMin/yMax from actual data so no point falls outside the axis
   const _vals=pts.map(p=>p[key]??0).filter(v=>v>0);
   if(_vals.length){
-    const _dataMin=Math.min(..._vals);
     const _dataMax=Math.max(..._vals);
-    const _range=_dataMax-_dataMin||1;
-    yMin=Math.max(0,Math.floor((_dataMin-_range*0.1)/10)*10);
+    const _range=_dataMax-yMin||1;
+    yMin=0;
     yMax=Math.ceil((_dataMax+_range*0.1)/10)*10;
   }
   const toX=function(i){return padL+i/Math.max(n-1,1)*gW;};
@@ -16881,8 +16878,7 @@ def generate_dashboard_html():
             '    if(!df&&!fpilot&&!fposte)return d.period_last3||{};\n'
             '    if(!df){bucket=d.period_last6m||{};}\n'
             '    else{var daysMs=(new Date(dt2)-new Date(df))/86400000;\n'
-            '    if(daysMs<=8)bucket=d.period_last7||{};\n'
-            '    else if(daysMs<=32)bucket=d.period_last31||{};\n'
+            '    if(daysMs<=32)bucket=d.period_last31||{};\n'
             '    else bucket=d.period_last6m||{};}\n'
             '    if(!fpilot&&!fposte)return bucket;\n'
             '    var fsd=(bucket.sessions_detail||[]).filter(function(s){return(!fpilot||s.pilot===fpilot)&&(!fposte||s.poste===fposte);});\n'
