@@ -5959,6 +5959,8 @@ def api_fin_poste_data():
     shift_start_dt = _S.get("shift_start")
     shift_date = shift_start_dt.date() if shift_start_dt else datetime.date.today()
     shift_date_str = shift_date.strftime("%d/%m/%Y")
+    _cross_mid = (shift_start_dt.hour >= 12) if shift_start_dt else False
+    next_day_str = (shift_date + datetime.timedelta(days=1)).strftime("%d/%m/%Y") if _cross_mid else ""
     pilot = _S["pilot"] or ""
     pilot_poste = _S["poste"] or ""
     prod_ref = get_prod_ref()
@@ -5968,7 +5970,7 @@ def api_fin_poste_data():
     for rn, r in prod_rows:
         try:
             rd = (str(r[39] if len(r)>39 else "").strip() or _row_date(r[2]))
-            if rd != shift_date_str: continue
+            if rd != shift_date_str and not (_cross_mid and rd == next_day_str): continue
             if str(r[4] or "")!=pilot: continue
             eq=float(str(r[21] or 0).replace(",","."))
             debut_s=_hms_to_sec(str(r[16] or "00:00:00"))
@@ -6009,7 +6011,7 @@ def api_fin_poste_data():
     for rn, r in prod_rows:
         try:
             rd = (str(r[39] if len(r)>39 else "").strip() or _row_date(r[2]))
-            if rd != shift_date_str: continue
+            if rd != shift_date_str and not (_cross_mid and rd == next_day_str): continue
             if str(r[4] or "") != pilot: continue
             fs = _hms_to_sec(str(r[17] or "00:00:00"))
             if fs > max_fin_s: max_fin_s = fs
@@ -6019,7 +6021,7 @@ def api_fin_poste_data():
     declared_stop_s = 0.0
     for rn, r in _decl_cache:
         rd = (str(r[39] if len(r)>39 else "").strip() or _row_date(r[2]))
-        if rd != shift_date_str: continue
+        if rd != shift_date_str and not (_cross_mid and rd == next_day_str): continue
         if str(r[4] or "") != pilot: continue
         row_type = str(r[0] or "").strip().lower()
         if row_type not in ("production","prod",""):
@@ -6055,10 +6057,11 @@ def api_fin_poste_data():
         all_slots = []
         for rn2, r2 in _decl_cache:
             rd2 = (str(r2[39] if len(r2)>39 else "").strip() or _row_date(r2[2]))
-            if rd2 != shift_date_str: continue
+            if rd2 != shift_date_str and not (_cross_mid and rd2 == next_day_str): continue
             if str(r2[4] or "") != pilot: continue
             ds2 = _hms_to_sec(str(r2[16] or "00:00:00"))
             fs2 = _norm_fin(ds2, _hms_to_sec(str(r2[17] or "00:00:00")))
+            if _cross_mid and ds2 < 43200: ds2 += 86400; fs2 += 86400
             if fs2 > ds2 and ds2 >= 0: all_slots.append([ds2, fs2])
         all_slots.sort()
         merged = []
@@ -6145,7 +6148,7 @@ def api_fin_poste_data():
     decl_list = []
     for _rn_dl, _r_dl in _decl_cache:
         _rd_dl = (str(_r_dl[39] if len(_r_dl)>39 else "").strip() or _row_date(_r_dl[2]))
-        if _rd_dl != shift_date_str: continue
+        if _rd_dl != shift_date_str and not (_cross_mid and _rd_dl == next_day_str): continue
         if str(_r_dl[4] or "") != pilot: continue
         _deb_dl = str(_r_dl[16] or "")[:5]
         _fin_dl = str(_r_dl[17] or "")[:5]
@@ -13506,6 +13509,8 @@ function _showEcartModal(fpd){
       if(s==null||e==null)return;
       blocks.push({kind:'gap',debut:g.debut,fin:g.fin,s,e,duree_min:g.duree_min});
     });
+    const _shiftS=_hm2min(modelDebut)||0;
+    if(_shiftS>720){blocks.forEach(b=>{if(b.s<720&&b.s<_shiftS){b.s+=1440;b.e+=1440;}});}
     blocks.sort((a,b)=>a.s-b.s||(a.e-b.e));
     let html='';
     let gapIdx=0;
