@@ -15650,7 +15650,7 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions,cadRefVal)
     path+=(pi===0?'M':'L')+px.toFixed(1)+','+py.toFixed(1);
     dots+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="5" fill="'+col+'" opacity=".9"/>';
     var lblTxt=key==='trs'?ptVal.toFixed(1):Math.round(ptVal);
-    labels+='<text x="'+px.toFixed(1)+'" y="'+(py-10).toFixed(1)+'" text-anchor="middle" font-size="22" fill="'+col+'" font-weight="700">'+lblTxt+'</text>';
+    labels+='<text x="'+px.toFixed(1)+'" y="'+(py-10).toFixed(1)+'" text-anchor="middle" font-size="11" fill="'+col+'" font-weight="700">'+lblTxt+'</text>';
   }
   var targetLine='';
   if(key==='trs'){
@@ -15661,7 +15661,7 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions,cadRefVal)
   }
   var legend=key==='trs'
     ?'<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span> &nbsp;<svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/></svg> Objectif</span>'
-    :cadRefVal>0?'<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px">● <span style="color:#16a34a">≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span> &nbsp;<svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/></svg> Objectif</span>'
+    :cadRefVal>0?'<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px">● <span style="color:#16a34a">≥504</span> &nbsp;● <span style="color:#f59e0b">≥360</span> &nbsp;● <span style="color:#dc2626">&lt;360</span> &nbsp;<svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/></svg> Objectif</span>'
     :'';
   return '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px">'
     +'<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;color:'+titleCol+'">'+title+legend+'</div>'
@@ -15708,7 +15708,7 @@ async function snapComop(){
       <div style="font-size:22px;font-weight:700;letter-spacing:.3px">Rapport — Oreillers cardés 1 du ${fromLbl} au ${toLbl}</div>
       <div style="font-size:14px;font-weight:400;opacity:.85;margin-top:4px">${d.nb_jours} jour${d.nb_jours>1?'s':''} · ${d.nb_sessions} poste${d.nb_sessions>1?'s':''}</div>
     </div>
-  </div>`+snapContent.outerHTML.replace(/font-size="22"/g,'font-size="33"');
+  </div>`+snapContent.outerHTML.replace(/font-size="11"/g,'font-size="17"');
   document.body.appendChild(wrapper);
   toast('Capture en cours…','ok');
   await new Promise(r=>setTimeout(r,300));
