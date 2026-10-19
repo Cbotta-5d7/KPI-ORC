@@ -5408,6 +5408,22 @@ def api_cdg_export():
         except: t_min = 0
         return (dt, t_min)
     rows.sort(key=_sk, reverse=True)
+    def _safe_dur(s):
+        if not s: return ""
+        s = str(s).strip()
+        try:
+            frac = float(s.replace(',', '.'))
+            if 0 < frac < 1:
+                return fmt(int(round(frac * 86400)))
+        except: pass
+        parts = s.split(":")
+        if len(parts) == 3:
+            try: return f"{int(parts[0]):02d}:{int(parts[1]):02d}:{int(float(parts[2])):02d}"
+            except: pass
+        elif len(parts) == 2:
+            try: return f"{int(parts[0]):02d}:{int(parts[1]):02d}:00"
+            except: pass
+        return s
     wb = Workbook()
     ws = wb.active
     ws.title = "CDG"
@@ -5448,7 +5464,7 @@ def api_cdg_export():
             row.get("shift_date",""),
             row.get("debut",""),
             row.get("fin",""),
-            row.get("duree",""),
+            _safe_dur(row.get("duree","")),
             row.get("qte_fab",""),
             row.get("equiv",""),
             row.get("nb_pers",""),
@@ -5467,7 +5483,7 @@ def api_cdg_export():
             if ci2 in (3, 14): cell2.alignment = center_al
             if ci2 in (12, 13): cell2.alignment = right_al
         if row.get("bloquant","") == "OUI":
-            _dur_str = row.get("duree","")
+            _dur_str = _safe_dur(row.get("duree",""))
             _dur_min = 0.0
             try:
                 _dp = _dur_str.split(":")
@@ -17389,7 +17405,7 @@ def generate_dashboard_html():
             '      }\n'
             # ── shared filter state ──
             '      var _EF={from:"",to:"",pilot:"",poste:""};\n'
-            '      var _S1={topN:20,pilot:"",types:["prevu","imprevu","degrade"]};\n'
+            '      var _S1={topN:20,pilot:"",types:["imprevu"]};\n'
             '      var _S2={pilot:""};\n'
             '      var _S4={cats:[]};\n'
             # ── init tab ──
@@ -17473,7 +17489,7 @@ def generate_dashboard_html():
             '        }).join("");\n'
             '        var _s4=\'<div style="background:#fff;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.08);margin-bottom:18px;overflow:hidden">\'\n'
             '          +\'<div style="background:#7c3aed;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">\'\n'
-            '          +\'<span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#fff">⏱ Évolution arrêts par catégorie (h/semaine)</span>\'\n'
+            '          +\'<span style="font-size:calc(13px*var(--zf,1));font-weight:800;color:#fff">⏱ Évolution arrêts par catégorie (h/jour)</span>\'\n'
             '          +_s4CatHtml\n'
             '          +\'</div>\'\n'
             '          +\'<div id="s4-body" style="padding:14px 16px 10px"><div id="s4-chart" style="width:100%;min-height:220px"></div></div>\'\n'
@@ -17608,19 +17624,15 @@ def generate_dashboard_html():
             '        var fd=_getFilteredData();\n'
             '        var ps=fd.ps;\n'
             '        if(!ps.length){el.innerHTML=\'<p style="color:#94a3b8;font-size:13px;padding:8px 0">Aucune donnée OF sur cette période.</p>\';return;}\n'
-            '        var wMap={};var wDays={};\n'
+            '        var dayMap={};\n'
             '        ps.forEach(function(s){\n'
-            '          var iso=_dmy2iso(s.date);var wk=_weekKey(iso);\n'
-            '          wMap[wk]=(wMap[wk]||0)+s.nb_of;\n'
-            '          if(!wDays[wk])wDays[wk]={min:iso,max:iso,days:new Set()};\n'
-            '          wDays[wk].days.add(iso);\n'
-            '          if(iso<wDays[wk].min)wDays[wk].min=iso;\n'
-            '          if(iso>wDays[wk].max)wDays[wk].max=iso;\n'
+            '          var iso=_dmy2iso(s.date);\n'
+            '          dayMap[iso]=(dayMap[iso]||0)+s.nb_of;\n'
             '        });\n'
-            '        var weeks=Object.keys(wMap).sort();\n'
-            '        var labels=weeks.map(function(w){var p=w.split("-");return p.length===3?p[2]+"/"+p[1]:w;});\n'
-            '        var pts=weeks.map(function(w){var d=Math.max(1,wDays[w].days.size);return Math.round(wMap[w]/d*10)/10;});\n'
-            '        _svgLine("s3-chart",[{pts:pts,color:"#0369a1",trend:true}],{labels:labels,minY:0,ySuffix:"",yDec:1,height:200});\n'
+            '        var days=Object.keys(dayMap).sort();\n'
+            '        var labels=days.map(function(d){var p=d.split("-");return p.length===3?p[2]+"/"+p[1]:d;});\n'
+            '        var pts=days.map(function(d){return dayMap[d];});\n'
+            '        _svgLine("s3-chart",[{pts:pts,color:"#0369a1",trend:true}],{labels:labels,minY:0,ySuffix:"",yDec:0,height:200});\n'
             '      }\n'
             # ── renderS4: Arrêts par catégorie ──
             '      function _renderS4(){\n'
@@ -17628,23 +17640,23 @@ def generate_dashboard_html():
             '        var fd=_getFilteredData();\n'
             '        var stops=fd.cd.filter(function(r){return !r.is_prod;});\n'
             '        if(!stops.length||!_S4.cats.length){el.innerHTML=\'<p style="color:#94a3b8;font-size:13px;padding:8px 0">Aucune donnée sur cette période.</p>\';return;}\n'
-            '        var wkSet=new Set();\n'
-            '        var wkCat={};\n'
+            '        var daySet=new Set();\n'
+            '        var dayCat={};\n'
             '        stops.forEach(function(r){\n'
-            '          var iso=_dmy2iso(r.shift_date||r.date);var wk=_weekKey(iso);\n'
+            '          var iso=_dmy2iso(r.shift_date||r.date);\n'
             '          if(!r.cat)return;\n'
-            '          wkSet.add(wk);\n'
-            '          if(!wkCat[wk])wkCat[wk]={};\n'
-            '          wkCat[wk][r.cat]=(wkCat[wk][r.cat]||0)+(r.duree_min||0);\n'
+            '          daySet.add(iso);\n'
+            '          if(!dayCat[iso])dayCat[iso]={};\n'
+            '          dayCat[iso][r.cat]=(dayCat[iso][r.cat]||0)+(r.duree_min||0);\n'
             '        });\n'
-            '        var weeks=Array.from(wkSet).sort();\n'
-            '        if(!weeks.length){el.innerHTML=\'<p style="color:#94a3b8;font-size:13px;padding:8px 0">Aucune donnée sur cette période.</p>\';return;}\n'
-            '        var labels=weeks.map(function(w){var p=w.split("-");return p.length===3?p[2]+"/"+p[1]:w;});\n'
+            '        var days=Array.from(daySet).sort();\n'
+            '        if(!days.length){el.innerHTML=\'<p style="color:#94a3b8;font-size:13px;padding:8px 0">Aucune donnée sur cette période.</p>\';return;}\n'
+            '        var labels=days.map(function(d){var p=d.split("-");return p.length===3?p[2]+"/"+p[1]:d;});\n'
             '        var _evCfg2=(window.DASH&&window.DASH.events_cfg)||[];\n'
             '        var _cm2={};_evCfg2.forEach(function(e){if(e.cat)_cm2[e.cat]=e.cat_label||e.cat;});\n'
             '        var CAT_COL={"ratt":"#dc2626","pb":"#f59e0b","nettoyage":"#3b82f6","pause":"#6366f1","interposte":"#0891b2","degrade":"#8b5cf6","org":"#0369a1","manquants":"#b45309","autre":"#64748b"};\n'
             '        var series=_S4.cats.map(function(cat){\n'
-            '          var pts=weeks.map(function(w){return Math.round(((wkCat[w]&&wkCat[w][cat])||0)/60*100)/100;});\n'
+            '          var pts=days.map(function(d){return Math.round(((dayCat[d]&&dayCat[d][cat])||0)/60*100)/100;});\n'
             '          return{pts:pts,color:CAT_COL[cat]||"#94a3b8",label:_cm2[cat]||cat,trend:false};\n'
             '        }).filter(function(s){return s.pts.some(function(v){return v>0;});});\n'
             '        if(!series.length){el.innerHTML=\'<p style="color:#94a3b8;font-size:13px;padding:8px 0">Aucune donnée pour les catégories sélectionnées.</p>\';return;}\n'
@@ -17670,6 +17682,7 @@ def generate_dashboard_html():
             '        labels.sort();\n'
             '        var prev=_S6.selected.slice();\n'
             '        sel.innerHTML=labels.map(function(l){var isSel=prev.includes(l);return\'<option value="\'+esc(l)+\'"\'+(isSel?\' selected\':\'\')+\'>\'+esc(l)+\'</option>\';}).join("");\n'
+            '        _S6.selected=_S6.selected.filter(function(l){return labels.includes(l);});\n'
             '      }\n'
             '      window._applyS6=function(){\n'
             '        var sel=document.getElementById("s6-sel");if(!sel)return;\n'
@@ -17706,25 +17719,25 @@ def generate_dashboard_html():
             '        }\n'
             '        var fd=_getFilteredData();\n'
             '        var stops=fd.cd.filter(function(r){return !r.is_prod;});\n'
-            '        var wkSet=new Set();\n'
-            '        var wkStop={};\n'
+            '        var daySetS6=new Set();\n'
+            '        var dayStopS6={};\n'
             '        stops.forEach(function(r){\n'
             '          if(!r.designation)return;\n'
-            '          var iso=_dmy2iso(r.shift_date||r.date);var wk=_weekKey(iso);\n'
-            '          wkSet.add(wk);\n'
-            '          if(!wkStop[wk])wkStop[wk]={};\n'
-            '          wkStop[wk][r.designation]=(wkStop[wk][r.designation]||0)+(r.duree_min||0);\n'
+            '          var iso=_dmy2iso(r.shift_date||r.date);\n'
+            '          daySetS6.add(iso);\n'
+            '          if(!dayStopS6[iso])dayStopS6[iso]={};\n'
+            '          dayStopS6[iso][r.designation]=(dayStopS6[iso][r.designation]||0)+(r.duree_min||0);\n'
             '        });\n'
-            '        var weeks=Array.from(wkSet).sort();\n'
-            '        if(!weeks.length){\n'
+            '        var daysS6=Array.from(daySetS6).sort();\n'
+            '        if(!daysS6.length){\n'
             '          el.innerHTML=\'<p style="color:#94a3b8;font-size:13px;padding:8px 0">Aucune donnée sur cette période.</p>\';\n'
             '          if(leg)leg.innerHTML="";\n'
             '          return;\n'
             '        }\n'
-            '        var labels=weeks.map(function(w){var p=w.split("-");return p.length===3?p[2]+"/"+p[1]:w;});\n'
+            '        var labels=daysS6.map(function(d){var p=d.split("-");return p.length===3?p[2]+"/"+p[1]:d;});\n'
             '        var S6_COLORS=["#0f766e","#1d4ed8","#dc2626","#d97706","#7c3aed","#059669","#0369a1","#b45309","#be185d","#374151","#6366f1","#16a34a"];\n'
             '        var series=_S6.selected.map(function(desig,idx){\n'
-            '          var pts=weeks.map(function(w){return Math.round(((wkStop[w]&&wkStop[w][desig])||0)/60*100)/100;});\n'
+            '          var pts=daysS6.map(function(d){return Math.round(((dayStopS6[d]&&dayStopS6[d][desig])||0)/60*100)/100;});\n'
             '          return{pts:pts,color:S6_COLORS[idx%S6_COLORS.length],label:desig,trend:false};\n'
             '        }).filter(function(s){return s.pts.some(function(v){return v>0;});});\n'
             '        if(!series.length){\n'
