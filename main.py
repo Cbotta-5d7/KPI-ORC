@@ -17098,7 +17098,7 @@ def generate_dashboard_html():
             '          }\n'
             '          if(!ip&&rows[ri].bloquant==="OUI"&&(rows[ri].duree_min||0)>30){\n'
             '            var durC=XLSX.utils.encode_cell({r:ri+1,c:11});\n'
-            '            if(ws[durC])ws[durC].s={font:{color:{rgb:"FF0000"},bold:true,sz:10},fill:aFill,border:bdr};\n'
+            '            if(ws[durC])ws[durC].s={font:{color:{rgb:"FF0000"},bold:true,sz:10},fill:aFill,border:bdr,numFmt:"[H]:MM:SS"};\n'
             '          }\n'
             '        }\n'
             '        XLSX.utils.book_append_sheet(wb,ws,"CDG");\n'
