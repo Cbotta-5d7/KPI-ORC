@@ -7766,7 +7766,7 @@ select{cursor:default}
 .cs.cs-done{border-color:#16a34a;background:#f0fdf4}
 /* Active stops bottom bar — chips */
 #stop-bottom,#stop-bottom-main{display:none;background:#7f0000;color:#fff;padding:8px 14px;align-items:center;gap:8px;flex-shrink:0;border-top:2px solid #b91c1c;flex-wrap:wrap}
-#stop-bottom.on,#stop-bottom-main.on{display:flex}
+#stop-bottom.on,#stop-bottom-main.on{display:flex;position:relative;z-index:20}
 .stop-chip{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.28);border-radius:8px;padding:6px 10px;border:1px solid rgba(255,255,255,.2)}
 .chip-lbl{font-weight:800;font-size:calc(13px*var(--zf,1));white-space:nowrap}
 .chip-tim{font-size:calc(18px*var(--zf,1));font-weight:800;font-variant-numeric:tabular-nums;min-width:52px;text-align:right}
@@ -8213,11 +8213,11 @@ select{cursor:default}
             <h4>✅ Qualité</h4>
             <div class="fr" style="display:none"><input id="f-qte_init_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()" onfocus="openCodeInput('ref_taie','Code Taie')"></div>
-            <div class="fr"><label>Nb Taie 2nd Choix</label><input id="f-nb_taie2_choix" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Nb Défaut Couture</label><input id="f-nb_def_cout" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Mq Taie</label><input id="f-mq_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>Mq Housse/Encart</label><input id="f-mq_housse_encart" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
-            <div class="fr"><label>PP cousu et emballé</label><input id="f-nb_pp_cousue" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Nb Taie 2nd Choix</label><input id="f-nb_taie2_choix" type="number" min="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Nb Défaut Couture</label><input id="f-nb_def_cout" type="number" min="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Mq Taie</label><input id="f-mq_taie" type="number" min="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>Mq Housse/Encart</label><input id="f-mq_housse_encart" type="number" min="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>PP cousu et emballé</label><input id="f-nb_pp_cousue" type="number" min="0" oninput="scheduleAutoSave()"></div>
             <div class="fr comment-big"><label>💬 Commentaire</label><textarea id="f-comment" oninput="scheduleAutoSave()" placeholder="Commentaire libre…"></textarea></div>
           </div>
         </div>
@@ -10129,7 +10129,7 @@ function goTab(tab) {
   if(_dataViews.includes(tab)){
     if(tab!=='history'&&_prevTab==='history') _resetHistFilters();
     fetch('/api/reload_excel',{method:'POST'}).catch(()=>{}).finally(()=>{
-      if(tab==='history') loadHist();
+      if(tab==='history'){const _t=new Date();const _hf=document.getElementById('hist-from');const _ht=document.getElementById('hist-to');if(_hf)_hf.value=new Date(_t-30*86400000).toISOString().slice(0,10);if(_ht)_ht.value=_t.toISOString().slice(0,10);loadHist();}
       if(tab==='rapports'){loadRapports(true);rptBackToList();}
       if(tab==='rpt-jour') loadRptJour();
       if(tab==='comop') loadComop();
@@ -11857,6 +11857,7 @@ function fillTracaUI(val){
   const parts=(val||'').split(';').map(s=>s.trim()).filter(Boolean);
   if(!parts.length)parts.push('');
   parts.forEach(p=>addTracaRow(p));
+  syncTracaField();
 }
 // ── fin Traca multi-lots ───────────────────────────────────────────────────────
 
@@ -15622,7 +15623,7 @@ function _renderComop(d,from,to){
   </div>`;
 }
 function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions,cadRefVal){
-  const W=1250,padL=56,padR=28,padT=30,padB=10;
+  const W=1250,padL=56,padR=90,padT=30,padB=28;
   const gW=W-padL-padR,gH=H-padT-padB;
   const pts=Object.values(sessions.reduce((m,s)=>{
       if(!m[s.date])m[s.date]={date:s.date,_ss:[]};
@@ -15670,6 +15671,13 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions,cadRefVal)
     var lblTxt=key==='trs'?ptVal.toFixed(1):Math.round(ptVal);
     labels+='<text x="'+px.toFixed(1)+'" y="'+(py-10).toFixed(1)+'" text-anchor="middle" font-size="11" fill="'+col+'" font-weight="700">'+lblTxt+'</text>';
   }
+  var xlabels='';
+  var _xstep=Math.max(1,Math.ceil(n/12));
+  for(var xi=0;xi<n;xi++){
+    if(xi%_xstep!==0&&xi!==n-1) continue;
+    var _xval=pts[xi].date?pts[xi].date.slice(0,5):'';
+    xlabels+='<text x="'+toX(xi).toFixed(1)+'" y="'+(H-padB+18)+'" text-anchor="middle" font-size="13" fill="#94a3b8">'+_xval+'</text>';
+  }
   var targetLine='';
   if(key==='trs'){
     targetLine='<line x1="'+padL+'" y1="'+toY(70).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+toY(70).toFixed(1)+'" stroke="#16a34a" stroke-width="2"/><text x="'+(W-padR+2).toFixed(1)+'" y="'+(toY(70)+6).toFixed(1)+'" font-size="18" fill="#16a34a" font-weight="700">70%</text>';
@@ -15685,7 +15693,7 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions,cadRefVal)
     +'<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;color:'+titleCol+'">'+title+legend+'</div>'
     +'<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">'
     +grid+'<path d="'+path+'" fill="none" stroke="#64748b" stroke-width="2.5" stroke-dasharray="8,4"/>'+targetLine
-    +dots+labels
+    +dots+labels+xlabels
     +'</svg></div>';
 }
 function _comopPareto(items,col,title){
