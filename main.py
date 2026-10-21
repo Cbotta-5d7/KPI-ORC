@@ -11901,7 +11901,7 @@ function fillFormFromState(form){
   if(npEl&&(!npEl.value||npEl.value==='0')&&!_guard) npEl.value='10';
   const ofEl=document.getElementById('pob-of');
   if(ofEl) ofEl.textContent=form.of_num||'—';
-  fillTracaUI(form.traca||'');
+  if(form.traca) fillTracaUI(form.traca);
 }
 
 // Form persistence in localStorage (persist across restarts until new prod)
