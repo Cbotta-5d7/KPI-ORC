@@ -6994,13 +6994,35 @@ def api_add_stop_decl():
         copilote_v = str(data.get("copilote","") or (_S.get("form") or {}).get("copilote","") or _S.get("copilote","") or "")
         of_num_v = str(data.get("of_num","") or (_S.get("form") or {}).get("of_num","") or "").strip()
         nb_pers_v = str(data.get("nb_pers","") or "").strip()
-        type_prod_v = str(data.get("type_prod","") or "").strip()
         fibre_v = str(data.get("fibre","") or "").strip()
+        # Récupère les champs manquants depuis la dernière déclaration Production du poste
+        _taille_v = _code_prod_v = _type_prod_v = _poids_v = _of_taie_v = _traca_v = _ref_taie_v = _kit_v = ""
+        try:
+            with sqlite3.connect(_DB_PATH) as _cx:
+                _lr = _cx.execute(
+                    "SELECT c06,c08,c09,c10,c11,c12,c13,c14,c15,c16 FROM declarations "
+                    "WHERE c01='Production' AND c05=? AND c04=? AND c40=? "
+                    "ORDER BY rowid DESC LIMIT 1",
+                    (pilot, poste, shift_date2)
+                ).fetchone()
+            if _lr:
+                if not copilote_v: copilote_v = _lr[0] or ""
+                _taille_v    = _lr[1] or ""
+                _code_prod_v = _lr[2] or ""
+                _type_prod_v = _lr[3] or ""
+                _poids_v     = _lr[4] or ""
+                if not fibre_v: fibre_v = _lr[5] or ""
+                _of_taie_v   = _lr[6] or ""
+                _traca_v     = _lr[7] or ""
+                _ref_taie_v  = _lr[8] or ""
+                _kit_v       = _lr[9] or ""
+        except Exception: pass
         row = [
             stop_type, of_num_v,
             start_dt.strftime("%d/%m/%Y"), poste, pilot,
-            copilote_v, nb_pers_v,"",type_prod_v,"","",fibre_v,"","","",
-            "",                              # col P : vide pour les arrêts
+            copilote_v, nb_pers_v, _taille_v, _code_prod_v, _type_prod_v, _poids_v, fibre_v,
+            _of_taie_v, _traca_v, _ref_taie_v,
+            _kit_v,                          # c16 kit_lot
             start_dt.strftime("%H:%M:%S"), end_dt.strftime("%H:%M:%S"), fmt(dur_s),
             "","","","","","","","","","","","","","","","",comment,"","","",
             shift_date2,
