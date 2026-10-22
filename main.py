@@ -6998,7 +6998,7 @@ def api_add_stop_decl():
         # Récupère les champs manquants depuis la dernière déclaration Production du poste
         _taille_v = _code_prod_v = _type_prod_v = _poids_v = _of_taie_v = _traca_v = _ref_taie_v = _kit_v = ""
         try:
-            with sqlite3.connect(_DB_PATH) as _cx:
+            with sqlite3.connect(_db_path_resolved()) as _cx:
                 _lr = _cx.execute(
                     "SELECT c06,c08,c09,c10,c11,c12,c13,c14,c15,c16 FROM declarations "
                     "WHERE c01='Production' AND c05=? AND c04=? AND c40=? "
