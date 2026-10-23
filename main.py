@@ -3901,7 +3901,8 @@ def api_cancel_poste():
         with _db_lock:
             conn = _get_conn(path)
             if conn is None:
-                return jsonify({"ok": False, "error": "Connexion DB impossible"}), 500
+                _log_err(f"[CANCEL-POSTE] _get_conn returned None for path={path}")
+                return jsonify({"ok": False, "error": "Connexion DB impossible (path=" + str(path) + ")"})
             try:
                 c = conn.cursor()
                 if shift_date_str:
