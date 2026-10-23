@@ -4974,7 +4974,8 @@ def api_history():
             t_min = 0
         return (d_tup, t_min)
     all_rows.sort(key=_hist_key, reverse=True)
-    for rn, r in all_rows[:500]:
+    scan_rows = all_rows if (d_from or d_to) else all_rows[:500]
+    for rn, r in scan_rows:
         try:
             row_d_str = str(r[39] if len(r) > 39 else "").strip() or (_row_date(r[2]) if r[2] else "")
             row_d = _parse_date(row_d_str) if row_d_str else None
@@ -16864,8 +16865,8 @@ def generate_dashboard_html():
                     out.append(r)
             return out
         with flask_app.test_client() as c:
-            history = _dedup(c.get('/api/history').get_json(force=True) or [])
-            events_list = _dedup(c.get('/api/events_list').get_json(force=True) or [])
+            history = _dedup(c.get('/api/history?from=2000-01-01').get_json(force=True) or [])
+            events_list = _dedup(c.get('/api/events_list?from=2000-01-01').get_json(force=True) or [])
             past_sessions = c.get('/api/past_sessions').get_json(force=True) or []
             session_reports = {}
             for s in past_sessions:
