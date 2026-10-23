@@ -3886,17 +3886,19 @@ def api_cancel_poste_preview():
 @flask_app.route('/api/cancel_poste', methods=['POST'])
 def api_cancel_poste():
     if _S.get("prod_active"):
-        return jsonify({"ok": False, "error": "OF en cours — terminer la production d'abord"}), 400
+        return jsonify({"ok": False, "error": "OF en cours — terminer la production d'abord"})
     pilot = _S.get("pilot") or ""
     poste = _S.get("poste") or ""
     row_num = _S.get("postes_row_num")
     shift_start = _S.get("shift_start")
     shift_date_str = shift_start.strftime("%d/%m/%Y") if shift_start else ""
+    _log_err(f"[CANCEL-POSTE] pilot={pilot} poste={poste} shift_date={shift_date_str} row_num={row_num}")
     if not pilot:
-        return jsonify({"ok": False, "error": "Non connecté"}), 400
+        return jsonify({"ok": False, "error": "Non connecté (pilot vide)"})
     path = _db_path_resolved()
     if not path or not os.path.exists(path):
-        return jsonify({"ok": False, "error": "Base de données introuvable"}), 500
+        _log_err(f"[CANCEL-POSTE] path introuvable: {path!r}")
+        return jsonify({"ok": False, "error": f"Base de données introuvable: {path!r}"})
     try:
         with _db_lock:
             conn = _get_conn(path)
