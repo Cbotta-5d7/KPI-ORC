@@ -3851,6 +3851,8 @@ def api_cancel_poste_preview():
     pilot = _S.get("pilot") or ""
     poste = _S.get("poste") or ""
     row_num = _S.get("postes_row_num")
+    shift_start = _S.get("shift_start")
+    shift_date_str = shift_start.strftime("%d/%m/%Y") if shift_start else ""
     if not pilot:
         return jsonify({"ok": False, "error": "Non connecté"}), 400
     path = _db_path_resolved()
@@ -3862,10 +3864,14 @@ def api_cancel_poste_preview():
             conn = _get_conn(path)
             if conn:
                 try:
-                    # Récupère les déclarations du pilote pour ce poste
+                    # Récupère les déclarations du pilote pour ce poste ET cette date de poste (c40)
                     c = conn.cursor()
-                    c.execute("SELECT c01, c02, c03, c04, c17, c18 FROM declarations WHERE LOWER(c05)=LOWER(?) AND c04=?",
-                              (pilot, poste))
+                    if shift_date_str:
+                        c.execute("SELECT c01, c02, c03, c04, c17, c18 FROM declarations WHERE LOWER(c05)=LOWER(?) AND c04=? AND c40=?",
+                                  (pilot, poste, shift_date_str))
+                    else:
+                        c.execute("SELECT c01, c02, c03, c04, c17, c18 FROM declarations WHERE LOWER(c05)=LOWER(?) AND c04=?",
+                                  (pilot, poste))
                     for row in c.fetchall():
                         typ, of_num, date, poste_row, h_deb, h_fin = row
                         parts = [x for x in [typ, of_num, date, h_deb, h_fin] if x]
@@ -3884,6 +3890,8 @@ def api_cancel_poste():
     pilot = _S.get("pilot") or ""
     poste = _S.get("poste") or ""
     row_num = _S.get("postes_row_num")
+    shift_start = _S.get("shift_start")
+    shift_date_str = shift_start.strftime("%d/%m/%Y") if shift_start else ""
     if not pilot:
         return jsonify({"ok": False, "error": "Non connecté"}), 400
     path = _db_path_resolved()
@@ -3896,8 +3904,12 @@ def api_cancel_poste():
                 return jsonify({"ok": False, "error": "Connexion DB impossible"}), 500
             try:
                 c = conn.cursor()
-                c.execute("DELETE FROM declarations WHERE LOWER(c05)=LOWER(?) AND c04=?",
-                          (pilot, poste))
+                if shift_date_str:
+                    c.execute("DELETE FROM declarations WHERE LOWER(c05)=LOWER(?) AND c04=? AND c40=?",
+                              (pilot, poste, shift_date_str))
+                else:
+                    c.execute("DELETE FROM declarations WHERE LOWER(c05)=LOWER(?) AND c04=?",
+                              (pilot, poste))
                 if row_num:
                     c.execute("DELETE FROM postes WHERE rowid=?", (row_num,))
                 conn.commit()
@@ -3906,8 +3918,12 @@ def api_cancel_poste():
         # Vider le cache en mémoire
         global _decl_cache
         with _cache_lock:
-            _decl_cache = [r for r in _decl_cache
-                           if not (str(r[1][4]).lower() == pilot.lower() and r[1][3] == poste)]
+            if shift_date_str:
+                _decl_cache = [r for r in _decl_cache
+                               if not (str(r[1][4]).lower() == pilot.lower() and r[1][3] == poste and (len(r[1]) > 39 and r[1][39] == shift_date_str))]
+            else:
+                _decl_cache = [r for r in _decl_cache
+                               if not (str(r[1][4]).lower() == pilot.lower() and r[1][3] == poste)]
         # Reset session
         _S["pilot"] = None
         _S["poste"] = None
