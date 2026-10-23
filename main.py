@@ -3939,7 +3939,7 @@ def api_cancel_poste():
         cfg.update(load_cfg())
     except Exception as _e:
         _log_err(f"[CANCEL-POSTE] pilot={pilot} poste={poste} : {_e}")
-        return jsonify({"ok": False, "error": str(_e)}), 500
+        return jsonify({"ok": False, "error": str(_e)})
     return jsonify({"ok": True})
 
 @flask_app.route('/api/export_all', methods=['GET'])
