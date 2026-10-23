@@ -8990,6 +8990,7 @@ select{cursor:default}
       <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Du <input type="date" id="cdg-from" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
       <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">Au <input type="date" id="cdg-to" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px"></label>
       <button onclick="loadCdg()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">✓ Valider</button>
+      <label style="font-size:calc(11px*var(--zf,1));font-weight:600;color:var(--gray)">OF <input type="text" id="cdg-of" placeholder="N° OF…" oninput="loadCdg()" style="padding:5px 8px;border:1px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));margin-left:4px;width:110px"></label>
       <button onclick="cdgExport()" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">⬇ Exporter les données</button>
       <span id="cdg-count" style="font-size:calc(11px*var(--zf,1));color:var(--gray)"></span>
     </div>
@@ -17217,14 +17218,21 @@ def generate_dashboard_html():
             '      if(!bd||!hd) return;\n'
             '      var allRows=(window.DASH&&window.DASH.cdg_data)||[];\n'
             '      function _toIso(d){var p=String(d||"").split("/");return p.length===3?p[2]+"-"+p[1]+"-"+p[0]:String(d||"");}\n'
+            '      var ofFilter=((document.getElementById("cdg-of")||{}).value||"").trim().toLowerCase();\n'
             '      var rows=allRows.filter(function(r){\n'
             '        var d=_toIso(r.date);\n'
             '        if(from&&d<from) return false;\n'
             '        if(to&&d>to) return false;\n'
+            '        if(ofFilter&&String(r.of||"").toLowerCase().indexOf(ofFilter)===-1) return false;\n'
             '        return true;\n'
             '      });\n'
+            '      var totalRows=rows.length;\n'
+            '      if(!ofFilter) rows=rows.slice(0,500);\n'
             '      var cnt=document.getElementById("cdg-count");\n'
-            '      if(cnt) cnt.textContent=rows.length+" ligne"+(rows.length>1?"s":"");\n'
+            '      if(cnt){\n'
+            '        if(!ofFilter&&totalRows>500) cnt.textContent=rows.length+" / "+totalRows+" lignes (500 premières — saisir un N° OF pour chercher dans tout l\'historique)";\n'
+            '        else cnt.textContent=rows.length+" ligne"+(rows.length>1?"s":"");\n'
+            '      }\n'
             '      hd.innerHTML=\'<tr style="background:#1e3a8a;color:#fff"><th style="padding:7px 10px;text-align:left;white-space:nowrap">Type</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Désignation</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Arrêts bloquant ?</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">OF</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Co-pilote</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Poste</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date réelle</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Date du poste de rattachement</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Début</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Fin</th><th style="padding:7px 10px;text-align:left;white-space:nowrap">Durée</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté prod.</th><th style="padding:7px 10px;text-align:right;white-space:nowrap">Qté équiv.</th><th style="padding:7px 10px;text-align:center;white-space:nowrap">Nb pers</th><th style="padding:7px 10px;text-align:left">Commentaire</th></tr>\';\n'
             '      if(!rows.length){\n'
             '        bd.innerHTML=\'<tr><td colspan="16" style="text-align:center;color:var(--gray);padding:24px">Aucune donnée sur cette période</td></tr>\';\n'
