@@ -15723,10 +15723,10 @@ function _comopLineChart(title,titleCol,key,yMin,yMax,unit,H,sessions,cadRefVal)
   }
   var targetLine='';
   if(key==='trs'){
-    targetLine='<line x1="'+padL+'" y1="'+toY(70).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+toY(70).toFixed(1)+'" stroke="#16a34a" stroke-width="2"/>';
+    targetLine='<line x1="'+padL+'" y1="'+toY(70).toFixed(1)+'" x2="'+(W-padR)+'" y2="'+toY(70).toFixed(1)+'" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/>';
   } else if(cadRefVal>0){
     var ty70=toY(cadRefVal);
-    targetLine='<line x1="'+padL+'" y1="'+ty70.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+ty70.toFixed(1)+'" stroke="#16a34a" stroke-width="2"/>';
+    targetLine='<line x1="'+padL+'" y1="'+ty70.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+ty70.toFixed(1)+'" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/>';
   }
   var legend=key==='trs'
     ?'<span style="font-size:13px;color:var(--text);font-weight:400;text-transform:none;letter-spacing:0;margin-left:12px">● <span style="color:#16a34a">TRS ≥70%</span> &nbsp;● <span style="color:#f59e0b">≥50%</span> &nbsp;● <span style="color:#dc2626">&lt;50%</span> &nbsp;<svg width="22" height="8" style="display:inline;vertical-align:middle"><line x1="0" y1="4" x2="22" y2="4" stroke="#16a34a" stroke-width="2" stroke-dasharray="6,3"/></svg> Objectif</span>'
@@ -16993,8 +16993,8 @@ def generate_dashboard_html():
             '    else{var daysMs=(new Date(dt2)-new Date(df))/86400000;\n'
             '    if(daysMs<=32)bucket=d.period_last31||{};\n'
             '    else bucket=d.period_last6m||{};}\n'
-            '    if(!fpilot&&!fposte)return bucket;\n'
-            '    var fsd=(bucket.sessions_detail||[]).filter(function(s){return(!fpilot||s.pilot===fpilot)&&(!fposte||s.poste===fposte);});\n'
+            '    if(!fpilot&&!fposte&&!df&&!dt2)return bucket;\n'
+            '    var fsd=(bucket.sessions_detail||[]).filter(function(s){var p=(s.date||"").split("/");var sd=p.length===3?p[2]+"-"+p[1]+"-"+p[0]:"";return(!df||sd>=df)&&(!dt2||sd<=dt2)&&(!fpilot||s.pilot===fpilot)&&(!fposte||s.poste===fposte);});\n'
             '    var r=Object.assign({},bucket,{sessions_detail:fsd});\n'
             '    if(!fsd.length){r.nb_sessions=0;return r;}\n'
             '    r.nb_sessions=fsd.length;\n'
