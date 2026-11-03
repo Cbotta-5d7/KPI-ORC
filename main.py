@@ -15875,7 +15875,7 @@ async function loadRapports(defaultMode){
   listEl.innerHTML=filtered.map((s,i)=>{
     const trsStr=s.is_live?'—':(s.trs>=0?s.trs.toFixed(1)+'%':'—');
     const trsCol=s.is_live?'#94a3b8':(s.trs>=70?'#16a34a':s.trs>=50?'#f59e0b':s.trs>=0?'#dc2626':'#94a3b8');
-    return `<div class="rpt-item" id="rpt-item-${i}" onclick="loadSessionReport('${esc(s.date)}','${esc(s.pilot)}','${esc(s.poste)}','rpt-item-${i}')"
+    return `<div class="rpt-item" id="rpt-item-${i}" onclick="loadSessionReport('${esc(s.date)}',${esc(JSON.stringify(s.pilot))},${esc(JSON.stringify(s.poste))},'rpt-item-${i}')"
       style="padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s">
       <div style="font-size:calc(12px*var(--zf,1));font-weight:800;color:var(--navy)">${esc(s.date)} — ${esc(s.poste)}</div>
       <div style="font-size:calc(11px*var(--zf,1));color:var(--gray);margin-top:2px">${esc(s.pilot||'?')} | ${s.nb_of} OF | Éq. ${s.tot_equiv}</div>
@@ -16420,8 +16420,8 @@ function renderPwdList(){
       <span style="cursor:grab;color:#94a3b8;font-size:16px;padding:0 2px;user-select:none;flex-shrink:0" title="Déplacer">⠿</span>
       <div class="pn">${esc(nm)}</div>
       <input type="password" id="pwi-${esc(nm)}" value="${esc(String(pw))}" data-n="${esc(nm)}">
-      <button class="btn-eye" onclick="toggleEye('pwi-${esc(nm)}')">👁</button>
-      <button class="btn btn-sec" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="rmPilot('${esc(nm)}')">✕</button>
+      <button class="btn-eye" onclick="toggleEye(${esc(JSON.stringify('pwi-'+nm))})">👁</button>
+      <button class="btn btn-sec" style="font-size:calc(10px*var(--zf,1));padding:2px 6px" onclick="rmPilot(${esc(JSON.stringify(nm))})">✕</button>
     </div>`).join('')||'<div style="color:var(--gray);font-size:calc(11px*var(--zf,1));padding:3px">Aucun pilote configuré</div>';
 }
 
