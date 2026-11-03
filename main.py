@@ -3814,7 +3814,7 @@ def api_login():
         try:
             h, m = map(int, debut_str.split(':'))
             sd = now.replace(hour=h, minute=m, second=0, microsecond=0)
-            if sd > now: sd -= datetime.timedelta(days=1)
+            if sd > now + datetime.timedelta(hours=2): sd -= datetime.timedelta(days=1)
             fh, fm = map(int, fin_str.split(':'))
             sf = sd.replace(hour=fh, minute=fm, second=0, microsecond=0)
             if sf <= sd: sf += datetime.timedelta(days=1)
