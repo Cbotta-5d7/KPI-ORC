@@ -10544,7 +10544,7 @@ function renderStopChipsMain(s) {
   stops.forEach(k=>{
     const lbl=getEvtLabel(k);
     const cur=s.timers&&s.timers[k]?s.timers[k].current_s:0;
-    html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="main-chip-t-${esc(k)}">${fmtDur2(cur)}</span><button class="btn-endstop" onclick="doEndStop('${esc(k)}')">✓ Terminer</button></div>`;
+    html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="main-chip-t-${esc(k)}">${fmtDur2(cur)}</span><button class="btn-endstop" onclick="doEndStop(${esc(JSON.stringify(k))})">✓ Terminer</button></div>`;
   });
   if(s.is_paused){
     const pe=s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0;
@@ -10570,7 +10570,7 @@ function renderStopChips(s) {
   stops.forEach(k=>{
     const lbl=getEvtLabel(k);
     const cur=s.timers&&s.timers[k]?s.timers[k].current_s:0;
-    html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="chip-t-${esc(k)}">${fmtDur2(cur)}</span><button class="btn-endstop" onclick="doEndStop('${esc(k)}')">✓ Terminer</button></div>`;
+    html+=`<div class="stop-chip"><span class="chip-lbl">⛔ ${esc(lbl)}</span><span class="chip-tim" id="chip-t-${esc(k)}">${fmtDur2(cur)}</span><button class="btn-endstop" onclick="doEndStop(${esc(JSON.stringify(k))})">✓ Terminer</button></div>`;
   });
   if(s.is_paused){
     const pe=s.pause_start_iso?(Date.now()-new Date(s.pause_start_iso).getTime())/1000:0;
