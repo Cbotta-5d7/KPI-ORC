@@ -6566,6 +6566,16 @@ def api_period_report():
     # Deuxième passe : re-limiter à exactement N après le skip_current
     if max_sessions > 0 and len(sessions) > max_sessions:
         sessions = dict(sorted(sessions.items(), key=_key_row, reverse=True)[:max_sessions])
+    # Filtre sélection manuelle : liste JSON de clés "date||pilot_lower||poste_lower"
+    _sk_raw = request.args.get('session_keys', '').strip()
+    if _sk_raw:
+        try:
+            import json as _json_sk
+            _sk_set = set(_json_sk.loads(_sk_raw))
+            sessions = {k: v for k, v in sessions.items()
+                        if f"{v['date']}||{v['pilot'].lower()}||{v.get('poste','').lower()}" in _sk_set}
+        except Exception:
+            pass
     # ── Aggregate ──
     _blab = {'pause_min','meeting_tol_min','clean_short_min','clean_long_min','clean_grand_min'}
     agg_ouv=0.0; agg_utile=0.0; agg_fonct=0.0; agg_stop=0.0; agg_perte=0.0
@@ -6786,6 +6796,33 @@ def api_period_report():
         'stop_pareto':[{'type':k,'cat':(_t:=k.lower()) and ('nettoyage' if 'nettoyage' in _t else ('_pause' if _t=='pause' else ('ratt' if 'rattrapage' in _t else ('pb' if _t.startswith('pb') or 'panne' in _t else 'organisation')))),'min':round(v/60,1),'count':stop_count.get(k,0)} for k,v in sorted(stop_by_type.items(),key=lambda x:-x[1])],
         'degrade_pareto':[{'type':k,'min':round(v/60,1),'count':deg_count.get(k,0)} for k,v in sorted(deg_by_type.items(),key=lambda x:-x[1])],
     })
+
+@flask_app.route('/api/postes_recent')
+def api_postes_recent():
+    n = int(request.args.get('n', 10) or 10)
+    postes_map = load_postes_shift_map()
+    seen = {}
+    for key, entry in postes_map.items():
+        if not isinstance(key, tuple) or len(key) != 3:
+            continue
+        pilot_l, date_s, poste_l = key
+        sk = f"{date_s}||{pilot_l}||{poste_l}"
+        if sk not in seen:
+            seen[sk] = entry
+    items = sorted(seen.values(), key=lambda e: e['deb_dt'] if e.get('deb_dt') else datetime.datetime.min, reverse=True)[:n]
+    result = []
+    for e in items:
+        result.append({
+            'key': f"{e['date_str']}||{e['pilot'].lower()}||{e['poste'].lower()}",
+            'date': e['date_str'],
+            'pilot': e['pilot'],
+            'poste': e['poste'],
+            'deb_dt_iso': e['deb_dt'].isoformat() if e.get('deb_dt') else '',
+            'trs': e.get('trs'),
+            'cadence_h': e.get('cadence_h'),
+            'ouverture_min': e.get('ouverture_min'),
+        })
+    return jsonify({'ok': True, 'postes': result})
 
 @flask_app.route('/api/session_report')
 def api_session_report():
@@ -8959,9 +8996,12 @@ select{cursor:default}
       <button onclick="calcPeriodReport()" style="background:linear-gradient(180deg,#2d3480,#1a1f5e);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(26,31,94,.35),inset 0 1px 0 rgba(255,255,255,.18)">🔄 Actualiser</button>
       <button onclick="resetPeriodReport()" style="background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:5px 12px;font-size:calc(12px*var(--zf,1));color:var(--gray);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.08)">✕ Réinitialiser</button>
       <button id="rj-capture-btn" onclick="captureRapportJour()" title="Copier le rapport en image — à coller dans un mail" style="display:none;align-items:center;justify-content:center;background:#fff;border:2px solid #c7d2fe;border-radius:12px;padding:8px 10px;font-size:calc(18px*var(--zf,1));cursor:pointer;color:#1e3a8a;box-shadow:0 2px 12px rgba(99,102,241,.18);white-space:nowrap" onmouseover="this.style.boxShadow='0 4px 18px rgba(99,102,241,.32)';this.style.borderColor='#818cf8'" onmouseout="this.style.boxShadow='0 2px 12px rgba(99,102,241,.18)';this.style.borderColor='#c7d2fe'">📷</button>
-      <div style="margin-left:auto;display:flex;gap:6px">
-        <button onclick="rjLast3()" style="background:linear-gradient(180deg,#0ea5e9,#0369a1);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(3,105,161,.35),inset 0 1px 0 rgba(255,255,255,.18)">3 derniers postes</button>
-        <button onclick="rjLast7Days()" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(5,150,105,.35),inset 0 1px 0 rgba(255,255,255,.18)">7 derniers jours</button>
+      <button id="rj-sel-btn" onclick="openPostesSelector()" style="background:#fff;border:1.5px solid #c7d2fe;border-radius:8px;padding:5px 14px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;color:#1e3a8a;white-space:nowrap;transition:all .15s">🗂️ Sélection manuelle</button>
+      <div style="margin-left:auto;display:flex;gap:4px;align-items:center">
+        <span style="font-size:calc(10px*var(--zf,1));color:#94a3b8;font-weight:600;margin-right:2px;white-space:nowrap">MODE</span>
+        <button id="rj-mode-1" onclick="rjSetMode(1)" style="background:#f1f5f9;color:#64748b;border:1.5px solid #e2e8f0;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">1×8</button>
+        <button id="rj-mode-2" onclick="rjSetMode(2)" style="background:#f1f5f9;color:#64748b;border:1.5px solid #e2e8f0;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">2×8</button>
+        <button id="rj-mode-3" onclick="rjSetMode(3)" style="background:linear-gradient(180deg,#2d3480,#1a1f5e);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">3×8</button>
       </div>
     </div>
     <div id="rj-result" style="flex:1;overflow-y:auto;padding:14px 18px">
@@ -9460,6 +9500,22 @@ select{cursor:default}
       <button class="btn btn-sec" onclick="closeM('m-editstop')">Annuler</button>
       <button class="btn btn-danger" onclick="deleteStop()">🗑 Supprimer</button>
       <button class="btn btn-ok" onclick="saveEditStop()">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ MODAL: Sélection manuelle des postes ════ -->
+<div class="overlay" id="m-postes-selector" style="display:none;z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:500px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3)">
+    <div style="font-size:calc(16px*var(--zf,1));font-weight:700;color:#1e3a8a;margin-bottom:16px">🗂️ Sélection manuelle des postes</div>
+    <div style="display:flex;gap:16px;margin-bottom:12px;font-size:calc(12px*var(--zf,1))">
+      <a href="#" onclick="psSelectAll(true);return false" style="color:#2563eb;font-weight:600;text-decoration:none">✓ Tout cocher</a>
+      <a href="#" onclick="psSelectAll(false);return false" style="color:#64748b;font-weight:600;text-decoration:none">✗ Tout décocher</a>
+    </div>
+    <div id="ps-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button onclick="psClearAndClose()" style="background:#f1f5f9;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px 18px;cursor:pointer;font-weight:600;font-size:calc(13px*var(--zf,1));color:#475569">Annuler</button>
+      <button onclick="confirmPostesSelection()" style="background:linear-gradient(180deg,#2d3480,#1a1f5e);color:#fff;border:none;border-radius:8px;padding:8px 22px;cursor:pointer;font-weight:700;font-size:calc(13px*var(--zf,1))">Appliquer</button>
     </div>
   </div>
 </div>
@@ -14951,6 +15007,8 @@ async function loadRptJour(){
   if(_rjt) _rjt.value='';
   const _pSel=document.getElementById('rj-pilot'); if(_pSel) _pSel.value='';
   const _qSel=document.getElementById('rj-poste'); if(_qSel) _qSel.value='';
+  _rjSelectedKeys=null;
+  _rjUpdateModeButtons();
   _rjSetBanner('Rapport des 3 derniers postes');
   // Populate pilot/poste selects from past_sessions
   const sessions=await apiFetch('/api/past_sessions');
@@ -14990,16 +15048,17 @@ async function calcPeriodReport(autoLoad,maxSessions){
   const to=autoLoad?'':document.getElementById('rj-to').value;
   const _rjPilotRaw=autoLoad?'':document.getElementById('rj-pilot').value;
   const _rjPosteRaw=autoLoad?'':document.getElementById('rj-poste').value;
-  // Si Actualiser sans dates → recharge le dernier mode (N derniers postes)
-  if(!autoLoad&&!from&&!to&&!_rjPilotRaw&&!_rjPosteRaw){
+  // Si Actualiser sans dates ni sélection → recharge le dernier mode (N derniers postes)
+  if(!autoLoad&&!from&&!to&&!_rjPilotRaw&&!_rjPosteRaw&&!_rjSelectedKeys){
     calcPeriodReport(true,_rjLastMs||3);return;
   }
-  const _ms=autoLoad?(maxSessions||3):0;
+  const _ms=(autoLoad&&!_rjSelectedKeys)?(maxSessions||3):0;
   const pilot=(_rjPilotRaw==='tous')?'':_rjPilotRaw;
   const poste=(_rjPosteRaw==='tous')?'':_rjPosteRaw;
   const resultEl=document.getElementById('rj-result');
   if(!resultEl) return;
-  if(autoLoad){_rjSetBanner('Rapport des '+_ms+' derniers postes');}
+  if(autoLoad&&_rjSelectedKeys){_rjSetBanner('Rapport — '+_rjSelectedKeys.length+' poste'+(_rjSelectedKeys.length>1?'s':'')+' sélectionné'+(_rjSelectedKeys.length>1?'s':''));}
+  else if(autoLoad){_rjSetBanner('Rapport des '+_ms+' derniers postes');}
   else if(from||to){const _fp=from?from.split('-').reverse().join('/'):'…';const _tp=to?to.split('-').reverse().join('/'):'…';_rjSetBanner('Rapport du '+_fp+' au '+_tp);}
   resultEl.innerHTML='<div style="padding:40px;text-align:center;color:var(--gray)">Calcul en cours…</div>';
   let url='/api/period_report?';
@@ -15007,7 +15066,8 @@ async function calcPeriodReport(autoLoad,maxSessions){
   if(to)   url+='date_to='+encodeURIComponent(to)+'&';
   if(pilot) url+='pilot='+encodeURIComponent(pilot)+'&';
   if(poste) url+='poste='+encodeURIComponent(poste)+'&';
-  if(autoLoad) url+='max_sessions='+_ms+'&';
+  if(_ms>0) url+='max_sessions='+_ms+'&';
+  if(_rjSelectedKeys&&_rjSelectedKeys.length) url+='session_keys='+encodeURIComponent(JSON.stringify(_rjSelectedKeys))+'&';
   url+='skip_current=1&';  // jamais le poste en cours dans rapport jour
   const d=await apiFetch(url);
   if(!d||!d.ok){resultEl.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">Erreur ou aucune donnée</div>';return;}
@@ -15447,45 +15507,110 @@ async function captureRapportJour(){
   }
 }
 let _rjLastMs=3;
-function rjLast3(){
-  _rjLastMs=3;
+let _rjSelectedKeys=null; // null=mode actif, Array=sélection manuelle
+function _rjUpdateModeButtons(){
+  const sel=_rjSelectedKeys!==null;
+  [1,2,3].forEach(n=>{
+    const btn=document.getElementById('rj-mode-'+n);
+    if(!btn) return;
+    const active=!sel&&_rjLastMs===n;
+    btn.style.background=active?'linear-gradient(180deg,#2d3480,#1a1f5e)':'#f1f5f9';
+    btn.style.color=active?'#fff':'#64748b';
+    btn.style.border=active?'none':'1.5px solid #e2e8f0';
+    btn.style.opacity=sel?'0.45':'1';
+  });
+  const selBtn=document.getElementById('rj-sel-btn');
+  if(selBtn){
+    if(sel){
+      selBtn.style.background='linear-gradient(180deg,#059669,#047857)';
+      selBtn.style.color='#fff';
+      selBtn.style.borderColor='#059669';
+      selBtn.textContent='✓ '+_rjSelectedKeys.length+' poste'+(_rjSelectedKeys.length>1?'s':'')+' — ✕ annuler';
+    } else {
+      selBtn.style.background='#fff';
+      selBtn.style.color='#1e3a8a';
+      selBtn.style.borderColor='#c7d2fe';
+      selBtn.textContent='🗂️ Sélection manuelle';
+    }
+  }
+}
+function rjSetMode(n){
+  _rjSelectedKeys=null;
+  _rjLastMs=n;
   document.getElementById('rj-from').value='';
   document.getElementById('rj-to').value='';
   document.getElementById('rj-pilot').value='';
   document.getElementById('rj-poste').value='';
-  _rjSetBanner('Rapport des 3 derniers postes');
-  loadRptJour();
+  _rjUpdateModeButtons();
+  calcPeriodReport(true,n);
 }
-function rjLast4(){
-  _rjLastMs=4;
-  document.getElementById('rj-from').value='';
-  document.getElementById('rj-to').value='';
-  document.getElementById('rj-pilot').value='';
-  document.getElementById('rj-poste').value='';
-  _rjSetBanner('Rapport des 4 derniers postes');
-  calcPeriodReport(true,4);
+async function openPostesSelector(){
+  if(_rjSelectedKeys!==null){
+    _rjSelectedKeys=null;
+    _rjUpdateModeButtons();
+    calcPeriodReport(true,_rjLastMs);
+    return;
+  }
+  const d=await apiFetch('/api/postes_recent?n=10');
+  if(!d||!d.ok) return;
+  const list=document.getElementById('ps-list');
+  if(!list) return;
+  list.innerHTML='';
+  d.postes.forEach(p=>{
+    const id='ps-cb-'+p.key.replace(/[^a-z0-9]/gi,'_');
+    const trs=p.trs!=null?Math.round(p.trs)+'%':'—';
+    list.innerHTML+=`<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:calc(12px*var(--zf,1))">
+      <input type="checkbox" id="${id}" data-key="${esc(p.key)}" checked style="width:16px;height:16px;accent-color:#2d3480">
+      <span style="flex:1"><span style="font-weight:700;color:#1e3a8a">${esc(p.date)}</span> <span style="color:#475569">${esc(p.pilot)}</span> <span style="background:#e0e7ff;color:#3730a3;border-radius:4px;padding:1px 6px;font-size:calc(10px*var(--zf,1));font-weight:700;margin-left:4px">${esc(p.poste)}</span></span>
+      <span style="color:#94a3b8;font-size:calc(11px*var(--zf,1))">TRS ${trs}</span>
+    </label>`;
+  });
+  document.getElementById('m-postes-selector').style.display='flex';
 }
+function psSelectAll(v){
+  document.querySelectorAll('#ps-list input[type=checkbox]').forEach(cb=>{cb.checked=v;});
+}
+function psClearAndClose(){
+  document.getElementById('m-postes-selector').style.display='none';
+}
+function confirmPostesSelection(){
+  const keys=[];
+  document.querySelectorAll('#ps-list input[type=checkbox]:checked').forEach(cb=>{keys.push(cb.dataset.key);});
+  document.getElementById('m-postes-selector').style.display='none';
+  if(!keys.length) return;
+  _rjSelectedKeys=keys;
+  _rjUpdateModeButtons();
+  calcPeriodReport(true,0);
+}
+function rjLast3(){ rjSetMode(3); }
+function rjLast4(){ rjSetMode(4); }
 function rjLast7Days(){
+  _rjSelectedKeys=null;
   const _t=new Date(),_f=new Date(_t);
   _f.setDate(_t.getDate()-6);
   document.getElementById('rj-from').value=_f.toISOString().slice(0,10);
   document.getElementById('rj-to').value=_t.toISOString().slice(0,10);
+  _rjUpdateModeButtons();
   _rjSetBanner('Rapport des 7 derniers jours');
   calcPeriodReport(false);
 }
 function rjLast31Days(){
+  _rjSelectedKeys=null;
   const _t=new Date(),_f=new Date(_t);
   _f.setDate(_t.getDate()-30);
   document.getElementById('rj-from').value=_f.toISOString().slice(0,10);
   document.getElementById('rj-to').value=_t.toISOString().slice(0,10);
+  _rjUpdateModeButtons();
   _rjSetBanner('Rapport des 31 derniers jours');
   calcPeriodReport(false);
 }
 function resetPeriodReport(){
+  _rjSelectedKeys=null;
   document.getElementById('rj-from').value='';
   document.getElementById('rj-to').value='';
   document.getElementById('rj-pilot').value='';
   document.getElementById('rj-poste').value='';
+  _rjUpdateModeButtons();
   const r=document.getElementById('rj-result');
   if(r) r.innerHTML='<div style="padding:60px;text-align:center;color:#94a3b8"><div style="font-size:calc(40px*var(--zf,1));margin-bottom:12px">📅</div><div style="font-size:calc(14px*var(--zf,1));font-weight:600">Sélectionnez une période puis cliquez sur Calculer</div></div>';
 }
