@@ -6809,7 +6809,9 @@ def api_postes_recent():
         sk = f"{date_s}||{pilot_l}||{poste_l}"
         if sk not in seen:
             seen[sk] = entry
-    items = sorted(seen.values(), key=lambda e: e['deb_dt'] if e.get('deb_dt') else datetime.datetime.min, reverse=True)[:n]
+    # Exclure le poste en cours (ouverture_min non renseignée = pas encore clôturé)
+    closed = [e for e in seen.values() if e.get('ouverture_min') is not None]
+    items = sorted(closed, key=lambda e: e['deb_dt'] if e.get('deb_dt') else datetime.datetime.min, reverse=True)[:n]
     result = []
     for e in items:
         result.append({
@@ -15560,7 +15562,7 @@ async function openPostesSelector(){
     const id='ps-cb-'+p.key.replace(/[^a-z0-9]/gi,'_');
     const trs=p.trs!=null?Math.round(p.trs)+'%':'—';
     list.innerHTML+=`<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;cursor:pointer;font-size:calc(12px*var(--zf,1))">
-      <input type="checkbox" id="${id}" data-key="${esc(p.key)}" checked style="width:16px;height:16px;accent-color:#2d3480">
+      <input type="checkbox" id="${id}" data-key="${esc(p.key)}" style="width:16px;height:16px;accent-color:#2d3480">
       <span style="flex:1"><span style="font-weight:700;color:#1e3a8a">${esc(p.date)}</span> <span style="color:#475569">${esc(p.pilot)}</span> <span style="background:#e0e7ff;color:#3730a3;border-radius:4px;padding:1px 6px;font-size:calc(10px*var(--zf,1));font-weight:700;margin-left:4px">${esc(p.poste)}</span></span>
       <span style="color:#94a3b8;font-size:calc(11px*var(--zf,1))">TRS ${trs}</span>
     </label>`;
