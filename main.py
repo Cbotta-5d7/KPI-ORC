@@ -17141,7 +17141,7 @@ def generate_dashboard_html():
             '    r.cadence_h=r.temps_utile_min>0?Math.round(r.tot_equiv/r.temps_utile_min*60):0;\n'
             '    return r;}catch(e){return {};}\n'
             '  }\n'
-            '  if(url.indexOf("/api/postes_recent")!==-1){var _lsrc=d.period_last6m||d.period_last3||{};var _lsd=(_lsrc.sessions_detail||[]).slice(0,10);return {ok:true,postes:_lsd.map(function(s){return{key:(s.date||"")+"||"+(s.pilot||"").toLowerCase()+"||"+(s.poste||"").toLowerCase(),date:s.date||"",pilot:s.pilot||"",poste:s.poste||"",trs:s.trs>=0?s.trs:null,cadence_h:s.cadence_h||null,ouverture_min:s.ouv_min||null};})};}\n'
+            '  if(url.indexOf("/api/postes_recent")!==-1){var _lsrc=d.period_last6m||d.period_last3||{};var _dmy=function(s){var p=String(s||"").split("/");return p.length===3?p[2]+"-"+p[1]+"-"+p[0]:"";};var _lsd=(_lsrc.sessions_detail||[]).slice().sort(function(a,b){var da=_dmy(a.date),db=_dmy(b.date);return db>da?1:db<da?-1:0;}).slice(0,10);return {ok:true,postes:_lsd.map(function(s){return{key:(s.date||"")+"||"+(s.pilot||"").toLowerCase()+"||"+(s.poste||"").toLowerCase(),date:s.date||"",pilot:s.pilot||"",poste:s.poste||"",trs:s.trs>=0?s.trs:null,cadence_h:s.cadence_h||null,ouverture_min:s.ouv_min||null};})};}\n'
             '  if(url.indexOf("/api/reload_excel")!==-1)return {ok:true};\n'
             '  if(url.indexOf("/api/cdg_data")!==-1)return d.cdg_data||[];\n'
             '  if(url.indexOf("/api/problemes")!==-1)return d.problems||[];\n'
