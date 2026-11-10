@@ -8286,7 +8286,7 @@ select{cursor:default}
             <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
             <div class="fr"><label>Co-Pilote</label><select id="f-copilote" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave();_applyFormAndUpdateGauge()" onclick="openCodeInput('nb_pers','Nb Personnes','num',2)"></div>
+            <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave();_applyFormAndUpdateGauge()"></div>
           </div>
           <!-- Zone Production -->
           <div class="fzone zp">
