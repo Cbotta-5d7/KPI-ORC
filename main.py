@@ -372,6 +372,7 @@ _S = {
     "degrade_start_dt": None,
     "degrade_periods": [],
     "of_prepares": [],
+    "nb_pers_last": "10",
 }
 _db_lock = threading.Lock()
 _S_lock = threading.RLock()   # verrou réentrant pour protéger _S contre les race conditions
@@ -1092,6 +1093,7 @@ def save_session():
                 "degrade_start_dt": _dt_str(_S.get("degrade_start_dt")),
                 "degrade_periods": [{"start": _dt_str(p["start"]), "end": _dt_str(p["end"]), "type": p["type"]} for p in _S.get("degrade_periods", [])],
                 "of_prepares": _S.get("of_prepares", []),
+                "nb_pers_last": _S.get("nb_pers_last","10"),
             }
         with open(SESSION_FILE,"w",encoding="utf-8") as f: json.dump(d,f,default=str)
     except: pass
@@ -1124,6 +1126,7 @@ def load_session():
         _S["degrade_start_dt"] = _str_dt(d.get("degrade_start_dt"))
         _S["degrade_periods"] = [{"start": _str_dt(p.get("start")), "end": _str_dt(p.get("end")), "type": p.get("type","")} for p in d.get("degrade_periods", [])]
         _S["of_prepares"]    = d.get("of_prepares", [])
+        _S["nb_pers_last"]   = d.get("nb_pers_last","10")
         _S["_written_pause_starts"] = [_str_dt(s) for s in d.get("_written_pause_starts", [])]
         raw_timers = d.get("timers",{})
         _S["timers"] = {}
@@ -3795,6 +3798,7 @@ def api_login():
     if _prev_pilot and _prev_pilot != pilot:
         print(f"[LOGIN-HANDOVER] {pilot} se connecte — clôture automatique du poste de {_prev_pilot}")
         _force_fin_poste_server(force=True)
+        _S["nb_pers_last"] = "10"
     _S["pilot"] = pilot
     _S["poste"] = poste
     _S["copilote"] = str(data.get("copilote","")).strip()
@@ -4215,7 +4219,8 @@ def api_start_prod():
                     "shift_model_start_iso":shift_model_start_iso,
                     "ip_debut_hms":ip_debut_hms,
                     "ip_fin_hms":ip_fin_hms,
-                    "ip_debut_iso":ip_debut_iso})
+                    "ip_debut_iso":ip_debut_iso,
+                    "nb_pers_last":_S.get("nb_pers_last","10")})
 
 @flask_app.route('/api/set_of_start', methods=['POST'])
 @require_pilot
@@ -4943,6 +4948,9 @@ def api_end_nettoyage():
 def api_save_form():
     data = request.json or {}
     _S["form"] = data
+    _nb_pl = str(data.get("nb_pers","") or "").strip()
+    if _nb_pl:
+        _S["nb_pers_last"] = _nb_pl
     save_session()
     # Backfill immédiat : si OF actif et of_num renseigné, mise à jour des lignes arrêt
     _of_num = str(data.get("of_num","") or "").strip()
@@ -6222,6 +6230,7 @@ def api_fin_poste_data():
         "decl_list": decl_list,
         "overlap_ofs": overlap_ofs,
         "copilote": (_S.get("form") or {}).get("copilote",""),
+        "nb_pers_last": _S.get("nb_pers_last","10"),
     })
 
 @flask_app.route('/api/history_today')
@@ -7707,6 +7716,8 @@ body.stop-on #app-hdr{background:linear-gradient(90deg,#fff 0px,#fee2e2 160px,#7
 #alert-strip{background:#b91c1c;color:#fff;text-align:center;padding:4px;font-weight:700;font-size:calc(12px*var(--zf,1));flex-shrink:0;display:none;animation:blink .85s step-start infinite}
 #alert-strip.on{display:block}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes _nbpersAlert{0%,100%{background:#fff7ed;box-shadow:0 0 0 2px #f97316}50%{background:#ffedd5;box-shadow:0 0 0 4px #ea580c}}
+._nb-pers-alert{animation:_nbpersAlert 0.7s ease-in-out infinite;border-radius:4px}
 @keyframes rpt-arr{0%,100%{background:#e5e7eb}50%{background:#f9fafb}}
 
 /* ── VIEWS ── */
@@ -11233,6 +11244,7 @@ async function _doActualStartProd(){
   if(window.ST) window.ST.prod_active=true;
   setToday();
   restoreFormFromStorage();
+  if(d.nb_pers_last&&d.nb_pers_last!=="10"){const _npEl=document.getElementById('f-nb_pers');if(_npEl){_npEl.value=d.nb_pers_last;_npEl.classList.add('_nb-pers-alert');setTimeout(()=>_npEl.classList.remove('_nb-pers-alert'),8000);scheduleAutoSave();}}
   await pollState();
   await pollEvts();
   _pendingGapS=d.gap_s||0;
@@ -13663,7 +13675,7 @@ function _showEcartModal(fpd){
               <div style="min-width:80px"><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">Fibre</label>
                 <input type="text" id="ecart-gap-fibre-${gi}" value="${esc(_ecartLastFibre)}" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:80px"></div>
               <div style="width:70px"><label style="font-size:calc(9px*var(--zf,1));color:#9f1239;font-weight:600;display:block;margin-bottom:2px">Nb pers</label>
-                <input type="number" id="ecart-gap-nbpers-${gi}" value="10" min="1" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:58px"></div>
+                <input type="number" id="ecart-gap-nbpers-${gi}" value="${fpd&&fpd.nb_pers_last?fpd.nb_pers_last:10}" min="1" style="padding:4px 6px;border:1.5px solid #fca5a5;border-radius:5px;font-size:calc(12px*var(--zf,1));width:58px"></div>
               <button class="btn btn-prim" style="font-size:calc(11px*var(--zf,1));padding:5px 12px;background:#dc2626;border-color:#dc2626" onclick="saveEcartGapStop(${gi})">✓ Déclarer</button>
             </div>
           </div>`;
@@ -15190,7 +15202,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
     const _cadLblY=Math.max(13,tY-4);
     const tLine='';
     const legCad='';
-    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence par équipe${legCad}</div><div style="overflow-x:auto;display:flex;justify-content:center"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2}${tLine}${svgLabels2}${svgL2}</svg></div></div>`;
+    chartCadHtml=`<div style="background:var(--card-bg,#fff);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:calc(11px*var(--zf,1));font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px;display:flex;align-items:center;flex-wrap:wrap;gap:2px">⚡ Cadence par équipe${legCad}<span style="color:#111827;font-weight:600;text-transform:none;letter-spacing:0"> (Pcs/h)</span></div><div style="overflow-x:auto;display:flex;justify-content:center"><svg width="${svgW2}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2}${tLine}${svgLabels2}${svgL2}</svg></div></div>`;
     // Version réduite pour screenshot (barres 80%)
     const WB2s=Math.round(WB2*0.8);
     const svgW2s=Math.max(200,n2*(WB2s+GP2)+padL2+padR2);
@@ -15207,7 +15219,7 @@ async function calcPeriodReport(autoLoad,maxSessions){
       else{svgL2S+=`<text x="${cx2}" y="${padT2+gH2+16}" text-anchor="middle" font-size="12" font-weight="600" fill="#374151">${esc((dp[0]||'')+'/'+(dp[1]||''))}</text>`;svgL2S+=`<text x="${cx2}" y="${padT2+gH2+28}" text-anchor="middle" font-size="11" fill="#6366f1">${esc((s.pilot||'').slice(0,9))}</text>`;svgL2S+=`<text x="${cx2}" y="${padT2+gH2+40}" text-anchor="middle" font-size="11" fill="#94a3b8">${esc((s.poste||'').slice(0,9))}</text>`;}
     });
     const tLineS='';
-    window._chartCadHtmlSnap=`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">⚡ Cadence par équipe</div><div style="overflow-x:auto"><svg width="${svgW2s}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2s}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2S}${tLineS}${svgLabels2S}${svgL2S}</svg></div></div>`;
+    window._chartCadHtmlSnap=`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;min-width:0"><div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:4px;letter-spacing:.3px">⚡ Cadence par équipe <span style="color:#111827;font-weight:600;text-transform:none;letter-spacing:0">(Pcs/h)</span></div><div style="overflow-x:auto"><svg width="${svgW2s}" height="${CH2}" style="display:block"><line x1="0" y1="${yBase2}" x2="${svgW2s}" y2="${yBase2}" stroke="#e2e8f0" stroke-width="1"/>${svgBars2S}${tLineS}${svgLabels2S}${svgL2S}</svg></div></div>`;
   }
   // ── Pareto arrêts — barres horizontales ────────────────────────────────────
   let paretoRjHtml='';
