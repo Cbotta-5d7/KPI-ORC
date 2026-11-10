@@ -15892,7 +15892,7 @@ function _comopPareto(items,col,title){
   if(!items||!items.length) return `<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;color:${col}">${title}</div><div style="color:var(--gray);font-size:13px">Aucun événement</div>`;
   const mx=items[0].min,tot=items.reduce((a,e)=>a+e.min,0);
   const hFmt=m=>{const tot=Math.round(m);const h=Math.floor(tot/60);const mn=tot%60;return h>0?(mn>0?h+'h'+String(mn).padStart(2,'0')+'min':h+'h'):mn+'min';};
-  const rows=items.slice(0,8).map(e=>{
+  const rows=items.slice(0,12).map(e=>{
     const pct=Math.round(e.min/mx*80),pctTot=tot>0?Math.round(e.min/tot*100):0;
     return `<div style="margin-bottom:6px">
       <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
