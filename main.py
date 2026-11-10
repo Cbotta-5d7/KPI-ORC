@@ -687,7 +687,7 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                     updates = {}
                     if not str(_row_of or "").strip():
                         updates["c02"] = of_num
-                    if _bf_nb_pers and not str(nb_pers_v or "").strip():
+                    if _bf_nb_pers:
                         updates["c07"] = _bf_nb_pers
                     if _bf_taille and not str(taille_v or "").strip():
                         updates["c08"] = _bf_taille
@@ -4613,6 +4613,33 @@ def api_end_prod():
             _next_rn_ep += 1
     except: pass
     write_excel_bg(prod_row, evt_rows + _extra_evt_rows)
+    # Backfill nb_pers dans _decl_cache pour tous les arrêts de cet OF
+    _nb_pers_final = str(v.get("nb_pers","") or "").strip()
+    if _nb_pers_final and _of_start_snap:
+        _of_s_bk = _hms_to_sec(_of_start_snap.strftime("%H:%M:%S"))
+        _of_e_bk = _hms_to_sec(end_dt.strftime("%H:%M:%S"))
+        _of_e_norm_bk = _norm_fin(_of_s_bk, _of_e_bk)
+        try:
+            _nxt_bk = (datetime.datetime.strptime(_shift_date_str,"%d/%m/%Y")+datetime.timedelta(days=1)).strftime("%d/%m/%Y")
+        except Exception:
+            _nxt_bk = ""
+        _bk_dates = {_shift_date_str}
+        if _nxt_bk and (_of_e_norm_bk > 86400 or end_dt.date() > _of_start_snap.date()):
+            _bk_dates.add(_nxt_bk)
+        with _cache_lock:
+            for _bk_idx, (_bk_rn, _bk_row) in enumerate(_decl_cache):
+                if len(_bk_row) < 17: continue
+                if str(_bk_row[4] or "") != _backfill_pilot: continue
+                if str(_bk_row[3] or "") != _backfill_poste: continue
+                _bk_sd = str(_bk_row[39] if len(_bk_row) > 39 else "").strip()
+                if _bk_sd not in _bk_dates: continue
+                if str(_bk_row[0] or "").strip().lower() in ("production","prod",""): continue
+                _bk_dbs = _hms_to_sec(str(_bk_row[16] or "00:00:00"))
+                _bk_dbn = _bk_dbs if _bk_dbs >= _of_s_bk else _bk_dbs + 86400
+                if _bk_dbn > _of_e_norm_bk: continue
+                _bk_list = list(_bk_row)
+                _bk_list[6] = _nb_pers_final
+                _decl_cache[_bk_idx] = (_bk_rn, tuple(_bk_list))
     if _of_start_snap:
         _backfill_of_for_events(
             v.get("of_num", ""), _of_start_snap, end_dt,
