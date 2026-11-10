@@ -8330,7 +8330,6 @@ select{cursor:default}
             <div class="fr"><label>Taille</label><select id="f-taille" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Fibre</label><select id="f-fibre" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
             <div class="fr"><label>Traca Fibre</label><input type="text" id="f-traca" style="display:none"><div id="f-traca-ui" style="display:flex;flex-direction:column;gap:2px;margin-bottom:3px"></div><button type="button" onclick="addTracaRow()" style="align-self:flex-start;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:5px;color:#1d4ed8;font-size:calc(10px*var(--zf,1));font-weight:700;padding:3px 10px;cursor:pointer">Ajouter une autre traça</button></div>
-            <div class="fr" style="display:none"><input id="f-of_taie" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-duree_mq_mp" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
             <div class="fr" style="display:none"><input id="f-manquant_pers" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
           </div>
@@ -8338,6 +8337,7 @@ select{cursor:default}
           <div class="fzone zq">
             <h4>✅ Qualité</h4>
             <div class="fr" style="display:none"><input id="f-qte_init_taie" type="number" min="0" value="0" oninput="scheduleAutoSave()"></div>
+            <div class="fr"><label>OF Taie</label><input id="f-of_taie" oninput="scheduleAutoSave()" onfocus="openCodeInput('of_taie','OF Taie','9')" placeholder="9 chiffres"></div>
             <div class="fr"><label>Code Taie</label><input id="f-ref_taie" oninput="scheduleAutoSave()" onfocus="openCodeInput('ref_taie','Code Taie')"></div>
             <div class="fr"><label>Nb Taie 2nd Choix</label><input id="f-nb_taie2_choix" type="number" min="0" oninput="scheduleAutoSave()"></div>
             <div class="fr"><label>Nb Défaut Couture</label><input id="f-nb_def_cout" type="number" min="0" oninput="scheduleAutoSave()"></div>
@@ -8996,7 +8996,8 @@ select{cursor:default}
         <span style="font-size:calc(10px*var(--zf,1));font-weight:700;color:#4338ca;text-transform:uppercase">au</span>
         <input type="date" id="rpt-to" onchange="loadRapports()" style="padding:3px 6px;border:none;border-radius:5px;font-size:calc(12px*var(--zf,1));color:#1e3a8a;font-weight:600;outline:none;background:transparent">
       </div>
-      <div style="margin-left:auto;display:flex;gap:6px">
+      <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        <button id="rpt-capture-btn" onclick="captureRapportPoste()" title="Copier le rapport en image — à coller dans un mail" style="display:none;align-items:center;justify-content:center;background:#fff;border:2px solid #c7d2fe;border-radius:12px;padding:8px 10px;font-size:calc(18px*var(--zf,1));cursor:pointer;color:#1e3a8a;box-shadow:0 2px 12px rgba(99,102,241,.18);white-space:nowrap" onmouseover="this.style.boxShadow='0 4px 18px rgba(99,102,241,.32)';this.style.borderColor='#818cf8'" onmouseout="this.style.boxShadow='0 2px 12px rgba(99,102,241,.18)';this.style.borderColor='#c7d2fe'">📷</button>
         <button id="rpt-recalc-btn" style="display:none;background:#16a34a;color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;opacity:.9" title="Recalculer depuis les déclarations (admin)" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='.9'">📊 Recalculer</button>
         <button onclick="_rptSetLast7();loadRapports();" style="background:linear-gradient(180deg,#34d399,#059669);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer;box-shadow:0 3px 8px rgba(5,150,105,.35),inset 0 1px 0 rgba(255,255,255,.18)">7 derniers jours</button>
       </div>
@@ -16487,6 +16488,21 @@ async function loadSessionReport(date,pilot,poste,itemId){
     {label:'Arrêts',value:netStopMin,color:'#dc2626'},
     {label:'Mode dégradé',value:degMinForPie,color:'url(#pie-stripe-deg)'}
   ];
+  window._rptSnapData={
+    d,date,pilot,poste,
+    trsS,trsCol,
+    totQteFab,cadenceH,nbChangFibre,
+    ouvertureMin,tempsUtile,tempsFonctionnement,netStopMin,degMin,degMinForPie,
+    perteCadenceRaw,
+    _objPcsRp,_objEquivRp,_cadRefHRp,
+    _colPcsRp,_colEquivRp,_colCadRp,_colFonctRp,_colArretRp,_colDegRp,_colPerteRp,
+    stopArr,_stopCounts,degArrSr,_degCounts,
+    tlContent,tlDebut,tlFin,
+    _rptStEvts,_rptDgEvts
+  };
+  const _rcBtn2=document.getElementById('rpt-capture-btn');
+  if(_rcBtn2&&window.DASH&&!d.is_live)_rcBtn2.style.display='inline-flex';
+  else if(_rcBtn2)_rcBtn2.style.display='none';
   drawPie('rpt-pie',_pieSlices,{fCenter:18,fSub:11,fLeg:14});
   if(d.is_live){
     const _accWrap=document.getElementById('acc-rpt-pie-wrap');
@@ -16523,6 +16539,171 @@ function rptBackToList(){
   if(leftList) leftList.style.display='flex';
   if(leftKpi){leftKpi.style.display='none';leftKpi.innerHTML='';}
   if(detailEl) detailEl.innerHTML='<div style="padding:24px;color:var(--gray);text-align:center">Sélectionnez un poste</div>';
+}
+
+async function captureRapportPoste(){
+  const v=window._rptSnapData;
+  if(!v||!v.d){toast('Sélectionnez d\'abord un poste','err');return;}
+  if(!window.html2canvas){toast('html2canvas non disponible','err');return;}
+  toast('Capture en cours…','ok');
+  const{d,date,pilot,poste,trsS,trsCol,totQteFab,cadenceH,nbChangFibre,
+    ouvertureMin,tempsUtile,tempsFonctionnement,netStopMin,degMin,degMinForPie,
+    perteCadenceRaw,_objPcsRp,_objEquivRp,_cadRefHRp,
+    _colPcsRp,_colEquivRp,_colCadRp,_colFonctRp,_colArretRp,_colDegRp,_colPerteRp,
+    stopArr,_stopCounts,degArrSr,_degCounts,tlContent,tlDebut,tlFin,
+    _rptStEvts,_rptDgEvts}=v;
+  const _hms2ms=hm=>{if(!hm)return 0;const[h,m,s]=(hm+':0:0').split(':').map(Number);return(h||0)*3600000+(m||0)*60000+(s||0)*1000;};
+  const _normMs=(dMs,fMs)=>fMs<dMs?fMs+86400000:fMs;
+  const _normEvtMs=(t,debMs)=>(debMs>43200000&&t<43200000&&t<debMs)?t+86400000:t;
+  const _netProdSnap=(debHm,finHm)=>{
+    const dMs=_hms2ms(debHm),fMs=_normMs(dMs,_hms2ms(finHm));if(fMs<=dMs)return{netMin:0,stopMin:0};
+    const ov=(_rptStEvts||[]).map(sv=>{const ns=_normEvtMs(sv.s,dMs),ne=_normEvtMs(sv.e,dMs);return{s:Math.max(ns,dMs),e:Math.min(ne,fMs)};}).filter(o=>o.e>o.s);
+    ov.sort((a,b)=>a.s-b.s);const mg=[];ov.forEach(o=>{if(mg.length&&o.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,o.e);else mg.push({...o});});
+    const blocked=mg.reduce((a,o)=>a+(o.e-o.s),0);return{netMin:Math.round(Math.max(0,fMs-dMs-blocked)/60000),stopMin:Math.round(blocked/60000)};
+  };
+  const _degMinSnap=(debHm,finHm)=>{
+    const dMs=_hms2ms(debHm),fMs=_normMs(dMs,_hms2ms(finHm));if(fMs<=dMs)return 0;
+    const ov=(_rptDgEvts||[]).map(sv=>{const ns=_normEvtMs(sv.s,dMs),ne=_normEvtMs(sv.e,dMs);return{s:Math.max(ns,dMs),e:Math.min(ne,fMs)};}).filter(o=>o.e>o.s);
+    ov.sort((a,b)=>a.s-b.s);const mg=[];ov.forEach(o=>{if(mg.length&&o.s<=mg[mg.length-1].e)mg[mg.length-1].e=Math.max(mg[mg.length-1].e,o.e);else mg.push({...o});});
+    return Math.round(mg.reduce((a,o)=>a+(o.e-o.s),0)/60000);
+  };
+  const hFmt=m=>m>=60?Math.floor(m/60)+'h'+String(Math.round(m%60)).padStart(2,'0'):Math.round(m)+'min';
+  const _mkPar=(items,counts,col,title,titleCol)=>{
+    if(!items||!items.length)return '';
+    const mx=items[0][1];const tot=items.reduce((a,e)=>a+e[1],0)||1;
+    const rows=items.slice(0,12).map(([k,v])=>{
+      const pct=Math.round(v/mx*80);const pctTot=Math.round(v/tot*100);
+      return `<div style="margin-bottom:5px"><div style="display:flex;align-items:center;gap:4px;margin-bottom:2px"><div style="width:7px;height:7px;border-radius:2px;background:${col};flex-shrink:0"></div><span style="font-size:10px;color:#374151;word-break:break-word;line-height:1.2"><b>${(counts[k]||1)}×</b> : ${esc(k)}</span></div><div style="display:flex;align-items:center;gap:4px"><div style="flex:1;background:#f1f5f9;border-radius:3px;height:8px;position:relative;overflow:hidden"><div style="width:${pct}%;background:${col};height:100%;border-radius:3px;opacity:.8;position:absolute;top:0;left:0"></div></div><span style="flex-shrink:0;font-size:9px;color:#6b7280;white-space:nowrap">${pctTot}% · ${hFmt(v)}</span></div></div>`;
+    }).join('');
+    return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:${titleCol};text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">${title}</div>${rows}</div>`;
+  };
+  const _isPlnd=t=>/nettoyage|nett\b|r[ée]union|meeting|pause/i.test(t||'');
+  const planMap={};const planCounts={};
+  (d.evt_rows||[]).filter(r=>!r.is_degrade&&_isPlnd(r.type||'')).forEach(r=>{
+    const k=r.type||'Prévu';const p=r.duree?r.duree.split(':'):[0,0,0];
+    planMap[k]=(planMap[k]||0)+(parseInt(p[0]||0)*3600+parseInt(p[1]||0)*60+parseInt(p[2]||0))/60;
+    planCounts[k]=(planCounts[k]||0)+1;
+  });
+  const planArr=Object.entries(planMap).sort((a,b)=>b[1]-a[1]);
+  const _buildPie=(slices,sz)=>{
+    const r2=sz*0.42,ri=sz*0.21,cx=sz/2,cy=sz/2;
+    const tot=slices.filter(s=>s.v>0).reduce((a,s)=>a+s.v,0)||1;
+    let sA=-Math.PI/2,paths='';
+    const vis=slices.filter(s=>s.v>0);
+    if(vis.length===1)return `<svg width="${sz}" height="${sz}" viewBox="0 0 ${sz} ${sz}"><circle cx="${cx}" cy="${cy}" r="${r2}" fill="${vis[0].c}"/><circle cx="${cx}" cy="${cy}" r="${ri}" fill="white"/></svg>`;
+    slices.forEach(sl=>{
+      if(!sl.v)return;const a=sl.v/tot*2*Math.PI;
+      const x1=cx+r2*Math.cos(sA),y1=cy+r2*Math.sin(sA);
+      const x2=cx+r2*Math.cos(sA+a),y2=cy+r2*Math.sin(sA+a);
+      const xi1=cx+ri*Math.cos(sA),yi1=cy+ri*Math.sin(sA);
+      const xi2=cx+ri*Math.cos(sA+a),yi2=cy+ri*Math.sin(sA+a);
+      const lg=a>Math.PI?1:0;
+      paths+=`<path d="M${xi1.toFixed(1)},${yi1.toFixed(1)} L${x1.toFixed(1)},${y1.toFixed(1)} A${r2},${r2} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${xi2.toFixed(1)},${yi2.toFixed(1)} A${ri},${ri} 0 ${lg},0 ${xi1.toFixed(1)},${yi1.toFixed(1)}" fill="${sl.c}" opacity=".9"/>`;
+      sA+=a;
+    });
+    return `<svg width="${sz}" height="${sz}" viewBox="0 0 ${sz} ${sz}"><defs><pattern id="snpdeg" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)"><rect width="4" height="8" fill="#16a34a"/><rect x="4" y="0" width="4" height="8" fill="#f97316"/></pattern></defs>${paths}<circle cx="${cx}" cy="${cy}" r="${ri}" fill="white"/></svg>`;
+  };
+  const tSlices=[
+    {v:Math.max(0,tempsFonctionnement-degMinForPie),c:'#16a34a',l:'Production'},
+    {v:netStopMin,c:'#dc2626',l:'Arrêts'},
+    {v:degMinForPie,c:'url(#snpdeg)',l:'Mode dégradé'}
+  ];
+  const pieTmpsSvg=_buildPie(tSlices,160);
+  const pieTmpsLeg=tSlices.filter(s=>s.v>0).map(s=>{const sc=s.c.startsWith('url(')?'repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#f97316 4px,#f97316 8px)':s.c;return `<div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#374151;padding:2px 0"><div style="width:10px;height:10px;border-radius:3px;background:${sc};flex-shrink:0"></div>${esc(s.l)} <span style="color:#94a3b8;margin-left:auto">${s.v}min</span></div>`;}).join('');
+  const _typeColPal=['#3b82f6','#f59e0b','#10b981','#8b5cf6','#ec4899','#06b6d4','#f97316','#84cc16'];
+  const typeMap={};
+  (d.prod_rows||[]).forEach(r=>{const k=r.type_prod||r.taille||'Inconnu';typeMap[k]=(typeMap[k]||0)+(parseFloat(r.equiv)||0);});
+  const typeArr=Object.entries(typeMap).sort((a,b)=>b[1]-a[1]);
+  const typeSlices=typeArr.map(([k,v2],i)=>({v:v2,c:_typeColPal[i%_typeColPal.length],l:k}));
+  const pieProdSvg=typeSlices.length?_buildPie(typeSlices,160):'';
+  const pieProdLeg=typeSlices.map(s=>`<div style="display:flex;align-items:center;gap:5px;font-size:10px;color:#374151;padding:2px 0"><div style="width:10px;height:10px;border-radius:3px;background:${s.c};flex-shrink:0"></div>${esc(s.l)} <span style="color:#94a3b8;margin-left:auto">${s.v.toFixed(1)}éq</span></div>`).join('');
+  const th='padding:5px 7px;text-align:center;font-size:9px;text-transform:uppercase;color:#64748b;background:#f8fafc;border-bottom:1.5px solid #e2e8f0;white-space:nowrap';
+  const prodsCapHtml=(d.prod_rows||[]).map(r=>{
+    const tc=r.trs>=70?'#16a34a':r.trs>=50?'#f59e0b':r.trs>=0?'#dc2626':'#94a3b8';
+    const{netMin,stopMin}=_netProdSnap(r.debut,r.fin);
+    const degMinOf=_degMinSnap(r.debut,r.fin);
+    const planMin=Math.round((r.plan_stop_s||0)/60);
+    const unplanMin=Math.max(0,stopMin-planMin);
+    const td='padding:4px 6px;text-align:center;font-size:10px;border-bottom:1px solid #f1f5f9;';
+    return `<tr><td style="${td}font-weight:800;color:#1e3a8a">${esc(r.of||'')}</td><td style="${td}">${esc(r.taille||'')}${r.type_prod?' '+esc(r.type_prod):''}</td><td style="${td}font-weight:600;color:#374151">${esc(String(r.nb_pers||''))}</td><td style="${td}">${r.qte_fab!=null&&r.qte_fab!==''?Math.round(parseFloat(r.qte_fab)):''}</td><td style="${td}color:#0891b2;font-weight:700">${r.equiv!=null&&r.equiv!==''?Math.round(parseFloat(r.equiv)):''}</td><td style="${td}color:#0891b2">${(r.objectif!=null&&r.objectif>=0)?r.objectif:'—'}</td><td style="${td}font-weight:800;color:${tc}">${r.trs>=0?r.trs.toFixed(1)+'%':'—'}</td><td style="${td}white-space:nowrap">${esc(r.debut||'')}</td><td style="${td}white-space:nowrap">${esc(r.fin||'')}</td><td style="${td}color:#16a34a;font-weight:700">${netMin>0?netMin+'m':'—'}</td><td style="${td}color:#16a34a">${planMin>0?planMin+'m':'—'}</td><td style="${td}color:#dc2626;font-weight:700">${unplanMin>0?unplanMin+'m':'—'}</td><td style="${td}color:${degMinOf>0?'#b45309':'#94a3b8'};font-weight:${degMinOf>0?'700':'400'}">${degMinOf>0?degMinOf+'m':'—'}</td><td style="${td}text-align:left;font-size:9px;color:#64748b;max-width:140px;word-wrap:break-word;white-space:normal">${esc(r.comment||'')}</td></tr>`;
+  }).join('');
+  const _sCard=(val,lbl,col)=>`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;margin-bottom:4px"><div style="font-size:13px;font-weight:800;color:${col}">${val}</div><div style="font-size:9px;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px;font-weight:600">${lbl}</div></div>`;
+  const _posteNames={matin:'Matin',midi:'Midi',nuit:'Nuit',am:'Matin',pm:'Midi',night:'Nuit'};
+  const posteLbl=_posteNames[(poste||'').toLowerCase()]||esc(poste||'Poste');
+  const titleL1=`Rapport poste — ${posteLbl} · ${esc(date)}`;
+  const titleL2=`${esc(pilot||'')}${(tlDebut&&tlFin)?' · '+esc(tlDebut)+' → '+esc(tlFin):''}`;
+  const trsCol2=trsS>=70?'#4ade80':trsS>=50?'#fbbf24':'#f87171';
+  const tlLegHtml=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px"><div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#374151"><div style="width:10px;height:10px;border-radius:2px;background:#bbf7d0;border:1px solid #86efac"></div>Prod</div><div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#374151"><div style="width:10px;height:10px;border-radius:2px;background:#dc2626"></div>Arrêt</div><div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#374151"><div style="width:10px;height:10px;border-radius:2px;background:#0ea5e9"></div>Nettoyage</div><div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#374151"><div style="width:10px;height:10px;border-radius:2px;background:#94a3b8"></div>Pause</div><div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#374151"><div style="width:10px;height:10px;border-radius:2px;background:repeating-linear-gradient(45deg,#16a34a,#16a34a 4px,#fef08a 4px,#fef08a 8px)"></div>Mode dégradé</div></div>`;
+  const _wrapper=document.createElement('div');
+  _wrapper.style.cssText='position:fixed;left:-9999px;top:0;background:#f8fafc;padding:0;font-family:Arial,sans-serif';
+  _wrapper.innerHTML=`
+    <div style="background:#1e3a5f;color:#fff;padding:14px 22px;font-family:Arial,sans-serif;display:flex;align-items:center;justify-content:space-between;gap:20px">
+      <div>
+        <div style="font-size:22px;font-weight:700;letter-spacing:.3px">${titleL1}</div>
+        ${titleL2?`<div style="font-size:14px;font-weight:400;opacity:.85;margin-top:4px">${titleL2}</div>`:''}
+      </div>
+      <div style="text-align:center;flex-shrink:0">
+        <div style="font-size:44px;font-weight:900;color:${trsCol2};line-height:1">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.75);font-weight:600;margin-top:3px">TRS poste</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:1px">${(d.prod_rows||[]).length} OF · ${ouvertureMin} min</div>
+      </div>
+    </div>
+    <div style="padding:14px;font-family:Arial,sans-serif">
+      <div style="display:flex;gap:14px;align-items:flex-start">
+        <div style="width:272px;flex-shrink:0;display:flex;flex-direction:column;gap:4px">
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colPcsRp}">${Math.round(totQteFab)}&nbsp;<span style="font-weight:600;color:#374151">Pièces</span>&nbsp;<span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj&nbsp;${(_objPcsRp||0)>0?Math.round(_objPcsRp):'—'})</span></div></div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:21px;font-weight:800;color:${_colEquivRp}">${Math.round(d.tot_equiv||0)}&nbsp;<span style="font-weight:600;color:#374151">Equiv</span>&nbsp;<span style="font-size:16px;font-weight:600;color:#94a3b8">(Obj&nbsp;${(_objEquivRp||0)>0?Math.round(_objEquivRp):'—'})</span></div></div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px"><div style="font-size:18px;font-weight:800;color:${_colCadRp}">${cadenceH}&nbsp;<span style="font-weight:600;color:#374151">Pcs/h</span>&nbsp;<span style="font-size:14px;font-weight:600;color:#94a3b8">(ref&nbsp;${_cadRefHRp}&nbsp;Pcs/h)</span></div></div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px"><div style="font-size:28px;font-weight:900;color:${trsCol};text-align:center">${trsS>=0?trsS.toFixed(1)+'%':'—'}</div><div style="font-size:9px;text-align:center;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px">TRS poste</div></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:6px;text-align:center"><div style="font-size:18px;font-weight:900;color:#64748b">${(d.nb_of||0)}</div><div style="font-size:9px;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px">NB OF</div></div>
+            <div style="background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:6px;text-align:center"><div style="font-size:18px;font-weight:900;color:#64748b">${nbChangFibre}</div><div style="font-size:9px;text-transform:uppercase;color:#94a3b8;letter-spacing:.4px">CHG. FIBRE</div></div>
+          </div>
+          ${_sCard(ouvertureMin+' min','Temps d\'ouverture','#64748b')}
+          ${_sCard(tempsUtile+' min','Temps utile','#64748b')}
+          ${_sCard(tempsFonctionnement+' min','Temps de fonctionnement',_colFonctRp)}
+          ${_sCard(netStopMin+' min','Temps en arrêt',_colArretRp)}
+          ${degMin>0?_sCard(degMin+' min','Temps en mode dégradé',_colDegRp):''}
+          ${_sCard(perteCadenceRaw<=0?Math.abs(perteCadenceRaw)+' min de gain':perteCadenceRaw+' min de perte','Perte cadence',_colPerteRp)}
+        </div>
+        <div style="width:262px;flex-shrink:0;display:flex;flex-direction:column;gap:6px">
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px">
+            <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">Répartition du temps</div>
+            <div style="display:flex;justify-content:center">${pieTmpsSvg}</div>
+            <div style="margin-top:6px">${pieTmpsLeg}</div>
+          </div>
+          ${pieProdSvg?`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px"><div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;margin-bottom:6px;letter-spacing:.3px">Répartition par produit</div><div style="display:flex;justify-content:center">${pieProdSvg}</div><div style="margin-top:6px">${pieProdLeg}</div></div>`:''}
+        </div>
+        <div style="flex:1;min-width:300px">
+          ${_mkPar(stopArr,_stopCounts,'#dc2626','Pareto arrêts non prévus','#dc2626')}
+          ${_mkPar(degArrSr,_degCounts,'#f59e0b','Pareto modes dégradés','#d97706')}
+          ${_mkPar(planArr,planCounts,'#60a5fa','Pareto arrêts prévus','#1d4ed8')}
+        </div>
+      </div>
+      ${tlContent?`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-top:12px"><div style="font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Timeline${(tlDebut&&tlFin)?' · '+esc(tlDebut)+' → '+esc(tlFin):''}</div><svg viewBox="0 0 800 62" preserveAspectRatio="none" style="width:100%;height:62px;display:block">${tlContent}</svg>${tlLegHtml}</div>`:''}
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;margin-top:12px">
+        <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;margin-bottom:8px;letter-spacing:.3px">Productions (${(d.prod_rows||[]).length} OF)</div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr>
+              <th style="${th}">OF</th><th style="${th}">Désig.</th><th style="${th}">Nb Pers</th><th style="${th}">Qté</th><th style="${th}">Équiv</th><th style="${th}">Objectif</th><th style="${th}">TRS</th><th style="${th}">H.début</th><th style="${th}">H.fin</th><th style="${th}">Durée prod</th><th style="${th}">Arrêts prévus</th><th style="${th}">Arrêts non prévus</th><th style="${th}">Dégradé</th><th style="${th};text-align:left">Commentaire pilote</th>
+            </tr></thead>
+            <tbody>${prodsCapHtml||'<tr><td colspan="14" style="text-align:center;color:#94a3b8;padding:8px">Aucune production</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(_wrapper);
+  await new Promise(r=>setTimeout(r,300));
+  try{
+    const canvas=await window.html2canvas(_wrapper,{scale:2,useCORS:true,logging:false,backgroundColor:'#f8fafc',scrollX:0,scrollY:0,windowWidth:_wrapper.scrollWidth+40,windowHeight:_wrapper.scrollHeight+40});
+    document.body.removeChild(_wrapper);
+    await new Promise((res,rej)=>{canvas.toBlob(blob=>{if(!blob){rej(new Error('toBlob failed'));return;}navigator.clipboard.write([new ClipboardItem({'image/png':blob})]).then(res).catch(rej);},'image/png');});
+    toast('Image copiée dans le presse-papier — collez dans votre mail (Ctrl+V)','ok');
+  }catch(e){
+    try{document.body.removeChild(_wrapper);}catch(_){}
+    toast('Erreur capture : '+(e.message||String(e)),'err');
+  }
 }
 
 // ── SETTINGS ──
