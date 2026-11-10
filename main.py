@@ -223,8 +223,13 @@ def _ensure_db_schema(conn):
         description TEXT DEFAULT '',
         resolu INTEGER DEFAULT 0,
         date_resolution TEXT DEFAULT '',
-        solution TEXT DEFAULT ''
+        solution TEXT DEFAULT '',
+        solution_ok INTEGER DEFAULT 0
     )""")
+    try:
+        c.execute("ALTER TABLE problemes ADD COLUMN solution_ok INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception: pass
     conn.commit()
 
 def _log_err(msg):
@@ -5184,8 +5189,8 @@ def api_problemes():
             conn.execute("PRAGMA journal_mode=WAL")
             _ensure_db_schema(conn)
             c = conn.cursor()
-            c.execute("SELECT row_num,date,heure,pilote,description,resolu,date_resolution,solution FROM problemes ORDER BY row_num DESC")
-            rows = [{"row_num":r[0],"date":r[1],"heure":r[2],"pilote":r[3],"description":r[4],"resolu":r[5],"date_resolution":r[6],"solution":r[7]} for r in c.fetchall()]
+            c.execute("SELECT row_num,date,heure,pilote,description,resolu,date_resolution,solution,solution_ok FROM problemes ORDER BY row_num DESC")
+            rows = [{"row_num":r[0],"date":r[1],"heure":r[2],"pilote":r[3],"description":r[4],"resolu":r[5],"date_resolution":r[6],"solution":r[7],"solution_ok":r[8] if len(r)>8 else 0} for r in c.fetchall()]
             conn.close()
         return jsonify(rows)
     except Exception:
@@ -5222,9 +5227,9 @@ def api_probleme_update():
     field = data.get("field","")
     value = data.get("value","")
     pw = data.get("pw","")
-    if row_num is None or field not in ("resolu","date_resolution","solution"):
+    if row_num is None or field not in ("resolu","date_resolution","solution","solution_ok"):
         return jsonify({"ok":False,"error":"paramètres invalides"}), 400
-    if not _check_pw(pw):
+    if field != "solution_ok" and not _check_pw(pw):
         return jsonify({"ok":False,"error":"Mot de passe incorrect"}), 403
     try:
         path = _db_path_resolved()
@@ -9121,6 +9126,7 @@ select{cursor:default}
             <th style="padding:6px 8px;text-align:center;white-space:nowrap">Résolu</th>
             <th style="padding:6px 8px;text-align:left;white-space:nowrap">Date résolution</th>
             <th style="padding:6px 8px;text-align:left">Solution mise en place</th>
+            <th style="padding:6px 8px;text-align:center;white-space:nowrap">Solution OK ?</th>
             <th id="prob-th-actions" style="padding:6px 8px;text-align:center;white-space:nowrap"></th>
           </tr>
         </thead>
@@ -9148,6 +9154,25 @@ select{cursor:default}
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button onclick="closeProblemeModal()" style="background:#f3f4f6;color:#374151;border:none;border-radius:6px;padding:8px 18px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer">Annuler</button>
         <button onclick="submitProbleme()" style="background:#1e3a8a;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">Envoyer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal résolution problème (solution + MDP combinés) -->
+  <div id="prob-resol-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center">
+    <div style="background:#fff;border-radius:12px;padding:24px;width:min(500px,92vw);box-shadow:0 8px 40px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:14px">
+      <div style="font-size:calc(15px*var(--zf,1));font-weight:800;color:#16a34a">✅ Marquer comme résolu</div>
+      <div>
+        <div style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;margin-bottom:3px">Solution mise en place</div>
+        <textarea id="prob-resol-sol" rows="3" placeholder="Décrivez la solution appliquée…" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));resize:none;overflow:hidden;box-sizing:border-box;font-family:inherit" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+      </div>
+      <div>
+        <div style="font-size:calc(10px*var(--zf,1));color:var(--gray);font-weight:700;margin-bottom:3px">Mot de passe administrateur *</div>
+        <input type="password" id="prob-resol-pw" placeholder="MDP admin" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:5px;font-size:calc(12px*var(--zf,1));box-sizing:border-box" onkeydown="if(event.key==='Enter')confirmProblemeResolu()">
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="cancelProblemeResolu()" style="background:#f3f4f6;color:#374151;border:none;border-radius:6px;padding:8px 18px;font-size:calc(12px*var(--zf,1));font-weight:600;cursor:pointer">Annuler</button>
+        <button onclick="confirmProblemeResolu()" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:calc(12px*var(--zf,1));font-weight:700;cursor:pointer">✅ Confirmer résolu</button>
       </div>
     </div>
   </div>
@@ -14597,16 +14622,20 @@ async function loadProblemes(){
   }
   bd.innerHTML=rows.map(r=>{
     const resolu=r.resolu?1:0;
+    const solOk=r.solution_ok?1:0;
     const chk=resolu?'checked':'';
-    const bgRow=resolu?'background:#f0fdf4':'';
+    const bgRow=solOk?'background:#bbf7d0':resolu?'background:#f0fdf4':'';
     const dateRes=esc(r.date_resolution||'');
     const sol=esc(r.solution||'');
     const chkCell=ro
       ?`<input type="checkbox" ${chk} disabled style="width:16px;height:16px;accent-color:#16a34a;opacity:.6">`
       :`<input type="checkbox" ${chk} style="width:16px;height:16px;cursor:pointer;accent-color:#16a34a" onchange="toggleProblemeResolu(${r.row_num},this)">`;
+    const solOkCell=ro
+      ?`<div style="text-align:center;font-size:calc(13px*var(--zf,1))">${solOk?'✅':'—'}</div>`
+      :`<div style="text-align:center"><button onclick="toggleProblemeSolOk(${r.row_num},this,${solOk})" title="Le pilote confirme que la solution fonctionne" style="padding:4px 10px;border-radius:6px;border:2px solid ${solOk?'#16a34a':'#d1d5db'};background:${solOk?'#dcfce7':'#f9fafb'};color:${solOk?'#15803d':'#6b7280'};font-size:calc(11px*var(--zf,1));font-weight:700;cursor:pointer">${solOk?'✅ Ça marche !':'⬜ Tester ?'}</button></div>`;
     const solCell=ro
       ?`<div style="padding:3px 6px;font-size:calc(10px*var(--zf,1));color:var(--gray);white-space:pre-wrap">${sol||'—'}</div>`
-      :`<div style="display:flex;gap:4px;align-items:flex-start"><textarea id="prob-sol-${r.row_num}" rows="2" style="flex:1;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(10px*var(--zf,1));resize:vertical;font-family:inherit" placeholder="Solution…">${sol}</textarea><button onclick="saveProblemeField(${r.row_num},'solution',document.getElementById('prob-sol-${r.row_num}').value)" style="flex-shrink:0;padding:2px 7px;border:1px solid #94a3b8;border-radius:4px;background:#f1f5f9;font-size:calc(10px*var(--zf,1));cursor:pointer" title="Sauvegarder">💾</button></div>`;
+      :`<div style="display:flex;gap:4px;align-items:flex-start"><textarea id="prob-sol-${r.row_num}" rows="1" style="flex:1;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:calc(10px*var(--zf,1));resize:none;overflow:hidden;font-family:inherit" placeholder="Solution…" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'">${sol}</textarea><button onclick="saveProblemeField(${r.row_num},'solution',document.getElementById('prob-sol-${r.row_num}').value)" style="flex-shrink:0;padding:2px 7px;border:1px solid #94a3b8;border-radius:4px;background:#f1f5f9;font-size:calc(10px*var(--zf,1));cursor:pointer" title="Sauvegarder">💾</button></div>`;
     const actCell=ro?'':`<button onclick="deleteProbleme(${r.row_num})" style="padding:3px 10px;background:#fee2e2;border:1px solid #fca5a5;border-radius:5px;color:#dc2626;font-size:calc(10px*var(--zf,1));font-weight:700;cursor:pointer" title="Supprimer (MDP admin requis)">🗑 Supprimer</button>`;
     return `<tr style="border-bottom:1px solid var(--border);${bgRow}">
       <td style="padding:5px 8px;white-space:nowrap">${esc(r.date||'')}</td>
@@ -14616,25 +14645,77 @@ async function loadProblemes(){
       <td style="padding:5px 8px;text-align:center">${chkCell}</td>
       <td style="padding:5px 8px;white-space:nowrap;color:#16a34a;font-weight:600" id="prob-dres-${r.row_num}">${dateRes}</td>
       <td style="padding:5px 8px;min-width:180px">${solCell}</td>
+      <td style="padding:5px 8px;text-align:center">${solOkCell}</td>
       <td style="padding:5px 8px;text-align:center">${actCell}</td>
     </tr>`;
   }).join('');
+  bd.querySelectorAll('textarea[id^="prob-sol-"]').forEach(t=>{t.style.height='auto';t.style.height=t.scrollHeight+'px';});
 }
 
-function _probAskPw(){return prompt('Mot de passe administrateur :');}
+let _probResolRowNum=null,_probResolEl=null;
 
-async function toggleProblemeResolu(rowNum,el){
-  const pw=_probAskPw();
-  if(!pw){el.checked=!el.checked;return;}
-  const resolu=el.checked?1:0;
+function toggleProblemeResolu(rowNum,el){
+  if(!el.checked){
+    // Décocher : demande MDP simple
+    const pw=prompt('Mot de passe administrateur :');
+    if(!pw){el.checked=true;return;}
+    fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'resolu',value:0,pw})}).then(x=>x.json()).then(r=>{
+      if(!r.ok){toast(r.error||'Mot de passe incorrect','err');el.checked=true;return;}
+      fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'date_resolution',value:'',pw})}).catch(()=>{});
+      const row=el.closest('tr');if(row)row.style.background='';
+      const el2=document.getElementById('prob-dres-'+rowNum);if(el2)el2.textContent='';
+    }).catch(()=>{el.checked=false;});
+    return;
+  }
+  // Cocher résolu : ouvre modal combinée solution + MDP
+  _probResolRowNum=rowNum;_probResolEl=el;
+  const solEl=document.getElementById('prob-sol-'+rowNum);
+  const existingSol=solEl?solEl.value:'';
+  const modal=document.getElementById('prob-resol-modal');
+  const solTA=document.getElementById('prob-resol-sol');
+  const pwInput=document.getElementById('prob-resol-pw');
+  if(solTA){solTA.value=existingSol;solTA.style.height='auto';solTA.style.height=solTA.scrollHeight+'px';}
+  if(pwInput)pwInput.value='';
+  if(modal)modal.style.display='flex';
+  setTimeout(()=>{if(solTA)solTA.focus();},100);
+}
+
+function cancelProblemeResolu(){
+  const modal=document.getElementById('prob-resol-modal');
+  if(modal)modal.style.display='none';
+  if(_probResolEl)_probResolEl.checked=false;
+  _probResolRowNum=null;_probResolEl=null;
+}
+
+async function confirmProblemeResolu(){
+  const pw=(document.getElementById('prob-resol-pw')||{}).value||'';
+  if(!pw){toast('Mot de passe requis','err');return;}
+  const sol=(document.getElementById('prob-resol-sol')||{}).value||'';
+  const rowNum=_probResolRowNum;
   const now=new Date();
-  const dateRes=resolu?(String(now.getDate()).padStart(2,'0')+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+now.getFullYear()+' '+String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0')):'';
-  const r=await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'resolu',value:resolu,pw})}).then(x=>x.json()).catch(()=>({ok:false}));
-  if(!r.ok){toast(r.error||'Mot de passe incorrect','err');el.checked=!el.checked;return;}
-  const el2=document.getElementById('prob-dres-'+rowNum);
-  if(el2) el2.textContent=dateRes;
-  const row=el.closest('tr');if(row)row.style.background=resolu?'#f0fdf4':'';
+  const dateRes=String(now.getDate()).padStart(2,'0')+'/'+String(now.getMonth()+1).padStart(2,'0')+'/'+now.getFullYear()+' '+String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0');
+  const r=await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'resolu',value:1,pw})}).then(x=>x.json()).catch(()=>({ok:false}));
+  if(!r.ok){toast(r.error||'Mot de passe incorrect','err');return;}
   await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'date_resolution',value:dateRes,pw})}).catch(()=>{});
+  if(sol)await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'solution',value:sol,pw})}).catch(()=>{});
+  document.getElementById('prob-resol-modal').style.display='none';
+  _probResolRowNum=null;_probResolEl=null;
+  toast('Marqué résolu','ok');
+  loadProblemes();
+}
+
+async function toggleProblemeSolOk(rowNum,btn,current){
+  const newVal=current?0:1;
+  const r=await fetch('/api/probleme_update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_num:rowNum,field:'solution_ok',value:newVal,pw:''})}).then(x=>x.json()).catch(()=>({ok:false}));
+  if(!r.ok){toast('Erreur','err');return;}
+  if(newVal){
+    btn.textContent='✅ Ça marche !';btn.style.borderColor='#16a34a';btn.style.background='#dcfce7';btn.style.color='#15803d';btn.setAttribute('onclick',`toggleProblemeSolOk(${rowNum},this,1)`);
+    const row=btn.closest('tr');if(row)row.style.background='#bbf7d0';
+  } else {
+    btn.textContent='⬜ Tester ?';btn.style.borderColor='#d1d5db';btn.style.background='#f9fafb';btn.style.color='#6b7280';btn.setAttribute('onclick',`toggleProblemeSolOk(${rowNum},this,0)`);
+    const row=btn.closest('tr');if(row)row.style.background='';
+  }
+  toast(newVal?'✅ Solution confirmée !':'Solution non confirmée','ok');
 }
 
 async function saveProblemeField(rowNum,field,value){
