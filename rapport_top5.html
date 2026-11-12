@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rapport TOP5 prod</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --dodo-dark:  #1a1550;
+  --dodo-mid:   #251d6b;
+  --dodo-red:   #e31c24;
+  --bg:         #f4f5fb;
+  --card:       #ffffff;
+  --border:     #e3e5f0;
+  --border-mid: #cdd0e5;
+  --text:       #1a1550;
+  --text-sec:   #5a5e88;
+  --text-muted: #9497ba;
+  --green:      #16a34a;
+  --green-bg:   #dcfce7;
+  --orange:     #d97706;
+  --orange-bg:  #fef3c7;
+  --red:        #dc2626;
+  --red-bg:     #fee2e2;
+  --shadow-xs:  0 1px 3px rgba(26,21,80,.07);
+  --shadow-sm:  0 2px 10px rgba(26,21,80,.09);
+  --r:          10px;
+  --hd:         'Space Grotesk', system-ui, sans-serif;
+  --bd:         'Inter', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --dodo-dark:  #0e0c35; --dodo-mid: #18155a;
+    --bg:         #0d0c2a; --card: #151338;
+    --border:     #242060; --border-mid: #302c78;
+    --text:       #dde0ff; --text-sec: #8a8db8; --text-muted: #5a5d85;
+    --green:      #4ade80; --green-bg: #052e16;
+    --orange:     #fbbf24; --orange-bg: #431a03;
+    --red:        #f87171; --red-bg: #450a0a;
+    --shadow-xs:  0 1px 3px rgba(0,0,0,.2); --shadow-sm: 0 2px 10px rgba(0,0,0,.3);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --dodo-dark:  #0e0c35; --dodo-mid: #18155a;
+  --bg:         #0d0c2a; --card: #151338;
+  --border:     #242060; --border-mid: #302c78;
+  --text:       #dde0ff; --text-sec: #8a8db8; --text-muted: #5a5d85;
+  --green:      #4ade80; --green-bg: #052e16;
+  --orange:     #fbbf24; --orange-bg: #431a03;
+  --red:        #f87171; --red-bg: #450a0a;
+  --shadow-xs:  0 1px 3px rgba(0,0,0,.2); --shadow-sm: 0 2px 10px rgba(0,0,0,.3);
+  color-scheme: dark;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;font-family:var(--bd);color:var(--text);background:var(--bg)}
+
+/* ── Layout ── */
+.app{display:flex;height:100%;overflow:hidden}
+
+/* ── Left panel ── */
+.lp{width:220px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+.lp-head{padding:0;flex-shrink:0;background:var(--dodo-dark)}
+.lp-logo{padding:12px 14px 10px;display:flex;align-items:center;gap:8px}
+.logo-pill{background:#1a2f6e;border:2.5px solid var(--dodo-red);padding:3px 11px;border-radius:40px;display:inline-flex;align-items:center}
+.logo-text{font-family:var(--hd);font-weight:900;font-size:13px;color:#fff;font-style:italic;letter-spacing:1.5px}
+.lp-sub{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45);padding:0 14px 10px}
+.cal-wrap{padding:10px 8px;display:flex;flex-direction:column;gap:12px}
+.cal-m{}
+.cal-mname{font-size:10px;font-weight:700;color:var(--text-sec);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px;padding-left:2px}
+.cal-dows{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:3px}
+.cal-dow{font-size:8.5px;text-align:center;color:var(--text-muted);font-weight:600;text-transform:uppercase}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cd{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;border-radius:5px;cursor:default;position:relative;transition:transform .12s,box-shadow .12s}
+.cd.nd{color:var(--text-muted);opacity:.35}
+.cd.emp{pointer-events:none}
+.cd.has{cursor:pointer;color:#fff}
+.cd.has:hover{transform:scale(1.1);box-shadow:0 2px 8px rgba(26,21,80,.22);z-index:2}
+.cd.sel{outline:2.5px solid var(--dodo-red);outline-offset:2px;box-shadow:0 0 0 4px rgba(227,28,36,.15)}
+.cd.g{background:#16a34a}
+.cd.o{background:#d97706}
+.cd.r{background:#dc2626}
+.lp-legend{padding:10px 12px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px}
+.ll-item{display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--text-sec)}
+.ll-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* ── Right panel ── */
+.rp{flex:1;overflow-y:auto;min-width:0;background:#dde1e9;display:flex;flex-direction:column}
+
+.empty-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:40px;text-align:center}
+.empty-ico{font-size:48px;opacity:.3;line-height:1}
+.empty-h{font-family:var(--hd);font-size:16px;font-weight:800;color:var(--text)}
+.empty-p{font-size:12px;color:var(--text-muted);max-width:220px;line-height:1.6}
+
+/* ── Print btn bar ── */
+.print-bar{flex-shrink:0;padding:12px 20px 8px;display:flex;justify-content:center}
+.print-bar-btn{background:linear-gradient(180deg,#16a34a,#15803d);color:#fff;border:none;border-radius:10px;padding:11px 32px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(22,163,74,.4);letter-spacing:.02em;font-family:var(--bd)}
+.print-bar-btn:hover{box-shadow:0 6px 20px rgba(22,163,74,.5);transform:translateY(-1px)}
+.print-bar-btn:active{transform:translateY(0)}
+
+/* ── Paper animation ── */
+@keyframes paperExpand {
+  from {
+    transform: scale(0.15) translateY(30px);
+    opacity: 0.3;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.12);
+  }
+}
+@keyframes fadeIn {
+  from{opacity:0;transform:translateY(6px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.rpt-paper{
+  background:white;
+  border-radius:2px;
+  margin:0 20px 24px;
+  animation:paperExpand 0.45s cubic-bezier(0.22,1,0.36,1) forwards;
+  transform-origin:center top;
+}
+.rpt-paper-inner{
+  animation:fadeIn 0.3s ease 0.3s both;
+}
+
+/* ── Report header ── */
+.rpt-head{background:var(--dodo-dark);color:#fff;padding:16px 22px 18px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-shrink:0;position:relative;overflow:hidden}
+.rpt-head::before{content:'';position:absolute;right:-50px;top:-50px;width:200px;height:200px;background:rgba(255,255,255,.025);border-radius:50%}
+.rh-left{z-index:1;min-width:0}
+.rh-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.rh-label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45)}
+.rh-sep{width:1px;height:12px;background:rgba(255,255,255,.2);flex-shrink:0}
+.rh-date{font-family:var(--hd);font-size:24px;font-weight:800;line-height:1;letter-spacing:-.4px}
+.rh-right{z-index:1;flex-shrink:0}
+.logo-pill-lg{background:#1a2f6e;border:3px solid var(--dodo-red);padding:7px 22px;border-radius:60px;display:inline-flex;align-items:center;box-shadow:0 3px 14px rgba(26,47,110,.4)}
+.logo-text-lg{font-family:var(--hd);font-weight:900;font-size:24px;color:#fff;font-style:italic;letter-spacing:2.5px}
+
+/* ── Report body ── */
+.rpt-body{padding:16px 20px 24px;display:flex;flex-direction:column;gap:14px}
+.sec-hd{display:flex;align-items:center;gap:7px;margin-bottom:10px}
+.sec-bar{width:3px;height:15px;background:var(--dodo-red);border-radius:2px;flex-shrink:0}
+.sec-title{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text-muted)}
+
+/* KPI tiles */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;box-shadow:var(--shadow-xs)}
+.kpi-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:4px}
+.kpi-val{font-family:var(--hd);font-size:26px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+.kpi-unit{font-size:12px;font-weight:600;color:var(--text-sec);margin-left:1px}
+.kpi-sub{font-size:10px;color:var(--text-muted);margin-top:3px}
+.kpi-eq{font-size:11px;color:var(--text-sec);margin-top:2px;font-variant-numeric:tabular-nums}
+
+/* Equipes */
+.equipes-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-xs);overflow:hidden}
+.eq-row{display:grid;grid-template-columns:160px 1fr;gap:0;padding:12px 18px;border-bottom:1px solid var(--border);align-items:start}
+.eq-row:last-child{border-bottom:none}
+.eq-info{padding-right:12px}
+.eq-name{font-family:var(--hd);font-size:13px;font-weight:700;line-height:1.1}
+.eq-pilot{font-size:11px;color:var(--text-sec);margin-top:2px}
+.eq-right{display:flex;flex-direction:column;gap:6px;padding-top:2px}
+.bar-r{display:flex;align-items:center;gap:7px}
+.bar-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);width:24px;flex-shrink:0}
+.bar-tk{flex:1;height:9px;background:var(--border);border-radius:5px;overflow:hidden;min-width:0}
+.bar-fl{height:100%;border-radius:5px}
+.bar-vl{font-family:var(--hd);font-size:12px;font-weight:800;width:46px;text-align:right;flex-shrink:0;font-variant-numeric:tabular-nums}
+.eq-cad{font-size:11px;color:var(--text-sec);font-variant-numeric:tabular-nums;padding-left:31px}
+
+/* Pareto */
+.pareto-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-xs);overflow:hidden}
+.par-item{padding:5px 12px;border-bottom:1px solid var(--border)}
+.par-item:last-child{border-bottom:none}
+.par-top{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+.par-rank{width:22px;height:22px;border-radius:50%;background:var(--dodo-dark);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:var(--hd)}
+.par-rank.r2{background:#2d2070}
+.par-rank.r3{background:#3d307a}
+.par-name{font-size:12px;font-weight:600;color:var(--text);flex:1;min-width:0}
+.par-badges{display:flex;gap:5px;flex-shrink:0}
+.par-b{font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;font-variant-numeric:tabular-nums}
+.par-b.occ{background:rgba(26,21,80,.08);color:var(--dodo-dark)}
+.par-b.min{background:var(--red-bg);color:var(--red)}
+.par-tk{height:4px;background:var(--border);border-radius:4px;overflow:hidden}
+.par-fl{height:100%;border-radius:4px;background:linear-gradient(90deg,#ef4444,#b91c1c)}
+.no-stops{padding:20px 18px;font-size:12px;color:var(--text-muted);text-align:center;font-style:italic}
+
+/* Commentaires */
+.comments-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow-xs)}
+.cmt-row{display:grid;grid-template-columns:52px 44px 1fr;gap:0;padding:9px 14px;border-bottom:1px solid var(--border);align-items:start}
+.cmt-row:last-child{border-bottom:none}
+.cmt-tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.04em;display:inline-block;margin-top:1px}
+.cmt-tag.t-of{background:#ede9fe;color:#6d28d9}
+.cmt-tag.t-arr{background:var(--red-bg);color:var(--red)}
+.cmt-time{font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums;padding-top:2px}
+.cmt-pilot{font-size:11px;font-weight:700;color:var(--text);margin-bottom:2px}
+.cmt-text{font-size:11px;color:var(--text-sec)}
+.no-comments{padding:20px 18px;font-size:12px;color:var(--text-muted);text-align:center;font-style:italic}
+
+/* ── PRINT ── */
+@media print {
+  @page{size:A4 landscape;margin:8mm}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-sizing:border-box!important}
+  body{background:#fff!important;overflow:visible!important}
+  .app{display:block!important;height:auto!important;overflow:visible!important}
+  .lp{display:none!important}
+  .print-bar{display:none!important}
+  .rp{background:white!important;width:100%!important;height:auto!important;overflow:visible!important;display:block!important}
+  .rpt-paper{margin:0!important;border-radius:0!important;box-shadow:none!important;animation:none!important}
+  .rpt-paper-inner{animation:none!important}
+  .rpt-body{
+    display:grid!important;
+    grid-template-columns:50% 50%!important;
+    grid-template-rows:auto auto auto!important;
+    gap:10px!important;padding:10px!important;
+  }
+  .rpt-body>div:nth-child(1){grid-column:1/3!important;grid-row:1!important}
+  .rpt-body>div:nth-child(2){grid-column:1!important;grid-row:2!important}
+  .rpt-body>div:nth-child(3){grid-column:1!important;grid-row:3!important}
+  .rpt-body>div:nth-child(4){grid-column:2!important;grid-row:2/4!important;align-self:start!important}
+  .kpi-lbl{font-size:11px!important}
+  .kpi-val{font-size:34px!important;line-height:1.1!important}
+  .kpi-unit{font-size:16px!important}
+  .kpi-sub,.kpi-eq{font-size:10px!important}
+  .sec-title{font-size:13px!important}
+  .eq-name{font-size:14px!important}
+  .eq-pilot{font-size:11px!important}
+  .bar-lbl{font-size:10px!important}
+  .bar-vl{font-size:12px!important}
+  .eq-cad{font-size:10px!important}
+  .par-name{font-size:13px!important}
+  .par-b{font-size:10px!important}
+  .cmt-pilot{font-size:12px!important}
+  .cmt-text{font-size:11px!important}
+  .cmt-time{font-size:11px!important}
+  .cmt-tag{font-size:10px!important}
+  .rpt-head{background:#1a1550!important;padding:10px 18px!important}
+  .kpi-row{gap:10px!important}
+  .kpi{padding:14px 18px!important;break-inside:avoid}
+  .eq-row,.par-item,.cmt-row{break-inside:avoid}
+}
+</style>
+
+<div class="app">
+  <!-- Left panel : calendrier -->
+  <div class="lp">
+    <div class="lp-head">
+      <div class="lp-logo">
+        <div class="logo-pill"><span class="logo-text">DODO</span></div>
+      </div>
+      <div class="lp-sub">Sélectionner une journée</div>
+    </div>
+    <div class="cal-wrap" id="cal-wrap">
+      <div style="padding:20px 10px;text-align:center;font-size:11px;color:var(--text-muted)">Chargement…</div>
+    </div>
+    <div style="flex:1"></div>
+    <div class="lp-legend">
+      <div class="ll-item"><div class="ll-dot" style="background:#16a34a"></div>TRS ≥ 70 %</div>
+      <div class="ll-item"><div class="ll-dot" style="background:#d97706"></div>TRS 50 – 70 %</div>
+      <div class="ll-item"><div class="ll-dot" style="background:#dc2626"></div>TRS &lt; 50 %</div>
+      <div class="ll-item"><div class="ll-dot" style="background:var(--border-mid)"></div>Pas de données</div>
+    </div>
+  </div>
+
+  <!-- Right panel : rapport -->
+  <div class="rp" id="rp">
+    <div class="empty-wrap" id="empty-wrap">
+      <div class="empty-ico">📊</div>
+      <div class="empty-h">TOP 5 PRODUCTION</div>
+      <div class="empty-p">Cliquez sur une journée dans le calendrier pour afficher le rapport complet de production.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const fmtPcs = n => Number(n).toLocaleString('fr-FR');
+const trsCol  = t => t>=70?'#16a34a':t>=50?'#d97706':'#dc2626';
+const trsColBg= t => t>=70?'#dcfce7':t>=50?'#fef3c7':'#fee2e2';
+const trsClass = t => t>=70?'g':t>=50?'o':'r';
+
+function parseDMY(s){ const[d,m,y]=s.split('/'); return new Date(+y,+m-1,+d); }
+function fmtDate(s){
+  return parseDMY(s).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+}
+
+/* ═══ DONUT / CAMEMBERT SVG ══════════════════════════════════ */
+function buildDonut(prods, sz, showPct=false) {
+  const pad=showPct?22:0, W=sz+pad*2, H=sz+pad*2;
+  const cx=W/2, cy=H/2, ro=sz*.45, ri=0;
+  const tot=prods.reduce((a,p)=>a+p.pcs,0)||1;
+  const vis=prods.filter(p=>p.pcs>0);
+  if(!vis.length) return '';
+  const lfs=Math.max(8,sz*0.115).toFixed(1);
+  const mkLbl=(ex,ey,mid,t,clr)=>{
+    const rl=ro+12, lx=cx+rl*Math.cos(mid), ly=cy+rl*Math.sin(mid);
+    const c=Math.cos(mid), anch=c>0.15?'start':c<-0.15?'end':'middle';
+    const tx=lx+(c>0.15?3:c<-0.15?-3:0);
+    return `<circle cx="${ex.toFixed(1)}" cy="${ey.toFixed(1)}" r="2.5" fill="${clr||'#aaa'}"/>`+
+      `<line x1="${ex.toFixed(1)}" y1="${ey.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${ly.toFixed(1)}" stroke="${clr||'#aaa'}" stroke-width="1"/>`+
+      `<text x="${tx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anch}" dominant-baseline="central" fill="${clr||'#666'}" font-size="${lfs}" font-weight="700" font-family="Inter,sans-serif">${t}</text>`;
+  };
+  if(vis.length===1){
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" overflow="visible">
+      <circle cx="${cx}" cy="${cy}" r="${ro}" fill="${vis[0].color}" opacity=".9"/>
+    </svg>`;
+  }
+  let angle=-Math.PI/2,paths='',labels='';
+  for(const p of vis){
+    if(!p.pcs) continue;
+    const a=(p.pcs/tot)*2*Math.PI, ea=angle+a;
+    const x1=cx+ro*Math.cos(angle),y1=cy+ro*Math.sin(angle);
+    const x2=cx+ro*Math.cos(ea),  y2=cy+ro*Math.sin(ea);
+    const xi1=cx+ri*Math.cos(angle),yi1=cy+ri*Math.sin(angle);
+    const xi2=cx+ri*Math.cos(ea),  yi2=cy+ri*Math.sin(ea);
+    const lg=a>Math.PI?1:0;
+    paths+=`<path d="M${xi1.toFixed(1)},${yi1.toFixed(1)} L${x1.toFixed(1)},${y1.toFixed(1)} A${ro},${ro} 0 ${lg},1 ${x2.toFixed(1)},${y2.toFixed(1)} L${xi2.toFixed(1)},${yi2.toFixed(1)} A${ri},${ri} 0 ${lg},0 ${xi1.toFixed(1)},${yi1.toFixed(1)}" fill="${p.color}" opacity=".9"/>`;
+    if(showPct){
+      const mid=angle+a/2;
+      labels+=mkLbl(cx+ro*Math.cos(mid),cy+ro*Math.sin(mid),mid,fmtPcs(p.pcs),p.color);
+    }
+    angle=ea;
+  }
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" overflow="visible">${paths}${labels}</svg>`;
+}
+
+/* ═══ RENDER REPORT ══════════════════════════════════════════ */
+async function renderReport(date) {
+  const rp = document.getElementById('rp');
+
+  /* Start paper animation immediately with loading state */
+  rp.innerHTML = `
+    <div class="print-bar" id="print-bar" style="display:none"></div>
+    <div class="rpt-paper" id="rpt-paper">
+      <div class="rpt-paper-inner" id="rpt-inner">
+        <div style="text-align:center;padding:80px 40px;color:#94a3b8;font-size:14px">Chargement…</div>
+      </div>
+    </div>`;
+
+  let d;
+  try {
+    const r = await fetch('/api/rapport_top5_data?date=' + encodeURIComponent(date));
+    const json = await r.json();
+    if(!json.ok){
+      document.getElementById('rpt-inner').innerHTML=`<div style="text-align:center;padding:60px;color:#dc2626;font-size:14px">Erreur : ${esc(json.error||'données indisponibles')}</div>`;
+      return;
+    }
+    d = json;
+  } catch(e) {
+    document.getElementById('rpt-inner').innerHTML=`<div style="text-align:center;padding:60px;color:#dc2626;font-size:14px">Erreur réseau</div>`;
+    return;
+  }
+
+  const trs = d.trs;
+  const tc = trsCol(trs);
+  const tcBg = trsColBg(trs);
+  const dtStr = fmtDate(date);
+  const dtCap = dtStr.charAt(0).toUpperCase()+dtStr.slice(1);
+
+  let html = `
+  <div class="rpt-head">
+    <div class="rh-left">
+      <div class="rh-top">
+        <div class="rh-label">TOP 5 PRODUCTION</div>
+        <div class="rh-sep"></div>
+        <div class="rh-label">${d.nb_eq} équipe${d.nb_eq>1?'s':''}</div>
+      </div>
+      <div class="rh-date">${esc(dtCap)}</div>
+    </div>
+    <div class="rh-right">
+      <div class="logo-pill-lg"><span class="logo-text-lg">DODO</span></div>
+    </div>
+  </div>
+  <div class="rpt-body">`;
+
+  /* Section 1 : KPIs */
+  html+=`
+  <div>
+    <div class="sec-hd"><div class="sec-bar"></div><div class="sec-title">Performance de la journée</div></div>
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="kpi-lbl">TRS journée</div>
+        <div class="kpi-val" style="color:${tc}">${d.trs.toFixed(1)}<span class="kpi-unit">%</span></div>
+        <div class="kpi-sub" style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:12px;background:${tcBg};color:${tc};font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:.06em">${d.trs>=70?'Objectif atteint':'Sous objectif'}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-lbl">Cadence journée</div>
+        <div class="kpi-val" style="color:var(--dodo-dark)">${d.cad}<span class="kpi-unit">pcs/h</span></div>
+        <div class="kpi-sub">moyenne sur la journée</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-lbl">Arrêts imprévus</div>
+        <div class="kpi-val" style="color:${d.arret_np>0?'#dc2626':'#16a34a'}">${d.arret_np}<span class="kpi-unit">min</span></div>
+        <div class="kpi-sub">${d.stops.length>0?d.stops.length+' type'+(d.stops.length>1?'s':''):'aucun arrêt'}</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-lbl">Volume produit</div>
+        <div class="kpi-val">${fmtPcs(d.pcs)}<span class="kpi-unit" style="font-size:11px">pcs</span></div>
+        <div class="kpi-eq">soit <strong>${fmtPcs(d.equiv)}</strong> éq.</div>
+      </div>
+    </div>
+  </div>`;
+
+  /* Section 2 : Répartition par produit / équipe */
+  {
+    const allTypes=[]; const seen=new Set();
+    for(const p of d.postes){ (p.prods||[]).forEach(x=>{ if(!seen.has(x.type)){seen.add(x.type);allTypes.push({type:x.type,color:x.color});} }); }
+    html+=`
+  <div>
+    <div class="sec-hd"><div class="sec-bar"></div><div class="sec-title">Répartition par type de produit · par équipe</div></div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow-xs)">
+      <div style="display:grid;grid-template-columns:repeat(${d.postes.length},1fr);gap:8px;margin-bottom:12px">
+        ${d.postes.map(p=>{
+          const pp=p.prods||[{type:'—',pcs:p.pcs,color:'#aaa'}];
+          const col=trsCol(p.trs);
+          return `<div style="text-align:center;min-width:0">
+            <div style="font-family:var(--hd);font-size:11px;font-weight:800;color:${col};margin-bottom:2px">${esc(p.nom)}</div>
+            <div style="font-size:10px;color:var(--text-sec);margin-bottom:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.pilote)}</div>
+            <div style="display:flex;justify-content:center">${buildDonut(pp,80,true)}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:4px;font-variant-numeric:tabular-nums">${fmtPcs(p.pcs)} pcs</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:10px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
+        ${allTypes.map(t=>`<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-sec)"><div style="width:9px;height:9px;border-radius:3px;flex-shrink:0;background:${t.color}"></div>${esc(t.type)}</div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+  }
+
+  /* Section 3 : Performance par équipe */
+  html+=`
+  <div>
+    <div class="sec-hd"><div class="sec-bar"></div><div class="sec-title">Performance par équipe</div></div>
+    <div class="equipes-card">
+      ${d.postes.map(p=>{
+        const col=trsCol(p.trs);
+        return `<div class="eq-row">
+          <div class="eq-info">
+            <div class="eq-name" style="color:${col}">${esc(p.nom)}</div>
+            <div class="eq-pilot">${esc(p.pilote)}</div>
+          </div>
+          <div class="eq-right">
+            <div class="bar-r">
+              <div class="bar-lbl">TRS</div>
+              <div class="bar-tk"><div class="bar-fl" style="width:${Math.round(p.trs)}%;background:${col}"></div></div>
+              <div class="bar-vl" style="color:${col}">${p.trs.toFixed(1)}%</div>
+            </div>
+            <div class="eq-cad" style="color:${col}">Cadence : <strong>${p.cad} pcs/h</strong></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+
+  /* Section 4 : Pareto + Commentaires */
+  const topStops = d.stops.slice(0,3);
+  const maxMin = topStops.length>0 ? Math.max(...topStops.map(s=>s.min),1) : 1;
+  const comments = d.comments||[];
+  html+=`<div style="display:flex;flex-direction:column;gap:10px">`;
+
+  html+=`
+    <div>
+      <div class="sec-hd"><div class="sec-bar"></div><div class="sec-title">Pareto TOP3 des causes d'arrêts</div></div>
+      <div class="pareto-card">`;
+  if(!topStops.length){
+    html+=`<div class="no-stops">✓ Aucun arrêt non prévu enregistré pour cette journée</div>`;
+  } else {
+    const rnkCls=['','r2','r3'];
+    html+=topStops.map((s,i)=>`
+      <div class="par-item">
+        <div class="par-top">
+          <div class="par-rank ${rnkCls[i]}">${i+1}</div>
+          <div class="par-name">${esc(s.type)}</div>
+          <div class="par-badges">
+            <span class="par-b occ">Occurence : ${s.occ}×</span>
+            <span class="par-b min">Total ${s.min} min</span>
+          </div>
+        </div>
+        <div class="par-tk"><div class="par-fl" style="width:${Math.round(s.min/maxMin*100)}%"></div></div>
+      </div>`).join('');
+  }
+  html+=`</div></div>`;
+
+  html+=`
+    <div>
+      <div class="sec-hd"><div class="sec-bar"></div><div class="sec-title">Commentaires pilotes</div></div>
+      <div class="comments-card">`;
+  if(!comments.length){
+    html+=`<div class="no-comments">Aucun commentaire enregistré pour cette journée</div>`;
+  } else {
+    html+=comments.map(c=>`
+      <div class="cmt-row">
+        <div><span class="cmt-tag ${c.type==='OF'?'t-of':'t-arr'}">${esc(c.type)}</span></div>
+        <div class="cmt-time">${esc(c.heure)}</div>
+        <div class="cmt-body">
+          <div class="cmt-pilot">${esc(c.pilote)}</div>
+          <div class="cmt-text">${esc(c.texte)}</div>
+        </div>
+      </div>`).join('');
+  }
+  html+=`</div></div>`;
+
+  html+=`</div></div>`;
+
+  /* Inject content into paper with fade */
+  document.getElementById('rpt-inner').innerHTML = html;
+
+  /* Show print button */
+  const pb = document.getElementById('print-bar');
+  pb.style.display = 'flex';
+  pb.innerHTML = `<button class="print-bar-btn" onclick="window.print()">🖨️ Imprimer</button>`;
+}
+
+/* ═══ CALENDAR ════════════════════════════════════════════════ */
+
+let CAL_TRS = {};
+let selectedDate = null;
+
+function buildCalendar(calTrs) {
+  const wrap = document.getElementById('cal-wrap');
+  if(!Object.keys(calTrs).length){ wrap.innerHTML='<div style="padding:14px;font-size:11px;color:var(--text-muted)">Aucune donnée disponible</div>'; return; }
+
+  /* Determine months from data */
+  const monthSet = new Set();
+  for(const ds of Object.keys(calTrs)){
+    const[,mm,yyyy]=ds.split('/');
+    monthSet.add(`${yyyy}-${mm}`);
+  }
+  const months = [...monthSet].sort().map(s=>{
+    const[y,m]=s.split('-');
+    return {year:+y, month:+m-1};
+  });
+  const monthNames = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const dow = ['L','M','M','J','V','S','D'];
+
+  let html = '';
+  for(const m of months){
+    const firstDay = new Date(m.year, m.month, 1);
+    let startDow = firstDay.getDay();
+    startDow = startDow===0?6:startDow-1;
+    const dim = new Date(m.year, m.month+1, 0).getDate();
+    const label = `${monthNames[m.month]} ${m.year}`;
+    html += `<div class="cal-m"><div class="cal-mname">${label}</div>`;
+    html += `<div class="cal-dows">${dow.map(d=>`<div class="cal-dow">${d}</div>`).join('')}</div>`;
+    html += `<div class="cal-grid">`;
+    for(let i=0;i<startDow;i++) html+=`<div class="cd emp"></div>`;
+    for(let d=1;d<=dim;d++){
+      const dd=String(d).padStart(2,'0'), mm2=String(m.month+1).padStart(2,'0');
+      const ds=`${dd}/${mm2}/${m.year}`;
+      const t=calTrs[ds];
+      if(t!==undefined){
+        html+=`<div class="cd ${trsClass(t)} has${selectedDate===ds?' sel':''}" data-date="${ds}" title="TRS ${t.toFixed(1)}%">${d}</div>`;
+      } else {
+        html+=`<div class="cd nd">${d}</div>`;
+      }
+    }
+    html += `</div></div>`;
+  }
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('.cd.has').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      selectedDate = el.dataset.date;
+      buildCalendar(CAL_TRS);
+      renderReport(selectedDate);
+    });
+  });
+}
+
+/* ═══ INIT ════════════════════════════════════════════════════ */
+(async function(){
+  try {
+    const resp = await fetch('/api/rapport_top5_calendar');
+    const cal = await resp.json();
+    if(cal.ok && cal.dates) {
+      CAL_TRS = cal.dates;
+      buildCalendar(CAL_TRS);
+      /* Auto-load most recent date */
+      const dates = Object.keys(CAL_TRS).sort((a,b)=>{
+        const pa=a.split('/'), pb=b.split('/');
+        return new Date(+pb[2],+pb[1]-1,+pb[0]) - new Date(+pa[2],+pa[1]-1,+pa[0]);
+      });
+      if(dates.length){
+        selectedDate = dates[0];
+        buildCalendar(CAL_TRS);
+        await renderReport(selectedDate);
+      }
+    }
+  } catch(e) {
+    document.getElementById('cal-wrap').innerHTML='<div style="padding:14px;font-size:11px;color:#dc2626">Erreur chargement</div>';
+  }
+})();
+</script>
+</html>
