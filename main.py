@@ -8162,6 +8162,102 @@ select{cursor:default}
 
 @media(max-width:900px){.form-3col{grid-template-columns:1fr 1fr}.recap-col{width:180px}}
 @media(max-width:650px){.form-3col{grid-template-columns:1fr}.prod-body{flex-direction:column}.recap-col{width:100%}}
+/* ── TOP5 RAPPORT ── */
+#v-rpt-top5 .t5-lp{width:220px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+#v-rpt-top5 .t5-lp-head{padding:0;flex-shrink:0;background:#1a1550}
+#v-rpt-top5 .t5-lp-logo{padding:12px 14px 10px;display:flex;align-items:center;gap:8px}
+#v-rpt-top5 .t5-logo-pill{background:#1a2f6e;border:2.5px solid #e31c24;padding:3px 11px;border-radius:40px;display:inline-flex;align-items:center}
+#v-rpt-top5 .t5-logo-text{font-weight:900;font-size:13px;color:#fff;font-style:italic;letter-spacing:1.5px}
+#v-rpt-top5 .t5-lp-sub{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45);padding:0 14px 10px}
+#v-rpt-top5 .t5-cal-wrap{padding:10px 8px;display:flex;flex-direction:column;gap:12px}
+#v-rpt-top5 .t5-cal-m{}
+#v-rpt-top5 .t5-cal-mname{font-size:10px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px;padding-left:2px}
+#v-rpt-top5 .t5-cal-dows{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:3px}
+#v-rpt-top5 .t5-cal-dow{font-size:8.5px;text-align:center;color:var(--gray);font-weight:600;text-transform:uppercase}
+#v-rpt-top5 .t5-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+#v-rpt-top5 .t5-cd{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;border-radius:5px;cursor:default;position:relative;transition:transform .12s,box-shadow .12s}
+#v-rpt-top5 .t5-cd.t5-nd{opacity:.35;color:var(--gray)}
+#v-rpt-top5 .t5-cd.t5-emp{pointer-events:none}
+#v-rpt-top5 .t5-cd.t5-has{cursor:pointer;color:#fff}
+#v-rpt-top5 .t5-cd.t5-has:hover{transform:scale(1.1);box-shadow:0 2px 8px rgba(26,21,80,.22);z-index:2}
+#v-rpt-top5 .t5-cd.t5-sel{outline:2.5px solid #e31c24;outline-offset:2px;box-shadow:0 0 0 4px rgba(227,28,36,.15)}
+#v-rpt-top5 .t5-cd.t5-g{background:#16a34a}
+#v-rpt-top5 .t5-cd.t5-o{background:#d97706}
+#v-rpt-top5 .t5-cd.t5-r{background:#dc2626}
+#v-rpt-top5 .t5-lp-legend{padding:10px 12px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px}
+#v-rpt-top5 .t5-ll-item{display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--gray)}
+#v-rpt-top5 .t5-ll-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+#v-rpt-top5 .t5-rp{flex:1;overflow-y:auto;min-width:0;background:#dde1e9;display:flex;flex-direction:column}
+#v-rpt-top5 .t5-empty-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:40px;text-align:center}
+#v-rpt-top5 .t5-empty-ico{font-size:48px;opacity:.3;line-height:1}
+#v-rpt-top5 .t5-empty-h{font-size:16px;font-weight:800;color:var(--navy)}
+#v-rpt-top5 .t5-empty-p{font-size:12px;color:var(--gray);max-width:220px;line-height:1.6}
+#v-rpt-top5 .t5-print-bar{flex-shrink:0;padding:12px 20px 8px;display:flex;justify-content:center}
+#v-rpt-top5 .t5-print-btn{background:linear-gradient(180deg,#16a34a,#15803d);color:#fff;border:none;border-radius:10px;padding:11px 32px;font-size:15px;font-weight:800;cursor:pointer;box-shadow:0 4px 14px rgba(22,163,74,.4);letter-spacing:.02em}
+#v-rpt-top5 .t5-print-btn:hover{box-shadow:0 6px 20px rgba(22,163,74,.5);transform:translateY(-1px)}
+@keyframes t5PaperExpand{from{transform:scale(0.15) translateY(30px);opacity:.3;box-shadow:0 2px 8px rgba(0,0,0,.15)}to{transform:scale(1) translateY(0);opacity:1;box-shadow:0 8px 40px rgba(0,0,0,.18),0 2px 8px rgba(0,0,0,.12)}}
+@keyframes t5FadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+#v-rpt-top5 .t5-rpt-paper{background:white;border-radius:2px;margin:0 20px 24px;animation:t5PaperExpand 0.45s cubic-bezier(0.22,1,0.36,1) forwards;transform-origin:center top}
+#v-rpt-top5 .t5-rpt-inner{animation:t5FadeIn 0.3s ease 0.3s both}
+#v-rpt-top5 .t5-rpt-head{background:#1a1550;color:#fff;padding:16px 22px 18px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-shrink:0;position:relative;overflow:hidden}
+#v-rpt-top5 .t5-rpt-head::before{content:'';position:absolute;right:-50px;top:-50px;width:200px;height:200px;background:rgba(255,255,255,.025);border-radius:50%}
+#v-rpt-top5 .t5-rh-left{z-index:1;min-width:0}
+#v-rpt-top5 .t5-rh-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+#v-rpt-top5 .t5-rh-label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45)}
+#v-rpt-top5 .t5-rh-sep{width:1px;height:12px;background:rgba(255,255,255,.2);flex-shrink:0}
+#v-rpt-top5 .t5-rh-date{font-size:24px;font-weight:800;line-height:1;letter-spacing:-.4px}
+#v-rpt-top5 .t5-rh-right{z-index:1;flex-shrink:0}
+#v-rpt-top5 .t5-logo-pill-lg{background:#1a2f6e;border:3px solid #e31c24;padding:7px 22px;border-radius:60px;display:inline-flex;align-items:center;box-shadow:0 3px 14px rgba(26,47,110,.4)}
+#v-rpt-top5 .t5-logo-text-lg{font-weight:900;font-size:24px;color:#fff;font-style:italic;letter-spacing:2.5px}
+#v-rpt-top5 .t5-rpt-body{padding:16px 20px 24px;display:flex;flex-direction:column;gap:14px}
+#v-rpt-top5 .t5-sec-hd{display:flex;align-items:center;gap:7px;margin-bottom:10px}
+#v-rpt-top5 .t5-sec-bar{width:3px;height:15px;background:#e31c24;border-radius:2px;flex-shrink:0}
+#v-rpt-top5 .t5-sec-title{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--gray)}
+#v-rpt-top5 .t5-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+#v-rpt-top5 .t5-kpi{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px}
+#v-rpt-top5 .t5-kpi-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--gray);margin-bottom:4px}
+#v-rpt-top5 .t5-kpi-val{font-size:26px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+#v-rpt-top5 .t5-kpi-unit{font-size:12px;font-weight:600;color:var(--gray);margin-left:1px}
+#v-rpt-top5 .t5-kpi-sub{font-size:10px;color:var(--gray);margin-top:3px}
+#v-rpt-top5 .t5-kpi-eq{font-size:11px;color:var(--gray);margin-top:2px;font-variant-numeric:tabular-nums}
+#v-rpt-top5 .t5-eq-card{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+#v-rpt-top5 .t5-eq-row{display:grid;grid-template-columns:160px 1fr;gap:0;padding:12px 18px;border-bottom:1px solid var(--border);align-items:start}
+#v-rpt-top5 .t5-eq-row:last-child{border-bottom:none}
+#v-rpt-top5 .t5-eq-info{padding-right:12px}
+#v-rpt-top5 .t5-eq-name{font-size:13px;font-weight:700;line-height:1.1}
+#v-rpt-top5 .t5-eq-pilot{font-size:11px;color:var(--gray);margin-top:2px}
+#v-rpt-top5 .t5-eq-right{display:flex;flex-direction:column;gap:6px;padding-top:2px}
+#v-rpt-top5 .t5-bar-r{display:flex;align-items:center;gap:7px}
+#v-rpt-top5 .t5-bar-lbl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gray);width:24px;flex-shrink:0}
+#v-rpt-top5 .t5-bar-tk{flex:1;height:9px;background:var(--border);border-radius:5px;overflow:hidden;min-width:0}
+#v-rpt-top5 .t5-bar-fl{height:100%;border-radius:5px}
+#v-rpt-top5 .t5-bar-vl{font-size:12px;font-weight:800;width:46px;text-align:right;flex-shrink:0;font-variant-numeric:tabular-nums}
+#v-rpt-top5 .t5-eq-cad{font-size:11px;color:var(--gray);font-variant-numeric:tabular-nums;padding-left:31px}
+#v-rpt-top5 .t5-par-card{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+#v-rpt-top5 .t5-par-item{padding:5px 12px;border-bottom:1px solid var(--border)}
+#v-rpt-top5 .t5-par-item:last-child{border-bottom:none}
+#v-rpt-top5 .t5-par-top{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+#v-rpt-top5 .t5-par-rank{width:22px;height:22px;border-radius:50%;background:#1a1550;color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#v-rpt-top5 .t5-par-rank.r2{background:#2d2070}
+#v-rpt-top5 .t5-par-rank.r3{background:#3d307a}
+#v-rpt-top5 .t5-par-name{font-size:12px;font-weight:600;flex:1;min-width:0}
+#v-rpt-top5 .t5-par-badges{display:flex;gap:5px;flex-shrink:0}
+#v-rpt-top5 .t5-par-b{font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;font-variant-numeric:tabular-nums}
+#v-rpt-top5 .t5-par-b.occ{background:rgba(26,21,80,.08);color:#1a1550}
+#v-rpt-top5 .t5-par-b.min{background:#fee2e2;color:#dc2626}
+#v-rpt-top5 .t5-par-tk{height:4px;background:var(--border);border-radius:4px;overflow:hidden}
+#v-rpt-top5 .t5-par-fl{height:100%;border-radius:4px;background:linear-gradient(90deg,#ef4444,#b91c1c)}
+#v-rpt-top5 .t5-no-stops{padding:20px 18px;font-size:12px;color:var(--gray);text-align:center;font-style:italic}
+#v-rpt-top5 .t5-cmt-card{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+#v-rpt-top5 .t5-cmt-row{display:grid;grid-template-columns:52px 44px 1fr;gap:0;padding:9px 14px;border-bottom:1px solid var(--border);align-items:start}
+#v-rpt-top5 .t5-cmt-row:last-child{border-bottom:none}
+#v-rpt-top5 .t5-cmt-tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.04em;display:inline-block;margin-top:1px}
+#v-rpt-top5 .t5-cmt-tag.t-of{background:#ede9fe;color:#6d28d9}
+#v-rpt-top5 .t5-cmt-tag.t-arr{background:#fee2e2;color:#dc2626}
+#v-rpt-top5 .t5-cmt-time{font-size:11px;color:var(--gray);font-variant-numeric:tabular-nums;padding-top:2px}
+#v-rpt-top5 .t5-cmt-pilot{font-size:11px;font-weight:700;margin-bottom:2px}
+#v-rpt-top5 .t5-cmt-text{font-size:11px;color:var(--gray)}
+#v-rpt-top5 .t5-no-cmt{padding:20px 18px;font-size:12px;color:var(--gray);text-align:center;font-style:italic}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -8267,7 +8363,7 @@ select{cursor:default}
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
-      <button class="htab" id="ht-rpt-top5" onclick="window.open('http://127.0.0.1:5001/rapport_top5','_blank')" style="display:none">📊 Rapport TOP5</button>
+      <button class="htab" id="ht-rpt-top5" onclick="goTab('rpt-top5')" style="display:none">📊 Rapport TOP5</button>
       <button class="htab" id="ht-comop" onclick="goTab('comop')" style="display:none">📊 COMOP</button>
       <button class="htab" id="ht-logistique" onclick="goTab('logistique')" style="display:none">🚚 Logistique</button>
       <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🚨 Signaler problèmes logiciel</button>
@@ -9368,6 +9464,33 @@ select{cursor:default}
     </div>
   </div>
 
+  <!-- ════ TOP5 RAPPORT ════ -->
+  <div id="v-rpt-top5" class="view" style="flex-direction:row;overflow:hidden">
+    <div class="t5-lp">
+      <div class="t5-lp-head">
+        <div class="t5-lp-logo"><div class="t5-logo-pill"><span class="t5-logo-text">TOP 5</span></div></div>
+        <div class="t5-lp-sub">Sélectionner une journée</div>
+      </div>
+      <div class="t5-cal-wrap" id="t5-cal-wrap">
+        <div style="padding:20px 10px;text-align:center;font-size:11px;color:var(--gray)">Chargement…</div>
+      </div>
+      <div style="flex:1"></div>
+      <div class="t5-lp-legend">
+        <div class="t5-ll-item"><div class="t5-ll-dot" style="background:#16a34a"></div>TRS ≥ 70 %</div>
+        <div class="t5-ll-item"><div class="t5-ll-dot" style="background:#d97706"></div>TRS 50 – 70 %</div>
+        <div class="t5-ll-item"><div class="t5-ll-dot" style="background:#dc2626"></div>TRS &lt; 50 %</div>
+        <div class="t5-ll-item"><div class="t5-ll-dot" style="background:var(--border)"></div>Pas de données</div>
+      </div>
+    </div>
+    <div class="t5-rp" id="t5-rp">
+      <div class="t5-empty-wrap">
+        <div class="t5-empty-ico">📊</div>
+        <div class="t5-empty-h">TOP 5 PRODUCTION</div>
+        <div class="t5-empty-p">Cliquez sur une journée dans le calendrier pour afficher le rapport complet de production.</div>
+      </div>
+    </div>
+  </div>
+
   <!-- ════ SETTINGS ════ -->
   <div id="v-settings" class="view" style="flex-direction:column;overflow-y:auto">
     <div id="settings-lock">
@@ -10419,10 +10542,10 @@ function goTab(tab) {
   _curTab = tab;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   document.querySelectorAll('.htab').forEach(t=>t.classList.remove('on'));
-  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports','rpt-jour':'v-rpt-jour',comop:'v-comop',cdg:'v-cdg',problemes:'v-problemes',logistique:'v-logistique'};
+  const vm={main:'v-main',prod:'v-prod',history:'v-history',settings:'v-settings',finposte:'v-finposte',kpi:'v-kpi',rapports:'v-rapports','rpt-jour':'v-rpt-jour',comop:'v-comop',cdg:'v-cdg',problemes:'v-problemes',logistique:'v-logistique','rpt-top5':'v-rpt-top5'};
   const el=document.getElementById(vm[tab]);
   if(el) el.classList.add('on');
-  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour',comop:'ht-comop',cdg:'ht-cdg',problemes:'ht-problemes',logistique:'ht-logistique'};
+  const nt={main:'ht-main',prod:'ht-prod',history:'ht-hist',settings:'ht-cfg',kpi:'ht-kpi',rapports:'ht-rapports','rpt-jour':'ht-rpt-jour',comop:'ht-comop',cdg:'ht-cdg',problemes:'ht-problemes',logistique:'ht-logistique','rpt-top5':'ht-rpt-top5'};
   const ntEl=document.getElementById(nt[tab]);
   if(ntEl) ntEl.classList.add('on');
   if(tab!=='prod') _clearFieldHighlights();
@@ -10462,6 +10585,7 @@ function goTab(tab) {
     });
   } else if(_prevTab==='history') _resetHistFilters();
   if(tab==='problemes') loadProblemes();
+  if(tab==='rpt-top5') initTop5();
   if(tab==='settings') {
     _settingsUnlocked = false;
     document.getElementById('settings-lock').style.display = 'flex';
@@ -14764,6 +14888,184 @@ function cdgExport(){
   window.location.href=`/api/cdg_export?from=${from}&to=${to}`;
 }
 
+// ── TOP5 RAPPORT ──
+(function(){
+var _t5esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+var _t5fmtPcs=function(n){return Number(n).toLocaleString('fr-FR');};
+var _t5trsCol=function(t){return t>=70?'#16a34a':t>=50?'#d97706':'#dc2626';};
+var _t5trsColBg=function(t){return t>=70?'#dcfce7':t>=50?'#fef3c7':'#fee2e2';};
+var _t5trsCls=function(t){return t>=70?'t5-g':t>=50?'t5-o':'t5-r';};
+var _t5CAL={},_t5SelDate=null;
+function _t5ParseDMY(s){var p=s.split('/');return new Date(+p[2],+p[1]-1,+p[0]);}
+function _t5FmtDate(s){return _t5ParseDMY(s).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
+function _t5BuildDonut(prods,sz,showPct){
+  var pad=showPct?22:0,W=sz+pad*2,H=sz+pad*2,cx=W/2,cy=H/2,ro=sz*.45,ri=0;
+  var tot=prods.reduce(function(a,p){return a+p.pcs;},0)||1;
+  var vis=prods.filter(function(p){return p.pcs>0;});
+  if(!vis.length) return '';
+  var lfs=Math.max(8,sz*0.115).toFixed(1);
+  var mkLbl=function(ex,ey,mid,t,clr){
+    var rl=ro+12,lx=cx+rl*Math.cos(mid),ly=cy+rl*Math.sin(mid);
+    var c=Math.cos(mid),anch=c>0.15?'start':c<-0.15?'end':'middle';
+    var tx=lx+(c>0.15?3:c<-0.15?-3:0);
+    return '<circle cx="'+ex.toFixed(1)+'" cy="'+ey.toFixed(1)+'" r="2.5" fill="'+(clr||'#aaa')+'"/>'+
+      '<line x1="'+ex.toFixed(1)+'" y1="'+ey.toFixed(1)+'" x2="'+lx.toFixed(1)+'" y2="'+ly.toFixed(1)+'" stroke="'+(clr||'#aaa')+'" stroke-width="1"/>'+
+      '<text x="'+tx.toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="'+anch+'" dominant-baseline="central" fill="'+(clr||'#666')+'" font-size="'+lfs+'" font-weight="700" font-family="Inter,sans-serif">'+t+'</text>';
+  };
+  if(vis.length===1){return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" overflow="visible"><circle cx="'+cx+'" cy="'+cy+'" r="'+ro+'" fill="'+vis[0].color+'" opacity=".9"/></svg>';}
+  var angle=-Math.PI/2,paths='',labels='';
+  for(var pi=0;pi<vis.length;pi++){
+    var p=vis[pi];if(!p.pcs)continue;
+    var a=(p.pcs/tot)*2*Math.PI,ea=angle+a;
+    var x1=cx+ro*Math.cos(angle),y1=cy+ro*Math.sin(angle),x2=cx+ro*Math.cos(ea),y2=cy+ro*Math.sin(ea);
+    var xi1=cx+ri*Math.cos(angle),yi1=cy+ri*Math.sin(angle),xi2=cx+ri*Math.cos(ea),yi2=cy+ri*Math.sin(ea);
+    var lg=a>Math.PI?1:0;
+    paths+='<path d="M'+xi1.toFixed(1)+','+yi1.toFixed(1)+' L'+x1.toFixed(1)+','+y1.toFixed(1)+' A'+ro+','+ro+' 0 '+lg+',1 '+x2.toFixed(1)+','+y2.toFixed(1)+' L'+xi2.toFixed(1)+','+yi2.toFixed(1)+' A'+ri+','+ri+' 0 '+lg+',0 '+xi1.toFixed(1)+','+yi1.toFixed(1)+'" fill="'+p.color+'" opacity=".9"/>';
+    if(showPct){var mid=angle+a/2;labels+=mkLbl(cx+ro*Math.cos(mid),cy+ro*Math.sin(mid),mid,_t5fmtPcs(p.pcs),p.color);}
+    angle=ea;
+  }
+  return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" overflow="visible">'+paths+labels+'</svg>';
+}
+function _t5RenderReport(d,dateStr){
+  var rp=document.getElementById('t5-rp');if(!rp)return;
+  var trs=d.trs,tc=_t5trsCol(trs),tcBg=_t5trsColBg(trs);
+  var dtStr=_t5FmtDate(dateStr),dtCap=dtStr.charAt(0).toUpperCase()+dtStr.slice(1);
+  var html='<div class="t5-rpt-head"><div class="t5-rh-left"><div class="t5-rh-top"><div class="t5-rh-label">TOP 5 PRODUCTION</div><div class="t5-rh-sep"></div><div class="t5-rh-label">'+d.nb_eq+' équipe'+(d.nb_eq>1?'s':'')+'</div></div>';
+  html+='<div class="t5-rh-date">'+_t5esc(dtCap)+'</div></div>';
+  html+='<div class="t5-rh-right"><div class="t5-logo-pill-lg"><span class="t5-logo-text-lg">DODO</span></div></div></div>';
+  html+='<div class="t5-rpt-body">';
+  html+='<div><div class="t5-sec-hd"><div class="t5-sec-bar"></div><div class="t5-sec-title">Performance de la journée</div></div>';
+  html+='<div class="t5-kpi-row">';
+  html+='<div class="t5-kpi"><div class="t5-kpi-lbl">TRS journée</div><div class="t5-kpi-val" style="color:'+tc+'">'+d.trs.toFixed(1)+'<span class="t5-kpi-unit">%</span></div>';
+  html+='<div class="t5-kpi-sub" style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:12px;background:'+tcBg+';color:'+tc+';font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:.06em">'+(d.trs>=70?'Objectif atteint':'Sous objectif')+'</div></div>';
+  html+='<div class="t5-kpi"><div class="t5-kpi-lbl">Cadence journée</div><div class="t5-kpi-val">'+d.cad+'<span class="t5-kpi-unit">pcs/h</span></div><div class="t5-kpi-sub">moyenne sur la journée</div></div>';
+  html+='<div class="t5-kpi"><div class="t5-kpi-lbl">Arrêts imprévus</div><div class="t5-kpi-val" style="color:'+(d.arret_np>0?'#dc2626':'#16a34a')+'">'+d.arret_np+'<span class="t5-kpi-unit">min</span></div>';
+  html+='<div class="t5-kpi-sub">'+(d.stops.length>0?d.stops.length+' type'+(d.stops.length>1?'s':''):'aucun arrêt')+'</div></div>';
+  html+='<div class="t5-kpi"><div class="t5-kpi-lbl">Volume produit</div><div class="t5-kpi-val">'+_t5fmtPcs(d.pcs)+'<span class="t5-kpi-unit" style="font-size:11px">pcs</span></div>';
+  html+='<div class="t5-kpi-eq">soit <strong>'+_t5fmtPcs(d.equiv)+'</strong> éq.</div></div>';
+  html+='</div></div>';
+  var allTypes2=[],seenT2={};
+  (d.postes||[]).forEach(function(p){(p.prods||[]).forEach(function(x){if(!seenT2[x.type]){seenT2[x.type]=1;allTypes2.push({type:x.type,color:x.color});}});});
+  html+='<div><div class="t5-sec-hd"><div class="t5-sec-bar"></div><div class="t5-sec-title">Répartition par type de produit · par équipe</div></div>';
+  html+='<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px 16px">';
+  html+='<div style="display:grid;grid-template-columns:repeat('+((d.postes||[]).length||1)+',1fr);gap:8px;margin-bottom:12px">';
+  (d.postes||[]).forEach(function(p){
+    var pp=p.prods&&p.prods.length?p.prods:[{type:'—',pcs:p.pcs,color:'#aaa'}];
+    var col=_t5trsCol(p.trs);
+    html+='<div style="text-align:center;min-width:0"><div style="font-size:11px;font-weight:800;color:'+col+';margin-bottom:2px">'+_t5esc(p.nom)+'</div>';
+    html+='<div style="font-size:10px;color:var(--gray);margin-bottom:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_t5esc(p.pilote)+'</div>';
+    html+='<div style="display:flex;justify-content:center">'+_t5BuildDonut(pp,80,true)+'</div>';
+    html+='<div style="font-size:10px;color:var(--gray);margin-top:4px;font-variant-numeric:tabular-nums">'+_t5fmtPcs(p.pcs)+' pcs</div></div>';
+  });
+  html+='</div><div style="border-top:1px solid var(--border);padding-top:10px;display:flex;gap:16px;flex-wrap:wrap;justify-content:center">';
+  allTypes2.forEach(function(t){html+='<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray)"><div style="width:9px;height:9px;border-radius:3px;flex-shrink:0;background:'+t.color+'"></div>'+_t5esc(t.type)+'</div>';});
+  html+='</div></div></div>';
+  html+='<div><div class="t5-sec-hd"><div class="t5-sec-bar"></div><div class="t5-sec-title">Performance par équipe</div></div>';
+  html+='<div class="t5-eq-card">';
+  (d.postes||[]).forEach(function(p){
+    var col=_t5trsCol(p.trs);
+    html+='<div class="t5-eq-row"><div class="t5-eq-info"><div class="t5-eq-name" style="color:'+col+'">'+_t5esc(p.nom)+'</div><div class="t5-eq-pilot">'+_t5esc(p.pilote)+'</div></div>';
+    html+='<div class="t5-eq-right"><div class="t5-bar-r"><div class="t5-bar-lbl">TRS</div><div class="t5-bar-tk"><div class="t5-bar-fl" style="width:'+Math.round(p.trs)+'%;background:'+col+'"></div></div><div class="t5-bar-vl" style="color:'+col+'">'+p.trs.toFixed(1)+'%</div></div>';
+    html+='<div class="t5-eq-cad" style="color:'+col+'">Cadence : <strong>'+p.cad+' pcs/h</strong></div></div></div>';
+  });
+  html+='</div></div>';
+  var topStops=(d.stops||[]).slice(0,3);
+  var maxMin=topStops.length>0?Math.max.apply(null,topStops.map(function(s){return s.min;})):1;if(maxMin<1)maxMin=1;
+  var comments=d.comments||[];
+  var rnkCls=['','r2','r3'];
+  html+='<div style="display:flex;flex-direction:column;gap:10px">';
+  html+='<div><div class="t5-sec-hd"><div class="t5-sec-bar"></div><div class="t5-sec-title">Pareto TOP3 des causes d\'arrêts</div></div><div class="t5-par-card">';
+  if(!topStops.length){html+='<div class="t5-no-stops">✓ Aucun arrêt non prévu enregistré pour cette journée</div>';}
+  else{topStops.forEach(function(s,i){
+    html+='<div class="t5-par-item"><div class="t5-par-top"><div class="t5-par-rank '+rnkCls[i]+'">'+(i+1)+'</div><div class="t5-par-name">'+_t5esc(s.type)+'</div>';
+    html+='<div class="t5-par-badges"><span class="t5-par-b occ">Occurence : '+s.occ+'×</span><span class="t5-par-b min">Total '+s.min+' min</span></div></div>';
+    html+='<div class="t5-par-tk"><div class="t5-par-fl" style="width:'+Math.round(s.min/maxMin*100)+'%"></div></div></div>';
+  });}
+  html+='</div></div>';
+  html+='<div><div class="t5-sec-hd"><div class="t5-sec-bar"></div><div class="t5-sec-title">Commentaires pilotes</div></div><div class="t5-cmt-card">';
+  if(!comments.length){html+='<div class="t5-no-cmt">Aucun commentaire enregistré pour cette journée</div>';}
+  else{comments.forEach(function(c){
+    html+='<div class="t5-cmt-row"><div><span class="t5-cmt-tag '+(c.type==='OF'?'t-of':'t-arr')+'">'+_t5esc(c.type)+'</span></div>';
+    html+='<div class="t5-cmt-time">'+_t5esc(c.heure)+'</div>';
+    html+='<div><div class="t5-cmt-pilot">'+_t5esc(c.pilote)+'</div><div class="t5-cmt-text">'+_t5esc(c.texte)+'</div></div></div>';
+  });}
+  html+='</div></div></div></div>';
+  rp.innerHTML='<div class="t5-print-bar"><button class="t5-print-btn" onclick="window.print()">🖨️ Imprimer</button></div>'+
+    '<div class="t5-rpt-paper"><div class="t5-rpt-inner">'+html+'</div></div>';
+}
+function _t5BuildCalendar(calTrs){
+  var wrap=document.getElementById('t5-cal-wrap');if(!wrap)return;
+  if(!Object.keys(calTrs).length){wrap.innerHTML='<div style="padding:14px;font-size:11px;color:var(--gray)">Aucune donnée disponible</div>';return;}
+  var monthSet={};
+  Object.keys(calTrs).forEach(function(ds){var p=ds.split('/');monthSet[p[2]+'-'+p[1]]=1;});
+  var months=Object.keys(monthSet).sort().map(function(s){var p2=s.split('-');return{year:+p2[0],month:+p2[1]-1};});
+  var monthNames=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  var dow=['L','M','M','J','V','S','D'];
+  var html='';
+  months.forEach(function(m){
+    var firstDay=new Date(m.year,m.month,1);
+    var startDow=firstDay.getDay();startDow=startDow===0?6:startDow-1;
+    var dim=new Date(m.year,m.month+1,0).getDate();
+    html+='<div class="t5-cal-m"><div class="t5-cal-mname">'+monthNames[m.month]+' '+m.year+'</div>';
+    html+='<div class="t5-cal-dows">'+dow.map(function(d){return'<div class="t5-cal-dow">'+d+'</div>';}).join('')+'</div>';
+    html+='<div class="t5-cal-grid">';
+    for(var i=0;i<startDow;i++) html+='<div class="t5-cd t5-emp"></div>';
+    for(var dv=1;dv<=dim;dv++){
+      var dd=String(dv).padStart(2,'0'),mm2=String(m.month+1).padStart(2,'0');
+      var ds2=dd+'/'+mm2+'/'+m.year;
+      var tv=calTrs[ds2];
+      if(tv!==undefined){
+        html+='<div class="t5-cd '+_t5trsCls(tv)+' t5-has'+(_t5SelDate===ds2?' t5-sel':'')+'" data-date="'+ds2+'" title="TRS '+tv.toFixed(1)+'%">'+dv+'</div>';
+      } else {
+        html+='<div class="t5-cd t5-nd">'+dv+'</div>';
+      }
+    }
+    html+='</div></div>';
+  });
+  wrap.innerHTML=html;
+  wrap.querySelectorAll('.t5-cd.t5-has').forEach(function(el){
+    el.addEventListener('click',function(){
+      _t5SelDate=el.dataset.date;
+      _t5BuildCalendar(_t5CAL);
+      _t5LoadReport(_t5SelDate);
+    });
+  });
+}
+function _t5LoadReport(dateStr){
+  var rp=document.getElementById('t5-rp');if(!rp)return;
+  rp.innerHTML='<div style="text-align:center;padding:80px 40px;color:#94a3b8;font-size:14px">Chargement…</div>';
+  var d5=window.DASH&&window.DASH.top5_days;
+  if(d5&&d5.days&&d5.days[dateStr]){_t5RenderReport(d5.days[dateStr],dateStr);return;}
+  fetch('/api/rapport_top5_data?date='+encodeURIComponent(dateStr)).then(function(r){return r.json();}).then(function(json){
+    if(!json.ok){var rp2=document.getElementById('t5-rp');if(rp2)rp2.innerHTML='<div style="text-align:center;padding:60px;color:#dc2626;font-size:14px">Erreur : '+_t5esc(json.error||'données indisponibles')+'</div>';return;}
+    _t5RenderReport(json,dateStr);
+  }).catch(function(){var rp2=document.getElementById('t5-rp');if(rp2)rp2.innerHTML='<div style="text-align:center;padding:60px;color:#dc2626;font-size:14px">Erreur réseau</div>';});
+}
+window.initTop5=function(){
+  _t5SelDate=null;
+  var rp=document.getElementById('t5-rp');
+  if(rp)rp.innerHTML='<div class="t5-empty-wrap"><div class="t5-empty-ico">📊</div><div class="t5-empty-h">TOP 5 PRODUCTION</div><div class="t5-empty-p">Cliquez sur une journée dans le calendrier pour afficher le rapport complet de production.</div></div>';
+  var d5=window.DASH&&window.DASH.top5_days;
+  if(d5&&d5.trs&&Object.keys(d5.trs).length){
+    _t5CAL=d5.trs;
+    var dates5=Object.keys(_t5CAL).sort(function(a,b){var pa=a.split('/'),pb=b.split('/');return new Date(+pb[2],+pb[1]-1,+pb[0])-new Date(+pa[2],+pa[1]-1,+pa[0]);});
+    if(dates5.length){_t5SelDate=dates5[0];}
+    _t5BuildCalendar(_t5CAL);
+    if(_t5SelDate) _t5LoadReport(_t5SelDate);
+    return;
+  }
+  fetch('/api/rapport_top5_calendar').then(function(r){return r.json();}).then(function(cal){
+    if(cal.ok&&cal.dates){
+      _t5CAL=cal.dates;
+      var dates5=Object.keys(_t5CAL).sort(function(a,b){var pa=a.split('/'),pb=b.split('/');return new Date(+pb[2],+pb[1]-1,+pb[0])-new Date(+pa[2],+pa[1]-1,+pa[0]);});
+      if(dates5.length){_t5SelDate=dates5[0];}
+      _t5BuildCalendar(_t5CAL);
+      if(_t5SelDate) _t5LoadReport(_t5SelDate);
+    }
+  }).catch(function(){var w=document.getElementById('t5-cal-wrap');if(w)w.innerHTML='<div style="padding:14px;font-size:11px;color:#dc2626">Erreur chargement</div>';});
+};
+})();
+
 // ── PROBLÈMES ──
 async function loadProblemes(){
   const bd=document.getElementById('prob-body');
@@ -17518,6 +17820,117 @@ def generate_dashboard_html():
                     _postes_rows_raw = [list(r) for r in _rc.fetchall()]
                     _raw_conn.close()
         except Exception as _re: pass
+        # ── Compute TOP5 days data for dashboard ──────────────────────
+        _top5_trs = {}
+        _top5_data = {}
+        try:
+            _t5_postes_map = load_postes_shift_map()
+            _t5_postes_order = ['Matin', 'Midi', 'Nuit', 'Jour']
+            _t5_seen_trs = {}
+            for _rn5, _r5 in _decl_cache:
+                _pilot5 = str(_r5[4] or '').strip()
+                _poste5 = str(_r5[3] or '').strip()
+                _date5 = str(_r5[39] if len(_r5) > 39 else '').strip() or _row_date(str(_r5[2] or ''))
+                if not _date5: continue
+                _xl5 = _pm_get(_t5_postes_map, _pilot5.lower(), _date5, _poste5)
+                if not _xl5 or _xl5.get('ouverture_min') is None: continue
+                _trs5 = float(_xl5.get('trs') or 0)
+                if _trs5 <= 0: continue
+                if _date5 not in _t5_seen_trs:
+                    _t5_seen_trs[_date5] = {'sum_trs': 0.0, 'n': 0, 'counted_keys': set()}
+                _sk5 = f"{_pilot5}||{_poste5}"
+                if _sk5 not in _t5_seen_trs[_date5]['counted_keys']:
+                    _t5_seen_trs[_date5]['counted_keys'].add(_sk5)
+                    _t5_seen_trs[_date5]['sum_trs'] += _trs5
+                    _t5_seen_trs[_date5]['n'] += 1
+            _top5_trs = {d: round(v['sum_trs'] / v['n'], 1) for d, v in _t5_seen_trs.items() if v['n'] > 0}
+            _t5_sess_all = {}
+            _t5_evts_all = {}
+            for _rn5, _r5 in _decl_cache:
+                _pilot5 = str(_r5[4] or '').strip()
+                _poste5 = str(_r5[3] or '').strip()
+                _rtype5 = str(_r5[0] or '').strip().lower()
+                _date5 = str(_r5[39] if len(_r5) > 39 else '').strip() or _row_date(str(_r5[2] or ''))
+                if not _date5 or _date5 not in _top5_trs: continue
+                _key5 = f"{_poste5}||{_pilot5}"
+                if _rtype5 in ('production', 'prod', ''):
+                    if _date5 not in _t5_sess_all: _t5_sess_all[_date5] = {}
+                    if _key5 not in _t5_sess_all[_date5]:
+                        _t5_sess_all[_date5][_key5] = {'poste': _poste5, 'pilot': _pilot5, 'pcs': 0.0, 'equiv': 0.0, 'prods': {}}
+                    try:
+                        _pcs5 = float(str(_r5[19] or 0).replace(',', '.'))
+                        _eq5  = float(str(_r5[21] or 0).replace(',', '.'))
+                        _typ5 = str(_r5[9] or '').strip()
+                        _t5_sess_all[_date5][_key5]['pcs']   += _pcs5
+                        _t5_sess_all[_date5][_key5]['equiv'] += _eq5
+                        if _typ5 and _pcs5 > 0:
+                            _t5_sess_all[_date5][_key5]['prods'][_typ5] = _t5_sess_all[_date5][_key5]['prods'].get(_typ5, 0.0) + _pcs5
+                    except Exception: pass
+                else:
+                    if _date5 not in _t5_evts_all: _t5_evts_all[_date5] = []
+                    _t5_evts_all[_date5].append((_poste5, _pilot5, _r5))
+            def _t5_rank_postes(item5, _ord5=_t5_postes_order):
+                try: return _ord5.index(item5[1]['poste'])
+                except: return 99
+            for _date5, _sessions5 in _t5_sess_all.items():
+                _all_types5 = []; _seen_t5 = set()
+                for _s5 in _sessions5.values():
+                    for _t5t in _s5['prods']:
+                        if _t5t not in _seen_t5:
+                            _seen_t5.add(_t5t); _all_types5.append(_t5t)
+                _cmap5 = {_t5t: PROD_COLORS_RPT[i % len(PROD_COLORS_RPT)] for i, _t5t in enumerate(_all_types5)}
+                _total_pcs5 = 0.0; _total_equiv5 = 0.0
+                _trs_sum5 = 0.0; _trs_n5 = 0; _cad_glob5 = 0
+                _postes_list5 = []
+                for _key5b, _s5 in sorted(_sessions5.items(), key=_t5_rank_postes):
+                    _xl5b = _pm_get(_t5_postes_map, _s5['pilot'].lower(), _date5, _s5['poste'])
+                    _trs5b = float(_xl5b.get('trs') or 0) if _xl5b else 0.0
+                    _cad5b = int(_xl5b.get('cadence_h') or 0) if _xl5b else 0
+                    if not _cad5b and _xl5b:
+                        _utile5 = float(_xl5b.get('utile_min') or 0)
+                        _cad5b = round(_s5['equiv'] / _utile5 * 60) if _utile5 > 0 else 0
+                    _prods_p5 = sorted(
+                        [{'type': _t5t, 'pcs': round(_pcs5b), 'color': _cmap5.get(_t5t, '#aaa')}
+                         for _t5t, _pcs5b in _s5['prods'].items() if _pcs5b > 0],
+                        key=lambda x: -x['pcs']
+                    )
+                    _postes_list5.append({'nom': _s5['poste'], 'pilote': _s5['pilot'],
+                                          'trs': round(_trs5b, 1), 'cad': _cad5b,
+                                          'pcs': round(_s5['pcs']), 'prods': _prods_p5})
+                    _total_pcs5 += _s5['pcs']; _total_equiv5 += _s5['equiv']
+                    if _trs5b > 0: _trs_sum5 += _trs5b; _trs_n5 += 1
+                    _cad_glob5 = max(_cad_glob5, _cad5b)
+                _trs_glob5 = round(_trs_sum5 / _trs_n5, 1) if _trs_n5 > 0 else 0.0
+                _stop_min5 = {}; _stop_occ5 = {}; _arret_np5 = 0.0; _comments5 = []
+                for _poste5b, _pilot5b, _r5b in _t5_evts_all.get(_date5, []):
+                    _stype5 = str(_r5b[0] or '').strip()
+                    if not _stype5: continue
+                    if _get_arret_budget_key(_stype5) is not None: continue
+                    if _is_degrade_type(_stype5): continue
+                    _ds5 = _hms_to_sec(str(_r5b[16] or '00:00:00'))
+                    _fs5 = _norm_fin(_ds5, _hms_to_sec(str(_r5b[17] or '00:00:00')))
+                    _dur_s5 = _hms_to_sec(str(_r5b[18] or '00:00:00')) if _fs5 <= _ds5 else _fs5 - _ds5
+                    _dur_min5 = max(0.0, _dur_s5 / 60)
+                    _stop_min5[_stype5] = _stop_min5.get(_stype5, 0.0) + _dur_min5
+                    _stop_occ5[_stype5] = _stop_occ5.get(_stype5, 0) + 1
+                    _arret_np5 += _dur_min5
+                    _cmt5 = str(_r5b[35] or '').strip()
+                    if _cmt5:
+                        _heure5 = str(_r5b[16] or '')[:5]
+                        _comments5.append({'type': 'Arrêt', 'heure': _heure5, 'pilote': _pilot5b,
+                                           'texte': f"{_stype5} — {_cmt5}"})
+                _stops5 = sorted(
+                    [{'type': _t5t, 'occ': _stop_occ5[_t5t], 'min': round(_stop_min5[_t5t])} for _t5t in _stop_min5],
+                    key=lambda x: -x['min']
+                )[:5]
+                _top5_data[_date5] = {
+                    'trs': _trs_glob5, 'cad': _cad_glob5,
+                    'pcs': round(_total_pcs5), 'equiv': round(_total_equiv5),
+                    'arret_np': round(_arret_np5), 'nb_eq': len(_postes_list5),
+                    'postes': _postes_list5, 'stops': _stops5, 'comments': _comments5
+                }
+        except Exception: pass
+        _top5_days = {'trs': _top5_trs, 'days': _top5_data}
         dash_json = _json.dumps({
             'history': history, 'events_list': events_list, 'past_sessions': past_sessions,
             'session_reports': session_reports,
@@ -17527,6 +17940,7 @@ def generate_dashboard_html():
             'generated_at': gen_at,
             'decl_rows': _decl_rows_raw, 'decl_headers': DECL_HEADERS,
             'postes_rows': _postes_rows_raw, 'postes_headers': POSTES_HEADERS,
+            'top5_days': _top5_days,
             'config': {
                 'prod_ref': cfg.get('prod_ref', 0),
                 'pause_max_min': cfg.get('pause_max_min', 20),
@@ -17557,7 +17971,7 @@ def generate_dashboard_html():
         gen_at_escaped = gen_at.replace("'", "\\'")
         inject = (
             '<script>\nwindow.DASH=' + dash_json + ';\n'
-            '(function(){var _t5b=document.getElementById("ht-rpt-top5");if(_t5b){_t5b.style.display="";_t5b.onclick=function(){window.open("./rapport_top5.html","_blank");};}})();\n'
+            '(function(){var _t5b=document.getElementById("ht-rpt-top5");if(_t5b){_t5b.style.display="";_t5b.onclick=function(){if(typeof goTab==="function")goTab("rpt-top5");};}})();\n'
             '(function(){\n'
             # Fake state: makes the app think a user is "logged in" (no prod active)
             'var _DASH_STATE={pilot:"Dashboard",poste:' + _json.dumps(cfg.get("app_name","ORC1")) + ',prod_active:false,of_elapsed_s:0,stop_wall_s:0,pause_total_s:0,is_paused:false};\n'
