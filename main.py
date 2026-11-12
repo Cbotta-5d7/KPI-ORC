@@ -17557,6 +17557,7 @@ def generate_dashboard_html():
         gen_at_escaped = gen_at.replace("'", "\\'")
         inject = (
             '<script>\nwindow.DASH=' + dash_json + ';\n'
+            '(function(){var _t5b=document.getElementById("ht-rpt-top5");if(_t5b){_t5b.style.display="";_t5b.onclick=function(){window.open("./rapport_top5.html","_blank");};}})();\n'
             '(function(){\n'
             # Fake state: makes the app think a user is "logged in" (no prod active)
             'var _DASH_STATE={pilot:"Dashboard",poste:' + _json.dumps(cfg.get("app_name","ORC1")) + ',prod_active:false,of_elapsed_s:0,stop_wall_s:0,pause_total_s:0,is_paused:false};\n'
