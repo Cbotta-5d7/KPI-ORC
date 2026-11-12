@@ -9968,8 +9968,9 @@ window._evMap = {};
 
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', async () => {
-  // Bouton capture rapport : visible uniquement dans le dashboard HTML
+  // Boutons visibles uniquement dans le dashboard HTML généré
   if(window.DASH){const _cb=document.getElementById('rj-capture-btn');if(_cb)_cb.style.display='inline-flex';}
+  if(window.DASH){const _t5=document.getElementById('ht-rpt-top5');if(_t5)_t5.style.display='';}
   const _scEl=document.getElementById('v-settings-content');
   if(_scEl){_scEl.addEventListener('input',_settingsMarkDirty);_scEl.addEventListener('change',_settingsMarkDirty);}
   await loadEvtsList(); // charge la liste dynamique des arrêts avant de construire les grilles
@@ -10190,7 +10191,6 @@ function doGuestLogin(){
   const _ht=document.getElementById('hist-to'); if(_ht) _ht.value=_today;
   goTab('main');
   loadMainDecl();
-  if(window.DASH){const _t5=document.getElementById('ht-rpt-top5');if(_t5)_t5.style.display='';}
 }
 
 function _applyGuestMode(){
