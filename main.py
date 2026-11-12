@@ -10190,7 +10190,7 @@ function doGuestLogin(){
   const _ht=document.getElementById('hist-to'); if(_ht) _ht.value=_today;
   goTab('main');
   loadMainDecl();
-  if(!window.pywebview) document.getElementById('ht-rpt-top5').style.display='';
+  if(window.DASH){const _t5=document.getElementById('ht-rpt-top5');if(_t5)_t5.style.display='';}
 }
 
 function _applyGuestMode(){
