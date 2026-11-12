@@ -7707,6 +7707,159 @@ def api_save_list():
     return jsonify({"ok":bool(ok)})
 
 
+PROD_COLORS_RPT = ['#2563eb','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16']
+
+@flask_app.route('/rapport_top5')
+def rapport_top5():
+    p = os.path.join(BASE_DIR, 'rapport_top5.html')
+    if os.path.exists(p):
+        with open(p, encoding='utf-8') as f:
+            return f.read(), 200, {'Content-Type': 'text/html; charset=utf-8'}
+    return "rapport_top5.html introuvable dans " + BASE_DIR, 404
+
+@flask_app.route('/api/rapport_top5_calendar')
+def api_rapport_top5_calendar():
+    postes_map = load_postes_shift_map()
+    seen = {}
+    for rn, r in _decl_cache:
+        rtype = str(r[0] or '').strip().lower()
+        if rtype not in ('production', 'prod', ''):
+            continue
+        pilot = str(r[4] or '').strip()
+        poste = str(r[3] or '').strip()
+        date_r = str(r[39] if len(r) > 39 else '').strip() or _row_date(str(r[2] or ''))
+        if not date_r:
+            continue
+        _xl = _pm_get(postes_map, pilot.lower(), date_r, poste)
+        if not _xl or _xl.get('ouverture_min') is None:
+            continue
+        trs_p = float(_xl.get('trs') or 0)
+        if trs_p <= 0:
+            continue
+        if date_r not in seen:
+            seen[date_r] = {'sum_trs': 0.0, 'n': 0, 'counted_keys': set()}
+        sess_key = f"{pilot}||{poste}"
+        if sess_key not in seen[date_r]['counted_keys']:
+            seen[date_r]['counted_keys'].add(sess_key)
+            seen[date_r]['sum_trs'] += trs_p
+            seen[date_r]['n'] += 1
+    trs_by_day = {d: round(v['sum_trs'] / v['n'], 1) for d, v in seen.items() if v['n'] > 0}
+    return jsonify({'ok': True, 'dates': trs_by_day})
+
+@flask_app.route('/api/rapport_top5_data')
+def api_rapport_top5_data():
+    date_str = request.args.get('date', '').strip()
+    if not date_str:
+        return jsonify({'ok': False, 'error': 'date required'})
+    if '-' in date_str and len(date_str) == 10:
+        try:
+            p = date_str.split('-')
+            date_str = f"{p[2]}/{p[1]}/{p[0]}"
+        except Exception:
+            return jsonify({'ok': False, 'error': 'invalid date'})
+    postes_map = load_postes_shift_map()
+    postes_order = ['Matin', 'Midi', 'Nuit', 'Jour']
+    sessions_day = {}
+    evt_rows_day = []
+    for rn, r in _decl_cache:
+        pilot = str(r[4] or '').strip()
+        poste = str(r[3] or '').strip()
+        rtype = str(r[0] or '').strip()
+        date_r = str(r[39] if len(r) > 39 else '').strip() or _row_date(str(r[2] or ''))
+        if date_r != date_str:
+            continue
+        key = f"{poste}||{pilot}"
+        rtype_low = rtype.lower()
+        if rtype_low in ('production', 'prod', ''):
+            if key not in sessions_day:
+                sessions_day[key] = {'poste': poste, 'pilot': pilot, 'pcs': 0.0, 'equiv': 0.0, 'prods': {}}
+            try:
+                pcs = float(str(r[19] or 0).replace(',', '.'))
+                eq  = float(str(r[21] or 0).replace(',', '.'))
+                typ = str(r[9] or '').strip()
+                sessions_day[key]['pcs']   += pcs
+                sessions_day[key]['equiv'] += eq
+                if typ and pcs > 0:
+                    sessions_day[key]['prods'][typ] = sessions_day[key]['prods'].get(typ, 0.0) + pcs
+            except Exception:
+                pass
+        else:
+            evt_rows_day.append((poste, pilot, r))
+    if not sessions_day:
+        return jsonify({'ok': False, 'error': 'no data for this date'})
+    all_types = []
+    seen_t = set()
+    for s in sessions_day.values():
+        for t in s['prods']:
+            if t not in seen_t:
+                seen_t.add(t)
+                all_types.append(t)
+    color_map = {t: PROD_COLORS_RPT[i % len(PROD_COLORS_RPT)] for i, t in enumerate(all_types)}
+    total_pcs = 0.0; total_equiv = 0.0
+    trs_sum = 0.0; trs_n = 0; cad_global = 0
+    postes_list = []
+    def _rank(item):
+        try: return postes_order.index(item[1]['poste'])
+        except: return 99
+    for key, s in sorted(sessions_day.items(), key=_rank):
+        _xl = _pm_get(postes_map, s['pilot'].lower(), date_str, s['poste'])
+        trs_p = float(_xl.get('trs') or 0) if _xl else 0.0
+        cad_p = int(_xl.get('cadence_h') or 0) if _xl else 0
+        if not cad_p and _xl:
+            utile = float(_xl.get('utile_min') or 0)
+            cad_p = round(s['equiv'] / utile * 60) if utile > 0 else 0
+        prods_p = sorted(
+            [{'type': t, 'pcs': round(pcs), 'color': color_map.get(t, '#aaa')}
+             for t, pcs in s['prods'].items() if pcs > 0],
+            key=lambda x: -x['pcs']
+        )
+        postes_list.append({'nom': s['poste'], 'pilote': s['pilot'],
+                            'trs': round(trs_p, 1), 'cad': cad_p,
+                            'pcs': round(s['pcs']), 'prods': prods_p})
+        total_pcs += s['pcs']; total_equiv += s['equiv']
+        if trs_p > 0: trs_sum += trs_p; trs_n += 1
+        cad_global = max(cad_global, cad_p)
+    trs_global = round(trs_sum / trs_n, 1) if trs_n > 0 else 0.0
+    stop_min = {}; stop_occ = {}
+    arret_np = 0.0; comments = []
+    for poste, pilot, r in evt_rows_day:
+        stype = str(r[0] or '').strip()
+        if not stype: continue
+        if _get_arret_budget_key(stype) is not None: continue
+        if _is_degrade_type(stype): continue
+        ds = _hms_to_sec(str(r[16] or '00:00:00'))
+        fs = _norm_fin(ds, _hms_to_sec(str(r[17] or '00:00:00')))
+        dur_s = _hms_to_sec(str(r[18] or '00:00:00')) if fs <= ds else fs - ds
+        dur_min = max(0.0, dur_s / 60)
+        stop_min[stype] = stop_min.get(stype, 0.0) + dur_min
+        stop_occ[stype] = stop_occ.get(stype, 0) + 1
+        arret_np += dur_min
+        cmt = str(r[35] or '').strip()
+        if cmt:
+            heure = str(r[16] or '')[:5]
+            comments.append({'type': 'Arrêt', 'heure': heure, 'pilote': pilot,
+                             'texte': f"{stype} — {cmt}"})
+    stops = sorted(
+        [{'type': t, 'occ': stop_occ[t], 'min': round(stop_min[t])} for t in stop_min],
+        key=lambda x: -x['min']
+    )[:5]
+    glob_prods = {}
+    for s in sessions_day.values():
+        for t, pcs in s['prods'].items():
+            glob_prods[t] = glob_prods.get(t, 0.0) + pcs
+    prods_global = sorted(
+        [{'type': t, 'pcs': round(pcs), 'color': color_map.get(t, '#aaa')} for t, pcs in glob_prods.items()],
+        key=lambda x: -x['pcs']
+    )
+    return jsonify({
+        'ok': True, 'date': date_str,
+        'trs': trs_global, 'cad': cad_global,
+        'pcs': round(total_pcs), 'equiv': round(total_equiv),
+        'arret_np': round(arret_np), 'nb_eq': len(postes_list),
+        'postes': postes_list, 'stops': stops,
+        'prods': prods_global, 'comments': comments
+    })
+
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="fr">
@@ -8114,6 +8267,7 @@ select{cursor:default}
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
+      <button class="htab" id="ht-rpt-top5" onclick="window.open('/rapport_top5','_blank')">📊 Rapport TOP5</button>
       <button class="htab" id="ht-comop" onclick="goTab('comop')" style="display:none">📊 COMOP</button>
       <button class="htab" id="ht-logistique" onclick="goTab('logistique')" style="display:none">🚚 Logistique</button>
       <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🚨 Signaler problèmes logiciel</button>
