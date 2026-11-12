@@ -8267,7 +8267,7 @@ select{cursor:default}
       <button class="htab" id="ht-hist" onclick="goTab('history')">Historique</button>
       <button class="htab" id="ht-rapports" onclick="goTab('rapports')">📋 Rapports poste</button>
       <button class="htab" id="ht-rpt-jour" onclick="goTab('rpt-jour')">📅 Rapports jour</button>
-      <button class="htab" id="ht-rpt-top5" onclick="window.open('/rapport_top5','_blank')">📊 Rapport TOP5</button>
+      <button class="htab" id="ht-rpt-top5" onclick="window.open('http://127.0.0.1:5001/rapport_top5','_blank')" style="display:none">📊 Rapport TOP5</button>
       <button class="htab" id="ht-comop" onclick="goTab('comop')" style="display:none">📊 COMOP</button>
       <button class="htab" id="ht-logistique" onclick="goTab('logistique')" style="display:none">🚚 Logistique</button>
       <button class="htab" id="ht-problemes" onclick="goTab('problemes')">🚨 Signaler problèmes logiciel</button>
@@ -10190,6 +10190,7 @@ function doGuestLogin(){
   const _ht=document.getElementById('hist-to'); if(_ht) _ht.value=_today;
   goTab('main');
   loadMainDecl();
+  if(!window.pywebview) document.getElementById('ht-rpt-top5').style.display='';
 }
 
 function _applyGuestMode(){
