@@ -8259,8 +8259,8 @@ select{cursor:default}
 #v-rpt-top5 .t5-cmt-pilot{font-size:11px;font-weight:700;margin-bottom:2px}
 #v-rpt-top5 .t5-cmt-text{font-size:11px;color:var(--gray)}
 #v-rpt-top5 .t5-no-cmt{padding:20px 18px;font-size:12px;color:var(--gray);text-align:center;font-style:italic}
+@page{size:A3 landscape;margin:8mm}
 @media print{
-  @page{size:A3 landscape;margin:8mm}
   #app-hdr{display:none!important}
   #v-rpt-top5 .t5-lp{display:none!important}
   #v-rpt-top5 .t5-print-bar{display:none!important}
@@ -12490,7 +12490,7 @@ function _writeNbPersLine(val,hDe,hA){
   var el=document.getElementById('f-comment');if(!el)return;
   var line='Nb personne : '+val+' de '+hDe+' à '+hA;
   var ex=el.value.trim();
-  el.value=ex?(ex+'\n'+line):line;
+  el.value=ex?(ex+'\n'+line+'\n'):(line+'\n');
   scheduleAutoSave();
 }
 function _doTrackNbPers(){
