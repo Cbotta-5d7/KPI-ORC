@@ -8209,7 +8209,11 @@ select{cursor:default}
 #v-rpt-top5 .t5-rh-right{z-index:1;flex-shrink:0}
 #v-rpt-top5 .t5-logo-pill-lg{background:#1a2f6e;border:3px solid #e31c24;padding:7px 22px;border-radius:60px;display:inline-flex;align-items:center;box-shadow:0 3px 14px rgba(26,47,110,.4)}
 #v-rpt-top5 .t5-logo-text-lg{font-weight:900;font-size:24px;color:#fff;font-style:italic;letter-spacing:2.5px}
-#v-rpt-top5 .t5-rpt-body{padding:16px 20px 24px;display:flex;flex-direction:column;gap:14px}
+#v-rpt-top5 .t5-rpt-body{padding:16px 20px 24px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto auto;gap:14px}
+#v-rpt-top5 .t5-rpt-body>div:nth-child(1){grid-column:1/3;grid-row:1}
+#v-rpt-top5 .t5-rpt-body>div:nth-child(2){grid-column:1;grid-row:2}
+#v-rpt-top5 .t5-rpt-body>div:nth-child(3){grid-column:1;grid-row:3}
+#v-rpt-top5 .t5-rpt-body>div:nth-child(4){grid-column:2;grid-row:2/4;align-self:start}
 #v-rpt-top5 .t5-sec-hd{display:flex;align-items:center;gap:7px;margin-bottom:10px}
 #v-rpt-top5 .t5-sec-bar{width:3px;height:15px;background:#e31c24;border-radius:2px;flex-shrink:0}
 #v-rpt-top5 .t5-sec-title{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--gray)}
@@ -8258,6 +8262,15 @@ select{cursor:default}
 #v-rpt-top5 .t5-cmt-pilot{font-size:11px;font-weight:700;margin-bottom:2px}
 #v-rpt-top5 .t5-cmt-text{font-size:11px;color:var(--gray)}
 #v-rpt-top5 .t5-no-cmt{padding:20px 18px;font-size:12px;color:var(--gray);text-align:center;font-style:italic}
+@media print{
+  #v-rpt-top5 .t5-lp{display:none!important}
+  #v-rpt-top5 .t5-print-bar{display:none!important}
+  #v-rpt-top5 .t5-rp{background:#fff!important;width:100%!important;overflow:visible!important;display:block!important}
+  #v-rpt-top5 .t5-rpt-paper{margin:0!important;border-radius:0!important;box-shadow:none!important;animation:none!important}
+  #v-rpt-top5 .t5-rpt-inner{animation:none!important}
+  #v-rpt-top5 .t5-rpt-body{padding:10px!important;grid-template-columns:50% 50%!important;gap:10px!important}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 </head>
@@ -9468,7 +9481,7 @@ select{cursor:default}
   <div id="v-rpt-top5" class="view" style="flex-direction:row;overflow:hidden">
     <div class="t5-lp">
       <div class="t5-lp-head">
-        <div class="t5-lp-logo"><div class="t5-logo-pill"><span class="t5-logo-text">TOP 5</span></div></div>
+        <div class="t5-lp-logo"><div class="t5-logo-pill"><span class="t5-logo-text">DODO</span></div></div>
         <div class="t5-lp-sub">Sélectionner une journée</div>
       </div>
       <div class="t5-cal-wrap" id="t5-cal-wrap">
