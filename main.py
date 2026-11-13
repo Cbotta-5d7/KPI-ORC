@@ -692,8 +692,6 @@ def _backfill_of_for_events(of_num, of_start_dt, of_end_dt, pilot, poste, shift_
                     updates = {}
                     if not str(_row_of or "").strip():
                         updates["c02"] = of_num
-                    if _bf_nb_pers:
-                        updates["c07"] = _bf_nb_pers
                     if _bf_taille and not str(taille_v or "").strip():
                         updates["c08"] = _bf_taille
                     if _bf_code_prod and not str(code_prod_v or "").strip():
