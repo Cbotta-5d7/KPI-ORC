@@ -8579,7 +8579,7 @@ select{cursor:default}
             <div class="fr ro"><label>Poste</label><input id="f-poste" readonly></div>
             <div class="fr ro"><label>Pilote</label><input id="f-pilote" readonly></div>
             <div class="fr"><label>Co-Pilote</label><select id="f-copilote" onchange="scheduleAutoSave()"><option value="">--</option></select></div>
-            <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave();_applyFormAndUpdateGauge();_trackNbPersChange()"></div>
+            <div class="fr"><label>Nb Personnes</label><input id="f-nb_pers" type="number" min="1" value="10" oninput="scheduleAutoSave();_applyFormAndUpdateGauge();_trackNbPersChange()" onblur="_doTrackNbPers()"></div>
           </div>
           <!-- Zone Production -->
           <div class="fzone zp">
@@ -11584,7 +11584,7 @@ async function _doActualStartProd(){
     }
     toast(d.error||'Erreur','err');return;
   }
-  _nbPersChanges=[];
+  _nbPersChanges=[];clearTimeout(_nbPersTimer);_nbPersTimer=null;
   if(window.ST) window.ST.prod_active=true;
   setToday();
   restoreFormFromStorage();
@@ -12485,8 +12485,9 @@ function renderEPModal(d,f){
 function showExcelLoading(){}
 function hideExcelLoading(){}
 
-var _nbPersChanges=[];
-function _trackNbPersChange(){
+var _nbPersChanges=[],_nbPersTimer=null;
+function _doTrackNbPers(){
+  clearTimeout(_nbPersTimer);_nbPersTimer=null;
   if(!window.ST||!window.ST.prod_active)return;
   var el=document.getElementById('f-nb_pers');if(!el)return;
   var val=parseInt(el.value)||10;
@@ -12494,6 +12495,10 @@ function _trackNbPersChange(){
   var now=new Date();
   var h=String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0');
   _nbPersChanges.push({val:val,heure:h});
+}
+function _trackNbPersChange(){
+  clearTimeout(_nbPersTimer);
+  _nbPersTimer=setTimeout(_doTrackNbPers,5000);
 }
 function _injectNbPersComment(){
   if(!_nbPersChanges.length)return;
