@@ -12495,7 +12495,6 @@ function _writeNbPersLine(val,hDe,hA){
 }
 function _doTrackNbPers(){
   clearTimeout(_nbPersTimer);_nbPersTimer=null;
-  if(!window.ST||!window.ST.prod_active)return;
   var el=document.getElementById('f-nb_pers');if(!el)return;
   var val=parseInt(el.value)||10;
   var last=_nbPersChanges.length>0?_nbPersChanges[_nbPersChanges.length-1]:null;
@@ -12509,7 +12508,6 @@ function _doTrackNbPers(){
   _nbPersChanges.push({val:val,heure:h});
 }
 function _trackNbPersChange(){
-  if(!window.ST||!window.ST.prod_active)return;
   var el=document.getElementById('f-nb_pers');if(!el)return;
   var val=parseInt(el.value)||10;
   var last=_nbPersChanges.length>0?_nbPersChanges[_nbPersChanges.length-1]:null;
