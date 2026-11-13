@@ -12486,14 +12486,26 @@ function showExcelLoading(){}
 function hideExcelLoading(){}
 
 var _nbPersChanges=[],_nbPersTimer=null;
+function _writeNbPersLine(val,hDe,hA){
+  var el=document.getElementById('f-comment');if(!el)return;
+  var line='Nb personne : '+val+' de '+hDe+' à '+hA;
+  var ex=el.value.trim();
+  el.value=ex?(ex+'\n'+line):line;
+  scheduleAutoSave();
+}
 function _doTrackNbPers(){
   clearTimeout(_nbPersTimer);_nbPersTimer=null;
   if(!window.ST||!window.ST.prod_active)return;
   var el=document.getElementById('f-nb_pers');if(!el)return;
   var val=parseInt(el.value)||10;
-  if(_nbPersChanges.length>0&&_nbPersChanges[_nbPersChanges.length-1].val===val)return;
+  var last=_nbPersChanges.length>0?_nbPersChanges[_nbPersChanges.length-1]:null;
+  if(last&&last.val===val)return;
   var now=new Date();
   var h=String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0');
+  if(val===10&&last&&last.val!==10&&!last.written){
+    _writeNbPersLine(last.val,last.heure,h);
+    last.written=true;
+  }
   _nbPersChanges.push({val:val,heure:h});
 }
 function _trackNbPersChange(){
@@ -12504,17 +12516,13 @@ function _injectNbPersComment(){
   if(!_nbPersChanges.length)return;
   var now=new Date();
   var hFin=String(now.getHours()).padStart(2,'0')+'h'+String(now.getMinutes()).padStart(2,'0');
-  var lines=[];
   for(var i=0;i<_nbPersChanges.length;i++){
     var e=_nbPersChanges[i];
-    if(e.val===10)continue;
+    if(e.val===10||e.written)continue;
     var hA=i+1<_nbPersChanges.length?_nbPersChanges[i+1].heure:hFin;
-    lines.push('Nb personne : '+e.val+' de '+e.heure+' à '+hA);
+    _writeNbPersLine(e.val,e.heure,hA);
+    e.written=true;
   }
-  if(!lines.length)return;
-  var el=document.getElementById('f-comment');if(!el)return;
-  var ex=el.value.trim();
-  el.value=ex?(ex+'\n'+lines.join('\n')):lines.join('\n');
 }
 
 async function confirmEndProd(){
